@@ -1,21 +1,15 @@
-export interface Rider {
-  id: string;
-  name: string;
-  phone: string;
-  email?: string;
-  avatar?: string;
-  isOnline: boolean;
-  status?: 'online' | 'offline' | 'busy';
-  totalDeliveries: number;
-  totalEarnings: number;
-  todayDeliveries: number;
-  todayEarnings: number;
-  rating?: number;
-  vehicleType?: 'bike' | 'cycle' | 'van';
-  vehicleNumber?: string;
-  cnic?: string;
-}
+// ============================================================================
+// Rider App Types — Re-exports from @freshbazar/shared-types + RN-specific
+// ============================================================================
 
+// Re-export ALL shared types (single source of truth)
+export * from '@freshbazar/shared-types';
+
+// ============================================================================
+// Rider-app-specific Types (NOT in shared-types — mobile only)
+// ============================================================================
+
+/** App settings stored locally on the rider's device */
 export interface AppSettings {
   language: 'en' | 'ur';
   notificationsEnabled: boolean;
@@ -25,6 +19,7 @@ export interface AppSettings {
   darkMode: boolean;
 }
 
+/** Geographic coordinates with optional sensor metadata */
 export interface LocationCoords {
   latitude: number;
   longitude: number;
@@ -33,6 +28,7 @@ export interface LocationCoords {
   timestamp?: number;
 }
 
+/** Daily performance summary for a rider */
 export interface DailyStats {
   date: string;
   totalDeliveries: number;
@@ -41,6 +37,7 @@ export interface DailyStats {
   avgDeliveryTime: number;
 }
 
+/** Comprehensive rider statistics payload */
 export interface RiderStatsData {
   stats: {
     today: { orders: number; earnings: number };
@@ -56,6 +53,7 @@ export interface RiderStatsData {
   };
 }
 
+/** Single earning record */
 export interface Earning {
   id: string;
   date: string;
@@ -65,89 +63,22 @@ export interface Earning {
   orderId?: string;
 }
 
-export interface QueuedAction {
-  id: string;
-  type: 'task_action' | 'location_update' | 'status_update' | 'call_request';
-  payload: any;
-  timestamp: number;
-  retryCount: number;
-}
-
-export interface Task {
-  id: string;
-  orderNumber?: string;
-  orderId?: string;
-  attaRequestId?: string;
-  type: 'delivery' | 'pickup' | 'atta_pickup' | 'atta_delivery';
-  status: 'pending' | 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled';
-  customerName?: string;
-  customerPhone?: string;
-  address?: string;
-  customerAddress?: string;
-  houseNumber?: string;
-  area?: string;
-  city?: string;
-  landmark?: string;
-  latitude?: number;
-  longitude?: number;
-  items?: OrderItem[];
-  totalAmount?: number;
-  deliveryFee?: number;
-  createdAt?: string;
-  estimatedTime?: string;
-  notes?: string;
-  specialInstructions?: string;
-  timeWindow?: string;
-  requestedDeliveryDate?: string;
-  distance?: string;
-  gateImage?: string;
-  has_location?: boolean;
-  location_added_by?: string | null;
-  addressId?: string;
-  paymentMethod?: string;
-  paymentStatus?: string;
-}
-
-export interface OrderItem {
-  id: string;
-  name: string;
-  quantity: number;
-  unit: string;
-  price: number;
-}
-
-export interface LoginCredentials {
-  phone: string;
-  password: string;
-}
-
+/** Login response payload (rider-specific shape) */
 export interface LoginResponse {
-  rider: Rider;
+  rider: import('@freshbazar/shared-types').Rider;
   token: string;
 }
 
-export interface LocationUpdate {
-  latitude: number;
-  longitude: number;
-  accuracy?: number;
-  timestamp: number;
-}
+// ============================================================================
+// React Navigation Param Lists (RN-specific)
+// ============================================================================
 
-export interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  message?: string;
-}
-
-export type TaskStatus = 'pending' | 'assigned' | 'picked_up' | 'in_transit' | 'delivered' | 'cancelled';
-
-// Navigation Param Lists
 export type AuthStackParamList = {
   Login: undefined;
 };
 
 export type TasksStackParamList = {
-  TasksList: { status?: TaskStatus } | undefined;
+  TasksList: { status?: import('@freshbazar/shared-types').TaskStatus } | undefined;
   TaskDetail: { taskId: string };
 };
 
