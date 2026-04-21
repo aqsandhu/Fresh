@@ -32,8 +32,8 @@ const contactInfo = [
   {
     icon: Mail,
     title: 'Email',
-    content: 'support@sabziwala.pk',
-    href: 'mailto:support@sabziwala.pk',
+    content: 'support@freshbazar.pk',
+    href: 'mailto:support@freshbazar.pk',
   },
   {
     icon: MapPin,

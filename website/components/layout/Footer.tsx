@@ -95,9 +95,9 @@ export default function Footer() {
                 <span className="text-white font-bold text-xl">S</span>
               </div>
               <div>
-                <h2 className="font-bold text-xl">SabziWala</h2>
+                <h2 className="font-bold text-xl">Fresh Bazar</h2>
                 <p className="text-xs text-primary-400 font-urdu" dir="rtl">
-                  سبزی والا
+                  فریش بازار
                 </p>
               </div>
             </Link>
@@ -119,11 +119,11 @@ export default function Footer() {
                 <span className="text-sm">0300-1234567</span>
               </a>
               <a
-                href="mailto:support@sabziwala.pk"
+                href="mailto:support@freshbazar.pk"
                 className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
               >
                 <Mail className="w-4 h-4" />
-                <span className="text-sm">support@sabziwala.pk</span>
+                <span className="text-sm">support@freshbazar.pk</span>
               </a>
               <div className="flex items-center gap-2 text-gray-400">
                 <MapPin className="w-4 h-4" />
@@ -190,7 +190,7 @@ export default function Footer() {
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-gray-500 text-sm text-center md:text-left">
-              © {new Date().getFullYear()} SabziWala Pakistan. All rights reserved.
+              © {new Date().getFullYear()} Fresh Bazar Pakistan. All rights reserved.
             </p>
             <div className="flex items-center gap-4">
               <a
@@ -223,4 +223,5 @@ export default function Footer() {
       </div>
     </footer>
   )
+}
 }

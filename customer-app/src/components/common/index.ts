@@ -5,3 +5,4 @@ export { Skeleton, SkeletonCard, SkeletonProduct, SkeletonList } from './Skeleto
 export { LoadingOverlay } from './LoadingOverlay';
 export { ErrorView } from './ErrorView';
 export { EmptyState } from './EmptyState';
+export { ErrorBoundary } from './ErrorBoundary';

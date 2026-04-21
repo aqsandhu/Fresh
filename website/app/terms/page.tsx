@@ -92,7 +92,7 @@ export default function TermsPage() {
             className="bg-white rounded-2xl p-8 shadow-sm mb-12"
           >
             <p className="text-gray-600 leading-relaxed">
-              Welcome to SabziWala Pakistan. These Terms of Service govern your use of our website, 
+              Welcome to Fresh Bazar Pakistan. These Terms of Service govern your use of our website, 
               mobile application, and services. By accessing or using our services, you agree to be 
               bound by these terms. If you do not agree to these terms, please do not use our services.
             </p>
@@ -156,8 +156,8 @@ export default function TermsPage() {
             <div className="space-y-2">
               <p className="text-gray-600">
                 <span className="font-medium">Email:</span>{' '}
-                <a href="mailto:legal@sabziwala.pk" className="text-primary-600 hover:underline">
-                  legal@sabziwala.pk
+                <a href="mailto:legal@freshbazar.pk" className="text-primary-600 hover:underline">
+                  legal@freshbazar.pk
                 </a>
               </p>
               <p className="text-gray-600">
