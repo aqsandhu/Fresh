@@ -1,0 +1,61 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+build
+.next
+out
+*.tsbuildinfo
+
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Logs
+*.log
+logs
+npm-debug.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Testing
+coverage
+.nyc_output
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+tests
+
+# Documentation
+*.md
+!README.md
+ARCHITECTURE.md
+docs
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+.cache
+tmp
+temp
+*.pid
+*.seed
+*.pid.lock
