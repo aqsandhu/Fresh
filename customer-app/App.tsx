@@ -7,6 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppNavigator } from '@navigation';
 import { useNetworkStatus } from '@hooks';
 import { COLORS, SPACING } from '@utils/constants';
+import { ErrorBoundary } from '@components/common';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -59,16 +60,18 @@ const bannerStyles = StyleSheet.create({
 export default function App() {
   useEffect(() => {
     // Initialize app
-    console.log('PakGrocery Customer App Started');
+    console.log('Fresh Bazar Customer App Started');
   }, []);
 
   return (
     <GestureHandlerRootView style={styles.container}>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <NetworkStatusBanner />
-          <AppNavigator />
-        </QueryClientProvider>
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <NetworkStatusBanner />
+            <AppNavigator />
+          </QueryClientProvider>
+        </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

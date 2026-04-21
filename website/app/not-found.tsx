@@ -19,7 +19,7 @@ export default function NotFoundPage() {
         </h2>
         
         <p className="text-gray-600 mb-8">
-          Sorry, we couldn&apos;t find the page you&apos;re looking for. It might have been moved or deleted.
+          Sorry, we couldn&apos;t find the page you&apos;re looking for on Fresh Bazar. It might have been moved or deleted.
         </p>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center">

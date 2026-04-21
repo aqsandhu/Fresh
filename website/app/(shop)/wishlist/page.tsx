@@ -39,14 +39,14 @@ export default function WishlistPage() {
       // Try to fetch from API first
       const response = await productsApi.getAll({})
       // For now, use localStorage as fallback
-      const savedWishlist = localStorage.getItem('sabziwala-wishlist')
+      const savedWishlist = localStorage.getItem('freshbazar-wishlist')
       if (savedWishlist) {
         const parsed = JSON.parse(savedWishlist)
         setWishlistItems(parsed)
       }
     } catch (error) {
       // Fallback to localStorage
-      const savedWishlist = localStorage.getItem('sabziwala-wishlist')
+      const savedWishlist = localStorage.getItem('freshbazar-wishlist')
       if (savedWishlist) {
         setWishlistItems(JSON.parse(savedWishlist))
       }
@@ -56,7 +56,7 @@ export default function WishlistPage() {
   }
 
   const saveWishlist = (items: WishlistItem[]) => {
-    localStorage.setItem('sabziwala-wishlist', JSON.stringify(items))
+    localStorage.setItem('freshbazar-wishlist', JSON.stringify(items))
     setWishlistItems(items)
   }
 

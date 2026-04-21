@@ -7,7 +7,7 @@ import DeliveryInfoSection from '@/components/sections/DeliveryInfoSection'
 import AppDownloadSection from '@/components/sections/AppDownloadSection'
 
 export const metadata: Metadata = {
-  title: 'Fresh Groceries Delivered | SabziWala Pakistan',
+  title: 'Fresh Groceries Delivered | Fresh Bazar',
   description: 'Get farm-fresh vegetables, fruits, dry fruits, and chicken delivered to your doorstep. Free delivery on orders above Rs. 500.',
 }
 

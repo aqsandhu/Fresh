@@ -1,8 +1,8 @@
-# 🛒 Pakistan Grocery Delivery Platform
+# Fresh Bazar - Pakistan's Trusted Grocery Delivery Platform
 
 A complete, scalable grocery delivery system optimized for Pakistan's local market. Built with modern technologies and designed for easy expansion across multiple cities.
 
-## 📋 System Overview
+## System Overview
 
 This platform integrates:
 - **Customer Mobile App** (React Native) - Order groceries & atta chakki service
@@ -11,47 +11,47 @@ This platform integrates:
 - **Rider App** (React Native) - Delivery personnel management
 - **Backend API** (Node.js/Express) - Single database for all platforms
 
-## 🚀 Features
+## Features
 
 ### Customer Features
-- ✅ Browse categories: Sabzi, Fruit, Dry Fruit, Chicken
-- ✅ Smart cart with intelligent delivery charges
-- ✅ Free delivery 10AM-2PM (order before 10AM)
-- ✅ Free delivery on minimum vegetable/fruit purchase
-- ✅ Atta Chakki service (wheat pickup & flour delivery)
-- ✅ Multiple saved addresses with GPS location
-- ✅ Door picture for easy identification
-- ✅ House number system for addresses
-- ✅ Cash on Delivery payment
-- ✅ Real-time order tracking
-- ✅ Push notifications
+- Browse categories: Sabzi, Fruit, Dry Fruit, Chicken
+- Smart cart with intelligent delivery charges
+- Free delivery 10AM-2PM (order before 10AM)
+- Free delivery on minimum vegetable/fruit purchase
+- Atta Chakki service (wheat pickup & flour delivery)
+- Multiple saved addresses with GPS location
+- Door picture for easy identification
+- House number system for addresses
+- Cash on Delivery payment
+- Real-time order tracking
+- Push notifications
 
 ### Admin Features
-- ✅ Dashboard with sales analytics
-- ✅ Order management with rider assignment
-- ✅ Product & category management
-- ✅ Rider management & GPS tracking
-- ✅ Atta Chakki workflow management
-- ✅ WhatsApp order entry
-- ✅ House number assignment
-- ✅ Delivery charge configuration
+- Dashboard with sales analytics
+- Order management with rider assignment
+- Product & category management
+- Rider management & GPS tracking
+- Atta Chakki workflow management
+- WhatsApp order entry
+- House number assignment
+- Delivery charge configuration
 
 ### Rider Features
-- ✅ Task list with order details
-- ✅ GPS navigation to customer
-- ✅ Privacy-protected customer calls
-- ✅ Online/offline status toggle
-- ✅ Real-time location tracking
-- ✅ Delivery confirmation with proof
+- Task list with order details
+- GPS navigation to customer
+- Privacy-protected customer calls
+- Online/offline status toggle
+- Real-time location tracking
+- Delivery confirmation with proof
 
 ### Privacy & Security
-- ✅ Rider cannot see customer phone number
-- ✅ App-mediated calling system
-- ✅ JWT authentication
-- ✅ Role-based access control
-- ✅ Password hashing
+- Rider cannot see customer phone number
+- App-mediated calling system
+- JWT authentication
+- Role-based access control
+- Password hashing
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 /mnt/okcomputer/output/
@@ -80,7 +80,7 @@ This platform integrates:
 └── README.md               # This file
 ```
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
@@ -91,7 +91,7 @@ This platform integrates:
 | Customer App | React Native, Expo SDK 50 |
 | Rider App | React Native, Expo SDK 50 |
 
-## ⚡ Quick Start
+## Quick Start
 
 ### Prerequisites
 - Node.js 18+
@@ -102,10 +102,10 @@ This platform integrates:
 
 ```bash
 # Create database
-createdb grocery_db
+createdb freshbazar_db
 
 # Run schema
-psql grocery_db < database/schema.sql
+psql freshbazar_db < database/schema.sql
 ```
 
 ### 2. Backend Setup
@@ -130,7 +130,7 @@ npm run dev
 
 Admin panel will run on `http://localhost:5173`
 
-Demo credentials: `admin@grocery.pk` / `admin123`
+Demo credentials: `admin@freshbazar.pk` / `admin123`
 
 ### 4. Website Setup
 
@@ -162,24 +162,7 @@ npx expo start
 
 Scan QR code with Expo Go app
 
-## 📱 App Screenshots
-
-### Customer App
-- Home with categories and featured products
-- Product details with add to cart
-- Cart with delivery charge calculation
-- Checkout with address and time slots
-- Order tracking with live map
-- Atta Chakki service request
-
-### Rider App
-- Dashboard with stats and online toggle
-- Task list with order details
-- Task detail with map navigation
-- Privacy-protected call button
-- Delivery confirmation
-
-## 🔧 Configuration
+## Configuration
 
 ### Delivery Charges (Configurable in Admin Panel)
 
@@ -199,21 +182,21 @@ Configure in `time_slots` table:
 - 2:00 PM - 6:00 PM
 - 6:00 PM - 9:00 PM
 
-## 🔐 Environment Variables
+## Environment Variables
 
 ### Backend (.env)
 ```
 PORT=3000
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=grocery_db
+DB_NAME=freshbazar_db
 DB_USER=postgres
 DB_PASSWORD=your_password
 JWT_SECRET=your_jwt_secret
 JWT_EXPIRES_IN=7d
 ```
 
-## 📊 Database Schema Highlights
+## Database Schema Highlights
 
 ### Key Tables
 - `users` - Customer accounts
@@ -238,7 +221,7 @@ JWT_EXPIRES_IN=7d
 SELECT calculate_delivery_charge(cart_id, time_slot);
 ```
 
-## 🚀 Deployment
+## Deployment
 
 ### Backend Deployment (VPS/Cloud)
 
@@ -251,7 +234,7 @@ npm start
 Use PM2 for process management:
 ```bash
 npm install -g pm2
-pm2 start dist/app.js --name grocery-api
+pm2 start dist/app.js --name freshbazar-api
 ```
 
 ### Database Deployment
@@ -291,7 +274,7 @@ npm run build
 # Deploy dist/ folder to any static host
 ```
 
-## 📈 Scaling
+## Scaling
 
 ### Horizontal Scaling
 - Use PostgreSQL read replicas
@@ -305,7 +288,7 @@ npm run build
 3. Configure zone-specific pricing
 4. Deploy localized apps
 
-## 🆘 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -322,23 +305,22 @@ npm run build
 - Check phone and computer are on same network
 - Try tunnel mode: `npx expo start --tunnel`
 
-## 📝 API Documentation
+## API Documentation
 
 Full API documentation available in:
 - Backend README: `/backend/README.md`
 - Postman collection: Coming soon
 
-## 🤝 Support
+## Support
 
 For issues or questions:
-1. Check troubleshooting section
-2. Review component README files
-3. Check logs in each service
+- Email: support@freshbazar.pk
+- Phone: 0300-1234567
 
-## 📄 License
+## License
 
-This project is proprietary software for your grocery business.
+This project is proprietary software for Fresh Bazar.
 
 ---
 
-**Built with ❤️ for Pakistan's local market**
+**Built with love for Pakistan's local market by Fresh Bazar**

@@ -36,7 +36,7 @@ const getApiBaseUrl = (): string => {
   }
 
   // Fallback for tunnel mode or when host auto-detect fails.
-  // Update this to your PC's current LAN IP if the device is on the same Wi-Fi.
+  // Update this to your PC's current LAN IP for Fresh Bazar development.
   return 'http://192.168.119.226:3000/api';
 };
 
@@ -45,7 +45,7 @@ export const IS_DEVELOPMENT = isDevelopment;
 export const API_TIMEOUT = 30000;
 
 // App Configuration
-export const APP_NAME = 'PakGrocery';
+export const APP_NAME = 'Fresh Bazar';
 export const APP_VERSION = '1.0.0';
 
 // Colors - Green Theme for Pakistani Grocery

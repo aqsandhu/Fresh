@@ -1,5 +1,5 @@
 // ============================================================================
-// PAKISTANI GROCERY DELIVERY PLATFORM - MAIN APPLICATION
+// FRESH BAZAR DELIVERY PLATFORM - MAIN APPLICATION
 // ============================================================================
 
 import express, { Application, Request, Response, NextFunction } from 'express';
@@ -162,7 +162,7 @@ const startServer = async () => {
     // Start server
     app.listen(PORT, () => {
       logger.info(`=================================`);
-      logger.info(`Server running on port ${PORT}`);
+      logger.info(`Fresh Bazar API running on port ${PORT}`);
       logger.info(`Environment: ${NODE_ENV}`);
       logger.info(`API URL: http://localhost:${PORT}${API_PREFIX}`);
       logger.info(`Health Check: http://localhost:${PORT}/health`);

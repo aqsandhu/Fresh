@@ -26,7 +26,7 @@ const getApiBaseUrl = (): string => {
   if (devHost) {
     return `http://${devHost}:3000/api`;
   }
-  // Fallback: update this to the PC's current LAN IP if needed.
+  // Fallback: update this to the PC's current LAN IP for Fresh Bazar Rider development.
   return 'http://192.168.119.226:3000/api';
 };
 

@@ -127,7 +127,7 @@ export const Login: React.FC = () => {
 
         {/* Footer */}
         <p className="text-center text-sm text-gray-600 mt-8">
-          © 2024 Pakistani Grocery. All rights reserved.
+          © 2024 Fresh Bazar. All rights reserved.
         </p>
       </div>
     </div>

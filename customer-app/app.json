@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "PakGrocery - Fresh Delivery",
-    "slug": "pakgrocery-customer",
+    "name": "Fresh Bazar - Fresh Delivery",
+    "slug": "freshbazar-customer",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,7 +16,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pakgrocery.customer",
+      "bundleIdentifier": "com.freshbazar.customer",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to capture door pictures for delivery.",
         "NSLocationWhenInUseUsageDescription": "This app needs your location to show nearby stores and for delivery.",
@@ -28,7 +28,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#2E7D32"
       },
-      "package": "com.pakgrocery.customer",
+      "package": "com.freshbazar.customer",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -43,13 +43,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow PakGrocery to access your camera to capture door pictures for delivery."
+          "cameraPermission": "Allow Fresh Bazar to access your camera to capture door pictures for delivery."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow PakGrocery to use your location for delivery tracking."
+          "locationAlwaysAndWhenInUsePermission": "Allow Fresh Bazar to use your location for delivery tracking."
         }
       ],
       [

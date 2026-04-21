@@ -1,8 +1,17 @@
 import axios from 'axios'
 import { Product, Category, Order, Address, User, AttaChakkiRequest } from '@/types'
 
+// IMPORTANT: Set NEXT_PUBLIC_API_URL in production to point to the live backend.
+// e.g., NEXT_PUBLIC_API_URL=https://api.freshbazar.pk/api
+// The localhost fallback is for development only.
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'
+
+if (typeof window !== 'undefined' && !process.env.NEXT_PUBLIC_API_URL) {
+  console.warn('[Fresh Bazar Website] NEXT_PUBLIC_API_URL is not set. Falling back to localhost:3000. Set this env var in production!')
+}
+
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -39,7 +48,7 @@ api.interceptors.response.use(
 // ============================================================================
 
 const PLACEHOLDER_IMAGE = '/placeholder-product.jpg'
-const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api').replace('/api', '')
+const BACKEND_URL = API_BASE_URL.replace('/api', '')
 
 function resolveImageUrl(path: string | null | undefined): string {
   if (!path) return PLACEHOLDER_IMAGE

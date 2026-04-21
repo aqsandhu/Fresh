@@ -1,4 +1,4 @@
-# PakGrocery Customer App
+# Fresh Bazar Customer App
 
 A complete React Native mobile application for the Pakistani grocery delivery platform. Built with Expo SDK 50, this app provides a seamless shopping experience for customers to order fresh groceries, track deliveries, and use the Atta Chakki (wheat grinding) service.
 
@@ -274,4 +274,4 @@ For support, contact the development team or create an issue in the repository.
 
 ---
 
-**PakGrocery - Fresh Delivery for Pakistan**
+**Fresh Bazar - Fresh Delivery for Pakistan**
