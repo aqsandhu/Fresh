@@ -58,6 +58,12 @@ export {
   createRateLimiter,
 } from './rateLimiter';
 
+// Audit logging
+export {
+  auditLogger,
+  logAdminAction,
+} from './auditLogger';
+
 // File upload
 export {
   uploadSingle,
