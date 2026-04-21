@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Eye,
@@ -20,6 +20,9 @@ import {
   Edit2,
   Navigation2,
   X,
+  Bell,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -31,6 +34,15 @@ import { Table } from '@/components/ui/Table';
 import { orderService } from '@/services/order.service';
 import { riderService } from '@/services/rider.service';
 import { addressService } from '@/services/address.service';
+import {
+  connectSocket,
+  disconnectSocket,
+  onNewOrder,
+  onOrderStatusUpdated,
+  onOrderCancelled,
+  offSocketEvent,
+  playNotificationSound,
+} from '@/services/socket';
 import type { Order, OrderStatus } from '@/types';
 import {
   formatCurrency,
@@ -63,6 +75,10 @@ export const Orders: React.FC = () => {
   const [page, setPage] = useState(1);
   const [editingHouseNumber, setEditingHouseNumber] = useState(false);
   const [houseNumberValue, setHouseNumberValue] = useState('');
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const [flashingOrders, setFlashingOrders] = useState<Set<string>>(new Set());
+  const [newOrderCount, setNewOrderCount] = useState(0);
+  const prevOrdersRef = useRef<string[]>([]);
 
   const { data: ordersData, isLoading } = useQuery({
     queryKey: ['orders', { status: statusFilter, search: searchQuery, page }],
@@ -86,6 +102,99 @@ export const Orders: React.FC = () => {
   const [trackingRiderName, setTrackingRiderName] = useState('');
   const [riderLocation, setRiderLocation] = useState<{ latitude: number | null; longitude: number | null; locationUpdatedAt: string | null } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
+
+  // Setup Socket.IO for real-time admin notifications
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) return;
+
+    const socket = connectSocket(token);
+
+    // Track connection status
+    const connectionInterval = setInterval(() => {
+      setIsSocketConnected(socket.connected);
+    }, 3000);
+
+    // Listen for new orders
+    const handleNewOrder = (data: any) => {
+      console.log('[Admin] New order received:', data);
+      playNotificationSound();
+      toast.success(`New order #${data.orderNumber} received!`, {
+        icon: <Bell className="w-4 h-4 text-green-500" />,
+        duration: 5000,
+      });
+      // Flash the new order
+      if (data.orderId) {
+        setFlashingOrders((prev) => new Set(prev).add(data.orderId));
+        setNewOrderCount((prev) => prev + 1);
+        setTimeout(() => {
+          setFlashingOrders((prev) => {
+            const next = new Set(prev);
+            next.delete(data.orderId);
+            return next;
+          });
+        }, 5000);
+      }
+      // Refresh orders list
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    };
+    onNewOrder(handleNewOrder);
+
+    // Listen for order status updates
+    const handleStatusUpdated = (data: any) => {
+      console.log('[Admin] Order status updated:', data);
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      // Flash the updated order
+      if (data.orderId) {
+        setFlashingOrders((prev) => new Set(prev).add(data.orderId));
+        setTimeout(() => {
+          setFlashingOrders((prev) => {
+            const next = new Set(prev);
+            next.delete(data.orderId);
+            return next;
+          });
+        }, 3000);
+      }
+    };
+    onOrderStatusUpdated(handleStatusUpdated);
+
+    // Listen for cancelled orders
+    const handleOrderCancelled = (data: any) => {
+      console.log('[Admin] Order cancelled:', data);
+      toast.error(`Order #${data.orderNumber} was cancelled`, {
+        duration: 5000,
+      });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    };
+    onOrderCancelled(handleOrderCancelled);
+
+    return () => {
+      clearInterval(connectionInterval);
+      offSocketEvent('order:new', handleNewOrder);
+      offSocketEvent('order:status_updated', handleStatusUpdated);
+      offSocketEvent('order:cancelled', handleOrderCancelled);
+      disconnectSocket();
+    };
+  }, [queryClient]);
+
+  // Detect new orders for visual feedback
+  useEffect(() => {
+    if (!ordersData?.orders) return;
+    const currentOrderIds = ordersData.orders.map((o: Order) => o.id);
+    if (prevOrdersRef.current.length > 0) {
+      const newIds = currentOrderIds.filter(
+        (id: string) => !prevOrdersRef.current.includes(id)
+      );
+      if (newIds.length > 0) {
+        setFlashingOrders((prev) => {
+          const next = new Set(prev);
+          newIds.forEach((id: string) => next.add(id));
+          return next;
+        });
+      }
+    }
+    prevOrdersRef.current = currentOrderIds;
+  }, [ordersData]);
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status, note }: { id: string; status: OrderStatus; note?: string }) =>
@@ -204,6 +313,9 @@ export const Orders: React.FC = () => {
       });
     }
   };
+
+  // Clear new order notification badge
+  const clearNewOrderCount = () => setNewOrderCount(0);
 
   const columns = [
     {
@@ -409,6 +521,14 @@ export const Orders: React.FC = () => {
     },
   ];
 
+  // Flashing row animation class
+  const getRowClassName = (order: Order) => {
+    if (flashingOrders.has(order.id)) {
+      return 'animate-pulse bg-yellow-50 transition-colors duration-500';
+    }
+    return '';
+  };
+
   return (
     <Layout
       title="Orders"
@@ -416,6 +536,30 @@ export const Orders: React.FC = () => {
       searchPlaceholder="Search orders..."
       onSearch={setSearchQuery}
     >
+      {/* Connection Status & New Order Badge */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          {isSocketConnected ? (
+            <span className="inline-flex items-center gap-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded-full">
+              <Wifi className="w-3 h-3" /> Live Updates
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+              <WifiOff className="w-3 h-3" /> Offline
+            </span>
+          )}
+        </div>
+        {newOrderCount > 0 && (
+          <button
+            onClick={clearNewOrderCount}
+            className="inline-flex items-center gap-1 text-xs text-white bg-red-500 px-3 py-1 rounded-full hover:bg-red-600 transition-colors animate-bounce"
+          >
+            <Bell className="w-3 h-3" />
+            {newOrderCount} new order{newOrderCount > 1 ? 's' : ''}
+          </button>
+        )}
+      </div>
+
       {/* Filters */}
       <Card className="mb-6">
         <div className="flex flex-wrap gap-4">
@@ -442,6 +586,7 @@ export const Orders: React.FC = () => {
           keyExtractor={(order) => order.id}
           isLoading={isLoading}
           emptyMessage="No orders found"
+          rowClassName={getRowClassName}
           pagination={
             ordersData?.pagination
               ? {
@@ -999,27 +1144,26 @@ export const Orders: React.FC = () => {
                 <p className="text-gray-500">
                   Last updated: {riderLocation.locationUpdatedAt ? new Date(riderLocation.locationUpdatedAt).toLocaleTimeString() : 'N/A'}
                 </p>
-                <p className="text-xs text-gray-400">Auto-refreshes every 15 seconds</p>
               </div>
               <a
                 href={`https://www.google.com/maps?q=${riderLocation.latitude},${riderLocation.longitude}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                className="text-sm text-primary-600 hover:underline"
               >
-                <Navigation2 className="w-4 h-4" />
-                Google Maps
+                Open in Google Maps
               </a>
             </div>
           </div>
         ) : (
-          <div className="text-center py-12">
-            <MapPin className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-            <p className="text-gray-500 font-medium">No location data available</p>
-            <p className="text-sm text-gray-400 mt-1">Rider has not shared their location yet</p>
+          <div className="text-center py-12 text-gray-500">
+            <MapPin className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p>Location data not available for this rider.</p>
           </div>
         )}
       </Modal>
     </Layout>
   );
 };
+
+export default Orders;

@@ -6,6 +6,8 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../utils/response';
+import { emitChatMessage, emitOrderUpdate } from '../config/socket';
+import logger from '../utils/logger';
 
 /**
  * Get messages for an order
@@ -101,6 +103,23 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
 
   const newMsg = result.rows[0];
   newMsg.sender_name = req.user.full_name;
+
+  // Emit via Socket.IO for real-time delivery
+  emitChatMessage(orderId, newMsg);
+
+  // Also emit a notification to the other party
+  const notifyUserId = isRider ? order.user_id : order.rider_user_id;
+  if (notifyUserId) {
+    const { emitToUser } = require('../config/socket');
+    emitToUser(notifyUserId, 'chat:notification', {
+      orderId,
+      message: message.trim(),
+      senderName: req.user.full_name,
+      senderType,
+    });
+  }
+
+  logger.info('Chat message sent', { orderId, sender: req.user.id, senderType });
 
   successResponse(res, newMsg, 'Message sent', 201);
 });

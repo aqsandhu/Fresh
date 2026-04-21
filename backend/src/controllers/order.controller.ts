@@ -7,6 +7,7 @@ import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
+import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
 /**
@@ -155,6 +156,7 @@ export const trackOrder = asyncHandler(async (req: Request, res: Response) => {
       o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
       o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
       o.delivery_address_snapshot->>'written_address' as delivery_address,
+      o.user_id,
       r.id as rider_id, ru.full_name as rider_name,
       ST_X(r.current_location::geometry) as rider_longitude,
       ST_Y(r.current_location::geometry) as rider_latitude,
@@ -396,6 +398,22 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
   logger.info('Order created', { userId: req.user.id, orderId: order.id });
 
+  // Emit real-time events
+  emitToAdmins('order:new', {
+    orderId: order.id,
+    orderNumber: order.order_number,
+    status: order.status,
+    totalAmount: parseFloat(order.total_amount),
+    message: `New order #${order.order_number} placed`,
+  });
+
+  emitToUser(req.user.id, 'order:created', {
+    orderId: order.id,
+    orderNumber: order.order_number,
+    status: order.status,
+    message: `Your order #${order.order_number} has been placed successfully`,
+  });
+
   createdResponse(res, {
     order: {
       id: order.id,
@@ -417,6 +435,8 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
 
   const { id } = req.params;
   const { reason } = req.body;
+
+  let cancelledOrder: any;
 
   await withTransaction(async (client) => {
     // Check if order exists and belongs to user
@@ -485,6 +505,23 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
         [item.quantity, item.product_id]
       );
     }
+
+    cancelledOrder = order;
+  });
+
+  // Emit real-time cancellation events
+  emitOrderUpdate(id, {
+    orderId: id,
+    status: 'cancelled',
+    reason,
+    message: `Order #${cancelledOrder.order_number} has been cancelled`,
+  });
+
+  emitToAdmins('order:cancelled', {
+    orderId: id,
+    orderNumber: cancelledOrder.order_number,
+    reason,
+    message: `Order #${cancelledOrder.order_number} cancelled by customer`,
   });
 
   successResponse(res, null, 'Order cancelled successfully');

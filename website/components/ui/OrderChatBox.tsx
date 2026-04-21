@@ -1,8 +1,19 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Send, MessageCircle, Loader2 } from 'lucide-react'
+import { Send, MessageCircle, Loader2, Wifi, WifiOff } from 'lucide-react'
 import { chatApi } from '@/lib/api'
+import {
+  connectSocket,
+  disconnectSocket,
+  subscribeToOrder,
+  unsubscribeFromOrder,
+  sendChatMessage,
+  onChatMessage,
+  offChatMessage,
+  emitTyping,
+  onTyping,
+} from '@/lib/socket'
 
 interface Message {
   id: string
@@ -21,9 +32,21 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
   const [newMessage, setNewMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [isConnected, setIsConnected] = useState(false)
+  const [typingUser, setTypingUser] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tokenRef = useRef<string>('')
 
+  // Get token from localStorage
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token')
+    if (storedToken) {
+      tokenRef.current = storedToken
+    }
+  }, [])
+
+  // Fetch initial messages via REST
   const fetchMessages = useCallback(async () => {
     try {
       const res = await chatApi.getMessages(orderId)
@@ -37,14 +60,52 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     }
   }, [orderId])
 
+  // Setup socket for real-time chat
   useEffect(() => {
     fetchMessages()
-    pollRef.current = setInterval(fetchMessages, 5000)
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
-    }
-  }, [fetchMessages])
 
+    if (!tokenRef.current) return
+
+    // Connect socket
+    const socket = connectSocket(tokenRef.current)
+
+    // Subscribe to order room
+    subscribeToOrder(orderId, (data: any) => {
+      console.log('[OrderChatBox] Order update:', data)
+    })
+
+    // Listen for incoming messages
+    const handleIncomingMessage = (data: Message) => {
+      setMessages((prev) => {
+        // Avoid duplicates
+        if (prev.some((m) => m.id === data.id)) return prev
+        return [...prev, data]
+      })
+    }
+    onChatMessage(handleIncomingMessage)
+
+    // Listen for typing indicators
+    const handleTypingEvent = (data: { orderId: string; isTyping: boolean; userId?: string }) => {
+      if (data.orderId === orderId) {
+        setTypingUser(data.isTyping ? 'Rider' : null)
+      }
+    }
+    onTyping(handleTypingEvent)
+
+    // Connection status
+    const checkConnection = setInterval(() => {
+      setIsConnected(socket.connected)
+    }, 3000)
+
+    return () => {
+      unsubscribeFromOrder(orderId)
+      offChatMessage(handleIncomingMessage)
+      // Cleanup handled by disconnect on unmount of parent
+      clearInterval(checkConnection)
+    }
+  }, [orderId, fetchMessages])
+
+  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -56,16 +117,59 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
 
     setSending(true)
     setNewMessage('')
-    try {
-      const res = await chatApi.sendMessage(orderId, text)
-      if (res?.success) {
-        setMessages((prev) => [...prev, res.data])
-      }
-    } catch {
-      setNewMessage(text)
-    } finally {
-      setSending(false)
+
+    // Optimistically add message
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      message: text,
+      sender_type: 'customer',
+      sender_name: 'You',
+      created_at: new Date().toISOString(),
     }
+    setMessages((prev) => [...prev, optimisticMsg])
+
+    // Send via socket if connected, else fallback to REST
+    const socket = connectSocket(tokenRef.current)
+    if (socket.connected) {
+      sendChatMessage(orderId, text)
+      setSending(false)
+    } else {
+      try {
+        const res = await chatApi.sendMessage(orderId, text)
+        if (res?.success) {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === optimisticMsg.id ? res.data : m))
+          )
+        }
+      } catch {
+        setNewMessage(text) // restore on failure
+        setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id))
+      } finally {
+        setSending(false)
+      }
+    }
+  }
+
+  // Handle typing indicator with debounce
+  const handleTypingChange = (text: string) => {
+    setNewMessage(text)
+
+    const socket = connectSocket(tokenRef.current)
+    if (!socket.connected) return
+
+    if (text.length > 0) {
+      emitTyping(orderId, true)
+    }
+
+    // Clear previous timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+
+    // Stop typing after 2 seconds of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      emitTyping(orderId, false)
+    }, 2000)
   }
 
   const formatTime = (dateStr: string) => {
@@ -77,6 +181,16 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
       <div className="flex items-center gap-2 px-6 py-4 border-b bg-primary-50">
         <MessageCircle className="w-5 h-5 text-primary-600" />
         <h2 className="text-lg font-semibold text-primary-900">Chat with Rider</h2>
+        <div className="ml-auto flex items-center gap-2">
+          {typingUser && (
+            <span className="text-xs text-gray-500 italic">{typingUser} is typing...</span>
+          )}
+          {isConnected ? (
+            <Wifi className="w-4 h-4 text-green-500" title="Online" />
+          ) : (
+            <WifiOff className="w-4 h-4 text-gray-400" title="Offline" />
+          )}
+        </div>
       </div>
 
       <div className="h-64 overflow-y-auto p-4 space-y-3 bg-gray-50">
@@ -120,7 +234,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
         <input
           type="text"
           value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
+          onChange={(e) => handleTypingChange(e.target.value)}
           placeholder="Type a message..."
           className="flex-1 px-4 py-2 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
           maxLength={500}

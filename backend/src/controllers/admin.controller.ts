@@ -8,6 +8,7 @@ import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse, paginatedResponse } from '../utils/response';
 import { generateSlug, normalizePhoneNumber } from '../utils/validators';
+import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
 const SALT_ROUNDS = 12;
@@ -287,6 +288,32 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
 
   logger.info('Order status updated', { orderId: id, status, updatedBy: req.user?.id });
 
+  // Emit real-time order status update
+  emitOrderUpdate(id, {
+    orderId: id,
+    status,
+    reason,
+    updatedBy: req.user?.id,
+    updatedAt: new Date().toISOString(),
+  });
+
+  // Notify the customer of status change
+  const order = result.rows[0];
+  emitToUser(order.user_id, 'order:status_changed', {
+    orderId: id,
+    orderNumber: order.order_number,
+    status,
+    message: `Your order #${order.order_number} is now ${status}`,
+  });
+
+  // Notify admins
+  emitToAdmins('order:status_updated', {
+    orderId: id,
+    orderNumber: order.order_number,
+    status,
+    updatedBy: req.user?.id,
+  });
+
   successResponse(res, result.rows[0], 'Order status updated successfully');
 });
 
@@ -322,6 +349,21 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
   );
 
   logger.info('Payment received & order delivered', { orderId: id, updatedBy: req.user?.id });
+
+  // Emit real-time events
+  const updatedOrder = result.rows[0];
+  emitOrderUpdate(id, {
+    orderId: id,
+    status: 'delivered',
+    paymentStatus: 'completed',
+    message: `Order #${updatedOrder.order_number} marked as delivered — payment received`,
+  });
+
+  emitToUser(updatedOrder.user_id, 'order:delivered', {
+    orderId: id,
+    orderNumber: updatedOrder.order_number,
+    message: `Your order #${updatedOrder.order_number} has been delivered!`,
+  });
 
   successResponse(res, result.rows[0], 'Payment received and order marked as delivered');
 });
@@ -437,6 +479,38 @@ export const assignRider = asyncHandler(async (req: Request, res: Response) => {
   );
 
   logger.info('Rider assigned to order', { orderId: id, riderId: rider_id, assignedBy: req.user?.id });
+
+  // Emit real-time events
+  const assignedOrder = result.rows[0];
+  emitOrderUpdate(id, {
+    orderId: id,
+    status: 'out_for_delivery',
+    riderId: rider_id,
+    riderName: rider.full_name,
+    message: `Rider ${rider.full_name} assigned to order #${assignedOrder.order_number}`,
+  });
+
+  // Notify customer
+  emitToUser(assignedOrder.user_id, 'order:rider_assigned', {
+    orderId: id,
+    orderNumber: assignedOrder.order_number,
+    riderName: rider.full_name,
+    status: 'out_for_delivery',
+    message: `Rider ${rider.full_name} is on the way with your order #${assignedOrder.order_number}!`,
+  });
+
+  // Notify rider
+  const riderUserResult = await query(
+    'SELECT user_id FROM riders WHERE id = $1',
+    [rider_id]
+  );
+  if (riderUserResult.rows.length > 0) {
+    emitToUser(riderUserResult.rows[0].user_id, 'rider:new_assignment', {
+      orderId: id,
+      orderNumber: assignedOrder.order_number,
+      message: `New delivery assignment: Order #${assignedOrder.order_number}`,
+    });
+  }
 
   successResponse(res, {
     order: result.rows[0],
