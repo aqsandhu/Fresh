@@ -1,0 +1,12 @@
+export { Login } from './Login';
+export { Dashboard } from './Dashboard';
+export { Orders } from './Orders';
+export { Products } from './Products';
+export { Categories } from './Categories';
+export { Customers } from './Customers';
+export { Riders } from './Riders';
+export { AttaRequests } from './AttaRequests';
+export { WhatsAppOrders } from './WhatsAppOrders';
+export { Addresses } from './Addresses';
+export { ServiceCities } from './ServiceCities';
+export { Settings } from './Settings';
