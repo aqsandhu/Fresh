@@ -27,7 +27,7 @@
   "author": "Fresh Bazar Team",
   "license": "MIT",
   "dependencies": {
-    "@freshbazar/shared-types": "*",
+    "@freshbazar/shared-types": "file:../packages/shared-types",
     "@sentry/node": "^8.0.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
