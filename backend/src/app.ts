@@ -1,8 +1,9 @@
 // ============================================================================
-// PAKISTANI GROCERY DELIVERY PLATFORM - MAIN APPLICATION
+// FRESH BAZAR DELIVERY PLATFORM - MAIN APPLICATION
 // ============================================================================
 
 import express, { Application, Request, Response, NextFunction } from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -16,6 +17,12 @@ import path from 'path';
 // Import Sentry configuration
 import { initSentry, setupSentryMiddleware, setupSentryErrorHandler } from './config/sentry';
 
+// Import Socket.IO
+import { initializeSocket } from './config/socket';
+
+// Import Swagger configuration
+import { setupSwagger } from './config/swagger';
+
 // Import database and middleware
 import { testConnection, closePool } from './config/database';
 import { morganStream } from './utils/logger';
@@ -27,18 +34,16 @@ import {
   handleUncaughtException,
 } from './middleware';
 
-// Import Swagger configuration
-import { setupSwagger } from './config/swagger';
-
 // Import routes
 import routes from './routes';
 import logger from './utils/logger';
 
 // ============================================================================
-// INITIALIZE EXPRESS APP
+// INITIALIZE EXPRESS APP & HTTP SERVER
 // ============================================================================
 
 const app: Application = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
@@ -173,7 +178,7 @@ setupSentryErrorHandler(app);
 app.use(errorHandler);
 
 // ============================================================================
-// SERVER STARTUP
+// SERVER STARTUP (with Socket.IO)
 // ============================================================================
 
 const startServer = async () => {
@@ -186,14 +191,19 @@ const startServer = async () => {
       process.exit(1);
     }
 
-    // Start server
-    app.listen(PORT, () => {
+    // Initialize Socket.IO
+    initializeSocket(httpServer);
+    logger.info('Socket.IO initialized');
+
+    // Start HTTP server
+    httpServer.listen(PORT, () => {
       logger.info(`=================================`);
-      logger.info(`Server running on port ${PORT}`);
+      logger.info(`Fresh Bazar API running on port ${PORT}`);
       logger.info(`Environment: ${NODE_ENV}`);
       logger.info(`API URL: http://localhost:${PORT}${API_PREFIX}`);
       logger.info(`Health Check: http://localhost:${PORT}/health`);
       logger.info(`API Docs: http://localhost:${PORT}/api/docs`);
+      logger.info(`WebSocket: ws://localhost:${PORT}`);
       logger.info(`=================================`);
     });
   } catch (error) {
@@ -214,8 +224,11 @@ const gracefulShutdown = async (signal: string) => {
     await closePool();
     logger.info('Database connections closed');
 
-    // Exit process
-    process.exit(0);
+    // Close HTTP server (also closes Socket.IO)
+    httpServer.close(() => {
+      logger.info('HTTP server closed');
+      process.exit(0);
+    });
   } catch (error) {
     logger.error('Error during shutdown:', error);
     process.exit(1);
