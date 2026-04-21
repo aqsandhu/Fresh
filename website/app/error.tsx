@@ -62,8 +62,8 @@ export default function ErrorPage({
 
         <p className="text-gray-500 text-sm mt-6">
           If the problem persists, please contact our support team at{' '}
-          <a href="mailto:support@sabziwala.pk" className="text-primary-600 hover:underline">
-            support@sabziwala.pk
+          <a href="mailto:support@freshbazar.pk" className="text-primary-600 hover:underline">
+            support@freshbazar.pk
           </a>
         </p>
       </div>

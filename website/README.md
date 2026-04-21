@@ -1,4 +1,4 @@
-# SabziWala Pakistan - Fresh Grocery Delivery Platform
+# Fresh Bazar Pakistan - Fresh Grocery Delivery Platform
 
 A complete Next.js 14 customer website for a Pakistani grocery delivery platform. Features fresh vegetables, fruits, dry fruits, chicken, and Atta Chakki service delivery.
 
@@ -242,10 +242,10 @@ This project is created for demonstration purposes.
 
 ## 🤝 Support
 
-For support, email support@sabziwala.pk or call 0300-1234567.
+For support, email support@freshbazar.pk or call 0300-1234567.
 
 ---
 
-**SabziWala Pakistan** - Fresh Sabzi at Your Doorstep
+**Fresh Bazar Pakistan** - Fresh Sabzi at Your Doorstep
 
 تازہ سبزیاں آپ کے دروازے پر

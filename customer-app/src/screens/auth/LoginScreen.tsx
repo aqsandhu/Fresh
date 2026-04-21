@@ -72,7 +72,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             <View style={styles.logoContainer}>
               <MaterialIcons name="local-grocery-store" size={64} color={COLORS.primary} />
             </View>
-            <Text style={styles.title}>Welcome to PakGrocery</Text>
+            <Text style={styles.title}>Welcome to Fresh Bazar</Text>
             <Text style={styles.subtitle}>Fresh groceries delivered to your door</Text>
           </View>
 

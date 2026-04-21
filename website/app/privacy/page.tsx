@@ -128,8 +128,8 @@ export default function PrivacyPage() {
             <div className="space-y-2">
               <p className="text-gray-600">
                 <span className="font-medium">Email:</span>{' '}
-                <a href="mailto:privacy@sabziwala.pk" className="text-primary-600 hover:underline">
-                  privacy@sabziwala.pk
+                <a href="mailto:privacy@freshbazar.pk" className="text-primary-600 hover:underline">
+                  privacy@freshbazar.pk
                 </a>
               </p>
               <p className="text-gray-600">

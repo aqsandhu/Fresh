@@ -184,7 +184,7 @@ export default function LoginPage() {
             <p className="text-gray-500 mt-1 text-sm">
               {step === 'otp'
                 ? <>OTP sent to <span className="font-semibold text-gray-700">{phone}</span> via {channel}</>
-                : 'Login to your SabziWala account'}
+                : 'Login to your Fresh Bazar account'}
             </p>
             {step === 'otp' && userName && (
               <p className="text-primary-600 font-medium mt-1">Hi, {userName}!</p>

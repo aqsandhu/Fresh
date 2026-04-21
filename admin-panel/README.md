@@ -213,7 +213,7 @@ http://localhost:3000/api
 ## Default Login Credentials
 
 For demo purposes:
-- Email: `admin@grocery.pk`
+- Email: `admin@freshbazar.pk`
 - Password: `admin123`
 
 ## Features in Detail
@@ -274,4 +274,4 @@ This project is proprietary and confidential.
 
 ## Support
 
-For support, email support@grocery.pk or contact the development team.
+For support, email support@freshbazar.pk or contact the development team.

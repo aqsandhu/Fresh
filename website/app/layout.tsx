@@ -12,31 +12,31 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: {
-    default: 'SabziWala Pakistan - Fresh Groceries Delivered',
-    template: '%s | SabziWala Pakistan',
+    default: 'Fresh Bazar Pakistan - Fresh Groceries Delivered',
+    template: '%s | Fresh Bazar',
   },
   description: 'Your trusted partner for fresh groceries delivery in Pakistan. Fresh vegetables, fruits, dry fruits, and chicken delivered to your doorstep.',
-  keywords: ['sabzi', 'fresh vegetables', 'grocery delivery', 'Pakistan', 'fruits', 'chicken', 'atta chakki'],
-  authors: [{ name: 'SabziWala' }],
+  keywords: ['fresh bazar', 'fresh vegetables', 'grocery delivery', 'Pakistan', 'fruits', 'chicken', 'atta chakki'],
+  authors: [{ name: 'Fresh Bazar' }],
   openGraph: {
     type: 'website',
     locale: 'en_PK',
-    url: 'https://sabziwala.pk',
-    siteName: 'SabziWala Pakistan',
-    title: 'SabziWala Pakistan - Fresh Groceries Delivered',
+    url: 'https://freshbazar.pk',
+    siteName: 'Fresh Bazar Pakistan',
+    title: 'Fresh Bazar Pakistan - Fresh Groceries Delivered',
     description: 'Your trusted partner for fresh groceries delivery in Pakistan.',
     images: [
       {
         url: '/og-image.jpg',
         width: 1200,
         height: 630,
-        alt: 'SabziWala Pakistan',
+        alt: 'Fresh Bazar Pakistan',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'SabziWala Pakistan - Fresh Groceries Delivered',
+    title: 'Fresh Bazar Pakistan - Fresh Groceries Delivered',
     description: 'Your trusted partner for fresh groceries delivery in Pakistan.',
     images: ['/og-image.jpg'],
   },

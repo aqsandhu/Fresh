@@ -13,6 +13,7 @@ let _settingsLoaded = false
 const loadDeliverySettings = async () => {
   if (_settingsLoaded) return
   try {
+    // IMPORTANT: Set NEXT_PUBLIC_API_URL in production. This localhost fallback is dev-only.
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'
     const res = await fetch(`${baseUrl}/site-settings/delivery`)
     const json = await res.json()
@@ -127,7 +128,7 @@ export const useCartStore = create<CartState>()(
       },
     }),
     {
-      name: 'sabziwala-cart',
+      name: 'freshbazar-cart',
     }
   )
 )
@@ -175,7 +176,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: 'sabziwala-auth',
+      name: 'freshbazar-auth',
     }
   )
 )
