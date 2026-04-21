@@ -1,0 +1,49 @@
+# Render.com Deployment Configuration for Fresh Bazar
+# This file tells Render how to deploy the backend
+# Import this file at: https://dashboard.render.com/blueprints
+
+services:
+  - type: web
+    name: freshbazar-backend
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DB_HOST
+        value: db.kvyjqqtkpozxpvuoalyw.supabase.co
+      - key: DB_PORT
+        value: 5432
+      - key: DB_USER
+        value: postgres
+      - key: DB_PASSWORD
+        sync: false  # Set in Render dashboard: Aq@146776786
+      - key: DB_NAME
+        value: postgres
+      - key: DB_SSL
+        value: "true"
+      - key: CORS_ORIGIN
+        value: "https://freshbazar.vercel.app,https://freshbazar-admin.netlify.app,https://freshbazar.pk"
+      - key: CORS_CREDENTIALS
+        value: "true"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: MAX_FILE_SIZE
+        value: "5242880"
+    healthCheckPath: /health
+    autoDeploy: true

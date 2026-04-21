@@ -1,0 +1,30 @@
+# Netlify Configuration for Fresh Bazar Admin Panel
+# Deploy at: https://app.netlify.com/start
+
+[build]
+  base = "admin-panel"
+  publish = "dist"
+  command = "npm install && npm run build"
+
+[build.environment]
+  VITE_API_URL = "https://freshbazar-backend.onrender.com/api"
+  VITE_APP_NAME = "Fresh Bazar Admin"
+  NODE_VERSION = "20"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://freshbazar-backend.onrender.com/api/:splat"
+  status = 200
+
+# SPA fallback - all routes to index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
