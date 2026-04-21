@@ -238,7 +238,7 @@ export default function HelpPage() {
                 Call Us
               </a>
               <a
-                href="mailto:support@sabziwala.pk"
+                href="mailto:support@freshbazar.pk"
                 className="flex items-center gap-2 px-6 py-3 border border-primary-600 text-primary-600 rounded-lg hover:bg-primary-50 transition-colors"
               >
                 <Mail className="w-5 h-5" />
