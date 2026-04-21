@@ -1,0 +1,7 @@
+packages:
+  - 'packages/*'
+  - 'backend'
+  - 'admin-panel'
+  - 'website'
+  - 'customer-app'
+  - 'rider-app'
