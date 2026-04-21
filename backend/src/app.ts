@@ -13,6 +13,9 @@ import path from 'path';
 // Load environment variables
  dotenv.config();
 
+// Import Sentry configuration
+import { initSentry, setupSentryMiddleware, setupSentryErrorHandler } from './config/sentry';
+
 // Import database and middleware
 import { testConnection, closePool } from './config/database';
 import { morganStream } from './utils/logger';
@@ -23,6 +26,9 @@ import {
   handleUnhandledRejection,
   handleUncaughtException,
 } from './middleware';
+
+// Import Swagger configuration
+import { setupSwagger } from './config/swagger';
 
 // Import routes
 import routes from './routes';
@@ -35,6 +41,12 @@ import logger from './utils/logger';
 const app: Application = express();
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// ============================================================================
+// INITIALIZE SENTRY (BEFORE ALL MIDDLEWARE)
+// ============================================================================
+
+initSentry();
 
 // ============================================================================
 // SECURITY MIDDLEWARE
@@ -51,13 +63,13 @@ app.use(helmet({
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',');
-    
+
     // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) {
       callback(null, true);
       return;
     }
-    
+
     if (allowedOrigins.includes(origin) || NODE_ENV === 'development') {
       callback(null, true);
     } else {
@@ -80,6 +92,12 @@ app.use(express.json({ limit: '10mb' }));
 
 // Parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// ============================================================================
+// SENTRY REQUEST HANDLER (MUST BE FIRST MIDDLEWARE)
+// ============================================================================
+
+setupSentryMiddleware(app);
 
 // ============================================================================
 // LOGGING MIDDLEWARE
@@ -117,7 +135,7 @@ app.use(`/${uploadDir}`, express.static(path.join(process.cwd(), uploadDir)));
 
 app.get('/health', async (req: Request, res: Response) => {
   const dbConnected = await testConnection().catch(() => false);
-  
+
   res.status(dbConnected ? 200 : 503).json({
     success: dbConnected,
     message: dbConnected ? 'Service is healthy' : 'Database connection failed',
@@ -126,6 +144,12 @@ app.get('/health', async (req: Request, res: Response) => {
     version: process.env.npm_package_version || '1.0.0',
   });
 });
+
+// ============================================================================
+// SWAGGER API DOCUMENTATION
+// ============================================================================
+
+setupSwagger(app);
 
 // ============================================================================
 // API ROUTES
@@ -142,6 +166,9 @@ app.use(API_PREFIX, routes);
 // 404 handler
 app.use(notFoundHandler);
 
+// Sentry error handler (must be before global error handler)
+setupSentryErrorHandler(app);
+
 // Global error handler
 app.use(errorHandler);
 
@@ -153,7 +180,7 @@ const startServer = async () => {
   try {
     // Test database connection
     const dbConnected = await testConnection();
-    
+
     if (!dbConnected) {
       logger.error('Failed to connect to database. Exiting...');
       process.exit(1);
@@ -166,6 +193,7 @@ const startServer = async () => {
       logger.info(`Environment: ${NODE_ENV}`);
       logger.info(`API URL: http://localhost:${PORT}${API_PREFIX}`);
       logger.info(`Health Check: http://localhost:${PORT}/health`);
+      logger.info(`API Docs: http://localhost:${PORT}/api/docs`);
       logger.info(`=================================`);
     });
   } catch (error) {
@@ -180,12 +208,12 @@ const startServer = async () => {
 
 const gracefulShutdown = async (signal: string) => {
   logger.info(`${signal} received. Starting graceful shutdown...`);
-  
+
   try {
     // Close database pool
     await closePool();
     logger.info('Database connections closed');
-    
+
     // Exit process
     process.exit(0);
   } catch (error) {
