@@ -1,7 +1,7 @@
 {
   "name": "@freshbazar/backend",
   "version": "1.0.0",
-  "description": "Fresh Bazar - Backend API for grocery delivery platform",
+  "description": "Fresh Bazar Delivery Platform - Backend API",
   "main": "dist/app.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
@@ -27,6 +27,7 @@
   "author": "Fresh Bazar Team",
   "license": "MIT",
   "dependencies": {
+    "@freshbazar/shared-types": "*",
     "@sentry/node": "^8.0.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
