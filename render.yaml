@@ -1,6 +1,5 @@
-# Render.com Deployment Configuration for Fresh Bazar
-# This file tells Render how to deploy the backend
-# Import this file at: https://dashboard.render.com/blueprints
+# Render.com Deployment Configuration for Fresh Bazar Backend
+# Deploy this at: https://dashboard.render.com/blueprints
 
 services:
   - type: web
@@ -9,9 +8,9 @@ services:
     plan: free
     region: oregon
     branch: main
-    rootDir: backend
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    # Root is project root (not backend/) so we can access packages/shared-types
+    buildCommand: cd packages/shared-types && npm install && npm run build && cd ../../backend && npm install && npm run build
+    startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
