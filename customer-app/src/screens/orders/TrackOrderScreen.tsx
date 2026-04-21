@@ -18,6 +18,7 @@ import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/co
 import { formatDateTime, getStatusColor } from '@utils/helpers';
 import { ErrorView, LoadingOverlay } from '@components';
 import { orderService } from '@services/order.service';
+import { socketService } from '@services/socket.service';
 import OrderChat from '@components/OrderChat';
 
 type TrackOrderRouteProp = RouteProp<OrdersStackParamList, 'TrackOrder'>;
@@ -60,10 +61,11 @@ export const TrackOrderScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
   const route = useRoute<TrackOrderRouteProp>();
   const { orderId } = route.params;
-  
+
   const [trackingData, setTrackingData] = useState<TrackingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSocketConnected, setIsSocketConnected] = useState(false);
 
   const loadOrder = useCallback(async () => {
     try {
@@ -81,14 +83,65 @@ export const TrackOrderScreen: React.FC = () => {
     }
   }, [orderId]);
 
+  // Setup socket for real-time order updates
   useEffect(() => {
     loadOrder();
-    const interval = setInterval(loadOrder, 30000);
-    return () => clearInterval(interval);
-  }, [loadOrder]);
 
-  const currentStatusIndex = trackingData 
-    ? statusOrder.indexOf(trackingData.order.status) 
+    const setupSocket = async () => {
+      await socketService.connect();
+
+      // Subscribe to order-specific updates
+      socketService.subscribeToOrder(orderId, (data: any) => {
+        console.log('[TrackOrder] Real-time update:', data);
+        // Refresh order data on any update
+        loadOrder();
+      });
+
+      // Listen for rider assignment
+      socketService.on('order:rider_assigned', (data: any) => {
+        if (data.orderId === orderId) {
+          loadOrder();
+        }
+      });
+
+      // Listen for status changes
+      socketService.on('order:status_changed', (data: any) => {
+        if (data.orderId === orderId) {
+          loadOrder();
+        }
+      });
+
+      // Listen for delivery confirmation
+      socketService.on('order:delivered', (data: any) => {
+        if (data.orderId === orderId) {
+          loadOrder();
+          Alert.alert('Delivered!', data.message || 'Your order has been delivered!');
+        }
+      });
+    };
+
+    setupSocket();
+
+    // Connection status check
+    const connectionInterval = setInterval(() => {
+      setIsSocketConnected(socketService.isConnected());
+    }, 5000);
+
+    // Keep REST polling as fallback every 30s
+    const pollInterval = setInterval(loadOrder, 30000);
+
+    return () => {
+      socketService.unsubscribeFromOrder(orderId);
+      socketService.off('order:rider_assigned');
+      socketService.off('order:status_changed');
+      socketService.off('order:delivered');
+      clearInterval(connectionInterval);
+      clearInterval(pollInterval);
+    };
+  }, [orderId, loadOrder]);
+
+  const currentStatusIndex = trackingData
+    ? statusOrder.indexOf(trackingData.order.status)
     : -1;
 
   const handleCallRider = async () => {
@@ -128,7 +181,15 @@ export const TrackOrderScreen: React.FC = () => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <MaterialIcons name="arrow-back" size={24} color={COLORS.gray700} />
         </TouchableOpacity>
-        <Text style={styles.title}>Track Order</Text>
+        <View style={styles.headerCenter}>
+          <Text style={styles.title}>Track Order</Text>
+          <View style={styles.liveIndicator}>
+            <View style={[styles.liveDot, isSocketConnected && styles.liveDotActive]} />
+            <Text style={[styles.liveText, isSocketConnected && styles.liveTextActive]}>
+              {isSocketConnected ? 'LIVE' : 'Reconnecting...'}
+            </Text>
+          </View>
+        </View>
         <View style={{ width: 24 }} />
       </View>
 
@@ -175,7 +236,7 @@ export const TrackOrderScreen: React.FC = () => {
               <View style={styles.riderInfo}>
                 <Text style={styles.riderName}>{trackingData.rider.name}</Text>
               </View>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.callButton}
                 onPress={handleCallRider}
                 activeOpacity={0.7}
@@ -273,10 +334,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
+  headerCenter: {
+    alignItems: 'center',
+  },
   title: {
     fontSize: 18,
     fontWeight: '600',
     color: COLORS.gray900,
+  },
+  liveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+    gap: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.gray400,
+  },
+  liveDotActive: {
+    backgroundColor: '#FF3B30',
+  },
+  liveText: {
+    fontSize: 10,
+    color: COLORS.gray400,
+    fontWeight: '600',
+  },
+  liveTextActive: {
+    color: '#FF3B30',
   },
   mapContainer: {
     height: 300,
