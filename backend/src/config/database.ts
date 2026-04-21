@@ -6,13 +6,20 @@ import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import logger from '../utils/logger';
 
 // Database configuration
-const poolConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  database: process.env.DB_NAME || 'grocery_db',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+// Supports both individual DB_* variables and full DATABASE_URL
+const poolConfig = process.env.DATABASE_URL
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+    }
+  : {
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      database: process.env.DB_NAME || 'grocery_db',
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || '',
+      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    };
   
   // Pool configuration
   min: parseInt(process.env.DB_POOL_MIN || '2'),
