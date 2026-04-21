@@ -53,7 +53,7 @@ export default function AboutPage() {
             transition={{ duration: 0.6 }}
           >
             <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-              About SabziWala
+              About Fresh Bazar
             </h1>
             <p className="text-2xl text-primary-100 font-urdu mb-6" dir="rtl">
               سبزی والا کے بارے میں
@@ -98,8 +98,8 @@ export default function AboutPage() {
             >
               <h2 className="text-3xl font-bold text-gray-900 mb-4">Our Story</h2>
               <p className="text-gray-600 mb-4">
-                SabziWala was founded in 2023 with a simple mission: to make fresh groceries 
-                accessible to every household in Pakistan. What started as a small delivery 
+                Fresh Bazar was founded in 2023 with a simple mission: to make fresh groceries
+                accessible to every household in Pakistan. What started as a small delivery
                 service in Gujrat has now grown into a trusted name in grocery delivery.
               </p>
               <p className="text-gray-600 mb-4">
@@ -137,7 +137,7 @@ export default function AboutPage() {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">Our Values</h2>
             <p className="text-gray-600 max-w-2xl mx-auto">
-              These core values guide everything we do at SabziWala
+              These core values guide everything we do at Fresh Bazar
             </p>
           </div>
 
@@ -188,7 +188,7 @@ export default function AboutPage() {
               viewport={{ once: true }}
               className="order-1 lg:order-2"
             >
-              <h2 className="text-3xl font-bold text-gray-900 mb-6">Why Choose SabziWala?</h2>
+              <h2 className="text-3xl font-bold text-gray-900 mb-6">Why Choose Fresh Bazar?</h2>
               <div className="space-y-4">
                 {[
                   'Fresh products sourced directly from farms',
@@ -219,7 +219,7 @@ export default function AboutPage() {
           >
             <Heart className="w-12 h-12 text-white mx-auto mb-4" />
             <h2 className="text-3xl font-bold text-white mb-4">
-              Join the SabziWala Family
+              Join the Fresh Bazar Family
             </h2>
             <p className="text-primary-100 text-lg max-w-2xl mx-auto mb-8">
               Experience the convenience of fresh grocery delivery. 

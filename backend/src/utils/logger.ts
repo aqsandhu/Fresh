@@ -55,7 +55,7 @@ if (NODE_ENV === 'production') {
 // Create logger instance
 const logger = winston.createLogger({
   level: LOG_LEVEL,
-  defaultMeta: { service: 'grocery-api' },
+  defaultMeta: { service: 'freshbazar-api' },
   transports,
   // Don't exit on error
   exitOnError: false,

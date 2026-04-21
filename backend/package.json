@@ -1,7 +1,7 @@
 {
-  "name": "pakistani-grocery-api",
+  "name": "@freshbazar/backend",
   "version": "1.0.0",
-  "description": "Pakistani Grocery Delivery Platform - Backend API",
+  "description": "Fresh Bazar Delivery Platform - Backend API",
   "main": "dist/app.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",

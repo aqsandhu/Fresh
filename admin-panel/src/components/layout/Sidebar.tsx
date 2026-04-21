@@ -75,7 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
             <Store className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-900">Grocery Admin</h1>
+            <h1 className="text-lg font-bold text-gray-900">Fresh Bazar Admin</h1>
             <p className="text-xs text-gray-500">Pakistan</p>
           </div>
         </div>
@@ -113,7 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
             </div>
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-900">{user?.fullName || 'Admin'}</p>
-              <p className="text-xs text-gray-500">{user?.phone || 'admin@grocery.pk'}</p>
+              <p className="text-xs text-gray-500">{user?.phone || 'admin@freshbazar.pk'}</p>
             </div>
           </div>
           <button
