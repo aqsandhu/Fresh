@@ -16,7 +16,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.grocery.rider",
+      "bundleIdentifier": "com.freshbazar.rider",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app needs location access to track deliveries.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs background location access to track deliveries even when the app is closed.",
@@ -28,7 +28,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#10B981"
       },
-      "package": "com.grocery.rider",
+      "package": "com.freshbazar.rider",
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
@@ -50,6 +50,9 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ]
+    ]
+  }
+}
     ]
   }
 }

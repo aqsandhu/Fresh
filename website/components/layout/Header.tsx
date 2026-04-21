@@ -176,8 +176,8 @@ export default function Header() {
               <span className="text-white font-bold text-xl">S</span>
             </div>
             <div className="hidden sm:block">
-              <h1 className="font-bold text-xl text-gray-900">SabziWala</h1>
-              <p className="text-xs text-primary-600 font-urdu" dir="rtl">سبزی والا</p>
+              <h1 className="font-bold text-xl text-gray-900">Fresh Bazar</h1>
+              <p className="text-xs text-primary-600 font-urdu" dir="rtl">فریش بازار</p>
             </div>
           </Link>
 

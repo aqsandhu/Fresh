@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
 import { requestLocationPermissions } from './src/services/location.service';
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 export default function App() {
   useEffect(() => {
@@ -12,8 +13,10 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" backgroundColor="#111827" />
-      <AppNavigator />
+      <ErrorBoundary>
+        <StatusBar style="light" backgroundColor="#111827" />
+        <AppNavigator />
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }
