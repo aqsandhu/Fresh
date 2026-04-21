@@ -13,11 +13,6 @@ config.resolver.assetExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ttf', 
 // Metro does not follow symlinks in monorepos by default.
 // We add the shared packages to the watch folders and nodeModulesPaths.
 
-const monorepoPackages = {
-  '@freshbazar/shared-types': path.resolve(__dirname, '../packages/shared-types'),
-};
-
-// Add monorepo package roots to Metro's module search paths
 config.resolver.nodeModulesPaths = [
   path.resolve(__dirname, 'node_modules'),
   path.resolve(__dirname, '../node_modules'),
