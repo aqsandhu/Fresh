@@ -25,7 +25,8 @@
     "react-hot-toast": "^2.4.1",
     "tailwind-merge": "^2.2.1",
     "zod": "^3.22.4",
-    "zustand": "^4.5.0"
+    "zustand": "^4.5.0",
+    "@freshbazar/shared-types": "*"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.21",
