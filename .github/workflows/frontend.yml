@@ -1,0 +1,148 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths: ['admin-panel/**', 'website/**', 'customer-app/**', 'rider-app/**', 'packages/**']
+  pull_request:
+    branches: [main, develop]
+    paths: ['admin-panel/**', 'website/**', 'customer-app/**', 'rider-app/**', 'packages/**']
+
+jobs:
+  test-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build shared types
+        run: pnpm --filter @freshbazar/shared-types build
+
+      - name: Run admin panel tests
+        run: pnpm --filter @freshbazar/admin-panel test
+
+      - name: Type check admin panel
+        run: pnpm --filter @freshbazar/admin-panel typecheck
+
+      - name: Build admin panel
+        run: pnpm --filter @freshbazar/admin-panel build
+
+      - name: Upload admin coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: admin-panel-coverage
+          path: admin-panel/coverage/
+          retention-days: 7
+
+  test-website:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build shared types
+        run: pnpm --filter @freshbazar/shared-types build
+
+      - name: Run website tests
+        run: pnpm --filter @freshbazar/website test
+
+      - name: Type check website
+        run: pnpm --filter @freshbazar/website typecheck
+
+      - name: Build website
+        run: pnpm --filter @freshbazar/website build
+
+      - name: Upload website coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: website-coverage
+          path: website/coverage/
+          retention-days: 7
+
+  test-customer-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build shared types
+        run: pnpm --filter @freshbazar/shared-types build
+
+      - name: Type check customer app
+        run: pnpm --filter @freshbazar/customer-app typecheck
+
+      - name: Build customer app
+        run: pnpm --filter @freshbazar/customer-app build
+
+  test-rider-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build shared types
+        run: pnpm --filter @freshbazar/shared-types build
+
+      - name: Type check rider app
+        run: pnpm --filter @freshbazar/rider-app typecheck
+
+      - name: Build rider app
+        run: pnpm --filter @freshbazar/rider-app build
