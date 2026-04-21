@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "PakGrocery - Fresh Delivery",
+    "slug": "pakgrocery-customer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#2E7D32"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pakgrocery.customer",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to capture door pictures for delivery.",
+        "NSLocationWhenInUseUsageDescription": "This app needs your location to show nearby stores and for delivery.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs your location to track deliveries."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#2E7D32"
+      },
+      "package": "com.pakgrocery.customer",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow PakGrocery to access your camera to capture door pictures for delivery."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow PakGrocery to use your location for delivery tracking."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#2E7D32"
+        }
+      ]
+    ],
+    "extra": {
+    }
+  }
+}
