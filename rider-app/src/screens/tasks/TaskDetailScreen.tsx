@@ -28,6 +28,7 @@ import {
   formatCurrency,
   getTranslation,
 } from '../../utils/helpers';
+import { socketService } from '../../services/socket.service';
 import { Task } from '../../types';
 
 interface TaskDetailScreenProps {
@@ -62,6 +63,32 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
   useEffect(() => {
     loadTask();
   }, [taskId]);
+
+  // Setup socket for real-time updates when task is loaded
+  useEffect(() => {
+    if (!task?.orderId) return;
+
+    const setupSocket = () => {
+      socketService.connect();
+      socketService.subscribeToOrder(task.orderId, (data: any) => {
+        console.log('[TaskDetail] Order update:', data);
+        loadTask();
+      });
+
+      // Listen for new assignments
+      socketService.onNewAssignment((data: any) => {
+        console.log('[TaskDetail] New assignment:', data);
+        loadTask();
+      });
+    };
+
+    setupSocket();
+
+    return () => {
+      socketService.unsubscribeFromOrder(task.orderId);
+      socketService.off('rider:new_assignment');
+    };
+  }, [task?.orderId, loadTask]);
 
   const loadTask = async () => {
     try {
