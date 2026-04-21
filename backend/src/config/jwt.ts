@@ -1,23 +1,71 @@
 // ============================================================================
-// JWT CONFIGURATION
+// JWT CONFIGURATION - SECURE TOKEN MANAGEMENT
+// ============================================================================
+// CRITICAL SECURITY: This file manages JWT secrets. In production, secrets
+// MUST be provided via environment variables. Hardcoded fallbacks are
+// ONLY allowed in explicit development mode with prominent warnings.
 // ============================================================================
 
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { JwtPayload, UserRole } from '../types';
+import logger from '../utils/logger';
 
 // JWT secrets from environment
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
-if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('JWT_SECRET and JWT_REFRESH_SECRET must be set in production');
-  }
-  console.warn('Warning: Using default JWT secrets. Set JWT_SECRET and JWT_REFRESH_SECRET in .env');
-}
+/**
+ * Validates JWT secrets on startup.
+ * - In production: HARD-FAIL if secrets are not provided
+ * - In development: Allow fallback with prominent warning
+ * - In any other env: HARD-FAIL if secrets are not provided
+ */
+const validateSecrets = (): { secret: string; refreshSecret: string } => {
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const isDevelopment = nodeEnv === 'development';
 
-const jwtSecret = JWT_SECRET || 'dev-only-secret-do-not-use-in-production';
-const jwtRefreshSecret = JWT_REFRESH_SECRET || 'dev-only-refresh-secret-do-not-use-in-production';
+  // Production or non-dev environments: SECRETS ARE MANDATORY
+  if (!isDevelopment) {
+    if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+      const missing = [];
+      if (!JWT_SECRET) missing.push('JWT_SECRET');
+      if (!JWT_REFRESH_SECRET) missing.push('JWT_REFRESH_SECRET');
+      throw new Error(
+        `CRITICAL SECURITY ERROR: ${missing.join(', ')} environment variable(s) must be set in "${nodeEnv}" mode. ` +
+        `The application cannot start without secure JWT secrets. ` +
+        `Please set these in your environment or .env file and restart.`
+      );
+    }
+    return { secret: JWT_SECRET, refreshSecret: JWT_REFRESH_SECRET };
+  }
+
+  // Development mode: Allow fallback with big warning
+  if (!JWT_SECRET || !JWT_REFRESH_SECRET) {
+    const missing = [];
+    if (!JWT_SECRET) missing.push('JWT_SECRET');
+    if (!JWT_REFRESH_SECRET) missing.push('JWT_REFRESH_SECRET');
+
+    logger.warn('');
+    logger.warn('================================================================================');
+    logger.warn('SECURITY WARNING: USING DEVELOPMENT JWT SECRETS');
+    logger.warn(`Missing environment variables: ${missing.join(', ')}`);
+    logger.warn('These are INSECURE default secrets only suitable for local development.');
+    logger.warn('DO NOT use these in staging, production, or any shared environment.');
+    logger.warn('================================================================================');
+    logger.warn('');
+
+    return {
+      secret: JWT_SECRET || 'dev-only-insecure-secret-do-not-use-in-production-98274',
+      refreshSecret: JWT_REFRESH_SECRET || 'dev-only-insecure-refresh-secret-do-not-use-28471',
+    };
+  }
+
+  return { secret: JWT_SECRET, refreshSecret: JWT_REFRESH_SECRET };
+};
+
+// Validate secrets immediately on module load
+const { secret: jwtSecret, refreshSecret: jwtRefreshSecret } = validateSecrets();
+
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 
@@ -65,7 +113,7 @@ export const generateTokenPair = (
 ) => {
   const accessToken = generateAccessToken(userId, phone, role);
   const refreshToken = generateRefreshToken(userId, phone, role);
-  
+
   return {
     accessToken,
     refreshToken,
@@ -88,7 +136,7 @@ export const getTokenExpiry = () => {
   // Parse expiration times
   const accessExpiry = parseExpiration(JWT_EXPIRES_IN);
   const refreshExpiry = parseExpiration(JWT_REFRESH_EXPIRES_IN);
-  
+
   return {
     accessTokenExpiry: accessExpiry,
     refreshTokenExpiry: refreshExpiry,
@@ -99,10 +147,10 @@ export const getTokenExpiry = () => {
 const parseExpiration = (exp: string): number => {
   const match = exp.match(/^(\d+)([smhd])$/);
   if (!match) return 900; // Default 15 minutes
-  
+
   const value = parseInt(match[1]);
   const unit = match[2];
-  
+
   switch (unit) {
     case 's': return value;
     case 'm': return value * 60;
