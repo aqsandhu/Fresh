@@ -11,6 +11,11 @@ const poolConfig = process.env.DATABASE_URL
   ? {
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+      min: parseInt(process.env.DB_POOL_MIN || '2'),
+      max: parseInt(process.env.DB_POOL_MAX || '10'),
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+      allowExitOnIdle: false,
     }
   : {
       host: process.env.DB_HOST || 'localhost',
@@ -19,21 +24,12 @@ const poolConfig = process.env.DATABASE_URL
       user: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASSWORD || '',
       ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+      min: parseInt(process.env.DB_POOL_MIN || '2'),
+      max: parseInt(process.env.DB_POOL_MAX || '10'),
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+      allowExitOnIdle: false,
     };
-  
-  // Pool configuration
-  min: parseInt(process.env.DB_POOL_MIN || '2'),
-  max: parseInt(process.env.DB_POOL_MAX || '10'),
-  
-  // Connection timeout
-  connectionTimeoutMillis: 5000,
-  
-  // Idle timeout
-  idleTimeoutMillis: 30000,
-  
-  // How long a client is allowed to remain idle before being closed
-  allowExitOnIdle: false,
-};
 
 // Create connection pool
 const pool = new Pool(poolConfig);
