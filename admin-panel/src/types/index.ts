@@ -1,15 +1,81 @@
 // ============================================================================
-// Admin Panel Types — Re-exports from @freshbazar/shared-types + admin-specific
+// Admin Panel Types — Self-contained (no monorepo dependencies)
 // ============================================================================
 
-// Re-export ALL shared types (single source of truth)
-export * from '@freshbazar/shared-types';
+// ---------------------------------------------------------------------------
+// Shared domain types (defined locally for Netlify compatibility)
+// ---------------------------------------------------------------------------
 
-// ============================================================================
-// Admin-panel-specific Types (NOT in shared-types — admin only)
-// ============================================================================
+export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider' | 'moderator';
+export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending';
+export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready_for_pickup' | 'out_for_delivery' | 'delivered' | 'cancelled' | 'refunded';
+export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
+export type PaymentMethod = 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'online';
+export type RiderStatus = 'available' | 'busy' | 'offline' | 'on_leave';
+export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'pack';
 
-/** Data required to create a new product */
+export interface User {
+  id: string;
+  phone: string;
+  full_name: string;
+  email?: string;
+  role: UserRole;
+  status: UserStatus;
+  avatar_url?: string;
+  created_at: string;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  sale_price?: number;
+  unit: UnitType;
+  unit_quantity: number;
+  stock_quantity: number;
+  image_url?: string;
+  category_id: string;
+  is_featured: boolean;
+  is_active: boolean;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  description?: string;
+  image_url?: string;
+  is_active: boolean;
+}
+
+export interface Order {
+  id: string;
+  order_number: string;
+  user_id: string;
+  status: OrderStatus;
+  payment_status: PaymentStatus;
+  payment_method: PaymentMethod;
+  subtotal: number;
+  delivery_charge: number;
+  total_amount: number;
+  created_at: string;
+}
+
+export interface Rider {
+  id: string;
+  user_id: string;
+  full_name?: string;
+  phone?: string;
+  vehicle_type: string;
+  status: RiderStatus;
+  rating: number;
+  total_deliveries: number;
+}
+
+// ---------------------------------------------------------------------------
+// Admin-panel-specific Types
+// ---------------------------------------------------------------------------
+
 export interface CreateProductData {
   nameEn: string;
   nameUr?: string;
@@ -25,7 +91,6 @@ export interface CreateProductData {
   isFeatured?: boolean;
 }
 
-/** Data required to create a new category */
 export interface CreateCategoryData {
   nameEn: string;
   nameUr: string;
@@ -35,7 +100,6 @@ export interface CreateCategoryData {
   displayOrder?: number;
 }
 
-/** Data required to create a new rider */
 export interface CreateRiderData {
   fullName: string;
   phone: string;
@@ -52,13 +116,11 @@ export interface CreateRiderData {
   bankName?: string;
 }
 
-/** Per-time-slot rider delivery charge override */
 export interface RiderDeliveryCharge {
   timeSlotId: string;
   chargePerOrder: number;
 }
 
-/** WhatsApp order creation payload */
 export interface WhatsAppOrderData {
   whatsappNumber: string;
   customerName: string;
@@ -73,9 +135,8 @@ export interface WhatsAppOrderData {
   adminNotes?: string;
 }
 
-/** Admin-specific order filter options */
 export interface OrderFilters {
-  status?: import('@freshbazar/shared-types').OrderStatus;
+  status?: OrderStatus;
   startDate?: string;
   endDate?: string;
   riderId?: string;
@@ -84,7 +145,6 @@ export interface OrderFilters {
   limit?: number;
 }
 
-/** Admin-specific product filter options */
 export interface ProductFilters {
   categoryId?: string;
   search?: string;
