@@ -290,9 +290,20 @@ export interface DeliveryChargeConfig {
 }
 
 export interface DeliveryChargeResult {
-  deliveryCharge: number;
-  isFreeDelivery: boolean;
-  freeDeliveryThreshold: number;
+  /** Delivery charge amount */
+  delivery_charge: number;
+  /** Which rule was applied */
+  rule_applied: string;
+  /** Human-readable rule name */
+  rule_name: string;
+  /** Human-readable explanation */
+  explanation: string;
+  /** camelCase aliases for convenience */
+  deliveryCharge?: number;
+  isFreeDelivery?: boolean;
+  freeDeliveryThreshold?: number;
+  is_free_delivery?: boolean;
+  free_delivery_threshold?: number;
 }
 
 // ---------------------------------------------------------------------------
