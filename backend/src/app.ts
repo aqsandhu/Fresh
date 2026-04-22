@@ -183,12 +183,14 @@ app.use(errorHandler);
 
 const startServer = async () => {
   try {
-    // Test database connection
-    const dbConnected = await testConnection();
+    // Test database connection (with retries, non-blocking)
+    const dbConnected = await testConnection(5, 5000);
 
     if (!dbConnected) {
-      logger.error('Failed to connect to database. Exiting...');
-      process.exit(1);
+      logger.warn('Database not yet available. Server will start but DB-dependent features may not work.');
+      logger.warn('If using Supabase, ensure you are using the connection pooler URL:');
+      logger.warn('  postgresql://postgres:PASSWORD@PROJECT_ID.pooler.supabase.com:6543/postgres');
+      // Continue starting server - don't exit
     }
 
     // Initialize Socket.IO
@@ -206,6 +208,19 @@ const startServer = async () => {
       logger.info(`WebSocket: ws://localhost:${PORT}`);
       logger.info(`=================================`);
     });
+
+    // If DB was not connected, keep retrying in background
+    if (!dbConnected) {
+      const retryDb = async () => {
+        const connected = await testConnection(1, 0);
+        if (connected) {
+          logger.info('Database connection established after startup!');
+        } else {
+          setTimeout(retryDb, 30000); // Retry every 30 seconds
+        }
+      };
+      setTimeout(retryDb, 30000);
+    }
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);

@@ -1,5 +1,10 @@
 # Render.com Deployment Configuration for Fresh Bazar Backend
-# Deploy this at: https://dashboard.render.com/blueprints
+# IMPORTANT: Use Supabase connection pooler URL for IPv4 compatibility with Render
+# Get your pooler URL from: Supabase Dashboard > Project Settings > Database > Connection Pooling
+#
+# Format: postgresql://postgres.PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+# Or use the direct URL with DB_SSL=true:
+#   postgresql://postgres:PASSWORD@db.PROJECT_ID.supabase.co:5432/postgres?sslmode=require
 
 services:
   - type: web
@@ -16,6 +21,11 @@ services:
         value: production
       - key: PORT
         value: 3000
+      # Option 1: Use full DATABASE_URL (RECOMMENDED for Supabase)
+      # Get from Supabase Dashboard > Project Settings > Database > Connection String
+      - key: DATABASE_URL
+        sync: false  # Set in dashboard: postgresql://postgres:PASSWORD@db.XXX.supabase.co:5432/postgres
+      # Option 2: Use individual variables (fallback if DATABASE_URL not set)
       - key: DB_HOST
         value: db.kvyjqqtkpozxpvuoalyw.supabase.co
       - key: DB_PORT
@@ -29,7 +39,7 @@ services:
       - key: DB_SSL
         value: "true"
       - key: CORS_ORIGIN
-        value: "https://freshbazar.vercel.app,https://freshbazar-admin.netlify.app,https://freshbazar.pk"
+        value: "*"
       - key: CORS_CREDENTIALS
         value: "true"
       - key: JWT_SECRET
