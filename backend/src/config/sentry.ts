@@ -1,22 +1,21 @@
 // ============================================================================
 // SENTRY ERROR TRACKING & PERFORMANCE MONITORING
 // ============================================================================
-// Integrates Sentry for error tracking, performance monitoring, and session
-// replay. Configure via SENTRY_DSN environment variable.
+// Integrates Sentry for error tracking. Configure via SENTRY_DSN env var.
+// Uses @sentry/node v8 API (Handlers removed in v8).
 //
 // Required environment variables:
 //   SENTRY_DSN          - Sentry project DSN (required to enable)
-//   SENTRY_ENVIRONMENT  - Environment tag (default: NODE_ENV or 'development')
-//   SENTRY_RELEASE      - Release version (default: package version)
-//   SENTRY_TRACES_RATE  - Sample rate for performance traces (default: 0.1)
+//   SENTRY_ENVIRONMENT  - Environment tag (default: NODE_ENV)
+//   SENTRY_TRACES_RATE  - Sample rate (default: 0.1)
 // ============================================================================
 
 import * as Sentry from '@sentry/node';
-import { Express } from 'express';
+import { Application, Request, Response, NextFunction } from 'express';
 import logger from '../utils/logger';
 
 /**
- * Initialize Sentry for error tracking and performance monitoring.
+ * Initialize Sentry for error tracking.
  * Does nothing if SENTRY_DSN is not set.
  */
 export const initSentry = (): void => {
@@ -32,117 +31,59 @@ export const initSentry = (): void => {
       dsn,
       environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
       release: process.env.SENTRY_RELEASE || process.env.npm_package_version || '1.0.0',
-
-      // Performance monitoring
       tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_RATE || '0.1'),
-
-      // Error sampling
       sampleRate: 1.0,
-
-      // Enable debug in development
       debug: process.env.NODE_ENV === 'development',
-
-      // Attach stack traces
       attachStacktrace: true,
-
-      // Before sending, filter out sensitive data
-      beforeSend(event) {
-        // Redact sensitive headers
-        if (event.request?.headers) {
-          const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key', 'password'];
-          for (const header of Object.keys(event.request.headers)) {
-            if (sensitiveHeaders.some((sh) => header.toLowerCase().includes(sh))) {
-              event.request.headers[header] = '[REDACTED]';
-            }
-          }
-        }
-
-        // Redact sensitive query params
-        if (event.request?.query_string) {
-          const sensitiveParams = ['token', 'password', 'secret', 'api_key'];
-          if (typeof event.request.query_string === 'string') {
-            // Already a string, leave as-is
-          } else if (typeof event.request.query_string === 'object') {
-            for (const key of Object.keys(event.request.query_string)) {
-              if (sensitiveParams.some((sp) => key.toLowerCase().includes(sp))) {
-                event.request.query_string[key] = '[REDACTED]';
-              }
-            }
-          }
-        }
-
-        return event;
-      },
     });
 
-    logger.info('Sentry initialized', {
-      environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
-      release: process.env.SENTRY_RELEASE || process.env.npm_package_version || '1.0.0',
-    });
+    logger.info('Sentry initialized');
   } catch (error) {
     logger.error('Failed to initialize Sentry', { error });
   }
 };
 
 /**
- * Setup Sentry request handler and error handler in Express app.
- * Must be called BEFORE all routes (for request handler)
- * and AFTER all routes (for error handler).
+ * Express middleware that wraps requests in Sentry spans.
+ * Must be called BEFORE all routes.
  */
-export const setupSentryMiddleware = (app: Express): void => {
-  const dsn = process.env.SENTRY_DSN;
+export const setupSentryMiddleware = (app: Application): void => {
+  if (!process.env.SENTRY_DSN) return;
 
-  if (!dsn) {
-    return;
-  }
+  // Simple request tracking middleware
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    Sentry.addBreadcrumb({
+      category: 'http',
+      message: `${req.method} ${req.path}`,
+      level: 'info',
+    });
+    next();
+  });
 
-  // Request handler - must be the first middleware
-  app.use(Sentry.Handlers.requestHandler());
-
-  // Tracing handler - creates spans for performance monitoring
-  app.use(Sentry.Handlers.tracingHandler());
-
-  logger.info('Sentry request handlers attached');
+  logger.info('Sentry middleware attached');
 };
 
 /**
- * Sentry error handler - must be registered AFTER all routes and
- * BEFORE the regular error handler middleware.
+ * Sentry error handler - captures exceptions and sends to Sentry.
+ * Must be registered AFTER all routes.
  */
-export const setupSentryErrorHandler = (app: Express): void => {
-  const dsn = process.env.SENTRY_DSN;
+export const setupSentryErrorHandler = (app: Application): void => {
+  if (!process.env.SENTRY_DSN) return;
 
-  if (!dsn) {
-    return;
-  }
-
-  // Error handler - captures exceptions and sends to Sentry
-  app.use(Sentry.Handlers.errorHandler({
-    shouldHandleError(error) {
-      // Capture all 500+ errors
-      if ((error as any)?.statusCode >= 500) {
-        return true;
-      }
-      // Capture operational errors that shouldn't happen
-      if ((error as any)?.isOperational === false) {
-        return true;
-      }
-      // Capture all unhandled errors
-      return true;
-    },
-  }));
+  // Error handler middleware
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    Sentry.captureException(err);
+    next(err);
+  });
 
   logger.info('Sentry error handler attached');
 };
 
 /**
  * Manually capture an exception in Sentry.
- * Use this for non-HTTP errors (background jobs, scheduled tasks, etc.)
  */
 export const captureException = (error: Error, context?: Record<string, any>): void => {
-  if (!process.env.SENTRY_DSN) {
-    return;
-  }
+  if (!process.env.SENTRY_DSN) return;
 
   Sentry.withScope((scope) => {
     if (context) {
@@ -157,40 +98,29 @@ export const captureException = (error: Error, context?: Record<string, any>): v
 /**
  * Manually capture a message in Sentry.
  */
-export const captureMessage = (message: string, level: Sentry.SeverityLevel = 'info'): void => {
-  if (!process.env.SENTRY_DSN) {
-    return;
-  }
-
+export const captureMessage = (message: string, level: 'fatal' | 'error' | 'warning' | 'log' | 'info' | 'debug' = 'info'): void => {
+  if (!process.env.SENTRY_DSN) return;
   Sentry.captureMessage(message, level);
 };
 
 /**
  * Set user context for Sentry.
- * Associates subsequent events with the given user.
  */
 export const setSentryUser = (user: { id: string; email?: string; phone?: string; role?: string }): void => {
-  if (!process.env.SENTRY_DSN) {
-    return;
-  }
-
+  if (!process.env.SENTRY_DSN) return;
   Sentry.setUser({
     id: user.id,
     email: user.email,
     username: user.phone,
-    ...user,
+    role: user.role,
   });
 };
 
 /**
  * Clear user context from Sentry.
- * Call this after request processing is complete.
  */
 export const clearSentryUser = (): void => {
-  if (!process.env.SENTRY_DSN) {
-    return;
-  }
-
+  if (!process.env.SENTRY_DSN) return;
   Sentry.setUser(null);
 };
 
