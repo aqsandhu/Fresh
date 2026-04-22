@@ -7,7 +7,7 @@
 
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
-import { Express, Request, Response } from 'express';
+import { Application, Request, Response } from 'express';
 import logger from '../utils/logger';
 
 /**
@@ -351,7 +351,7 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 /**
  * Setup Swagger UI in Express app
  */
-export const setupSwagger = (app: Express): void => {
+export const setupSwagger = (app: Application): void => {
   // Serve Swagger UI
   app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     explorer: true,
