@@ -5,34 +5,41 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import logger from '../utils/logger';
 
-// Database configuration
-// Supports both individual DB_* variables and full DATABASE_URL
-const poolConfig = process.env.DATABASE_URL
-  ? {
+// Build connection config from environment
+function buildPoolConfig() {
+  // If DATABASE_URL is provided, use it directly
+  if (process.env.DATABASE_URL) {
+    logger.info('Using DATABASE_URL for database connection');
+    return {
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
       min: parseInt(process.env.DB_POOL_MIN || '2'),
       max: parseInt(process.env.DB_POOL_MAX || '10'),
-      connectionTimeoutMillis: 5000,
-      idleTimeoutMillis: 30000,
-      allowExitOnIdle: false,
-    }
-  : {
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      database: process.env.DB_NAME || 'grocery_db',
-      user: process.env.DB_USER || 'postgres',
-      password: process.env.DB_PASSWORD || '',
-      ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-      min: parseInt(process.env.DB_POOL_MIN || '2'),
-      max: parseInt(process.env.DB_POOL_MAX || '10'),
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
       allowExitOnIdle: false,
     };
+  }
+
+  // Otherwise use individual env vars
+  logger.info('Using individual DB_* variables for connection');
+  return {
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    database: process.env.DB_NAME || 'grocery_db',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || '',
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    min: parseInt(process.env.DB_POOL_MIN || '2'),
+    max: parseInt(process.env.DB_POOL_MAX || '10'),
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 30000,
+    allowExitOnIdle: false,
+  };
+}
 
 // Create connection pool
-const pool = new Pool(poolConfig);
+const pool = new Pool(buildPoolConfig());
 
 // Pool event handlers
 pool.on('connect', () => {
@@ -60,10 +67,10 @@ export const query = async <T extends QueryResultRow = any>(
   try {
     const result = await pool.query<T>(text, params);
     const duration = Date.now() - start;
-    logger.debug('Query executed', { 
-      text: text.substring(0, 100), 
-      duration: `${duration}ms`, 
-      rows: result.rowCount 
+    logger.debug('Query executed', {
+      text: text.substring(0, 100),
+      duration: `${duration}ms`,
+      rows: result.rowCount,
     });
     return result;
   } catch (error) {
@@ -95,18 +102,25 @@ export const getClient = async (): Promise<PoolClient> => {
   return await pool.connect();
 };
 
-// Test database connection
-export const testConnection = async (): Promise<boolean> => {
-  try {
-    const result = await query('SELECT NOW() as current_time');
-    logger.info('Database connected successfully', { 
-      time: result.rows[0].current_time 
-    });
-    return true;
-  } catch (error) {
-    logger.error('Database connection failed:', error);
-    return false;
+// Test database connection with retries
+export const testConnection = async (retries = 3, delay = 3000): Promise<boolean> => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const result = await query('SELECT NOW() as current_time');
+      logger.info('Database connected successfully', {
+        time: result.rows[0].current_time,
+        attempt,
+      });
+      return true;
+    } catch (error: any) {
+      logger.error(`Database connection attempt ${attempt}/${retries} failed:`, error.message);
+      if (attempt < retries) {
+        logger.info(`Retrying in ${delay}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
   }
+  return false;
 };
 
 // Close pool (for graceful shutdown)
