@@ -19,7 +19,7 @@ describe('Audit Logger Middleware', () => {
       route: { path: '/orders/:id/status' },
       params: { id: '123' },
       body: { status: 'confirmed' },
-      user: { id: 'admin-1', phone: '+923001234567', role: 'admin', full_name: 'Admin User' },
+      user: { userId: 'admin-1', id: 'admin-1', phone: '+923001234567', role: 'admin', full_name: 'Admin User' },
       ip: '192.168.1.1',
       headers: { 'user-agent': 'test-agent' },
     };
