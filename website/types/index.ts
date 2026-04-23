@@ -69,11 +69,65 @@ export interface Order {
   created_at: string;
 }
 
+export interface Address {
+  id: string;
+  user_id: string;
+  label: string;
+  house_number: string;
+  street_address: string;
+  area: string;
+  city: string;
+  landmark?: string;
+  latitude?: number;
+  longitude?: number;
+  is_default: boolean;
+}
+
+export interface AttaChakkiRequest {
+  id: string;
+  user_id: string;
+  status: string;
+  wheat_quantity_kg: number;
+  flour_type: string;
+  total_amount: number;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  order_id: string;
+  sender_type: string;
+  sender_id: string;
+  message: string;
+  created_at: string;
+}
+
+export interface Banner {
+  id: string;
+  title: string;
+  image_url: string;
+  link?: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
 // ============================================================================
-// Website-specific Types (web only)
+// Auth Types
 // ============================================================================
 
-/** Website-specific product filters */
+export interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (phone: string, password: string) => Promise<void>;
+  logout: () => void;
+  setUser: (user: User | null) => void;
+}
+
+// ============================================================================
+// Website-specific Types
+// ============================================================================
+
 export interface ProductFilters {
   minPrice?: number;
   maxPrice?: number;
@@ -81,7 +135,6 @@ export interface ProductFilters {
   sortBy?: 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc' | 'popular';
 }
 
-/** Website-specific cart state interface (with Zustand actions) */
 export interface CartState {
   items: CartItem[];
   addItem: (product: Product, quantity?: number) => void;
