@@ -530,14 +530,14 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   // Generate tokens
   const tokens = generateTokenPair(user.id, user.phone, user.role);
 
-  // Update last login and admin last active
+  // Update last login
   await query(
-    'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
+    'UPDATE users SET last_login_at = NOW() WHERE id = $1',
     [user.id]
   );
   
   await query(
-    'UPDATE admins SET last_active_at = NOW() WHERE user_id = $1',
+    'UPDATE admins SET last_login_at = NOW() WHERE user_id = $1',
     [user.id]
   );
 
