@@ -80,6 +80,8 @@ export interface Address {
   landmark?: string;
   latitude?: number;
   longitude?: number;
+  written_address?: string;
+  address_type?: string;
   is_default: boolean;
 }
 
