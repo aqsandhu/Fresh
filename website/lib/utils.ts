@@ -44,6 +44,19 @@ export function formatPriceShort(price: number): string {
   return formatRupees(price)
 }
 
+// Helper to safely get a product image with fallback placeholder.
+export function getProductImage(product: any): string {
+  if (!product) return '/placeholder-product.png'
+  const img = product.image || product.image_url || product.primaryImage || ''
+  if (!img) return '/placeholder-product.png'
+  return resolveImageUrl(img)
+}
+
+// Product image for Next/Image that guarantees string output.
+export function safeImageSrc(product: any): string {
+  return getProductImage(product)
+}
+
 export function formatDate(date: string | Date): string {
   return new Intl.DateTimeFormat('en-PK', {
     year: 'numeric',

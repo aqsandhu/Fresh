@@ -223,7 +223,7 @@ export default function OrdersPage() {
                       <div key={idx} className="flex items-center gap-4">
                         <div className="relative w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                           <img
-                            src={item.image}
+                            src={item.image || '/placeholder-product.png'}
                             alt={item.name}
                             className="w-full h-full object-cover"
                           />

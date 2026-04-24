@@ -32,6 +32,7 @@ export interface Product {
   name: string;
   nameEn?: string;
   nameUr?: string;
+  nameUrdu?: string;
   description?: string;
   descriptionEn?: string;
   price: number;
