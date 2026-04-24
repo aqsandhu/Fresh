@@ -15,7 +15,7 @@ function buildPoolConfig() {
     logger.info('Using DATABASE_URL for database connection');
     return {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: sslRejectUnauthorized },
+      ssl: { rejectUnauthorized: false },
       min: parseInt(process.env.DB_POOL_MIN || '2'),
       max: parseInt(process.env.DB_POOL_MAX || '10'),
       connectionTimeoutMillis: 10000,
@@ -32,7 +32,7 @@ function buildPoolConfig() {
     database: process.env.DB_NAME || 'grocery_db',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: sslRejectUnauthorized } : false,
+    ssl: { rejectUnauthorized: false },
     min: parseInt(process.env.DB_POOL_MIN || '2'),
     max: parseInt(process.env.DB_POOL_MAX || '10'),
     connectionTimeoutMillis: 10000,
