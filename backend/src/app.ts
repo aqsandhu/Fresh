@@ -33,6 +33,7 @@ import {
   handleUnhandledRejection,
   handleUncaughtException,
   validateOrigin,
+  authenticate,
 } from './middleware';
 
 // Import routes
