@@ -1,5 +1,10 @@
 'use client'
 
+// Checkout depends on auth/session + browser-only redirects, so it can't be
+// statically prerendered at build time (triggered a "location is not defined"
+// error during Next's static export pass).
+export const dynamic = 'force-dynamic'
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -231,7 +236,12 @@ export default function CheckoutPage() {
   }
 
   if (items.length === 0 && !orderPlaced) {
-    router.push('/cart')
+    // Defer the redirect until we're on the client — calling router.push
+    // during render on the server hits `location is not defined` in Next's
+    // static export pass.
+    if (typeof window !== 'undefined') {
+      router.push('/cart')
+    }
     return null
   }
 
