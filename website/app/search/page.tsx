@@ -220,7 +220,7 @@ export default function SearchPage() {
                 <Link href={`/product/${product.id}`}>
                   <div className="relative aspect-square bg-gray-100">
                     <Image
-                      src={product.image}
+                      src={product.image || product.image_url || '/placeholder-product.png'}
                       alt={product.name}
                       fill
                       className="object-cover group-hover:scale-105 transition-transform"

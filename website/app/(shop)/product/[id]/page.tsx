@@ -74,7 +74,8 @@ export default function ProductDetailPage() {
     toast.success(`${product.name} added to cart!`)
   }
 
-  const hasValidImage = product.image && product.image.startsWith('http')
+  const hasValidImage = Boolean(product?.image || product?.image_url)
+  const imageSrc = product?.image || product?.image_url || '/placeholder-product.png'
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -101,7 +102,7 @@ export default function ProductDetailPage() {
             >
               {hasValidImage ? (
                 <Image
-                  src={product.image}
+                  src={imageSrc}
                   alt={product.name}
                   fill
                   className="object-cover"
