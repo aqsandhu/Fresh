@@ -33,6 +33,8 @@ export interface Product {
   unit_quantity: number;
   stock_quantity: number;
   image_url?: string;
+  /** @deprecated Use image_url */
+  image?: string;
   category_id: string;
   is_featured: boolean;
   is_active: boolean;
@@ -46,6 +48,13 @@ export interface Category {
   is_active: boolean;
 }
 
+// Cart item used by the store (has full Product object)
+export interface CartStoreItem {
+  product: Product;
+  quantity: number;
+}
+
+// API-level cart item (flat structure with IDs)
 export interface CartItem {
   id: string;
   product_id: string;
@@ -138,7 +147,7 @@ export interface ProductFilters {
 }
 
 export interface CartState {
-  items: CartItem[];
+  items: CartStoreItem[];
   addItem: (product: Product, quantity?: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
