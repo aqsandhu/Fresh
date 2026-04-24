@@ -326,7 +326,7 @@ export default function TrackOrderPage() {
                   <div key={index} className="flex items-center gap-4">
                     <div className="relative w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                       <img
-                        src={item.product.image}
+                        src={item.product?.image || item.product?.image_url || '/placeholder-product.png'}
                         alt={item.product.name}
                         className="w-full h-full object-cover"
                       />
