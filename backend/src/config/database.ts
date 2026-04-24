@@ -7,12 +7,14 @@ import logger from '../utils/logger';
 
 // Build connection config from environment
 function buildPoolConfig() {
+  const sslRejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false';
+
   // If DATABASE_URL is provided, use it directly
   if (process.env.DATABASE_URL) {
     logger.info('Using DATABASE_URL for database connection');
     return {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: sslRejectUnauthorized },
       min: parseInt(process.env.DB_POOL_MIN || '2'),
       max: parseInt(process.env.DB_POOL_MAX || '10'),
       connectionTimeoutMillis: 10000,
@@ -29,7 +31,7 @@ function buildPoolConfig() {
     database: process.env.DB_NAME || 'grocery_db',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: sslRejectUnauthorized } : false,
     min: parseInt(process.env.DB_POOL_MIN || '2'),
     max: parseInt(process.env.DB_POOL_MAX || '10'),
     connectionTimeoutMillis: 10000,

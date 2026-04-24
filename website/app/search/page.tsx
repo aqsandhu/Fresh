@@ -1,18 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { 
-  Search, 
-  Loader2, 
-  Filter,
+import {
+  Search,
+  Loader2,
   SlidersHorizontal,
-  X
+  X,
+  AlertTriangle
 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { productsApi } from '@/lib/api'
+import { productsApi, getApiErrorMessage } from '@/lib/api'
 import { Product } from '@/types'
 import { formatPriceShort } from '@/lib/utils'
 import Button from '@/components/ui/Button'
@@ -23,36 +23,48 @@ export default function SearchPage() {
   const searchParams = useSearchParams()
   const query = searchParams.get('q') || ''
   const { addItem } = useCartStore()
-  
+
   const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState('relevance')
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 5000])
 
-  useEffect(() => {
-    if (query) {
-      performSearch()
-    } else {
+  // Debounced search
+  const performSearch = useCallback(async (searchQuery: string) => {
+    if (!searchQuery.trim()) {
+      setProducts([])
       setLoading(false)
+      setError(null)
+      return
     }
-  }, [query])
 
-  const performSearch = async () => {
     setLoading(true)
+    setError(null)
     try {
-      const response = await productsApi.getAll({ 
-        search: query,
+      const response = await productsApi.getAll({
+        search: searchQuery.trim(),
         limit: 50,
       })
       setProducts(response.products)
-    } catch (error) {
-      console.error('Search error:', error)
-      toast.error('Failed to search products')
+    } catch (err) {
+      console.error('Search error:', err)
+      const msg = getApiErrorMessage(err)
+      setError(msg)
+      setProducts([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      performSearch(query)
+    }, 400) // 400ms debounce
+
+    return () => clearTimeout(timer)
+  }, [query, performSearch])
 
   const handleAddToCart = (product: Product) => {
     addItem(product, 1)
@@ -93,6 +105,11 @@ export default function SearchPage() {
           <p className="text-gray-600">
             {loading ? (
               'Searching...'
+            ) : error ? (
+              <span className="text-red-600 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                {error}
+              </span>
             ) : (
               <>
                 {filteredProducts.length} result{filteredProducts.length !== 1 ? 's' : ''} for &quot;
@@ -103,7 +120,7 @@ export default function SearchPage() {
         </motion.div>
 
         {/* Filters & Sort */}
-        {!loading && products.length > 0 && (
+        {!loading && !error && products.length > 0 && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -178,8 +195,36 @@ export default function SearchPage() {
           </div>
         )}
 
+        {/* Error State */}
+        {!loading && error && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-20"
+          >
+            <AlertTriangle className="w-20 h-20 text-red-300 mx-auto mb-6" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              Search Unavailable
+            </h2>
+            <p className="text-gray-600 mb-8 max-w-md mx-auto">
+              {error}
+            </p>
+            <div className="flex flex-wrap justify-center gap-4">
+              <Link href="/category/sabzi">
+                <Button variant="outline">Browse Vegetables</Button>
+              </Link>
+              <Link href="/category/fruit">
+                <Button variant="outline">Browse Fruits</Button>
+              </Link>
+              <Link href="/">
+                <Button>Go Home</Button>
+              </Link>
+            </div>
+          </motion.div>
+        )}
+
         {/* No Results */}
-        {!loading && filteredProducts.length === 0 && (
+        {!loading && !error && filteredProducts.length === 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -207,7 +252,7 @@ export default function SearchPage() {
         )}
 
         {/* Product Grid */}
-        {!loading && filteredProducts.length > 0 && (
+        {!loading && !error && filteredProducts.length > 0 && (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredProducts.map((product, index) => (
               <motion.div

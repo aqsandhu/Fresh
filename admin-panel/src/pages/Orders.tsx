@@ -50,6 +50,7 @@ import {
   formatOrderStatus,
   formatPhoneNumber,
   getOrderStatusColor,
+  escapeHtml,
 } from '@/utils/formatters';
 import toast from 'react-hot-toast';
 
@@ -615,8 +616,10 @@ export const Orders: React.FC = () => {
                 if (!printContent) return;
                 const win = window.open('', '_blank', 'width=400,height=600');
                 if (!win) return;
-                win.document.write(`
-                  <html><head><title>Order ${selectedOrder.orderNumber}</title>
+                // Build print HTML safely — escape all user-controlled data
+                const e = escapeHtml;
+                const printHtml = `
+                  <html><head><title>Order ${e(selectedOrder.orderNumber)}</title>
                   <style>
                     body { font-family: Arial, sans-serif; margin: 0; padding: 16px; font-size: 12px; color: #000; }
                     .header { text-align: center; border-bottom: 2px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
@@ -637,34 +640,34 @@ export const Orders: React.FC = () => {
                   <div class="header">
                     <h1>FreshBazar</h1>
                     <p>Fresh Grocery Delivery</p>
-                    <p style="font-weight:bold;font-size:13px;">Order: ${selectedOrder.orderNumber}</p>
-                    <p>${new Date(selectedOrder.placedAt).toLocaleString('en-PK')}</p>
+                    <p style="font-weight:bold;font-size:13px;">Order: ${e(selectedOrder.orderNumber)}</p>
+                    <p>${e(new Date(selectedOrder.placedAt).toLocaleString('en-PK'))}</p>
                   </div>
                   <div class="section">
                     <div class="section-title">Customer</div>
-                    <div class="row"><span>${selectedOrder.customerName}</span></div>
-                    ${selectedOrder.showCustomerPhone ? `<div class="row"><span>${formatPhoneNumber(selectedOrder.customerPhone)}</span></div>` : ''}
-                    ${selectedOrder.customerEmail ? `<div class="row"><span>${selectedOrder.customerEmail}</span></div>` : ''}
+                    <div class="row"><span>${e(selectedOrder.customerName)}</span></div>
+                    ${selectedOrder.showCustomerPhone ? `<div class="row"><span>${e(formatPhoneNumber(selectedOrder.customerPhone))}</span></div>` : ''}
+                    ${selectedOrder.customerEmail ? `<div class="row"><span>${e(selectedOrder.customerEmail)}</span></div>` : ''}
                   </div>
                   ${selectedOrder.deliveryAddressSnapshot ? `
                   <div class="section">
                     <div class="section-title">Delivery Address</div>
-                    ${selectedOrder.deliveryAddressSnapshot.houseNumber ? `<div><strong>House #: ${selectedOrder.deliveryAddressSnapshot.houseNumber}</strong></div>` : ''}
-                    <div>${selectedOrder.deliveryAddressSnapshot.writtenAddress || ''}</div>
-                    ${selectedOrder.deliveryAddressSnapshot.landmark ? `<div>Landmark: ${selectedOrder.deliveryAddressSnapshot.landmark}</div>` : ''}
-                    <div>${[selectedOrder.deliveryAddressSnapshot.areaName, selectedOrder.deliveryAddressSnapshot.city].filter(Boolean).join(', ')}</div>
+                    ${selectedOrder.deliveryAddressSnapshot.houseNumber ? `<div><strong>House #: ${e(selectedOrder.deliveryAddressSnapshot.houseNumber)}</strong></div>` : ''}
+                    <div>${e(selectedOrder.deliveryAddressSnapshot.writtenAddress || '')}</div>
+                    ${selectedOrder.deliveryAddressSnapshot.landmark ? `<div>Landmark: ${e(selectedOrder.deliveryAddressSnapshot.landmark)}</div>` : ''}
+                    <div>${e([selectedOrder.deliveryAddressSnapshot.areaName, selectedOrder.deliveryAddressSnapshot.city].filter(Boolean).join(', '))}</div>
                   </div>` : ''}
                   ${selectedOrder.slotName ? `
                   <div class="section">
                     <div class="section-title">Delivery Time Slot</div>
-                    <div>${selectedOrder.slotName}</div>
+                    <div>${e(selectedOrder.slotName)}</div>
                   </div>` : ''}
                   <div class="section">
                     <div class="section-title">Items</div>
                     <table class="items-table">
                       <thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Total</th></tr></thead>
                       <tbody>
-                        ${(selectedOrder.items || []).map(item => `<tr><td>${item.productName}</td><td class="right">${item.quantity}</td><td class="right">Rs.${Number(item.unitPrice).toFixed(0)}</td><td class="right">Rs.${Number(item.totalPrice).toFixed(0)}</td></tr>`).join('')}
+                        ${(selectedOrder.items || []).map(item => `<tr><td>${e(item.productName)}</td><td class="right">${e(item.quantity)}</td><td class="right">Rs.${Number(item.unitPrice).toFixed(0)}</td><td class="right">Rs.${Number(item.totalPrice).toFixed(0)}</td></tr>`).join('')}
                       </tbody>
                     </table>
                   </div>
@@ -675,15 +678,16 @@ export const Orders: React.FC = () => {
                     <div class="total-row grand-total"><span>Total</span><span>Rs.${Number(selectedOrder.totalAmount).toFixed(0)}</span></div>
                   </div>
                   <div class="section" style="margin-top:8px;">
-                    <div class="total-row"><span>Payment</span><span>${selectedOrder.paymentMethod === 'cash_on_delivery' ? 'Cash on Delivery' : selectedOrder.paymentMethod}</span></div>
-                    <div class="total-row"><span>Status</span><span>${formatOrderStatus(selectedOrder.status)}</span></div>
+                    <div class="total-row"><span>Payment</span><span>${selectedOrder.paymentMethod === 'cash_on_delivery' ? 'Cash on Delivery' : e(selectedOrder.paymentMethod)}</span></div>
+                    <div class="total-row"><span>Status</span><span>${e(formatOrderStatus(selectedOrder.status))}</span></div>
                   </div>
-                  ${selectedOrder.customerNotes ? `<div class="section"><div class="section-title">Customer Notes</div><div>${selectedOrder.customerNotes}</div></div>` : ''}
+                  ${selectedOrder.customerNotes ? `<div class="section"><div class="section-title">Customer Notes</div><div>${e(selectedOrder.customerNotes)}</div></div>` : ''}
                   <div class="footer">
                     <p>Thank you for shopping with FreshBazar!</p>
                   </div>
                   </body></html>
-                `);
+                `;
+                win.document.write(printHtml);
                 win.document.close();
                 win.focus();
                 win.print();

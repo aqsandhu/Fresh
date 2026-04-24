@@ -13,6 +13,19 @@ const apiClient: AxiosInstance = axios.create({
   },
 });
 
+// Flag to prevent multiple simultaneous refresh attempts
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+function subscribeTokenRefresh(callback: (token: string) => void) {
+  refreshSubscribers.push(callback);
+}
+
+function onTokenRefreshed(newToken: string) {
+  refreshSubscribers.forEach((callback) => callback(newToken));
+  refreshSubscribers = [];
+}
+
 // Request interceptor
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
@@ -37,6 +50,56 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
       
+      // Attempt token refresh if not already refreshing
+      if (!isRefreshing) {
+        isRefreshing = true;
+        
+        try {
+          const refreshToken = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+          if (refreshToken) {
+            // Lazy import authService to avoid circular dependency
+            const { authService } = require('@services/auth.service');
+            const refreshResponse = await authService.refreshToken(refreshToken);
+            
+            if (refreshResponse.success && refreshResponse.data) {
+              const { accessToken, refreshToken: newRefreshToken } = refreshResponse.data;
+              await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, accessToken);
+              if (newRefreshToken) {
+                await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken);
+              }
+              
+              // Update auth store state
+              const { useAuthStore } = require('@store/authStore');
+              useAuthStore.setState({ token: accessToken, refreshToken: newRefreshToken || refreshToken });
+              
+              onTokenRefreshed(accessToken);
+              isRefreshing = false;
+              
+              // Retry original request with new token
+              if (originalRequest.headers) {
+                originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+              }
+              return apiClient(originalRequest);
+            }
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+        } finally {
+          isRefreshing = false;
+        }
+      } else {
+        // Wait for refresh to complete and retry
+        return new Promise((resolve) => {
+          subscribeTokenRefresh((newToken: string) => {
+            if (originalRequest.headers) {
+              originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            }
+            resolve(apiClient(originalRequest));
+          });
+        });
+      }
+      
+      // Refresh failed or no refresh token — force logout
       // Save current tab so user returns here after re-login
       const tabName = getCurrentTabName();
       if (tabName) {
@@ -45,6 +108,7 @@ apiClient.interceptors.response.use(
 
       // Clear token and force logout
       await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
+      await AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
       await AsyncStorage.removeItem(STORAGE_KEYS.USER);
       
       // Update store state directly (lazy import to avoid circular dependency)
@@ -52,6 +116,7 @@ apiClient.interceptors.response.use(
       useAuthStore.setState({
         user: null,
         token: null,
+        refreshToken: null,
         isAuthenticated: false,
         isLoading: false,
       });

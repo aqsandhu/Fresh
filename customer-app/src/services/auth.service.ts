@@ -36,6 +36,20 @@ export interface AuthResponse {
   tokens: AuthTokens;
 }
 
+export interface RefreshTokenRequest {
+  refreshToken: string;
+}
+
+export interface RefreshTokenResponse {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 class AuthService {
   async sendOtp(data: SendOtpRequest): Promise<ApiResponse<SendOtpResponse>> {
     try {
@@ -76,6 +90,24 @@ class AuthService {
   async updateProfile(data: Partial<User>): Promise<ApiResponse<User>> {
     try {
       const response = await apiClient.put('/auth/profile', data);
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<ApiResponse<{ message: string }>> {
+    try {
+      const response = await apiClient.put('/auth/change-password', { currentPassword, newPassword });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  async refreshToken(refreshToken: string): Promise<ApiResponse<RefreshTokenResponse>> {
+    try {
+      const response = await apiClient.post('/auth/refresh', { refreshToken });
       return response.data;
     } catch (error) {
       throw handleApiError(error);

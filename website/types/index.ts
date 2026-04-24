@@ -1,16 +1,67 @@
 // ============================================================================
-// Website Types — Self-contained (no monorepo dependencies)
+// Website Types — Backward-compatible layer over @freshbazar/shared-types
 // ============================================================================
 
+// Re-export shared types for cross-package consistency
+export {
+  UserRole,
+  UserStatus,
+  OrderStatus,
+  PaymentStatus,
+  PaymentMethod,
+  UnitType,
+  ProductStatus,
+  DeliveryType,
+  DeliveryChargeType,
+  AttaRequestStatus,
+  WheatQuality,
+  FlourType,
+  TaskType,
+  TaskStatus,
+  NotificationType,
+  SlotStatus,
+  type User,
+  type Category as SharedCategory,
+  type Product as SharedProduct,
+  type Address as SharedAddress,
+  type Order as SharedOrder,
+  type Cart,
+  type CartItem,
+  type OrderItem,
+  type TimeSlot,
+  type DeliverySettings,
+  type DeliveryChargeConfig,
+  type DeliveryChargeResult,
+  type AttaRequest,
+  type Notification,
+  type Banner,
+  type BusinessHours,
+  type Settings,
+  type DashboardData,
+  type RiderStats,
+  type ApiResponse,
+  type PaginatedResponse,
+  type JwtPayload,
+  type OrderFilters,
+  type ProductFilters as SharedProductFilters,
+  type LoginCredentials,
+  type AuthResponse,
+  type OtpVerification,
+  type RegisterData,
+  type Customer,
+  type GeoLocation,
+  type QueuedAction,
+} from '@freshbazar/shared-types';
+
 // ---------------------------------------------------------------------------
-// Core domain types (defined locally for Vercel compatibility)
+// Core domain types (website-specific mappings for backward compatibility)
 // ---------------------------------------------------------------------------
 
 export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider' | 'moderator';
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending';
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready_for_pickup' | 'out_for_delivery' | 'delivered' | 'cancelled' | 'refunded';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
-export type PaymentMethod = 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'online';
+export type PaymentMethod = 'cash_on_delivery' | 'card' | 'easypaisa' | 'jazzcash' | 'online';
 export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'pack';
 
 export interface User {
@@ -294,6 +345,9 @@ export interface ProductFilters {
 
 export interface CartState {
   items: CartStoreItem[];
+  isLoading?: boolean;
+  syncError?: string | null;
+  lastSyncedAt?: number | null;
   addItem: (product: Product, quantity?: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
@@ -304,6 +358,7 @@ export interface CartState {
   getDeliveryCharge: () => number;
   getFinalTotal: () => number;
   hasOnlyChicken: () => boolean;
+  syncWithBackend?: () => Promise<boolean>;
 }
 
 export interface DashboardData {

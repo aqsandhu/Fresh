@@ -32,6 +32,7 @@ import {
   notFoundHandler,
   handleUnhandledRejection,
   handleUncaughtException,
+  validateOrigin,
 } from './middleware';
 
 // Import routes
@@ -127,12 +128,12 @@ app.use(compression());
 app.use(apiRateLimiter);
 
 // ============================================================================
-// STATIC FILES
+// STATIC FILES (with authentication)
 // ============================================================================
 
-// Serve uploaded files
+// Serve uploaded files with authentication check
 const uploadDir = process.env.UPLOAD_DIR || 'uploads';
-app.use(`/${uploadDir}`, express.static(path.join(process.cwd(), uploadDir)));
+app.use(`/${uploadDir}`, authenticate, express.static(path.join(process.cwd(), uploadDir)));
 
 // ============================================================================
 // HEALTH CHECK ENDPOINT
@@ -161,6 +162,9 @@ setupSwagger(app);
 // ============================================================================
 
 const API_PREFIX = '/api';
+
+// Apply origin validation to all API routes (state-changing requests)
+app.use(validateOrigin);
 
 app.use(API_PREFIX, routes);
 

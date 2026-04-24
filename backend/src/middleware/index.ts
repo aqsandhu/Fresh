@@ -79,3 +79,8 @@ export {
   handleUploadError,
   getFileUrl,
 } from './upload';
+
+// CSRF / Origin validation
+export {
+  validateOrigin,
+} from './csrf';

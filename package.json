@@ -2,7 +2,7 @@
   "name": "@freshbazar/monorepo",
   "version": "1.0.0",
   "private": true,
-  "description": "FreshBazar — Pakistani Grocery Delivery Platform (Monorepo)",
+  "description": "FreshBazar \u2014 Pakistani Grocery Delivery Platform (Monorepo)",
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
@@ -16,6 +16,6 @@
   },
   "dependencies": {
     "pg": "^8.20.0",
-    "typescript": "^6.0.3"
+    "typescript": "^5.9.3"
   }
 }

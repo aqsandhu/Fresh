@@ -7,7 +7,7 @@ class AuthService {
     if (!response.success) {
       throw new Error(response.message || 'Login failed');
     }
-    // Map backend response { user, tokens } → app format { rider, token }
+    // Map backend response { user, tokens } → app format { rider, token, refreshToken }
     const { user, tokens } = response.data;
     return {
       rider: {
@@ -23,6 +23,7 @@ class AuthService {
         todayEarnings: 0,
       },
       token: tokens.accessToken || tokens.access_token,
+      refreshToken: tokens.refreshToken || tokens.refresh_token,
     };
   }
 
@@ -78,6 +79,19 @@ class AuthService {
     if (!response.success) {
       throw new Error(response.message || 'Failed to update FCM token');
     }
+  }
+  async refreshToken(refreshToken: string): Promise<ApiResponse<{ accessToken: string; refreshToken: string }>> {
+    const response = await apiService.post<ApiResponse<any>>('/auth/refresh', { refreshToken });
+    if (!response.success) {
+      throw new Error(response.message || 'Token refresh failed');
+    }
+    return {
+      success: true,
+      data: {
+        accessToken: response.data.accessToken || response.data.access_token,
+        refreshToken: response.data.refreshToken || response.data.refresh_token,
+      },
+    };
   }
 }
 

@@ -13,6 +13,7 @@ export * from '@freshbazar/shared-types';
 export interface AuthState {
   user: import('@freshbazar/shared-types').User | null;
   token: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 }

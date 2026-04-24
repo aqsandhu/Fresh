@@ -13,6 +13,7 @@ export const Login: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ phone?: string; password?: string }>({});
 
@@ -37,6 +38,7 @@ export const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoginError(null);
     
     if (!validateForm()) return;
     
@@ -47,10 +49,28 @@ export const Login: React.FC = () => {
       const redirectTo = searchParams.get('redirect') || '/admin/dashboard';
       navigate(redirectTo);
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      // API interceptor already shows toast for network/server errors.
+      // Show inline error for auth/validation failures to avoid double notifications.
+      const status = error?.response?.status;
+      const msg = error?.response?.data?.message || error?.message || 'Login failed. Please try again.';
+      if (status === 401 || status === 403 || status === 422) {
+        setLoginError(msg);
+      }
+      // For 500+ errors, the api interceptor already shows a toast, so we only set inline state
+      if (!status || status >= 500) {
+        setLoginError('Server error. Please try again later.');
+      }
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleForgotPassword = (e: React.MouseEvent) => {
+    e.preventDefault();
+    toast('Please contact your administrator to reset your password.', {
+      icon: '🔒',
+      duration: 5000,
+    });
   };
 
   return (
@@ -70,6 +90,11 @@ export const Login: React.FC = () => {
           <h2 className="text-xl font-semibold text-gray-900 mb-6">Welcome Back</h2>
           
           <form onSubmit={handleSubmit} className="space-y-5">
+            {loginError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 animate-fadeIn">
+                {loginError}
+              </div>
+            )}
             <Input
               label="Phone Number"
               type="tel"
@@ -104,9 +129,13 @@ export const Login: React.FC = () => {
                 <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
                 <span className="ml-2 text-gray-600">Remember me</span>
               </label>
-              <a href="#" className="text-primary-600 hover:text-primary-700 font-medium">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                className="text-primary-600 hover:text-primary-700 font-medium"
+              >
                 Forgot password?
-              </a>
+              </button>
             </div>
 
             <Button

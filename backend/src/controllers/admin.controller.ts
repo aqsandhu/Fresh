@@ -13,10 +13,68 @@ import logger from '../utils/logger';
 
 const SALT_ROUNDS = 12;
 
+// ============================================================================
+// USER MANAGEMENT (for /api/users)
+// ============================================================================
+
 /**
- * Get dashboard statistics
- * GET /api/admin/dashboard
+ * Get all users (admin)
+ * GET /api/users
  */
+export const getUsers = asyncHandler(async (req: Request, res: Response) => {
+  const { page = 1, limit = 20, search, role } = req.query;
+
+  let whereSql = `WHERE u.deleted_at IS NULL`;
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (search) {
+    whereSql += ` AND (u.full_name ILIKE $${paramIndex} OR u.phone ILIKE $${paramIndex} OR u.email ILIKE $${paramIndex})`;
+    params.push(`%${search}%`);
+    paramIndex++;
+  }
+
+  if (role) {
+    whereSql += ` AND u.role = $${paramIndex++}`;
+    params.push(role);
+  }
+
+  const countResult = await query(
+    `SELECT COUNT(*) FROM users u ${whereSql}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].count);
+
+  const usersSql = `
+    SELECT 
+      u.id, u.full_name, u.phone, u.email, u.role,
+      u.preferred_language, u.notification_enabled,
+      u.status, u.is_phone_verified, u.created_at, u.last_login_at,
+      u.avatar_url
+    FROM users u
+    ${whereSql}
+    ORDER BY u.created_at DESC
+    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+  `;
+
+  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+
+  const result = await query(usersSql, params);
+
+  successResponse(res, {
+    users: result.rows,
+    pagination: {
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
+      total,
+      totalPages: Math.ceil(total / parseInt(limit as string)),
+    },
+  }, 'Users retrieved successfully');
+});
+
+// ============================================================================
+// DASHBOARD & ORDERS
+// ============================================================================
 export const getDashboardStats = asyncHandler(async (req: Request, res: Response) => {
   // Today's stats
   const todayStats = await query(

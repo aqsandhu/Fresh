@@ -111,3 +111,18 @@ export const formatOrderStatus = (status: string): string => {
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 };
+
+/**
+ * Escape HTML special characters to prevent XSS when inserting into HTML.
+ * Use this instead of raw interpolation in document.write/innerHTML.
+ */
+export const escapeHtml = (unsafe: string | number | null | undefined): string => {
+  if (unsafe == null) return '';
+  const str = String(unsafe);
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
