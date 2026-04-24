@@ -7,7 +7,8 @@ import logger from '../utils/logger';
 
 // Build connection config from environment
 function buildPoolConfig() {
-  const sslRejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false';
+  // Default false for Supabase/Render compatibility. Set DB_SSL_REJECT_UNAUTHORIZED=true only if using verified CA certs.
+  const sslRejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true';
 
   // If DATABASE_URL is provided, use it directly
   if (process.env.DATABASE_URL) {
