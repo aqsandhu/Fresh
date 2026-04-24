@@ -19,12 +19,13 @@ import {
   PhoneCall,
   Wheat,
   Loader2,
-  ArrowRight
+  ArrowRight,
+  AlertTriangle
 } from 'lucide-react'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { cn, formatPriceShort } from '@/lib/utils'
 import CartDropdown from './CartDropdown'
-import { productsApi, categoriesApi, bannerApi } from '@/lib/api'
+import { productsApi, categoriesApi, bannerApi, getApiErrorMessage } from '@/lib/api'
 import { Product, Category } from '@/types'
 
 export default function Header() {
@@ -34,6 +35,7 @@ export default function Header() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
   const [showResults, setShowResults] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const pathname = usePathname()
@@ -94,16 +96,18 @@ export default function Header() {
 
   const closeCart = useCallback(() => setIsCartOpen(false), [])
 
-  // Search functionality
+  // Search functionality with debounce and error handling
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setSearchResults([])
       setShowResults(false)
+      setSearchError(null)
       return
     }
 
     setIsSearching(true)
     setShowResults(true)
+    setSearchError(null)
 
     // Debounce search
     if (searchDebounceRef.current) {
@@ -114,13 +118,15 @@ export default function Header() {
       try {
         const response = await productsApi.getAll({ search: searchQuery, limit: 5 })
         setSearchResults(response.products)
+        setSearchError(null)
       } catch (error) {
         console.error('Search error:', error)
+        setSearchError(getApiErrorMessage(error))
         setSearchResults([])
       } finally {
         setIsSearching(false)
       }
-    }, 300)
+    }, 400)
 
     return () => {
       if (searchDebounceRef.current) {
@@ -136,6 +142,7 @@ export default function Header() {
       setIsSearchOpen(false)
       setShowResults(false)
       setSearchQuery('')
+      setSearchError(null)
     }
   }
 
@@ -143,6 +150,7 @@ export default function Header() {
     setIsSearchOpen(false)
     setShowResults(false)
     setSearchQuery('')
+    setSearchError(null)
   }
 
   return (
@@ -297,14 +305,20 @@ export default function Header() {
 
                 {/* Search Results Dropdown */}
                 <AnimatePresence>
-                  {showResults && (searchResults.length > 0 || searchQuery.length >= 2) && (
+                  {showResults && (searchResults.length > 0 || searchQuery.length >= 2 || searchError) && (
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       className="absolute left-0 right-0 top-full mt-2 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-50"
                     >
-                      {searchResults.length > 0 ? (
+                      {searchError ? (
+                        <div className="p-4 text-center">
+                          <AlertTriangle className="w-6 h-6 text-red-400 mx-auto mb-2" />
+                          <p className="text-sm text-red-600">{searchError}</p>
+                          <p className="text-xs text-gray-400 mt-1">Search unavailable</p>
+                        </div>
+                      ) : searchResults.length > 0 ? (
                         <>
                           <div className="max-h-80 overflow-y-auto">
                             {searchResults.map((product) => (

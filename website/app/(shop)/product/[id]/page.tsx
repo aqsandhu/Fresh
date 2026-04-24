@@ -5,19 +5,21 @@ import { useParams } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { 
-  ChevronLeft, 
-  Minus, 
-  Plus, 
-  ShoppingCart, 
-  Check, 
+import {
+  ChevronLeft,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Check,
   Star,
   Truck,
   Shield,
   Clock,
   Heart,
   Share2,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  Home
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useQuery } from '@tanstack/react-query'
@@ -25,7 +27,7 @@ import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import ProductCard from '@/components/ui/ProductCard'
 import { useCartStore } from '@/store/cartStore'
-import { productsApi } from '@/lib/api'
+import { productsApi, getApiErrorMessage } from '@/lib/api'
 import { formatPriceShort } from '@/lib/utils'
 import { Product } from '@/types'
 
@@ -35,13 +37,20 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1)
   const { addItem, items } = useCartStore()
 
-  const { data: product, isLoading } = useQuery({
+  const {
+    data: product,
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['product', id],
     queryFn: () => productsApi.getById(id),
   })
 
   // Fetch related products from same category
-  const { data: relatedData } = useQuery({
+  const {
+    data: relatedData,
+    isLoading: relatedLoading,
+  } = useQuery({
     queryKey: ['related-products', product?.categoryId],
     queryFn: () => productsApi.getAll({ category: product!.categoryId, limit: 5 }),
     enabled: !!product?.categoryId,
@@ -51,18 +60,45 @@ export default function ProductDetailPage() {
     .filter((p: Product) => p.id !== id)
     .slice(0, 4)
 
+  // Loading state
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+        <span className="ml-3 text-gray-600">Loading product...</span>
       </div>
     )
   }
 
-  if (!product) {
+  // Error state
+  if (error || !product) {
+    const errorMsg = error ? getApiErrorMessage(error) : 'Product not found'
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Product not found.</p>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center max-w-md"
+        >
+          <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            {errorMsg.includes('not found') ? 'Product Not Found' : 'Something Went Wrong'}
+          </h1>
+          <p className="text-gray-600 mb-6">
+            {errorMsg}
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link href="/">
+              <Button className="flex items-center gap-2">
+                <Home className="w-4 h-4" />
+                Go Home
+              </Button>
+            </Link>
+            <Link href="/category/sabzi">
+              <Button variant="outline">Browse Vegetables</Button>
+            </Link>
+          </div>
+        </motion.div>
       </div>
     )
   }
@@ -235,7 +271,12 @@ export default function ProductDetailPage() {
         </div>
 
         {/* Related Products */}
-        {relatedProducts.length > 0 && (
+        {relatedLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
+            <span className="ml-2 text-gray-600">Loading related products...</span>
+          </div>
+        ) : relatedProducts.length > 0 && (
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-6">
               Related Products

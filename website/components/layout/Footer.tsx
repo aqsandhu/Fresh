@@ -193,30 +193,34 @@ export default function Footer() {
               © {new Date().getFullYear()} Fresh Bazar Pakistan. All rights reserved.
             </p>
             <div className="flex items-center gap-4">
-              <a
-                href="#"
-                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors"
+              <span
+                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors cursor-pointer"
+                title="Facebook - Coming soon"
+                onClick={() => alert('Our Facebook page is coming soon!')}
               >
                 <Facebook className="w-4 h-4" />
-              </a>
-              <a
-                href="#"
-                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors"
+              </span>
+              <span
+                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors cursor-pointer"
+                title="Instagram - Coming soon"
+                onClick={() => alert('Our Instagram page is coming soon!')}
               >
                 <Instagram className="w-4 h-4" />
-              </a>
-              <a
-                href="#"
-                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors"
+              </span>
+              <span
+                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors cursor-pointer"
+                title="Twitter/X - Coming soon"
+                onClick={() => alert('Our Twitter page is coming soon!')}
               >
                 <Twitter className="w-4 h-4" />
-              </a>
-              <a
-                href="#"
-                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors"
+              </span>
+              <span
+                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors cursor-pointer"
+                title="YouTube - Coming soon"
+                onClick={() => alert('Our YouTube channel is coming soon!')}
               >
                 <Youtube className="w-4 h-4" />
-              </a>
+              </span>
             </div>
           </div>
         </div>

@@ -80,12 +80,22 @@ apiClient.interceptors.response.use(
     if (response.data) {
       response.data = toCamelCase(response.data);
     }
+    // Clear backend-down flag on successful response
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('backend-up'));
+    }
     return response;
   },
   (error: AxiosError) => {
     const message = (error.response?.data as { message?: string })?.message || 'Something went wrong';
     
-    if (error.response?.status === 401) {
+    if (!error.response && error.request) {
+      // Network error — backend unreachable
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('backend-down'));
+      }
+      toast.error('Backend server is unreachable. Please check your connection.');
+    } else if (error.response?.status === 401) {
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_user');
       const currentPath = window.location.pathname;
@@ -96,6 +106,9 @@ apiClient.interceptors.response.use(
     } else if (error.response?.status === 403) {
       toast.error('You do not have permission to perform this action');
     } else if (error.response?.status && error.response.status >= 500) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('backend-down'));
+      }
       toast.error('Server error. Please try again later.');
     } else {
       toast.error(message);

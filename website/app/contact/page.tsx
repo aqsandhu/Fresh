@@ -261,13 +261,18 @@ export default function ContactPage() {
               viewport={{ once: true }}
               className="space-y-8"
             >
-              {/* Map Placeholder */}
-              <div className="bg-gray-200 rounded-2xl h-80 flex items-center justify-center">
-                <div className="text-center">
-                  <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-500">Map will be displayed here</p>
-                  <p className="text-sm text-gray-400">Main Market, Gujrat</p>
-                </div>
+              {/* Map - Embedded Google Map */}
+              <div className="bg-gray-200 rounded-2xl overflow-hidden h-80">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d106872.88498702487!2d74.0188907!3d32.57158855!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x391f1f2d1f1f1f1f%3A0x1f1f1f1f1f1f1f1f!2sGujrat%2C%20Punjab%2C%20Pakistan!5e0!3m2!1sen!2s!4v1"
+                  title="Fresh Bazar Location - Gujrat, Pakistan"
+                />
               </div>
 
               {/* Social Links */}
@@ -277,30 +282,34 @@ export default function ContactPage() {
                   Stay connected with us on social media for updates, offers, and more!
                 </p>
                 <div className="flex gap-4">
-                  <a
-                    href="#"
-                    className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white hover:bg-blue-700 transition-colors"
+                  <span
+                    className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center text-white hover:bg-blue-700 transition-colors cursor-pointer"
+                    title="Facebook - Coming soon"
+                    onClick={() => alert('Our Facebook page is coming soon!')}
                   >
                     <Facebook className="w-6 h-6" />
-                  </a>
-                  <a
-                    href="#"
-                    className="w-12 h-12 bg-pink-600 rounded-full flex items-center justify-center text-white hover:bg-pink-700 transition-colors"
+                  </span>
+                  <span
+                    className="w-12 h-12 bg-pink-600 rounded-full flex items-center justify-center text-white hover:bg-pink-700 transition-colors cursor-pointer"
+                    title="Instagram - Coming soon"
+                    onClick={() => alert('Our Instagram page is coming soon!')}
                   >
                     <Instagram className="w-6 h-6" />
-                  </a>
-                  <a
-                    href="#"
-                    className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center text-white hover:bg-sky-600 transition-colors"
+                  </span>
+                  <span
+                    className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center text-white hover:bg-sky-600 transition-colors cursor-pointer"
+                    title="Twitter/X - Coming soon"
+                    onClick={() => alert('Our Twitter page is coming soon!')}
                   >
                     <Twitter className="w-6 h-6" />
-                  </a>
-                  <a
-                    href="#"
-                    className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white hover:bg-green-600 transition-colors"
+                  </span>
+                  <span
+                    className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center text-white hover:bg-green-600 transition-colors cursor-pointer"
+                    title="WhatsApp"
+                    onClick={() => window.open('https://wa.me/923001234567', '_blank')}
                   >
                     <MessageCircle className="w-6 h-6" />
-                  </a>
+                  </span>
                 </div>
               </div>
             </motion.div>

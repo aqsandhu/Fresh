@@ -13,7 +13,9 @@ import {
   Truck,
   ChefHat,
   XCircle,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  Home
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
@@ -21,7 +23,7 @@ import Badge from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
 import { OrderStatus } from '@/types'
 import { formatPriceShort, formatDate, getOrderStatusColor, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
-import { ordersApi } from '@/lib/api'
+import { ordersApi, getApiErrorMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
 
 function resolveImg(path: string | null | undefined): string {
@@ -67,6 +69,7 @@ export default function OrdersPage() {
   const { isAuthenticated } = useAuthStore()
   const [orders, setOrders] = useState<MappedOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'completed'>('all')
 
   useEffect(() => {
@@ -78,6 +81,8 @@ export default function OrdersPage() {
   }, [isAuthenticated])
 
   const loadOrders = async () => {
+    setLoading(true)
+    setError(null)
     try {
       const res = await ordersApi.getAll()
       const payload = res.data || res
@@ -102,7 +107,11 @@ export default function OrdersPage() {
     } catch (err: any) {
       if (err?.response?.status === 401) {
         router.push('/login?redirect=/orders')
+        return
       }
+      const msg = getApiErrorMessage(err)
+      setError(msg)
+      console.error('Orders load error:', err)
     } finally {
       setLoading(false)
     }
@@ -129,7 +138,7 @@ export default function OrdersPage() {
       toast.success('Order cancelled successfully')
       loadOrders()
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to cancel order'
+      const msg = getApiErrorMessage(err)
       toast.error(msg)
     }
   }
@@ -138,6 +147,40 @@ export default function OrdersPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+        <span className="ml-3 text-gray-600">Loading orders...</span>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-20 max-w-md mx-auto"
+          >
+            <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              Failed to Load Orders
+            </h1>
+            <p className="text-gray-600 mb-6">{error}</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Button onClick={loadOrders} className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4" />
+                Try Again
+              </Button>
+              <Link href="/">
+                <Button variant="outline" className="flex items-center gap-2">
+                  <Home className="w-4 h-4" />
+                  Go Home
+                </Button>
+              </Link>
+            </div>
+          </motion.div>
+        </div>
       </div>
     )
   }

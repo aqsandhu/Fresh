@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { NetworkStatusBar } from '@/components/NetworkStatusBar';
 import {
   Login,
   Dashboard,
@@ -20,11 +21,17 @@ import {
 } from '@/pages';
 import './App.css';
 
-// Create Query Client
+// Create Query Client with global error handling
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: (failureCount, error: any) => {
+        // Retry on network errors, but not on 4xx client errors
+        if (error?.response?.status >= 400 && error?.response?.status < 500) {
+          return false;
+        }
+        return failureCount < 2;
+      },
       refetchOnWindowFocus: false,
       staleTime: 5 * 60 * 1000, // 5 minutes
     },
@@ -197,6 +204,7 @@ function App() {
       <AuthProvider>
         <ErrorBoundary>
           <BrowserRouter>
+            <NetworkStatusBar />
             <AppRoutes />
           </BrowserRouter>
         </ErrorBoundary>

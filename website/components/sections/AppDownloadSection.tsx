@@ -50,22 +50,28 @@ export default function AppDownloadSection() {
                 ))}
               </div>
 
-              {/* Download Buttons */}
+              {/* Download Buttons - Coming Soon */}
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="flex items-center gap-3 bg-black text-white px-6 py-3 rounded-xl hover:bg-gray-900 transition-colors">
+                <div 
+                  className="flex items-center gap-3 bg-black/50 text-white/60 px-6 py-3 rounded-xl cursor-not-allowed border border-white/10"
+                  title="iOS app coming soon"
+                >
                   <Apple className="w-8 h-8" />
                   <div className="text-left">
-                    <p className="text-xs text-gray-400">Download on the</p>
+                    <p className="text-xs text-white/40">Coming soon on</p>
                     <p className="font-semibold">App Store</p>
                   </div>
-                </button>
-                <button className="flex items-center gap-3 bg-black text-white px-6 py-3 rounded-xl hover:bg-gray-900 transition-colors">
+                </div>
+                <div 
+                  className="flex items-center gap-3 bg-black/50 text-white/60 px-6 py-3 rounded-xl cursor-not-allowed border border-white/10"
+                  title="Android app coming soon"
+                >
                   <PlayCircle className="w-8 h-8" />
                   <div className="text-left">
-                    <p className="text-xs text-gray-400">Get it on</p>
+                    <p className="text-xs text-white/40">Coming soon on</p>
                     <p className="font-semibold">Google Play</p>
                   </div>
-                </button>
+                </div>
               </div>
             </motion.div>
 

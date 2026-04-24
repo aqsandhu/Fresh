@@ -67,6 +67,7 @@ export interface Earning {
 export interface LoginResponse {
   rider: import('@freshbazar/shared-types').Rider;
   token: string;
+  refreshToken: string;
 }
 
 // ============================================================================

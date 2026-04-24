@@ -171,6 +171,7 @@ export const ATTA_STATUS_MESSAGES: Record<string, { en: string; ur: string }> = 
 // Storage Keys
 export const STORAGE_KEYS = {
   TOKEN: '@token',
+  REFRESH_TOKEN: '@refreshToken',
   USER: '@user',
   CART: '@cart',
   ADDRESSES: '@addresses',

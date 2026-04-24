@@ -14,7 +14,8 @@ if (!ACCOUNT_SID || !AUTH_TOKEN || !VERIFY_SERVICE_SID) {
 }
 
 const client = ACCOUNT_SID && AUTH_TOKEN ? twilio(ACCOUNT_SID, AUTH_TOKEN) : null;
-const IS_DEV = process.env.NODE_ENV !== 'production';
+const IS_DEV = process.env.NODE_ENV === 'development';
+const DEV_OTP_BYPASS = process.env.DEV_OTP_BYPASS === 'true';
 const DEV_OTP_CODE = '123456';
 
 export type OtpChannel = 'sms' | 'whatsapp' | 'call';
@@ -25,8 +26,8 @@ export type OtpChannel = 'sms' | 'whatsapp' | 'call';
  * @param channel - 'sms' | 'whatsapp' | 'call'
  */
 export async function sendOtp(phone: string, channel: OtpChannel = 'sms'): Promise<{ success: boolean; message: string }> {
-  // Dev mode: skip Twilio, use fixed OTP code
-  if (IS_DEV) {
+  // Dev mode: skip Twilio, use fixed OTP code ONLY when both NODE_ENV=development AND DEV_OTP_BYPASS=true
+  if (IS_DEV && DEV_OTP_BYPASS) {
     logger.info('DEV MODE: OTP bypassed', { phone, channel, code: DEV_OTP_CODE });
     return { success: true, message: `DEV MODE: Use code ${DEV_OTP_CODE}` };
   }
@@ -70,8 +71,8 @@ export async function sendOtp(phone: string, channel: OtpChannel = 'sms'): Promi
  * @param code - The 6-digit OTP code
  */
 export async function verifyOtp(phone: string, code: string): Promise<{ success: boolean; message: string }> {
-  // Dev mode: accept fixed OTP code
-  if (IS_DEV) {
+  // Dev mode: accept fixed OTP code ONLY when both NODE_ENV=development AND DEV_OTP_BYPASS=true
+  if (IS_DEV && DEV_OTP_BYPASS) {
     if (code === DEV_OTP_CODE) {
       logger.info('DEV MODE: OTP verified', { phone });
       return { success: true, message: 'Phone number verified successfully' };

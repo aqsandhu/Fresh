@@ -16,8 +16,11 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-// Allowed file types
+// Allowed file types (MIME)
 const ALLOWED_FILE_TYPES = (process.env.ALLOWED_FILE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
+
+// Allowed file extensions (must match MIME types)
+const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
 
 // Max file size (5MB default)
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '5242880');
@@ -42,16 +45,20 @@ const storage = multer.diskStorage({
   },
 });
 
-// File filter
+// File filter with MIME type + extension validation
 const fileFilter = (
   req: Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ) => {
-  if (ALLOWED_FILE_TYPES.includes(file.mimetype)) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const isMimeAllowed = ALLOWED_FILE_TYPES.includes(file.mimetype);
+  const isExtAllowed = ALLOWED_EXTENSIONS.includes(ext);
+
+  if (isMimeAllowed && isExtAllowed) {
     cb(null, true);
   } else {
-    cb(new Error(`Invalid file type. Allowed types: ${ALLOWED_FILE_TYPES.join(', ')}`));
+    cb(new Error(`Invalid file type. Allowed types: ${ALLOWED_FILE_TYPES.join(', ')}. Allowed extensions: ${ALLOWED_EXTENSIONS.join(', ')}`));
   }
 };
 

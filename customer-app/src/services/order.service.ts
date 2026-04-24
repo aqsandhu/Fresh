@@ -190,7 +190,7 @@ class OrderService {
 
   async cancelOrder(id: string, reason?: string): Promise<ApiResponse<Order>> {
     try {
-      const response = await apiClient.put(`/orders/${id}/cancel`, { reason });
+      const response = await apiClient.put(`/orders/${id}/cancel`, { cancellation_reason: reason || 'Cancelled by customer' });
       return response.data;
     } catch (error) {
       throw handleApiError(error);
@@ -201,6 +201,17 @@ class OrderService {
     try {
       const response = await apiClient.get(`/orders/track/${id}`);
       return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  async reorder(id: string): Promise<ApiResponse<{ order: Order }>> {
+    try {
+      const response = await apiClient.post(`/orders/${id}/reorder`);
+      const raw = response.data;
+      const orderRaw = raw.data?.order || raw.data || {};
+      return { success: true, data: { order: mapBackendOrder(orderRaw) } };
     } catch (error) {
       throw handleApiError(error);
     }

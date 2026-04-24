@@ -9,6 +9,16 @@ import { successResponse, errorResponse, notFoundResponse } from '../utils/respo
 import { emitChatMessage, emitOrderUpdate } from '../config/socket';
 import logger from '../utils/logger';
 
+// XSS sanitization helper: escape HTML entities
+const escapeHtml = (text: string): string => {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+};
+
 /**
  * Get messages for an order
  * GET /api/chat/:orderId
@@ -68,6 +78,9 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'Message cannot be empty', 400);
   }
 
+  // Sanitize message to prevent XSS
+  const sanitizedMessage = escapeHtml(message.trim());
+
   // Verify access and check order is active (not delivered/cancelled)
   const access = await query(
     `SELECT o.id, o.status, o.user_id,
@@ -98,7 +111,7 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     `INSERT INTO order_messages (order_id, sender_type, sender_id, message)
      VALUES ($1, $2, $3, $4)
      RETURNING id, message, sender_type, created_at`,
-    [orderId, senderType, req.user.id, message.trim()]
+    [orderId, senderType, req.user.id, sanitizedMessage]
   );
 
   const newMsg = result.rows[0];
@@ -113,7 +126,7 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     const { emitToUser } = require('../config/socket');
     emitToUser(notifyUserId, 'chat:notification', {
       orderId,
-      message: message.trim(),
+      message: sanitizedMessage,
       senderName: req.user.full_name,
       senderType,
     });

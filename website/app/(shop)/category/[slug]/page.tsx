@@ -3,11 +3,12 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { Filter, Loader2 } from 'lucide-react'
+import { Filter, Loader2, AlertTriangle, Home, Search } from 'lucide-react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import ProductCard from '@/components/ui/ProductCard'
 import Button from '@/components/ui/Button'
-import { categoriesApi, productsApi } from '@/lib/api'
+import { categoriesApi, productsApi, getApiErrorMessage } from '@/lib/api'
 import { Product } from '@/types'
 
 type SortOption = 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc'
@@ -15,7 +16,7 @@ type SortOption = 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc'
 export default function CategoryPage() {
   const params = useParams()
   const slug = params.slug as string
-  
+
   const [sortBy, setSortBy] = useState<SortOption>('name-asc')
   const [showFilters, setShowFilters] = useState(false)
   const [minPrice, setMinPrice] = useState('')
@@ -23,7 +24,11 @@ export default function CategoryPage() {
   const [inStockOnly, setInStockOnly] = useState(false)
 
   // Fetch category info by slug
-  const { data: category } = useQuery({
+  const {
+    data: category,
+    isLoading: categoryLoading,
+    error: categoryError,
+  } = useQuery({
     queryKey: ['category', slug],
     queryFn: () => categoriesApi.getBySlug(slug),
   })
@@ -37,7 +42,11 @@ export default function CategoryPage() {
   }
 
   // Fetch products for this category from the database
-  const { data: productsData, isLoading } = useQuery({
+  const {
+    data: productsData,
+    isLoading: productsLoading,
+    error: productsError,
+  } = useQuery({
     queryKey: ['category-products', category?.id, sortBy, minPrice, maxPrice, inStockOnly],
     queryFn: () => {
       const sort = sortMap[sortBy]
@@ -55,6 +64,44 @@ export default function CategoryPage() {
   })
 
   const products: Product[] = productsData?.products || []
+  const isLoading = categoryLoading || productsLoading
+  const error = categoryError || productsError
+
+  // Error state
+  if (error && !isLoading) {
+    const errorMsg = getApiErrorMessage(error)
+    return (
+      <div className="min-h-screen bg-gray-50 py-8">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-20 max-w-md mx-auto"
+          >
+            <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">
+              {errorMsg.includes('not found') ? 'Category Not Found' : 'Something Went Wrong'}
+            </h1>
+            <p className="text-gray-600 mb-6">{errorMsg}</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Link href="/">
+                <Button className="flex items-center gap-2">
+                  <Home className="w-4 h-4" />
+                  Go Home
+                </Button>
+              </Link>
+              <Link href="/search">
+                <Button variant="outline" className="flex items-center gap-2">
+                  <Search className="w-4 h-4" />
+                  Search Products
+                </Button>
+              </Link>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">

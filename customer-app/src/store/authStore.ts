@@ -11,9 +11,11 @@ interface AuthStore extends AuthState {
   verifyOTP: (phone: string, otp: string) => Promise<void>;
   register: (phone: string, code: string, fullName: string, email?: string, password?: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshAccessToken: () => Promise<string | null>;
   updateUser: (user: Partial<User>) => void;
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
+  setRefreshToken: (refreshToken: string | null) => void;
   setLoading: (isLoading: boolean) => void;
 }
 
@@ -22,6 +24,7 @@ export const useAuthStore = create<AuthStore>()(
     (set, get) => ({
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
 
@@ -45,9 +48,11 @@ export const useAuthStore = create<AuthStore>()(
           if (response.success && response.data) {
             const { user, tokens } = response.data;
             await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
+            await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
             set({
               user,
               token: tokens.accessToken,
+              refreshToken: tokens.refreshToken,
               isAuthenticated: true,
             });
           }
@@ -63,15 +68,40 @@ export const useAuthStore = create<AuthStore>()(
           if (response.success && response.data) {
             const { user, tokens } = response.data;
             await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
+            await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
             set({
               user,
               token: tokens.accessToken,
+              refreshToken: tokens.refreshToken,
               isAuthenticated: true,
             });
           }
         } finally {
           set({ isLoading: false });
         }
+      },
+
+      refreshAccessToken: async () => {
+        const currentRefreshToken = get().refreshToken || await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+        if (!currentRefreshToken) {
+          return null;
+        }
+        try {
+          const response = await authService.refreshToken(currentRefreshToken);
+          if (response.success && response.data) {
+            const { accessToken, refreshToken } = response.data;
+            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, accessToken);
+            if (refreshToken) {
+              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+              set({ refreshToken });
+            }
+            set({ token: accessToken });
+            return accessToken;
+          }
+        } catch (error) {
+          console.error('Token refresh failed:', error);
+        }
+        return null;
       },
 
       logout: async () => {
@@ -82,10 +112,12 @@ export const useAuthStore = create<AuthStore>()(
           console.error('Logout error:', error);
         } finally {
           await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
+          await AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
           await AsyncStorage.removeItem(STORAGE_KEYS.USER);
           set({
             user: null,
             token: null,
+            refreshToken: null,
             isAuthenticated: false,
             isLoading: false,
           });
@@ -112,6 +144,15 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
+      setRefreshToken: (refreshToken: string | null) => {
+        set({ refreshToken });
+        if (refreshToken) {
+          AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+        } else {
+          AsyncStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN);
+        }
+      },
+
       setLoading: (isLoading: boolean) => {
         set({ isLoading });
       },
@@ -119,7 +160,7 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ user: state.user, token: state.token, isAuthenticated: state.isAuthenticated }),
+      partialize: (state) => ({ user: state.user, token: state.token, refreshToken: state.refreshToken, isAuthenticated: state.isAuthenticated }),
     }
   )
 );
