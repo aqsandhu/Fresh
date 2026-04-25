@@ -12,6 +12,8 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 
 // Create logs directory if it doesn't exist
 const logsDir = path.dirname(LOG_FILE);
+import fs from "fs";
+if (!fs.existsSync(logsDir)) { fs.mkdirSync(logsDir, { recursive: true }); }
 
 // Custom format for console output
 const consoleFormat = winston.format.combine(

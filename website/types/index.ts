@@ -1,61 +1,6 @@
 // ============================================================================
-// Website Types — Backward-compatible layer over @freshbazar/shared-types
+// Website Types — Self-contained (no monorepo dependencies)
 // ============================================================================
-
-// Re-export shared types for cross-package consistency
-export {
-  UserRole,
-  UserStatus,
-  OrderStatus,
-  PaymentStatus,
-  PaymentMethod,
-  UnitType,
-  ProductStatus,
-  DeliveryType,
-  DeliveryChargeType,
-  AttaRequestStatus,
-  WheatQuality,
-  FlourType,
-  TaskType,
-  TaskStatus,
-  NotificationType,
-  SlotStatus,
-  type User,
-  type Category as SharedCategory,
-  type Product as SharedProduct,
-  type Address as SharedAddress,
-  type Order as SharedOrder,
-  type Cart,
-  type CartItem,
-  type OrderItem,
-  type TimeSlot,
-  type DeliverySettings,
-  type DeliveryChargeConfig,
-  type DeliveryChargeResult,
-  type AttaRequest,
-  type Notification,
-  type Banner,
-  type BusinessHours,
-  type Settings,
-  type DashboardData,
-  type RiderStats,
-  type ApiResponse,
-  type PaginatedResponse,
-  type JwtPayload,
-  type OrderFilters,
-  type ProductFilters as SharedProductFilters,
-  type LoginCredentials,
-  type AuthResponse,
-  type OtpVerification,
-  type RegisterData,
-  type Customer,
-  type GeoLocation,
-  type QueuedAction,
-} from '@freshbazar/shared-types';
-
-// ---------------------------------------------------------------------------
-// Core domain types (website-specific mappings for backward compatibility)
-// ---------------------------------------------------------------------------
 
 export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider' | 'moderator';
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending';
@@ -63,6 +8,16 @@ export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready_for_pic
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
 export type PaymentMethod = 'cash_on_delivery' | 'card' | 'easypaisa' | 'jazzcash' | 'online';
 export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'pack';
+export type ProductStatus = 'active' | 'inactive' | 'draft';
+export type DeliveryType = 'standard' | 'express' | 'scheduled';
+export type DeliveryChargeType = 'standard' | 'distance_based' | 'weight_based';
+export type AttaRequestStatus = 'pending_pickup' | 'picked_up' | 'at_mill' | 'milling' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled';
+export type WheatQuality = 'desi' | 'basmati' | 'mixed';
+export type FlourType = 'fine' | 'coarse' | 'extra_fine';
+export type TaskType = 'delivery' | 'pickup' | 'atta_mill' | 'other';
+export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+export type NotificationType = 'order' | 'delivery' | 'promotion' | 'system';
+export type SlotStatus = 'available' | 'booked' | 'blocked';
 
 export interface User {
   id: string;
@@ -126,14 +81,22 @@ export interface Category {
   subcategories?: Category[];
 }
 
-// Cart item used by the store (has full Product object)
+export interface CartItem {
+  id: string;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  image_url?: string;
+}
+
 export interface CartStoreItem {
   product: Product;
   quantity: number;
 }
 
-// API-level cart item (flat structure with IDs)
-export interface CartItem {
+export interface OrderItem {
   id: string;
   product_id: string;
   product_name: string;
@@ -297,22 +260,88 @@ export interface Rider {
   verificationStatus?: string;
 }
 
-// ---------------------------------------------------------------------------
-// Auth Types
-// ---------------------------------------------------------------------------
-
-export interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  login: (phone: string, password: string) => Promise<void>;
-  logout: () => void;
-  setUser: (user: User | null) => void;
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
 }
 
-// ---------------------------------------------------------------------------
-// API Response Types
-// ---------------------------------------------------------------------------
+export interface GeoLocation {
+  latitude: number;
+  longitude: number;
+  accuracy?: number;
+}
+
+export interface QueuedAction {
+  id: string;
+  type: 'location_update' | 'status_update' | 'chat_message';
+  payload: any;
+  retries: number;
+  created_at: string;
+}
+
+export interface TimeSlot {
+  id: string;
+  date: string;
+  start_time: string;
+  end_time: string;
+  max_orders: number;
+  is_free_delivery_slot?: boolean;
+}
+
+export interface DeliverySettings {
+  freeThreshold: number;
+  standardCharge: number;
+}
+
+export interface DeliveryChargeConfig {
+  type: DeliveryChargeType;
+  baseAmount: number;
+  perKmRate?: number;
+  perKgRate?: number;
+  maxCharge?: number;
+}
+
+export interface DeliveryChargeResult {
+  charge: number;
+  breakdown: {
+    baseCharge: number;
+    distanceCharge: number;
+    weightCharge: number;
+  };
+}
+
+export interface DashboardData {
+  totalOrders: number;
+  totalRevenue: number;
+  totalCustomers: number;
+  totalProducts: number;
+  recentOrders: Order[];
+  topProducts: Product[];
+}
+
+export interface BusinessHours {
+  day: string;
+  open: string;
+  close: string;
+}
+
+export interface Settings {
+  business_name: string;
+  contact_phone: string;
+  delivery_settings: DeliverySettings;
+}
+
+export interface RiderStats {
+  totalRiders: number;
+  activeRiders: number;
+  totalDeliveries: number;
+  averageRating: number;
+}
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -332,15 +361,67 @@ export interface PaginatedResponse<T> {
   products?: T[];
 }
 
-// ---------------------------------------------------------------------------
-// Website-specific Types
-// ---------------------------------------------------------------------------
+export interface JwtPayload {
+  userId: string;
+  phone: string;
+  role: UserRole;
+  type: 'access' | 'refresh';
+}
+
+export interface OrderFilters {
+  status?: OrderStatus;
+  startDate?: string;
+  endDate?: string;
+  riderId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}
 
 export interface ProductFilters {
-  minPrice?: number;
-  maxPrice?: number;
-  inStockOnly?: boolean;
-  sortBy?: 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc' | 'popular';
+  categoryId?: string;
+  search?: string;
+  isActive?: boolean;
+  lowStock?: boolean;
+  page?: number;
+  limit?: number;
+}
+
+export interface LoginCredentials {
+  phone: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: string;
+    refreshExpiresIn: string;
+  };
+}
+
+export interface OtpVerification {
+  phone: string;
+  code: string;
+}
+
+export interface RegisterData {
+  phone: string;
+  password: string;
+  full_name: string;
+  email?: string;
+}
+
+export interface Customer {
+  id: string;
+  phone: string;
+  full_name: string;
+  email?: string;
+  role: UserRole;
+  status: UserStatus;
+  created_at: string;
 }
 
 export interface CartState {
@@ -361,44 +442,11 @@ export interface CartState {
   syncWithBackend?: () => Promise<boolean>;
 }
 
-export interface DashboardData {
-  totalOrders: number;
-  totalRevenue: number;
-  totalCustomers: number;
-  totalProducts: number;
-  recentOrders: Order[];
-  topProducts: Product[];
-}
-
-export interface DeliverySettings {
-  freeThreshold: number;
-  standardCharge: number;
-}
-
-export interface TimeSlot {
-  id: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  max_orders: number;
-  is_free_delivery_slot?: boolean;
-}
-
-export interface BusinessHours {
-  day: string;
-  open: string;
-  close: string;
-}
-
-export interface Settings {
-  business_name: string;
-  contact_phone: string;
-  delivery_settings: DeliverySettings;
-}
-
-export interface RiderStats {
-  totalRiders: number;
-  activeRiders: number;
-  totalDeliveries: number;
-  averageRating: number;
+export interface AuthState {
+  user: User | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (phone: string, password: string) => Promise<void>;
+  logout: () => void;
+  setUser: (user: User | null) => void;
 }

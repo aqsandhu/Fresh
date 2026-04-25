@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -96,6 +97,7 @@ app.use(cors(corsOptions));
 
 // Parse JSON bodies
 app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
 
 // Parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
