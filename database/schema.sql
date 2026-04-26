@@ -1535,40 +1535,15 @@ INSERT INTO delivery_zones (name, code, cities, areas, standard_delivery_charge,
 ('Korangi', 'KR-01', ARRAY['Karachi'], ARRAY['Korangi', 'Landhi', 'Shah Faisal'], 120.00, 500.00);
 
 -- ============================================================================
--- SEED DATA: Admin User (Schema Fixes Addition)
+-- ADMIN USER BOOTSTRAP
+-- ----------------------------------------------------------------------------
+-- The admin user is NOT seeded from SQL — embedding a password hash here is a
+-- security risk and using a placeholder produces a broken login.
+--
+-- Instead, the backend bootstraps the super-admin at startup (or via
+-- `npm run create-admin`) using the ADMIN_PHONE and ADMIN_PASSWORD env vars.
+-- See backend/src/scripts/bootstrapAdmin.ts.
 -- ============================================================================
-INSERT INTO users (phone, email, full_name, password_hash, role, status, is_phone_verified, is_email_verified)
-VALUES (
-    '+923001234567', 
-    'admin@freshbazar.pk', 
-    'System Administrator',
-    '$2b$10$YourHashedPasswordHere', -- Placeholder - replace with actual hash
-    'super_admin',
-    'active',
-    TRUE,
-    TRUE
-)
-ON CONFLICT (phone) DO NOTHING;
-
--- Create admin record for the user
-INSERT INTO admins (user_id, admin_level, department, employee_id, permissions, is_active)
-SELECT 
-    id, 
-    3, 
-    'operations',
-    'ADMIN-001',
-    '{
-        "users": {"read": true, "write": true, "delete": true},
-        "orders": {"read": true, "write": true, "delete": true},
-        "products": {"read": true, "write": true, "delete": true},
-        "riders": {"read": true, "write": true, "delete": true},
-        "reports": {"read": true, "write": true},
-        "settings": {"read": true, "write": true}
-    }'::jsonb,
-    TRUE
-FROM users 
-WHERE phone = '+923001234567'
-ON CONFLICT (employee_id) DO NOTHING;
 
 -- ============================================================================
 -- SEED DATA: Mills for Atta Chakki Service (Schema Fixes Addition)

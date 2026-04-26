@@ -25,6 +25,7 @@ import { setupSwagger } from './config/swagger';
 
 // Import database and middleware
 import { testConnection, closePool } from './config/database';
+import { bootstrapAdmin } from './scripts/bootstrapAdmin';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -47,6 +48,12 @@ const httpServer = createServer(app);
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
+// Behind a proxy (Render / Cloudflare / Nginx) the real client IP arrives in
+// X-Forwarded-For. Trusting exactly one hop lets express-rate-limit and
+// req.ip work correctly without blindly trusting arbitrary header values.
+// Override via TRUST_PROXY env var if the proxy chain is deeper.
+app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+
 // ============================================================================
 // INITIALIZE SENTRY (BEFORE ALL MIDDLEWARE)
 // ============================================================================
@@ -65,19 +72,28 @@ app.use(helmet({
 }));
 
 // CORS configuration
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+const allowAnyOrigin = allowedOrigins.includes('*');
+
+logger.info(
+  `CORS: ${allowAnyOrigin ? 'allowing any origin (*)' : `allowed origins = ${allowedOrigins.join(', ')}`}`
+);
+
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-    const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',');
-
-    // Allow requests with no origin (mobile apps, curl, etc.)
+    // Allow requests with no origin (mobile apps, curl, server-to-server).
     if (!origin) {
       callback(null, true);
       return;
     }
 
-    if (allowedOrigins.includes(origin) || NODE_ENV === 'development') {
+    if (allowAnyOrigin || allowedOrigins.includes(origin) || NODE_ENV === 'development') {
       callback(null, true);
     } else {
+      logger.warn(`CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -191,6 +207,15 @@ const startServer = async () => {
       logger.warn('If using Supabase, ensure you are using the connection pooler URL:');
       logger.warn('  postgresql://postgres:PASSWORD@PROJECT_ID.pooler.supabase.com:6543/postgres');
       // Continue starting server - don't exit
+    } else {
+      // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars are set.
+      // Safe to call on every boot — idempotently upserts the super-admin row.
+      const adminResult = await bootstrapAdmin();
+      if (adminResult.status === 'error') {
+        logger.error(`Admin bootstrap error: ${adminResult.message}`);
+      } else {
+        logger.info(`Admin bootstrap: ${adminResult.status} — ${adminResult.message}`);
+      }
     }
 
     // Initialize Socket.IO
