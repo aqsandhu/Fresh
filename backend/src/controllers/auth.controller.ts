@@ -501,6 +501,7 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
  */
 export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   const { phone, password } = req.body;
+  logger.info('Admin login attempt received', { phone });
 
   // Normalize phone number
   const normalizedPhone = normalizePhoneNumber(phone);
@@ -515,6 +516,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   );
 
   if (result.rows.length === 0) {
+    logger.warn('Admin login failed: no admin user with this phone', { normalizedPhone });
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
@@ -524,6 +526,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
   if (!isPasswordValid) {
+    logger.warn('Admin login failed: password mismatch', { userId: user.id, phone: user.phone });
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
