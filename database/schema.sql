@@ -601,8 +601,8 @@ CREATE TABLE orders (
     customer_notes TEXT,
     admin_notes TEXT,
     
-    -- WhatsApp order reference
-    whatsapp_order_id UUID REFERENCES whatsapp_orders(id) ON DELETE SET NULL,
+    -- WhatsApp order reference (FK added later — whatsapp_orders is defined further down)
+    whatsapp_order_id UUID,
     
     -- Soft delete
     deleted_at TIMESTAMPTZ,
@@ -666,9 +666,9 @@ CREATE TABLE rider_tasks (
     task_type task_type NOT NULL,
     status task_status DEFAULT 'assigned',
     
-    -- Related entities
+    -- Related entities (atta_requests FK added later — defined further down)
     order_id UUID REFERENCES orders(id),
-    atta_request_id UUID REFERENCES atta_requests(id) ON DELETE CASCADE,
+    atta_request_id UUID,
     
     -- Location
     pickup_location GEOGRAPHY(POINT, 4326),
@@ -727,8 +727,8 @@ CREATE TABLE atta_requests (
     flour_quantity_expected_kg DECIMAL(8,2),
     special_instructions TEXT,
     
-    -- Mill info
-    mill_id UUID REFERENCES mills(id) ON DELETE SET NULL,
+    -- Mill info (FK added later — mills is defined further down)
+    mill_id UUID,
     mill_name VARCHAR(255),
     
     -- Status workflow
@@ -973,18 +973,9 @@ CREATE TABLE delivery_zones (
 
 COMMENT ON TABLE delivery_zones IS 'Geographic delivery zones with boundaries';
 
--- Now that delivery_zones exists, attach the foreign keys that the riders and
--- addresses tables couldn't declare inline (forward reference at create time).
-ALTER TABLE riders
-    ADD CONSTRAINT fk_riders_assigned_zone
-    FOREIGN KEY (assigned_zone_id) REFERENCES delivery_zones(id) ON DELETE SET NULL;
-
-ALTER TABLE addresses
-    ADD CONSTRAINT fk_addresses_zone
-    FOREIGN KEY (zone_id) REFERENCES delivery_zones(id) ON DELETE SET NULL;
-
-COMMENT ON CONSTRAINT fk_riders_assigned_zone ON riders IS
-    'Links rider to their assigned delivery zone. Zone deletion unassigns rider.';
+-- Forward-declared FKs touching delivery_zones / whatsapp_orders / mills /
+-- atta_requests are wired up later, after EVERY referenced table exists.
+-- See the "Forward-declared foreign keys" block below the mills table.
 
 -- ============================================================================
 -- 19b. SERVICE CITIES TABLE
@@ -1039,6 +1030,37 @@ CREATE TABLE mills (
 );
 
 COMMENT ON TABLE mills IS 'Partner flour mills for Atta Chakki service';
+
+-- ============================================================================
+-- FORWARD-DECLARED FOREIGN KEYS
+-- ----------------------------------------------------------------------------
+-- These FKs reference tables that are defined later than the source table
+-- (or that form a cycle). The columns themselves are declared as plain UUID
+-- on the source tables; the FKs are added here, after every referenced
+-- table exists. Same ON DELETE semantics they had as inline FKs originally.
+-- ============================================================================
+ALTER TABLE riders
+    ADD CONSTRAINT fk_riders_assigned_zone
+    FOREIGN KEY (assigned_zone_id) REFERENCES delivery_zones(id) ON DELETE SET NULL;
+
+ALTER TABLE addresses
+    ADD CONSTRAINT fk_addresses_zone
+    FOREIGN KEY (zone_id) REFERENCES delivery_zones(id) ON DELETE SET NULL;
+
+ALTER TABLE orders
+    ADD CONSTRAINT fk_orders_whatsapp_order
+    FOREIGN KEY (whatsapp_order_id) REFERENCES whatsapp_orders(id) ON DELETE SET NULL;
+
+ALTER TABLE rider_tasks
+    ADD CONSTRAINT fk_rider_tasks_atta_request
+    FOREIGN KEY (atta_request_id) REFERENCES atta_requests(id) ON DELETE CASCADE;
+
+ALTER TABLE atta_requests
+    ADD CONSTRAINT fk_atta_requests_mill
+    FOREIGN KEY (mill_id) REFERENCES mills(id) ON DELETE SET NULL;
+
+COMMENT ON CONSTRAINT fk_riders_assigned_zone ON riders IS
+    'Links rider to their assigned delivery zone. Zone deletion unassigns rider.';
 
 -- ============================================================================
 -- INDEXES FOR PERFORMANCE
