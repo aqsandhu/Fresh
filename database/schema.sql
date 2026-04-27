@@ -174,8 +174,9 @@ CREATE TABLE riders (
 COMMENT ON TABLE riders IS 'Delivery personnel with verification and tracking';
 COMMENT ON COLUMN riders.cnic IS 'Pakistani Computerized National Identity Card';
 COMMENT ON COLUMN riders.current_location IS 'Real-time GPS coordinates using PostGIS';
-COMMENT ON CONSTRAINT fk_riders_assigned_zone ON riders IS 
-    'Links rider to their assigned delivery zone. Zone deletion unassigns rider.';
+-- COMMENT ON CONSTRAINT fk_riders_assigned_zone is set later, after the
+-- constraint is added via ALTER TABLE (delivery_zones is defined further
+-- down the file).
 
 -- ============================================================================
 -- 3. ADMINS TABLE
@@ -981,6 +982,9 @@ ALTER TABLE riders
 ALTER TABLE addresses
     ADD CONSTRAINT fk_addresses_zone
     FOREIGN KEY (zone_id) REFERENCES delivery_zones(id) ON DELETE SET NULL;
+
+COMMENT ON CONSTRAINT fk_riders_assigned_zone ON riders IS
+    'Links rider to their assigned delivery zone. Zone deletion unassigns rider.';
 
 -- ============================================================================
 -- 19b. SERVICE CITIES TABLE
