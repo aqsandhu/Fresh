@@ -166,12 +166,9 @@ CREATE TABLE riders (
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     
     created_by UUID REFERENCES users(id),
-    updated_by UUID REFERENCES users(id),
-    
-    -- FOREIGN KEY FIX: riders.assigned_zone_id → delivery_zones(id)
-    CONSTRAINT fk_riders_assigned_zone 
-        FOREIGN KEY (assigned_zone_id) REFERENCES delivery_zones(id) 
-        ON DELETE SET NULL
+    updated_by UUID REFERENCES users(id)
+    -- FK riders.assigned_zone_id -> delivery_zones(id) is added later, after
+    -- the delivery_zones table is created (forward references break psql).
 );
 
 COMMENT ON TABLE riders IS 'Delivery personnel with verification and tracking';
@@ -347,12 +344,12 @@ CREATE TABLE addresses (
     
     -- Area info
     area_name VARCHAR(255),
-    city VARCHAR(100) DEFAULT 'Karachi',
-    province VARCHAR(100) DEFAULT 'Sindh',
+    city VARCHAR(100) DEFAULT 'Gujrat',
+    province VARCHAR(100) DEFAULT 'Punjab',
     postal_code VARCHAR(20),
-    
-    -- Delivery zone
-    zone_id UUID REFERENCES delivery_zones(id) ON DELETE SET NULL,
+
+    -- Delivery zone (FK added later, after delivery_zones is created)
+    zone_id UUID,
     
     -- Flags
     is_default BOOLEAN DEFAULT FALSE,
@@ -975,6 +972,39 @@ CREATE TABLE delivery_zones (
 
 COMMENT ON TABLE delivery_zones IS 'Geographic delivery zones with boundaries';
 
+-- Now that delivery_zones exists, attach the foreign keys that the riders and
+-- addresses tables couldn't declare inline (forward reference at create time).
+ALTER TABLE riders
+    ADD CONSTRAINT fk_riders_assigned_zone
+    FOREIGN KEY (assigned_zone_id) REFERENCES delivery_zones(id) ON DELETE SET NULL;
+
+ALTER TABLE addresses
+    ADD CONSTRAINT fk_addresses_zone
+    FOREIGN KEY (zone_id) REFERENCES delivery_zones(id) ON DELETE SET NULL;
+
+-- ============================================================================
+-- 19b. SERVICE CITIES TABLE
+-- ----------------------------------------------------------------------------
+-- Cities where the platform operates. Editable from the admin panel
+-- (Service Cities page → POST /api/admin/cities). Customers / website read
+-- the active list via the public endpoint GET /api/site-settings/cities.
+-- Decoupled from delivery_zones so the city list can be expanded without
+-- touching geographic zone polygons.
+-- ============================================================================
+CREATE TABLE service_cities (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL,
+    province VARCHAR(100) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_service_cities_name UNIQUE (name)
+);
+
+CREATE INDEX idx_service_cities_active ON service_cities(is_active) WHERE is_active = TRUE;
+
+COMMENT ON TABLE service_cities IS 'Cities where delivery is offered. Managed by admins.';
+
 -- ============================================================================
 -- 20. MILLS TABLE (Partner mills for Atta Chakki)
 -- ============================================================================
@@ -1525,14 +1555,17 @@ SELECT
     'Fresh chicken breast, boneless'
 FROM categories c WHERE c.slug = 'chicken';
 
--- Delivery zones (Karachi areas)
+-- Initial service city (more can be added later from the admin panel).
+INSERT INTO service_cities (name, province, is_active) VALUES
+('Gujrat', 'Punjab', TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- Delivery zones for Gujrat. Add more zones as you expand into other cities.
 INSERT INTO delivery_zones (name, code, cities, areas, standard_delivery_charge, minimum_order_value) VALUES
-('North Karachi', 'NK-01', ARRAY['Karachi'], ARRAY['North Karachi', 'New Karachi', 'North Nazimabad'], 100.00, 500.00),
-('Gulshan', 'GL-01', ARRAY['Karachi'], ARRAY['Gulshan-e-Iqbal', 'Gulistan-e-Johar', 'Johar'], 100.00, 500.00),
-('Clifton/DHA', 'CD-01', ARRAY['Karachi'], ARRAY['Clifton', 'DHA', 'Defence'], 150.00, 500.00),
-('Saddar', 'SD-01', ARRAY['Karachi'], ARRAY['Saddar', 'Soldier Bazaar', 'Garden'], 100.00, 500.00),
-('Malir', 'ML-01', ARRAY['Karachi'], ARRAY['Malir', 'Airport', 'Model Colony'], 120.00, 500.00),
-('Korangi', 'KR-01', ARRAY['Karachi'], ARRAY['Korangi', 'Landhi', 'Shah Faisal'], 120.00, 500.00);
+('Gujrat City',     'GJ-01', ARRAY['Gujrat'], ARRAY['Gujrat City', 'Civil Lines', 'Model Town'],          100.00, 500.00),
+('Kachehri Chowk',  'GJ-02', ARRAY['Gujrat'], ARRAY['Kachehri Chowk', 'Rehman Shaheed Road', 'GT Road'],  100.00, 500.00),
+('Small Industries','GJ-03', ARRAY['Gujrat'], ARRAY['Small Industries', 'Jalalpur Jattan Road'],          120.00, 500.00),
+('Servis Chowk',    'GJ-04', ARRAY['Gujrat'], ARRAY['Servis Chowk', 'Bhimber Road'],                     120.00, 500.00);
 
 -- ============================================================================
 -- ADMIN USER BOOTSTRAP
