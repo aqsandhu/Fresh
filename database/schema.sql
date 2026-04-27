@@ -1649,15 +1649,16 @@ ON CONFLICT DO NOTHING;
 -- ============================================================================
 
 -- Active products with category info
+-- (products has no soft-delete column; is_active is the only liveness flag)
 CREATE VIEW active_products_view AS
-SELECT 
+SELECT
     p.id, p.name_ur, p.name_en, p.slug, p.price, p.unit_type, p.unit_value,
     p.stock_quantity, p.stock_status, p.primary_image,
     c.name_en as category_name, c.slug as category_slug,
     c.qualifies_for_free_delivery, c.minimum_order_for_free_delivery
 FROM products p
 JOIN categories c ON p.category_id = c.id
-WHERE p.is_active = TRUE AND p.deleted_at IS NULL;
+WHERE p.is_active = TRUE;
 
 -- Orders with customer and rider info
 CREATE VIEW orders_detail_view AS
