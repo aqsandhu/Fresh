@@ -2029,3 +2029,176 @@ export const deleteCity = asyncHandler(async (req: Request, res: Response) => {
   }
   successResponse(res, null, 'City deleted');
 });
+
+// ============================================================================
+// DELIVERY ZONES MANAGEMENT
+// ============================================================================
+
+/**
+ * List all delivery zones
+ * GET /api/admin/delivery-zones
+ */
+export const getDeliveryZones = asyncHandler(async (_req: Request, res: Response) => {
+  const result = await query(
+    `SELECT id, name, code, cities, areas, postal_codes,
+            standard_delivery_charge, express_delivery_charge,
+            minimum_order_value, is_active, created_at, updated_at
+       FROM delivery_zones
+      ORDER BY is_active DESC, name`
+  );
+  successResponse(res, result.rows, 'Delivery zones retrieved');
+});
+
+/**
+ * Create a delivery zone
+ * POST /api/admin/delivery-zones
+ *
+ * Body: { name, code, cities[], areas[], postal_codes?[],
+ *         standard_delivery_charge, express_delivery_charge?,
+ *         minimum_order_value? }
+ */
+export const createDeliveryZone = asyncHandler(async (req: Request, res: Response) => {
+  const {
+    name,
+    code,
+    cities,
+    areas,
+    postal_codes,
+    standard_delivery_charge,
+    express_delivery_charge,
+    minimum_order_value,
+  } = req.body;
+
+  if (!name || !code) {
+    return errorResponse(res, 'name and code are required', 400);
+  }
+
+  const dup = await query(
+    `SELECT id FROM delivery_zones WHERE LOWER(code) = LOWER($1)`,
+    [code]
+  );
+  if (dup.rows.length > 0) {
+    return errorResponse(res, `Zone code '${code}' is already in use`, 400);
+  }
+
+  const result = await query(
+    `INSERT INTO delivery_zones
+       (name, code, cities, areas, postal_codes,
+        standard_delivery_charge, express_delivery_charge, minimum_order_value)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING *`,
+    [
+      name,
+      code,
+      Array.isArray(cities) ? cities : [],
+      Array.isArray(areas) ? areas : [],
+      Array.isArray(postal_codes) ? postal_codes : null,
+      standard_delivery_charge ?? 100,
+      express_delivery_charge ?? 200,
+      minimum_order_value ?? 500,
+    ]
+  );
+  createdResponse(res, result.rows[0], 'Delivery zone created');
+});
+
+/**
+ * Update a delivery zone
+ * PUT /api/admin/delivery-zones/:id
+ *
+ * Body may contain any subset of the editable fields. Only provided
+ * fields are updated; unspecified ones stay as-is.
+ */
+export const updateDeliveryZone = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const {
+    name,
+    code,
+    cities,
+    areas,
+    postal_codes,
+    standard_delivery_charge,
+    express_delivery_charge,
+    minimum_order_value,
+    is_active,
+  } = req.body;
+
+  // If code is changing, make sure the new code isn't taken by another zone.
+  if (code !== undefined) {
+    const dup = await query(
+      `SELECT id FROM delivery_zones WHERE LOWER(code) = LOWER($1) AND id <> $2`,
+      [code, id]
+    );
+    if (dup.rows.length > 0) {
+      return errorResponse(res, `Zone code '${code}' is already in use`, 400);
+    }
+  }
+
+  const result = await query(
+    `UPDATE delivery_zones SET
+        name                     = COALESCE($2, name),
+        code                     = COALESCE($3, code),
+        cities                   = COALESCE($4, cities),
+        areas                    = COALESCE($5, areas),
+        postal_codes             = COALESCE($6, postal_codes),
+        standard_delivery_charge = COALESCE($7, standard_delivery_charge),
+        express_delivery_charge  = COALESCE($8, express_delivery_charge),
+        minimum_order_value      = COALESCE($9, minimum_order_value),
+        is_active                = COALESCE($10, is_active),
+        updated_at               = NOW()
+      WHERE id = $1
+      RETURNING *`,
+    [
+      id,
+      name ?? null,
+      code ?? null,
+      Array.isArray(cities) ? cities : null,
+      Array.isArray(areas) ? areas : null,
+      Array.isArray(postal_codes) ? postal_codes : null,
+      standard_delivery_charge ?? null,
+      express_delivery_charge ?? null,
+      minimum_order_value ?? null,
+      typeof is_active === 'boolean' ? is_active : null,
+    ]
+  );
+
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Delivery zone not found');
+  }
+  successResponse(res, result.rows[0], 'Delivery zone updated');
+});
+
+/**
+ * Toggle delivery zone active status
+ * PUT /api/admin/delivery-zones/:id/toggle
+ */
+export const toggleDeliveryZone = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await query(
+    `UPDATE delivery_zones SET is_active = NOT is_active, updated_at = NOW()
+       WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Delivery zone not found');
+  }
+  successResponse(res, result.rows[0], 'Delivery zone updated');
+});
+
+/**
+ * Delete a delivery zone
+ * DELETE /api/admin/delivery-zones/:id
+ *
+ * Riders / addresses pointing at this zone have their zone_id set to NULL
+ * (declared in the FK).
+ */
+export const deleteDeliveryZone = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await query(
+    `DELETE FROM delivery_zones WHERE id = $1 RETURNING id`,
+    [id]
+  );
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Delivery zone not found');
+  }
+  successResponse(res, null, 'Delivery zone deleted');
+});

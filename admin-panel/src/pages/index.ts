@@ -9,4 +9,5 @@ export { AttaRequests } from './AttaRequests';
 export { WhatsAppOrders } from './WhatsAppOrders';
 export { Addresses } from './Addresses';
 export { ServiceCities } from './ServiceCities';
+export { DeliveryZones } from './DeliveryZones';
 export { Settings } from './Settings';

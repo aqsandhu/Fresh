@@ -145,6 +145,13 @@ router.post('/cities', adminController.addCity);
 router.put('/cities/:id/toggle', adminController.toggleCity);
 router.delete('/cities/:id', adminController.deleteCity);
 
+// Delivery Zones
+router.get('/delivery-zones', adminController.getDeliveryZones);
+router.post('/delivery-zones', adminController.createDeliveryZone);
+router.put('/delivery-zones/:id', adminController.updateDeliveryZone);
+router.put('/delivery-zones/:id/toggle', adminController.toggleDeliveryZone);
+router.delete('/delivery-zones/:id', adminController.deleteDeliveryZone);
+
 // Atta Requests
 router.get('/atta-requests', adminController.getAttaRequests);
 router.put(

@@ -16,6 +16,7 @@ import {
   WhatsAppOrders,
   Addresses,
   ServiceCities,
+  DeliveryZones,
   Settings,
 } from '@/pages';
 import './App.css';
@@ -170,6 +171,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <ServiceCities />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/delivery-zones"
+        element={
+          <ProtectedRoute>
+            <DeliveryZones />
           </ProtectedRoute>
         }
       />
