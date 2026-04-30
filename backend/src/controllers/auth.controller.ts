@@ -540,7 +540,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   );
   
   await query(
-    'UPDATE admins SET last_login_at = NOW() WHERE user_id = $1',
+    'UPDATE admins SET last_active_at = NOW() WHERE user_id = $1',
     [user.id]
   );
 
