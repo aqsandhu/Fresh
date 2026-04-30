@@ -578,6 +578,15 @@ CREATE TABLE orders (
     -- Rider assignment
     rider_id UUID REFERENCES riders(id),
     assigned_at TIMESTAMPTZ,
+
+    -- What the rider gets paid for delivering this order. Set when an order
+    -- is assigned to a rider, summed for rider earnings reports.
+    rider_delivery_charge DECIMAL(10,2) DEFAULT 0.00,
+
+    -- Privacy toggle. When FALSE the rider's task view hides the customer's
+    -- name + phone (call still works via the in-app proxy). Defaults to
+    -- TRUE so existing flows behave unchanged.
+    show_customer_phone BOOLEAN DEFAULT TRUE,
     
     -- Timestamps
     placed_at TIMESTAMPTZ DEFAULT NOW(),
@@ -1063,6 +1072,101 @@ COMMENT ON CONSTRAINT fk_riders_assigned_zone ON riders IS
     'Links rider to their assigned delivery zone. Zone deletion unassigns rider.';
 
 -- ============================================================================
+-- 21. RIDER DELIVERY CHARGES (per-rider, per-time-slot pay rate)
+-- ----------------------------------------------------------------------------
+-- Lets admins set what each rider earns per delivery on each time slot.
+-- The actual amount paid out for a given order is snapshotted into
+-- orders.rider_delivery_charge at assignment time.
+-- ============================================================================
+CREATE TABLE rider_delivery_charges (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    rider_id UUID NOT NULL REFERENCES riders(id) ON DELETE CASCADE,
+    time_slot_id UUID NOT NULL REFERENCES time_slots(id) ON DELETE CASCADE,
+    charge_per_order DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    effective_from TIMESTAMPTZ DEFAULT NOW(),
+    created_by UUID REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT uq_rider_delivery_charges UNIQUE (rider_id, time_slot_id)
+);
+
+-- ============================================================================
+-- 22. ORDER MESSAGES (in-app chat between customer / rider / admin)
+-- ============================================================================
+CREATE TABLE order_messages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    sender_type VARCHAR(20) NOT NULL CHECK (sender_type IN ('customer', 'rider', 'admin')),
+    sender_id UUID NOT NULL REFERENCES users(id),
+    message TEXT NOT NULL,
+    read_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 23. SITE SETTINGS (key/value store: banner_*, delivery_*, business_hours_*)
+-- ============================================================================
+CREATE TABLE site_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    key VARCHAR(255) UNIQUE NOT NULL,
+    value TEXT,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 24. SYSTEM SETTINGS (typed config — superset of site_settings)
+-- ============================================================================
+CREATE TABLE system_settings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    key VARCHAR(255) UNIQUE NOT NULL,
+    value TEXT,
+    description TEXT,
+    data_type VARCHAR(50) DEFAULT 'string',
+    is_public BOOLEAN NOT NULL DEFAULT FALSE,
+    updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 25. WEBHOOK LOGS (idempotency + audit for incoming webhooks)
+-- ============================================================================
+CREATE TABLE webhook_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    webhook_type VARCHAR(50) NOT NULL,
+    idempotency_key VARCHAR(255),
+    source VARCHAR(100) NOT NULL,
+    order_id UUID,
+    payload JSONB NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'received',
+    response_body JSONB,
+    processed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_webhook_logs_idempotency UNIQUE (idempotency_key, source)
+);
+
+-- ============================================================================
+-- 26. AUDIT LOGS (admin action audit trail — compliance + security forensics)
+-- ============================================================================
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    action VARCHAR(255) NOT NULL CHECK (action <> ''),
+    admin_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    admin_email VARCHAR(255),
+    resource VARCHAR(100) NOT NULL,
+    resource_id VARCHAR(255),
+    old_data JSONB,
+    new_data JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    status VARCHAR(20) DEFAULT 'success',
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================================================
 
@@ -1182,6 +1286,31 @@ CREATE INDEX idx_call_requests_order ON call_requests(order_id);
 -- Delivery zones indexes
 CREATE INDEX idx_zones_boundary ON delivery_zones USING GIST(boundary);
 
+-- Rider delivery charges
+CREATE INDEX idx_rider_delivery_charges_rider ON rider_delivery_charges(rider_id);
+
+-- Order messages
+CREATE INDEX idx_order_messages_order ON order_messages(order_id, created_at);
+CREATE INDEX idx_order_messages_unread ON order_messages(order_id) WHERE read_at IS NULL;
+
+-- Site / system settings (key already UNIQUE; partial index for is_public lookups)
+CREATE INDEX idx_system_settings_public ON system_settings(key) WHERE is_public = TRUE;
+
+-- Webhook logs
+CREATE INDEX idx_webhook_logs_idempotency ON webhook_logs(idempotency_key);
+CREATE INDEX idx_webhook_logs_order ON webhook_logs(order_id);
+CREATE INDEX idx_webhook_logs_source ON webhook_logs(source);
+CREATE INDEX idx_webhook_logs_status ON webhook_logs(status);
+CREATE INDEX idx_webhook_logs_created ON webhook_logs(created_at);
+
+-- Audit logs
+CREATE INDEX idx_audit_logs_admin ON audit_logs(admin_id);
+CREATE INDEX idx_audit_logs_resource ON audit_logs(resource);
+CREATE INDEX idx_audit_logs_resource_id ON audit_logs(resource_id);
+CREATE INDEX idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX idx_audit_logs_created ON audit_logs(created_at);
+CREATE INDEX idx_audit_logs_resource_date ON audit_logs(resource, created_at);
+
 -- ============================================================================
 -- TRIGGERS
 -- ============================================================================
@@ -1245,6 +1374,15 @@ CREATE TRIGGER update_payments_updated_at BEFORE UPDATE ON payments
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_notifications_updated_at BEFORE UPDATE ON notifications
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_rider_delivery_charges_updated_at BEFORE UPDATE ON rider_delivery_charges
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_site_settings_updated_at BEFORE UPDATE ON site_settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_system_settings_updated_at BEFORE UPDATE ON system_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to generate order number
