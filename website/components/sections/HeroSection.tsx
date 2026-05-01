@@ -78,7 +78,7 @@ export default function HeroSection() {
               transition={{ delay: 0.6 }}
               className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-8"
             >
-              <Link href="/category/sabzi">
+              <Link href="/products">
                 <Button size="lg" className="w-full sm:w-auto">
                   Shop Now
                   <ArrowRight className="w-5 h-5 ml-2" />

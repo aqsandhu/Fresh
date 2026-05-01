@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
+import SmartImage from '@/components/ui/SmartImage'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Minus, Plus, Trash2, X, ShoppingBag } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
@@ -98,19 +98,18 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                   <div key={item.product.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
                     {/* Image */}
                     <div className="relative w-14 h-14 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                      {item.product.image && item.product.image.startsWith('http') ? (
-                        <Image
-                          src={item.product.image}
-                          alt={item.product.name}
-                          fill
-                          className="object-cover"
-                          sizes="56px"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <ShoppingCart className="w-5 h-5 text-gray-300" />
-                        </div>
-                      )}
+                      <SmartImage
+                        src={item.product.image}
+                        alt={item.product.name}
+                        fill
+                        className="object-cover"
+                        sizes="56px"
+                        fallback={
+                          <div className="w-full h-full flex items-center justify-center">
+                            <ShoppingCart className="w-5 h-5 text-gray-300" />
+                          </div>
+                        }
+                      />
                     </div>
 
                     {/* Details */}

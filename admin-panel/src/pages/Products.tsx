@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { Badge } from '@/components/ui/Badge';
 import { productService } from '@/services/product.service';
 import { categoryService } from '@/services/category.service';
@@ -351,18 +352,16 @@ export const Products: React.FC = () => {
               <Card key={product.id} className="relative group">
                 {/* Product Image */}
                 <div className="relative h-40 bg-gray-100 rounded-lg mb-4 overflow-hidden">
-                  {getProductImageUrl(product) ? (
-                    <img
-                      src={getProductImageUrl(product)!}
-                      alt={product.nameEn}
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <ImageIcon className="w-12 h-12 text-gray-300" />
-                    </div>
-                  )}
+                  <SafeImage
+                    src={getProductImageUrl(product)}
+                    alt={product.nameEn}
+                    className="w-full h-full object-cover"
+                    fallback={
+                      <div className="flex items-center justify-center h-full">
+                        <ImageIcon className="w-12 h-12 text-gray-300" />
+                      </div>
+                    }
+                  />
                   {product.stockQuantity < 10 && (
                     <div className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full flex items-center">
                       <AlertTriangle className="w-3 h-3 mr-1" />
