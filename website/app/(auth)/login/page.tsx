@@ -1,18 +1,20 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, ArrowRight, ArrowLeft, Shield, MessageSquare, PhoneCall, Loader2 } from 'lucide-react'
+import { ArrowRight, ArrowLeft, Shield, Loader2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
 import toast from 'react-hot-toast'
+import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
+import { firebaseAuth } from '@/lib/firebase'
 
 // ── Schemas ─────────────────────────────────────────────────────────────
 const phoneSchema = z.object({
@@ -23,8 +25,6 @@ const phoneSchema = z.object({
 })
 
 type PhoneForm = z.infer<typeof phoneSchema>
-
-type OtpChannel = 'sms' | 'whatsapp' | 'call'
 
 type Step = 'phone' | 'otp'
 
@@ -38,10 +38,12 @@ export default function LoginPage() {
   const [phone, setPhone] = useState('')
   const [normalizedPhone, setNormalizedPhone] = useState('')
   const [userName, setUserName] = useState<string | null>(null)
-  const [channel, setChannel] = useState<OtpChannel>('sms')
   const [isLoading, setIsLoading] = useState(false)
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [resendTimer, setResendTimer] = useState(0)
+
+  const confirmationResultRef = useRef<ConfirmationResult | null>(null)
+  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
 
   // Resend countdown timer
   useEffect(() => {
@@ -50,17 +52,36 @@ export default function LoginPage() {
     return () => clearInterval(interval)
   }, [resendTimer])
 
+  // Cleanup reCAPTCHA on unmount
+  useEffect(() => {
+    return () => {
+      recaptchaVerifierRef.current?.clear()
+    }
+  }, [])
+
   const {
     register,
     handleSubmit,
     formState: { errors },
   } = useForm<PhoneForm>({ resolver: zodResolver(phoneSchema) })
 
+  // ── Initialize reCAPTCHA ──────────────────────────────────────────────
+  const initRecaptcha = () => {
+    recaptchaVerifierRef.current?.clear()
+    recaptchaVerifierRef.current = new RecaptchaVerifier(
+      firebaseAuth,
+      'recaptcha-container',
+      { size: 'invisible' }
+    )
+    return recaptchaVerifierRef.current
+  }
+
   // ── Send OTP ──────────────────────────────────────────────────────────
-  const sendOtp = async (phoneNumber: string, otpChannel: OtpChannel) => {
+  const sendOtp = async (phoneNumber: string) => {
     setIsLoading(true)
     try {
-      const res = await authApi.sendOtp(phoneNumber, otpChannel)
+      // Step 1: Check user existence with backend
+      const res = await authApi.sendOtp(phoneNumber)
       const data = res.data
 
       if (!data.userExists) {
@@ -71,14 +92,21 @@ export default function LoginPage() {
 
       setNormalizedPhone(data.phone)
       setUserName(data.userName)
-      setChannel(otpChannel)
+
+      // Step 2: Send OTP via Firebase (SMS)
+      const verifier = initRecaptcha()
+      const confirmation = await signInWithPhoneNumber(firebaseAuth, data.phone, verifier)
+      confirmationResultRef.current = confirmation
+
       setStep('otp')
       setOtp(['', '', '', '', '', ''])
       setResendTimer(60)
-      toast.success(res.message || `OTP sent via ${otpChannel}`)
+      toast.success('OTP sent via SMS')
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to send OTP. Please try again.'
+      const msg = err?.response?.data?.message || err?.message || 'Failed to send OTP. Please try again.'
       toast.error(msg)
+      recaptchaVerifierRef.current?.clear()
+      recaptchaVerifierRef.current = null
     } finally {
       setIsLoading(false)
     }
@@ -86,15 +114,20 @@ export default function LoginPage() {
 
   const onPhoneSubmit = async (data: PhoneForm) => {
     setPhone(data.phone)
-    await sendOtp(data.phone, channel)
+    await sendOtp(data.phone)
   }
 
   // ── Verify OTP ────────────────────────────────────────────────────────
   const verifyOtp = useCallback(async (code: string) => {
-    if (code.length !== 6) return
+    if (code.length !== 6 || !confirmationResultRef.current) return
     setIsLoading(true)
     try {
-      const res = await authApi.verifyLogin(normalizedPhone, code)
+      // Step 1: Confirm OTP with Firebase
+      const result = await confirmationResultRef.current.confirm(code)
+      const idToken = await result.user.getIdToken()
+
+      // Step 2: Send Firebase ID token to backend
+      const res = await authApi.verifyLogin(idToken)
       const { user, tokens } = res.data
 
       setAuth(
@@ -112,20 +145,18 @@ export default function LoginPage() {
       const redirectTo = searchParams.get('redirect') || '/'
       router.push(redirectTo)
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Invalid OTP. Please try again.'
+      const msg = err?.response?.data?.message || err?.message || 'Invalid OTP. Please try again.'
       toast.error(msg)
       setOtp(['', '', '', '', '', ''])
       setTimeout(() => document.getElementById('otp-0')?.focus(), 100)
     } finally {
       setIsLoading(false)
     }
-  }, [normalizedPhone, setAuth, router, searchParams])
+  }, [setAuth, router, searchParams])
 
   // ── Resend OTP ────────────────────────────────────────────────────────
-  const handleResend = async (newChannel?: OtpChannel) => {
-    const ch = newChannel || channel
-    setChannel(ch)
-    await sendOtp(phone, ch)
+  const handleResend = async () => {
+    await sendOtp(phone)
   }
 
   // ── OTP Input Handlers ────────────────────────────────────────────────
@@ -158,14 +189,11 @@ export default function LoginPage() {
   }
 
   // ── Channel Buttons ───────────────────────────────────────────────────
-  const channels: { id: OtpChannel; label: string; icon: typeof Phone }[] = [
-    { id: 'sms', label: 'SMS', icon: Phone },
-    { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare },
-    { id: 'call', label: 'Call', icon: PhoneCall },
-  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center py-12 px-4">
+      {/* Invisible reCAPTCHA container required by Firebase */}
+      <div id="recaptcha-container" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -183,7 +211,7 @@ export default function LoginPage() {
             </h1>
             <p className="text-gray-500 mt-1 text-sm">
               {step === 'otp'
-                ? <>OTP sent to <span className="font-semibold text-gray-700">{phone}</span> via {channel}</>
+                ? <>OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS</>
                 : 'Login to your Fresh Bazar account'}
             </p>
             {step === 'otp' && userName && (
@@ -203,32 +231,8 @@ export default function LoginPage() {
                     error={errors.phone?.message}
                   />
 
-                  {/* Channel Selector */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Get OTP via
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {channels.map((ch) => (
-                        <button
-                          key={ch.id}
-                          type="button"
-                          onClick={() => setChannel(ch.id)}
-                          className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition-all ${
-                            channel === ch.id
-                              ? 'border-primary-500 bg-primary-50 text-primary-700'
-                              : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                          }`}
-                        >
-                          <ch.icon className="w-4 h-4" />
-                          {ch.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
                   <Button type="submit" fullWidth isLoading={isLoading} size="lg">
-                    Send OTP
+                    Send OTP via SMS
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </form>
@@ -274,27 +278,19 @@ export default function LoginPage() {
                   </Button>
 
                   {/* Resend Options */}
-                  <div className="text-center space-y-2">
+                  <div className="text-center">
                     {resendTimer > 0 ? (
                       <p className="text-sm text-gray-500">
                         Resend OTP in <span className="font-semibold text-gray-700">{resendTimer}s</span>
                       </p>
                     ) : (
-                      <div className="space-y-1">
-                        <p className="text-xs text-gray-400 mb-2">Didn&apos;t receive it? Try again via:</p>
-                        <div className="flex justify-center gap-2">
-                          {channels.map((ch) => (
-                            <button
-                              key={ch.id}
-                              onClick={() => handleResend(ch.id)}
-                              disabled={isLoading}
-                              className="text-sm text-primary-600 font-medium hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors disabled:opacity-50"
-                            >
-                              {ch.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                      <button
+                        onClick={handleResend}
+                        disabled={isLoading}
+                        className="text-sm text-primary-600 font-medium hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors disabled:opacity-50"
+                      >
+                        Resend OTP
+                      </button>
                     )}
                   </div>
 

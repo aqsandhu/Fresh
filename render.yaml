@@ -54,5 +54,11 @@ services:
         value: uploads
       - key: MAX_FILE_SIZE
         value: "5242880"
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
     healthCheckPath: /health
     autoDeploy: true
