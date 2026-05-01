@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
-import Image from 'next/image'
 import Link from 'next/link'
+import SmartImage from '@/components/ui/SmartImage'
 import { motion } from 'framer-motion'
 import { 
   ChevronLeft, 
@@ -74,8 +74,7 @@ export default function ProductDetailPage() {
     toast.success(`${product.name} added to cart!`)
   }
 
-  const hasValidImage = Boolean(product?.image || product?.image_url)
-  const imageSrc = product?.image || product?.image_url || '/placeholder-product.png'
+  const imageSrc = product?.image || product?.image_url || undefined
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -100,19 +99,19 @@ export default function ProductDetailPage() {
               animate={{ opacity: 1, x: 0 }}
               className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden"
             >
-              {hasValidImage ? (
-                <Image
-                  src={imageSrc}
-                  alt={product.name}
-                  fill
-                  className="object-cover"
-                  priority
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-300">
-                  <ShoppingCart className="w-24 h-24" />
-                </div>
-              )}
+              <SmartImage
+                src={imageSrc}
+                alt={product.name}
+                fill
+                className="object-cover"
+                priority
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                fallback={
+                  <div className="w-full h-full flex items-center justify-center text-gray-300">
+                    <ShoppingCart className="w-24 h-24" />
+                  </div>
+                }
+              />
               {product.isFresh && (
                 <div className="absolute top-4 left-4">
                   <Badge variant="success">Fresh</Badge>

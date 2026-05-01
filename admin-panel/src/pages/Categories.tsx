@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { categoryService } from '@/services/category.service';
 import type { Category, CreateCategoryData } from '@/types';
 import { isRequired, isNonNegativeNumber } from '@/utils/validators';
@@ -273,18 +274,18 @@ export const Categories: React.FC = () => {
             >
               <div className="flex items-start space-x-4">
                 <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
-                  {getCategoryImageUrl(category) ? (
-                    <img
-                      src={getCategoryImageUrl(category)!}
-                      alt={category.nameEn}
-                      className="w-full h-full object-cover rounded-lg"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ) : category.icon ? (
-                    <span className="text-2xl">{category.icon}</span>
-                  ) : (
-                    <ImageIcon className="w-8 h-8 text-gray-300" />
-                  )}
+                  <SafeImage
+                    src={getCategoryImageUrl(category)}
+                    alt={category.nameEn}
+                    className="w-full h-full object-cover rounded-lg"
+                    fallback={
+                      category.icon ? (
+                        <span className="text-2xl">{category.icon}</span>
+                      ) : (
+                        <ImageIcon className="w-8 h-8 text-gray-300" />
+                      )
+                    }
+                  />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">

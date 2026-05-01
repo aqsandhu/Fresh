@@ -2,14 +2,15 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
+import SmartImage from '@/components/ui/SmartImage'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Trash2, 
-  Minus, 
-  Plus, 
-  ShoppingBag, 
+import {
+  Trash2,
+  Minus,
+  Plus,
+  ShoppingBag,
+  ShoppingCart,
   ArrowRight,
   Truck,
   AlertCircle,
@@ -86,11 +87,17 @@ export default function CartPage() {
                     {/* Image */}
                     <Link href={`/product/${item.product.id}`}>
                       <div className="relative w-24 h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                        <Image
-                          src={item.product?.image || item.product?.image_url || '/placeholder-product.png'}
+                        <SmartImage
+                          src={item.product?.image || item.product?.image_url}
                           alt={item.product.name}
                           fill
                           className="object-cover"
+                          sizes="96px"
+                          fallback={
+                            <div className="w-full h-full flex items-center justify-center">
+                              <ShoppingCart className="w-8 h-8 text-gray-300" />
+                            </div>
+                          }
                         />
                       </div>
                     </Link>
@@ -227,7 +234,7 @@ export default function CartPage() {
 
               {/* Continue Shopping */}
               <Link
-                href="/category/sabzi"
+                href="/products"
                 className="block text-center text-primary-600 mt-4 hover:underline"
               >
                 Continue Shopping

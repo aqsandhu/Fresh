@@ -56,7 +56,7 @@ export default function FeaturedProductsSection() {
             </p>
           </div>
           <Link
-            href="/category/sabzi"
+            href="/products"
             className="inline-flex items-center text-primary-600 font-medium hover:text-primary-700 transition-colors"
           >
             View All Products

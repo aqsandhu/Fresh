@@ -47,27 +47,30 @@ api.interceptors.response.use(
 // DATA MAPPING: Backend snake_case → Website types
 // ============================================================================
 
-const PLACEHOLDER_IMAGE = '/placeholder-product.jpg'
 const BACKEND_URL = API_BASE_URL.replace('/api', '')
 
-function resolveImageUrl(path: string | null | undefined): string {
-  if (!path) return PLACEHOLDER_IMAGE
-  
-  // Check if it's already a complete URL (http, https, or protocol-relative)
+// Resolve a stored image reference to a full URL the browser can load. Returns
+// `undefined` (NOT a fake placeholder path) when there is no image, so cards
+// can render their own visual fallback consistently. Previously this returned
+// a non-existent /placeholder-product.jpg which made some surfaces show a
+// broken-image icon and others show their fallback — confusing UX.
+function resolveImageUrl(path: string | null | undefined): string | undefined {
+  if (!path) return undefined
+
+  // Already absolute (http(s) or protocol-relative).
   if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('//')) {
-    // Reject fake/placeholder domains
-    if (path.includes('example.com')) return PLACEHOLDER_IMAGE
+    if (path.includes('example.com')) return undefined
     return path
   }
-  
-  // Check if it's a data URL
+
+  // Data URL — browsers can load these directly.
   if (path.startsWith('data:')) {
     return path
   }
-  
-  // Ensure path starts with /
+
+  // Relative path on the backend (e.g. /uploads/abc.jpg). Prefix with the
+  // backend host so it works from any origin (Vercel, mobile, localhost dev).
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
-  
   return `${BACKEND_URL}${normalizedPath}`
 }
 
