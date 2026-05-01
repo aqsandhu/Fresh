@@ -36,31 +36,24 @@ jest.mock('@sentry/node', () => ({
   },
 }));
 
-// Mock Twilio
-jest.mock('twilio', () => {
-  return jest.fn().mockImplementation(() => ({
-    messages: {
-      create: jest.fn().mockResolvedValue({ sid: 'test-message-sid' }),
-    },
-    verify: {
-      v2: {
-        services: jest.fn().mockReturnValue({
-          verifications: {
-            create: jest.fn().mockResolvedValue({ sid: 'test-verification-sid', status: 'pending' }),
-          },
-          verificationChecks: {
-            create: jest.fn().mockResolvedValue({ sid: 'test-check-sid', status: 'approved', valid: true }),
-          },
-        }),
-      },
-    },
-  }));
-});
+// Mock Firebase Admin
+jest.mock('firebase-admin', () => ({
+  apps: [],
+  initializeApp: jest.fn().mockReturnValue({}),
+  credential: {
+    cert: jest.fn(),
+  },
+  auth: jest.fn().mockReturnValue({
+    verifyIdToken: jest.fn().mockResolvedValue({
+      uid: 'test-uid',
+      phone_number: '+923001234567',
+    }),
+  }),
+}));
 
-// Mock OTP Service
+// Mock Firebase Auth Service
 jest.mock('@/services/otp.service', () => ({
-  sendOtp: jest.fn().mockResolvedValue({ success: true, message: 'OTP sent successfully' }),
-  verifyOtp: jest.fn().mockResolvedValue({ success: true, message: 'OTP verified' }),
+  verifyFirebaseToken: jest.fn().mockResolvedValue({ success: true, phone: '+923001234567', message: 'Token verified' }),
 }));
 
 // Mock logger to reduce test noise
