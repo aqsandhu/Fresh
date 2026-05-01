@@ -31,8 +31,16 @@ const nextConfig = {
       },
     ];
   },
-  // Prevent Next.js from bundling firebase/auth's Node.js internals (undici) into the client build
-  serverExternalPackages: ['undici'],
+  // Force Firebase auth to use browser ESM build (avoids pulling undici/Node.js internals into client bundle)
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        '@firebase/auth': '@firebase/auth/dist/index.esm2017.js',
+      };
+    }
+    return config;
+  },
 };
 
 module.exports = nextConfig;
