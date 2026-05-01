@@ -148,7 +148,7 @@ export default function OrdersPage() {
         <div className="container mx-auto px-4">
           <EmptyState
             type="orders"
-            onAction={() => window.location.href = '/category/sabzi'}
+            onAction={() => window.location.href = '/products'}
           />
         </div>
       </div>

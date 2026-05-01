@@ -1,6 +1,5 @@
 'use client'
 
-import Image from 'next/image'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Plus, Minus, Trash2, Leaf } from 'lucide-react'
@@ -8,11 +7,24 @@ import { Product } from '@/types'
 import { formatPriceShort } from '@/lib/utils'
 import { useCartStore } from '@/store/cartStore'
 import Badge from './Badge'
+import SmartImage from './SmartImage'
 import toast from 'react-hot-toast'
 
 interface ProductCardProps {
   product: Product
   showAddToCart?: boolean
+}
+
+// Inline visual fallback when no image is set or the image fails to load.
+// Defined as a constant so SmartImage's `fallback` prop is referentially
+// stable across renders (no per-card object churn).
+function ImageFallback() {
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
+      <ShoppingCart className="w-10 h-10 mb-1" />
+      <span className="text-xs text-gray-400">No Image</span>
+    </div>
+  )
 }
 
 export default function ProductCard({ product, showAddToCart = true }: ProductCardProps) {
@@ -47,25 +59,23 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
     <motion.div
       whileHover={{ y: -4 }}
       transition={{ duration: 0.2 }}
+      className="h-full"
     >
-      <Link href={`/product/${product.id}`}>
-        <div className="group bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300">
+      {/* Equal-height card so a full grid stays aligned regardless of name /
+          urdu / discount badge presence. flex-col + h-full + grow on the body
+          pins the price + CTA row to the bottom of every card. */}
+      <Link href={`/product/${product.id}`} className="block h-full">
+        <div className="group h-full flex flex-col bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300">
           {/* Image Container */}
           <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
-            {product.image && product.image.startsWith('http') ? (
-              <Image
-                src={product.image}
-                alt={product.name}
-                fill
-                className="object-cover group-hover:scale-110 transition-transform duration-500"
-                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              />
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
-                <ShoppingCart className="w-10 h-10 mb-1" />
-                <span className="text-xs text-gray-400">No Image</span>
-              </div>
-            )}
+            <SmartImage
+              src={product.image}
+              alt={product.name}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              className="object-cover group-hover:scale-110 transition-transform duration-500"
+              fallback={<ImageFallback />}
+            />
 
             {/* Top-left: Fresh badge always shows when in stock; "Out of Stock"
                 takes the same slot when stock is zero. The discount % moves
@@ -90,9 +100,12 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               </div>
             )}
 
-            {/* Quick Add Button (shown on hover when not in cart) */}
+            {/* Hover-revealed Add to Cart — desktop only. Mobile gets the
+                same action via the always-visible button at the bottom of the
+                card so users don't depend on hover (which doesn't exist on
+                touch). */}
             {showAddToCart && product.isFresh && quantity === 0 && (
-              <div className="absolute inset-x-0 bottom-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              <div className="hidden md:block absolute inset-x-0 bottom-0 p-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                 <button
                   onClick={handleAddToCart}
                   className="w-full bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold py-2.5 rounded-xl shadow-lg transition-colors flex items-center justify-center gap-2"
@@ -104,9 +117,8 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
             )}
           </div>
 
-          {/* Content */}
-          <div className="p-3.5">
-            {/* Unit label */}
+          {/* Content — grows to fill so price+CTA sit at the bottom edge. */}
+          <div className="p-3.5 flex flex-col flex-grow">
             <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">
               per {product.unit}
             </span>
@@ -115,13 +127,14 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               {product.name}
             </h3>
             {product.nameUrdu && (
-              <p className="text-xs text-gray-400 mb-2 font-urdu" dir="rtl">
+              <p className="text-xs text-gray-400 mb-2 font-urdu line-clamp-1" dir="rtl">
                 {product.nameUrdu}
               </p>
             )}
 
-            <div className="flex items-end justify-between mt-auto">
-              <div className="flex items-baseline gap-1.5">
+            {/* Price row pinned to the bottom regardless of name length. */}
+            <div className="flex items-end justify-between gap-2 mt-auto pt-2">
+              <div className="flex items-baseline gap-1.5 flex-wrap">
                 <span className="text-lg font-bold text-primary-700">
                   {formatPriceShort(product.price)}
                 </span>
@@ -132,7 +145,7 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
                 )}
               </div>
 
-              {/* Quantity Controls (when in cart) */}
+              {/* Inline quantity stepper when the item is already in the cart. */}
               {showAddToCart && product.isFresh && quantity > 0 && (
                 <AnimatePresence>
                   <motion.div
@@ -163,17 +176,21 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
                   </motion.div>
                 </AnimatePresence>
               )}
-
-              {/* Add button (when not in cart, mobile) */}
-              {showAddToCart && product.isFresh && quantity === 0 && (
-                <button
-                  onClick={handleAddToCart}
-                  className="lg:hidden w-9 h-9 flex items-center justify-center rounded-xl bg-primary-600 hover:bg-primary-700 text-white shadow-sm transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              )}
             </div>
+
+            {/* Mobile: full-width Add to Cart button below the price row when
+                the item isn't in the cart yet. Hover doesn't exist on touch,
+                so we don't rely on the over-image hover button on small
+                screens. Hidden on md+ where the hover overlay handles it. */}
+            {showAddToCart && product.isFresh && quantity === 0 && (
+              <button
+                onClick={handleAddToCart}
+                className="md:hidden mt-3 w-full inline-flex items-center justify-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold py-2 rounded-xl transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add to Cart
+              </button>
+            )}
           </div>
         </div>
       </Link>
