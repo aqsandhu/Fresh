@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
@@ -8,6 +9,7 @@ import {
   Image as ImageIcon,
   Upload,
   X,
+  ArrowRight,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -27,6 +29,14 @@ interface FormErrors {
 
 export const Categories: React.FC = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  // Click handler for the card. The Edit / Delete buttons stop propagation,
+  // so clicking elsewhere on the card jumps into the Products page filtered
+  // to this category — same product CRUD as /admin/products, just scoped.
+  const goToCategoryProducts = (categoryId: string) => {
+    navigate(`/admin/products?category=${categoryId}`);
+  };
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
@@ -256,7 +266,11 @@ export const Categories: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {categories.map((category) => (
-            <Card key={category.id} className="relative">
+            <Card
+              key={category.id}
+              className="relative cursor-pointer group hover:shadow-md transition-shadow"
+              onClick={() => goToCategoryProducts(category.id)}
+            >
               <div className="flex items-start space-x-4">
                 <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden">
                   {getCategoryImageUrl(category) ? (
@@ -273,7 +287,10 @@ export const Categories: React.FC = () => {
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium text-gray-900">{category.nameEn}</h3>
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-medium text-gray-900">{category.nameEn}</h3>
+                    <ArrowRight className="w-4 h-4 text-gray-300 group-hover:text-primary-600 group-hover:translate-x-0.5 transition-all flex-shrink-0 mt-1" />
+                  </div>
                   <p className="text-sm text-gray-500" dir="rtl">{category.nameUr}</p>
                   <div className="flex items-center mt-2 space-x-2">
                     <Badge variant={category.isActive ? 'success' : 'default'} size="sm">
@@ -285,16 +302,17 @@ export const Categories: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  {/* Actions */}
+                  {/* Actions — stopPropagation so the card-level click handler
+                      doesn't navigate when the user actually wanted to edit. */}
                   <div className="flex items-center mt-3 space-x-2">
                     <button
-                      onClick={() => openEditModal(category)}
+                      onClick={(e) => { e.stopPropagation(); openEditModal(category); }}
                       className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                     >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleDelete(category.id)}
+                      onClick={(e) => { e.stopPropagation(); handleDelete(category.id); }}
                       className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />

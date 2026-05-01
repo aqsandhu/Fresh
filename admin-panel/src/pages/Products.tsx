@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
@@ -45,8 +46,25 @@ interface FormErrors {
 
 export const Products: React.FC = () => {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
+  // Pre-fill the category filter from the URL when arriving from
+  // /admin/categories so clicking a category lands you on its products.
+  const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || '');
+
+  // Keep the URL in sync with the filter selection so the back button works
+  // and the URL is shareable.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (categoryFilter) {
+      next.set('category', categoryFilter);
+    } else {
+      next.delete('category');
+    }
+    if (next.toString() !== searchParams.toString()) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [categoryFilter]); // eslint-disable-line react-hooks/exhaustive-deps
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [page, setPage] = useState(1);

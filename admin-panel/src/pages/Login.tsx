@@ -118,11 +118,6 @@ export const Login: React.FC = () => {
               Sign In
             </Button>
           </form>
-
-          <div className="mt-6 text-center text-sm text-gray-500">
-            <p>Demo credentials:</p>
-            <p className="font-mono mt-1">+923001234567 / admin123</p>
-          </div>
         </div>
 
         {/* Footer */}
