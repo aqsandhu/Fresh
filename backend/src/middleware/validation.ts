@@ -95,22 +95,19 @@ export const commonSchemas = {
 export const authSchemas = {
   sendOtp: Joi.object({
     phone: commonSchemas.phone.required(),
-    channel: Joi.string().valid('sms', 'whatsapp', 'call').default('sms'),
   }),
 
   verifyLogin: Joi.object({
-    phone: commonSchemas.phone.required(),
-    code: Joi.string().length(6).pattern(/^\d+$/).required().messages({
-      'string.length': 'OTP must be 6 digits',
-      'string.pattern.base': 'OTP must contain only numbers',
+    idToken: Joi.string().min(100).required().messages({
+      'string.min': 'Invalid verification token',
+      'any.required': 'Verification token is required',
     }),
   }),
 
   verifyRegister: Joi.object({
-    phone: commonSchemas.phone.required(),
-    code: Joi.string().length(6).pattern(/^\d+$/).required().messages({
-      'string.length': 'OTP must be 6 digits',
-      'string.pattern.base': 'OTP must contain only numbers',
+    idToken: Joi.string().min(100).required().messages({
+      'string.min': 'Invalid verification token',
+      'any.required': 'Verification token is required',
     }),
     full_name: commonSchemas.name.required(),
     email: commonSchemas.email,

@@ -1,114 +1,55 @@
 // ============================================================================
-// OTP SERVICE - Twilio Verify (SMS, WhatsApp, Call)
+// FIREBASE AUTH SERVICE - Phone token verification via Firebase Admin SDK
 // ============================================================================
 
-import twilio from 'twilio';
+import * as admin from 'firebase-admin';
 import logger from '../utils/logger';
 
-const ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
-const VERIFY_SERVICE_SID = process.env.TWILIO_VERIFY_SERVICE_SID;
-
-if (!ACCOUNT_SID || !AUTH_TOKEN || !VERIFY_SERVICE_SID) {
-  logger.warn('Twilio credentials not configured. OTP service will not work.');
-}
-
-const client = ACCOUNT_SID && AUTH_TOKEN ? twilio(ACCOUNT_SID, AUTH_TOKEN) : null;
-const IS_DEV = process.env.NODE_ENV !== 'production';
-const DEV_OTP_CODE = '123456';
-
-export type OtpChannel = 'sms' | 'whatsapp' | 'call';
-
-/**
- * Send OTP to a phone number via the specified channel
- * @param phone - Phone number in E.164 format (e.g., +923451111346)
- * @param channel - 'sms' | 'whatsapp' | 'call'
- */
-export async function sendOtp(phone: string, channel: OtpChannel = 'sms'): Promise<{ success: boolean; message: string }> {
-  // Dev mode: skip Twilio, use fixed OTP code
-  if (IS_DEV) {
-    logger.info('DEV MODE: OTP bypassed', { phone, channel, code: DEV_OTP_CODE });
-    return { success: true, message: `DEV MODE: Use code ${DEV_OTP_CODE}` };
+function getFirebaseApp(): admin.app.App {
+  if (admin.apps.length > 0) {
+    return admin.apps[0]!;
   }
 
-  if (!client || !VERIFY_SERVICE_SID) {
-    logger.error('Twilio not configured');
-    return { success: false, message: 'OTP service not configured' };
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+  if (!projectId || !clientEmail || !privateKey) {
+    logger.warn('Firebase Admin credentials not configured. Phone auth will not work.');
+    throw new Error('Firebase Admin not configured');
   }
 
-  try {
-    const verification = await client.verify.v2
-      .services(VERIFY_SERVICE_SID)
-      .verifications.create({
-        to: phone,
-        channel,
-      });
-
-    logger.info('OTP sent', { phone, channel, status: verification.status });
-    return { success: true, message: `OTP sent via ${channel}` };
-  } catch (error: any) {
-    logger.error('Failed to send OTP', { phone, channel, error: error.message });
-
-    // Provide user-friendly error messages
-    if (error.code === 60200) {
-      return { success: false, message: 'Invalid phone number format' };
-    }
-    if (error.code === 60203) {
-      return { success: false, message: 'Too many OTP requests. Please wait before trying again.' };
-    }
-    if (error.code === 60212) {
-      return { success: false, message: 'This channel is not available for this phone number. Try a different method.' };
-    }
-
-    return { success: false, message: 'Failed to send OTP. Please try again.' };
-  }
+  return admin.initializeApp({
+    credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+  });
 }
 
 /**
- * Verify OTP code entered by the user
- * @param phone - Phone number in E.164 format
- * @param code - The 6-digit OTP code
+ * Verify a Firebase Phone Auth ID token.
+ * Returns the verified phone number (E.164 format) on success.
  */
-export async function verifyOtp(phone: string, code: string): Promise<{ success: boolean; message: string }> {
-  // Dev mode: accept fixed OTP code
-  if (IS_DEV) {
-    if (code === DEV_OTP_CODE) {
-      logger.info('DEV MODE: OTP verified', { phone });
-      return { success: true, message: 'Phone number verified successfully' };
-    }
-    return { success: false, message: 'Invalid OTP code' };
-  }
-
-  if (!client || !VERIFY_SERVICE_SID) {
-    logger.error('Twilio not configured');
-    return { success: false, message: 'OTP service not configured' };
-  }
-
+export async function verifyFirebaseToken(
+  idToken: string
+): Promise<{ success: boolean; phone?: string; message: string }> {
   try {
-    const verificationCheck = await client.verify.v2
-      .services(VERIFY_SERVICE_SID)
-      .verificationChecks.create({
-        to: phone,
-        code,
-      });
+    const app = getFirebaseApp();
+    const decoded = await admin.auth(app).verifyIdToken(idToken);
 
-    if (verificationCheck.status === 'approved') {
-      logger.info('OTP verified', { phone });
-      return { success: true, message: 'Phone number verified successfully' };
+    if (!decoded.phone_number) {
+      return { success: false, message: 'No phone number associated with this token' };
     }
 
-    logger.warn('OTP verification failed', { phone, status: verificationCheck.status });
-    return { success: false, message: 'Invalid or expired OTP code' };
+    return { success: true, phone: decoded.phone_number, message: 'Token verified' };
   } catch (error: any) {
-    logger.error('OTP verification error', { phone, error: error.message });
+    logger.error('Firebase token verification failed', { error: error.message });
 
-    if (error.code === 60200) {
-      return { success: false, message: 'Invalid phone number' };
+    if (error.code === 'auth/id-token-expired') {
+      return { success: false, message: 'Verification session expired. Please try again.' };
     }
-    if (error.code === 20404) {
-      return { success: false, message: 'OTP expired or not found. Please request a new one.' };
+    if (error.code === 'auth/invalid-id-token') {
+      return { success: false, message: 'Invalid verification token. Please try again.' };
     }
 
-    return { success: false, message: 'Verification failed. Please try again.' };
+    return { success: false, message: 'Phone verification failed. Please try again.' };
   }
 }

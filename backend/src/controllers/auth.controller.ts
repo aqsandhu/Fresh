@@ -16,7 +16,7 @@ import {
   conflictResponse,
 } from '../utils/response';
 import { normalizePhoneNumber } from '../utils/validators';
-import { sendOtp, verifyOtp, OtpChannel } from '../services/otp.service';
+import { verifyFirebaseToken } from '../services/otp.service';
 import logger from '../utils/logger';
 
 const SALT_ROUNDS = 12;
@@ -26,16 +26,10 @@ const SALT_ROUNDS = 12;
 // POST /api/auth/send-otp
 // ============================================================================
 export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { phone, channel = 'sms' } = req.body;
+  const { phone } = req.body;
   const normalizedPhone = normalizePhoneNumber(phone);
 
-  // Validate channel
-  const validChannels: OtpChannel[] = ['sms', 'whatsapp', 'call'];
-  if (!validChannels.includes(channel)) {
-    return errorResponse(res, 'Invalid channel. Use: sms, whatsapp, or call', 400);
-  }
-
-  // Check if user exists (to tell frontend whether to show register or login form)
+  // Check if user exists (frontend uses this to decide login vs register flow)
   const existingUser = await query(
     'SELECT id, full_name, status FROM users WHERE phone = $1 AND deleted_at IS NULL',
     [normalizedPhone]
@@ -47,21 +41,14 @@ export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Account is suspended. Please contact support.', 403);
   }
 
-  // Send OTP via Twilio Verify
-  const result = await sendOtp(normalizedPhone, channel as OtpChannel);
-
-  if (!result.success) {
-    return errorResponse(res, result.message, 400);
-  }
-
-  logger.info('OTP sent', { phone: normalizedPhone, channel, userExists });
+  // OTP is sent client-side via Firebase SDK — backend just confirms user existence
+  logger.info('Phone check for Firebase OTP flow', { phone: normalizedPhone, userExists });
 
   successResponse(res, {
     phone: normalizedPhone,
-    channel,
     userExists,
     userName: userExists ? existingUser.rows[0].full_name : null,
-  }, result.message);
+  }, 'Ready for OTP verification');
 });
 
 // ============================================================================
@@ -69,14 +56,15 @@ export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) =
 // POST /api/auth/verify-login
 // ============================================================================
 export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) => {
-  const { phone, code } = req.body;
-  const normalizedPhone = normalizePhoneNumber(phone);
+  const { idToken } = req.body;
 
-  // Verify OTP with Twilio
-  const otpResult = await verifyOtp(normalizedPhone, code);
-  if (!otpResult.success) {
-    return unauthorizedResponse(res, otpResult.message);
+  // Verify Firebase ID token — phone number is extracted from the token
+  const tokenResult = await verifyFirebaseToken(idToken);
+  if (!tokenResult.success) {
+    return unauthorizedResponse(res, tokenResult.message);
   }
+
+  const normalizedPhone = tokenResult.phone!;
 
   // Find user
   const result = await query(
@@ -112,7 +100,7 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
     [user.id]
   );
 
-  logger.info('User logged in via OTP', { userId: user.id, phone: user.phone });
+  logger.info('User logged in via Firebase OTP', { userId: user.id, phone: user.phone });
 
   successResponse(res, {
     user: {
@@ -132,14 +120,15 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
 // POST /api/auth/verify-register
 // ============================================================================
 export const verifyRegisterOtp = asyncHandler(async (req: Request, res: Response) => {
-  const { phone, code, full_name, email, password } = req.body;
-  const normalizedPhone = normalizePhoneNumber(phone);
+  const { idToken, full_name, email, password } = req.body;
 
-  // Verify OTP with Twilio
-  const otpResult = await verifyOtp(normalizedPhone, code);
-  if (!otpResult.success) {
-    return unauthorizedResponse(res, otpResult.message);
+  // Verify Firebase ID token — phone number is extracted from the token
+  const tokenResult = await verifyFirebaseToken(idToken);
+  if (!tokenResult.success) {
+    return unauthorizedResponse(res, tokenResult.message);
   }
+
+  const normalizedPhone = tokenResult.phone!;
 
   // Double-check user doesn't already exist
   const existingUser = await query(
@@ -178,7 +167,7 @@ export const verifyRegisterOtp = asyncHandler(async (req: Request, res: Response
   // Generate tokens
   const tokens = generateTokenPair(user.id, user.phone, user.role);
 
-  logger.info('New user registered via OTP', { userId: user.id, phone: user.phone });
+  logger.info('New user registered via Firebase OTP', { userId: user.id, phone: user.phone });
 
   createdResponse(res, {
     user: {

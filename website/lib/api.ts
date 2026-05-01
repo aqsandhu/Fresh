@@ -171,22 +171,21 @@ export const categoriesApi = {
 
 // Auth API
 export const authApi = {
-  // Step 1: Send OTP to phone (supports sms, whatsapp, call)
-  sendOtp: async (phone: string, channel: 'sms' | 'whatsapp' | 'call' = 'sms') => {
-    const response = await api.post('/auth/send-otp', { phone, channel })
-    return response.data // { success, data: { phone, channel, userExists, userName }, message }
+  // Step 1: Check if phone is registered (Firebase sends OTP client-side)
+  sendOtp: async (phone: string) => {
+    const response = await api.post('/auth/send-otp', { phone })
+    return response.data // { success, data: { phone, userExists, userName }, message }
   },
 
-  // Step 2a: Verify OTP and login (existing user)
-  verifyLogin: async (phone: string, code: string) => {
-    const response = await api.post('/auth/verify-login', { phone, code })
+  // Step 2a: Verify Firebase ID token and login (existing user)
+  verifyLogin: async (idToken: string) => {
+    const response = await api.post('/auth/verify-login', { idToken })
     return response.data // { success, data: { user, tokens }, message }
   },
 
-  // Step 2b: Verify OTP and register (new user)
+  // Step 2b: Verify Firebase ID token and register (new user)
   verifyRegister: async (data: {
-    phone: string
-    code: string
+    idToken: string
     full_name: string
     email?: string
     password: string
