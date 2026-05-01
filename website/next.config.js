@@ -31,6 +31,8 @@ const nextConfig = {
       },
     ];
   },
+  // Prevent Next.js from bundling firebase/auth's Node.js internals (undici) into the client build
+  serverExternalPackages: ['undici'],
 };
 
 module.exports = nextConfig;
