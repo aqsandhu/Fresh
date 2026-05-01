@@ -39,7 +39,7 @@ services:
       - key: DB_SSL
         value: "true"
       - key: CORS_ORIGIN
-        value: "*"
+        value: "https://freshbazar.vercel.app,https://freshbazar-admin.netlify.app"
       - key: CORS_CREDENTIALS
         value: "true"
       - key: JWT_SECRET
