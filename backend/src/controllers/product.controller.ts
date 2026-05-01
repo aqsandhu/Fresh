@@ -217,17 +217,21 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
  * GET /api/products/featured/list
  */
 export const getFeaturedProducts = asyncHandler(async (req: Request, res: Response) => {
-  const { limit = 10 } = req.query;
+  // Cap the limit at 500 to avoid arbitrarily huge queries even if the client
+  // asks for "all"; the original 10 was too small (frontend wants every
+  // featured product on the homepage).
+  const requested = parseInt((req.query.limit as string) || '500', 10);
+  const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 500) : 500;
 
   const result = await query(
-    `SELECT 
+    `SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE
-    ORDER BY p.is_featured DESC, p.order_count DESC, p.created_at DESC
+    WHERE p.is_active = TRUE AND p.is_featured = TRUE
+    ORDER BY p.order_count DESC, p.created_at DESC
     LIMIT $1`,
     [limit]
   );

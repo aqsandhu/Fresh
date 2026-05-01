@@ -87,14 +87,17 @@ export const authService = {
       const refreshToken = localStorage.getItem('admin_refresh_token');
       if (!refreshToken) return false;
 
-      const response = await api.post<ApiResponse<{ accessToken: string; refreshToken: string }>>(
-        '/admin/refresh-token',
+      // Backend exposes the refresh endpoint at /api/auth/refresh — there
+      // is no /admin/refresh-token route. Wrong path was silently 404'ing
+      // before, which is why sessions felt like they "just expired".
+      const response = await api.post<ApiResponse<{ tokens: { accessToken: string; refreshToken: string } }>>(
+        '/auth/refresh',
         { refreshToken }
       );
 
-      if (response.success && response.data) {
-        localStorage.setItem('admin_token', response.data.accessToken);
-        localStorage.setItem('admin_refresh_token', response.data.refreshToken);
+      if (response.success && response.data?.tokens) {
+        localStorage.setItem('admin_token', response.data.tokens.accessToken);
+        localStorage.setItem('admin_refresh_token', response.data.tokens.refreshToken);
         return true;
       }
       return false;

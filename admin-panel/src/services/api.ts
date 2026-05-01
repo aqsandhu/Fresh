@@ -73,6 +73,60 @@ apiClient.interceptors.request.use(
   }
 );
 
+// Refresh-token machinery. When a request 401s with an expired access token
+// we call POST /api/auth/refresh, swap the new tokens into localStorage, then
+// retry the original request exactly once. Concurrent failed requests share a
+// single in-flight refresh promise so we don't trigger N parallel refreshes.
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  const stored = localStorage.getItem('admin_refresh_token');
+  if (!stored) return null;
+
+  refreshPromise = (async () => {
+    try {
+      // Use a bare axios call (not apiClient) so this request bypasses the
+      // 401 interceptor — otherwise a failing refresh would recurse.
+      const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {
+        refreshToken: stored,
+      });
+      // Backend wraps payload in { success, data: { tokens: {...} } } and
+      // (because of the response converter) we don't get to use it here, so
+      // we read the raw response shape.
+      const tokens = data?.data?.tokens;
+      const accessToken = tokens?.accessToken || tokens?.access_token;
+      const refreshToken = tokens?.refreshToken || tokens?.refresh_token;
+      if (!accessToken) return null;
+
+      localStorage.setItem('admin_token', accessToken);
+      if (refreshToken) {
+        localStorage.setItem('admin_refresh_token', refreshToken);
+      }
+      return accessToken;
+    } catch {
+      return null;
+    } finally {
+      // Clear the in-flight promise after it resolves either way so future
+      // expirations can trigger a new refresh.
+      setTimeout(() => { refreshPromise = null; }, 0);
+    }
+  })();
+
+  return refreshPromise;
+}
+
+function redirectToLogin() {
+  localStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_refresh_token');
+  localStorage.removeItem('admin_user');
+  const currentPath = window.location.pathname;
+  window.location.href = currentPath && currentPath !== '/admin/login'
+    ? `/admin/login?redirect=${currentPath}`
+    : '/admin/login';
+}
+
 // Response interceptor for error handling and snake_case -> camelCase conversion
 apiClient.interceptors.response.use(
   (response) => {
@@ -82,17 +136,25 @@ apiClient.interceptors.response.use(
     }
     return response;
   },
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     const message = (error.response?.data as { message?: string })?.message || 'Something went wrong';
-    
-    if (error.response?.status === 401) {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_user');
-      const currentPath = window.location.pathname;
-      window.location.href = currentPath && currentPath !== '/admin/login'
-        ? `/admin/login?redirect=${currentPath}`
-        : '/admin/login';
+    const original = error.config as InternalAxiosRequestConfig & { _retried?: boolean };
+
+    if (error.response?.status === 401 && original && !original._retried) {
+      // Try to refresh the access token transparently and retry the request.
+      original._retried = true;
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        original.headers = original.headers ?? {};
+        (original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+        return apiClient.request(original);
+      }
+      // Refresh failed → kick the user out.
       toast.error('Session expired. Please login again.');
+      redirectToLogin();
+    } else if (error.response?.status === 401) {
+      // Already retried once — give up.
+      redirectToLogin();
     } else if (error.response?.status === 403) {
       toast.error('You do not have permission to perform this action');
     } else if (error.response?.status && error.response.status >= 500) {
@@ -100,7 +162,7 @@ apiClient.interceptors.response.use(
     } else {
       toast.error(message);
     }
-    
+
     return Promise.reject(error);
   }
 );

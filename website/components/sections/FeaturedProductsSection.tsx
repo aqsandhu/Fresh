@@ -31,7 +31,9 @@ const itemVariants = {
 export default function FeaturedProductsSection() {
   const { data: featuredProducts, isLoading } = useQuery({
     queryKey: ['featured-products'],
-    queryFn: () => productsApi.getFeatured(8),
+    // No frontend cap — the backend returns every featured product. Render
+    // them all; the responsive grid handles arbitrary counts.
+    queryFn: () => productsApi.getFeatured(500),
   })
 
   return (

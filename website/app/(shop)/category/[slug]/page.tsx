@@ -23,9 +23,10 @@ export default function CategoryPage() {
   const [inStockOnly, setInStockOnly] = useState(false)
 
   // Fetch category info by slug
-  const { data: category } = useQuery({
+  const { data: category, isLoading: categoryLoading, error: categoryError } = useQuery({
     queryKey: ['category', slug],
     queryFn: () => categoriesApi.getBySlug(slug),
+    retry: false,
   })
 
   // Map sort option to backend params
@@ -187,9 +188,24 @@ export default function CategoryPage() {
               </motion.div>
             ))}
           </div>
+        ) : categoryError ? (
+          <div className="text-center py-12">
+            <p className="text-gray-700 font-medium mb-2">Category not found</p>
+            <p className="text-gray-500 text-sm">
+              No category exists with slug <code className="bg-gray-100 px-1.5 py-0.5 rounded">{slug}</code>.
+              Add this category from the admin panel and assign products to it.
+            </p>
+          </div>
+        ) : !categoryLoading && !category ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500">Loading category...</p>
+          </div>
         ) : (
           <div className="text-center py-12">
-            <p className="text-gray-500">No products found in this category.</p>
+            <p className="text-gray-700 font-medium mb-2">No products in this category yet</p>
+            <p className="text-gray-500 text-sm">
+              Add products to <strong>{category?.name || slug}</strong> from the admin panel.
+            </p>
           </div>
         )}
       </div>

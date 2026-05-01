@@ -67,25 +67,25 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               </div>
             )}
 
-            {/* Discount Badge */}
-            {discountPercent > 0 && (
-              <div className="absolute top-2 left-2">
-                <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-lg shadow-sm">
-                  -{discountPercent}%
-                </span>
-              </div>
-            )}
-
-            {/* Fresh / Out of Stock Badge */}
-            {!product.isFresh ? (
-              <div className="absolute top-2 left-2">
-                <Badge variant="danger">Out of Stock</Badge>
-              </div>
-            ) : !discountPercent && (
-              <div className="absolute top-2 left-2">
+            {/* Top-left: Fresh badge always shows when in stock; "Out of Stock"
+                takes the same slot when stock is zero. The discount % moves
+                to the opposite corner so both can coexist. */}
+            <div className="absolute top-2 left-2">
+              {product.isFresh ? (
                 <span className="bg-green-500/90 backdrop-blur-sm text-white text-xs font-medium px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm">
                   <Leaf className="w-3 h-3" />
                   Fresh
+                </span>
+              ) : (
+                <Badge variant="danger">Out of Stock</Badge>
+              )}
+            </div>
+
+            {/* Top-right: discount %, when compareAtPrice > price. */}
+            {discountPercent > 0 && (
+              <div className="absolute top-2 right-2">
+                <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-lg shadow-sm">
+                  -{discountPercent}% OFF
                 </span>
               </div>
             )}
