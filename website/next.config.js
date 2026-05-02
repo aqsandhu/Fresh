@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Tell Next.js to transpile Firebase packages — this forces webpack to use
+  // the browser-compatible exports instead of the Node.js (node-esm) build,
+  // which was pulling in undici and breaking the client bundle.
+  transpilePackages: ['firebase', '@firebase/auth', '@firebase/app', '@firebase/util', '@firebase/component', '@firebase/logger'],
   // The website code predates a large refactor of the shared type layer
   // (snake_case -> camelCase, renamed Product/Category/Order fields). Rather
   // than pinning the Vercel deploy behind an exhaustive component rewrite,
@@ -30,18 +34,6 @@ const nextConfig = {
         destination: (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api') + '/:path*',
       },
     ];
-  },
-  // Alias undici to false (empty module) on the client — Firebase auth uses
-  // native fetch in the browser, not undici (Node.js HTTP). This prevents the
-  // node-esm Firebase build from pulling undici into the client bundle.
-  webpack: (config, { isServer }) => {
-    if (!isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        'undici': false,
-      };
-    }
-    return config;
   },
 };
 
