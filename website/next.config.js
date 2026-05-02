@@ -31,12 +31,14 @@ const nextConfig = {
       },
     ];
   },
-  // Force Firebase auth to use browser ESM build (avoids pulling undici/Node.js internals into client bundle)
+  // Alias undici to false (empty module) on the client — Firebase auth uses
+  // native fetch in the browser, not undici (Node.js HTTP). This prevents the
+  // node-esm Firebase build from pulling undici into the client bundle.
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.alias = {
         ...config.resolve.alias,
-        '@firebase/auth': '@firebase/auth/dist/index.esm2017.js',
+        'undici': false,
       };
     }
     return config;
