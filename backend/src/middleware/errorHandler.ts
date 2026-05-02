@@ -126,13 +126,17 @@ export const errorHandler = (
   // Clear Sentry user context after request
   clearSentryUser();
 
-  // Log error
+  // Log error. Include validation field details when present so we can see
+  // *which* field failed without having to ship a separate logger statement
+  // from every controller — a generic "Validation failed" line wasn't enough
+  // to debug the verify-register 422s in prod.
   logger.error('Error occurred', {
     message: err.message,
     statusCode,
     path: req.path,
     method: req.method,
     ip: req.ip,
+    ...(errorDetails ? { validationErrors: errorDetails } : {}),
     stack: err.stack,
   });
 

@@ -4,6 +4,21 @@ const nextConfig = {
   // the browser-compatible exports instead of the Node.js (node-esm) build,
   // which was pulling in undici and breaking the client bundle.
   transpilePackages: ['firebase', '@firebase/auth', '@firebase/app', '@firebase/util', '@firebase/component', '@firebase/logger'],
+
+  // Stop webpack from bundling undici. Firebase Auth's node-esm entry pulls
+  // undici (a Node-only fetch impl using class-private `#field` syntax that
+  // Next 14's webpack loader can't parse). Browsers + the Next runtime both
+  // already have native fetch — undici isn't needed anywhere we deploy to,
+  // so aliasing to false short-circuits the resolution and stops the parse
+  // attempt entirely. Required across both server and client passes because
+  // Next compiles both halves of every client component.
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      undici: false,
+    };
+    return config;
+  },
   // The website code predates a large refactor of the shared type layer
   // (snake_case -> camelCase, renamed Product/Category/Order fields). Rather
   // than pinning the Vercel deploy behind an exhaustive component rewrite,
