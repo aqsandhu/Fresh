@@ -1,5 +1,10 @@
 'use client'
 
+// Register depends on Firebase Auth (browser-only) — opt out of static
+// prerender so the firebase SDK isn't pulled into the build-time Node
+// environment.
+export const dynamic = 'force-dynamic'
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
