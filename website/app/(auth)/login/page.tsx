@@ -19,7 +19,8 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
-import { firebaseAuth } from '@/lib/firebase'
+import { getFirebaseAuth } from '@/lib/firebase'
+import { firebaseErrorMessage } from '@/lib/firebase-errors'
 
 // ── Schemas ─────────────────────────────────────────────────────────────
 const phoneSchema = z.object({
@@ -74,7 +75,7 @@ export default function LoginPage() {
   const initRecaptcha = () => {
     recaptchaVerifierRef.current?.clear()
     recaptchaVerifierRef.current = new RecaptchaVerifier(
-      firebaseAuth,
+      getFirebaseAuth(),
       'recaptcha-container',
       { size: 'invisible' }
     )
@@ -100,7 +101,7 @@ export default function LoginPage() {
 
       // Step 2: Send OTP via Firebase (SMS)
       const verifier = initRecaptcha()
-      const confirmation = await signInWithPhoneNumber(firebaseAuth, data.phone, verifier)
+      const confirmation = await signInWithPhoneNumber(getFirebaseAuth(), data.phone, verifier)
       confirmationResultRef.current = confirmation
 
       setStep('otp')
@@ -108,8 +109,15 @@ export default function LoginPage() {
       setResendTimer(60)
       toast.success('OTP sent via SMS')
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to send OTP. Please try again.'
-      toast.error(msg)
+      // Surface the Firebase error code in the toast so a screenshot tells
+      // us exactly what's wrong (config issue, quota, unauthorized domain,
+      // etc.) instead of just "Failed to send OTP".
+      const backendMsg = err?.response?.data?.message
+      const msg = backendMsg || firebaseErrorMessage(err, 'Failed to send OTP. Please try again.')
+      // Long messages don't fit in default toast — let the user read it.
+      toast.error(msg, { duration: 8000 })
+      // eslint-disable-next-line no-console
+      console.error('[Firebase OTP send error]', err)
       recaptchaVerifierRef.current?.clear()
       recaptchaVerifierRef.current = null
     } finally {
@@ -150,8 +158,11 @@ export default function LoginPage() {
       const redirectTo = searchParams.get('redirect') || '/'
       router.push(redirectTo)
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Invalid OTP. Please try again.'
-      toast.error(msg)
+      const backendMsg = err?.response?.data?.message
+      const msg = backendMsg || firebaseErrorMessage(err, 'Invalid OTP. Please try again.')
+      toast.error(msg, { duration: 8000 })
+      // eslint-disable-next-line no-console
+      console.error('[Firebase OTP verify error]', err)
       setOtp(['', '', '', '', '', ''])
       setTimeout(() => document.getElementById('otp-0')?.focus(), 100)
     } finally {

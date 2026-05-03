@@ -19,7 +19,8 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
-import { firebaseAuth } from '@/lib/firebase'
+import { getFirebaseAuth } from '@/lib/firebase'
+import { firebaseErrorMessage } from '@/lib/firebase-errors'
 
 type Step = 'phone' | 'otp' | 'profile'
 
@@ -93,7 +94,7 @@ export default function RegisterPage() {
   const initRecaptcha = () => {
     recaptchaVerifierRef.current?.clear()
     recaptchaVerifierRef.current = new RecaptchaVerifier(
-      firebaseAuth,
+      getFirebaseAuth(),
       'recaptcha-container-register',
       { size: 'invisible' }
     )
@@ -118,7 +119,7 @@ export default function RegisterPage() {
 
       // Step 2: Send OTP via Firebase (SMS)
       const verifier = initRecaptcha()
-      const confirmation = await signInWithPhoneNumber(firebaseAuth, data.phone, verifier)
+      const confirmation = await signInWithPhoneNumber(getFirebaseAuth(), data.phone, verifier)
       confirmationResultRef.current = confirmation
 
       setStep('otp')
@@ -126,8 +127,11 @@ export default function RegisterPage() {
       setResendTimer(60)
       toast.success('OTP sent via SMS')
     } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Failed to send OTP. Please try again.'
-      toast.error(msg)
+      const backendMsg = err?.response?.data?.message
+      const msg = backendMsg || firebaseErrorMessage(err, 'Failed to send OTP. Please try again.')
+      toast.error(msg, { duration: 8000 })
+      // eslint-disable-next-line no-console
+      console.error('[Firebase OTP send error]', err)
       recaptchaVerifierRef.current?.clear()
       recaptchaVerifierRef.current = null
     } finally {
@@ -152,8 +156,10 @@ export default function RegisterPage() {
       setStep('profile')
       toast.success('Phone verified! Now set up your profile.')
     } catch (err: any) {
-      const msg = err?.message || 'Invalid OTP. Please try again.'
-      toast.error(msg)
+      const msg = firebaseErrorMessage(err, 'Invalid OTP. Please try again.')
+      toast.error(msg, { duration: 8000 })
+      // eslint-disable-next-line no-console
+      console.error('[Firebase OTP verify error]', err)
       setOtp(['', '', '', '', '', ''])
       setTimeout(() => document.getElementById('rotp-0')?.focus(), 100)
     } finally {
