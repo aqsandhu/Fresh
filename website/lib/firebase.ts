@@ -20,6 +20,10 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  // measurementId is optional — only used by Firebase Analytics. Phone Auth
+  // doesn't need it. Set NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID if you wire
+  // Analytics in later; leaving it undefined is fine.
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 }
 
 let cachedApp: FirebaseApp | null = null
