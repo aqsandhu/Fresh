@@ -1,12 +1,13 @@
 // ============================================================================
 // FIREBASE CLIENT SDK - Website (Next.js)
 // ----------------------------------------------------------------------------
-// Lazy initialization. The Firebase SDK throws `auth/invalid-api-key` when
-// initializeApp is called without a real API key, which used to fail Next's
-// build-time static prerender of /login and /register (env vars aren't set
-// during a fresh build). We avoid the eager top-level init and instead build
-// the Auth instance on first property access — by then we're at runtime in
-// the browser where the NEXT_PUBLIC_FIREBASE_* values are populated.
+// Lazy initialization. The previous Proxy-based export tripped Firebase
+// SDK internal `instanceof Auth` / identity checks on some call paths
+// (notably RecaptchaVerifier in production builds), making OTP requests
+// silently fail. Switched to an explicit `getFirebaseAuth()` function
+// that returns the real Auth instance — call it inside event handlers,
+// not at module top level, so SSG / SSR don't try to initialize Firebase
+// at build time when the NEXT_PUBLIC_FIREBASE_* env vars aren't set.
 // ============================================================================
 
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
@@ -24,25 +25,28 @@ const firebaseConfig = {
 let cachedApp: FirebaseApp | null = null
 let cachedAuth: Auth | null = null
 
-function ensureAuth(): Auth {
+/**
+ * Returns the initialized Firebase Auth instance.
+ * Throws a clear, actionable error when env vars are missing so the call
+ * site can show it to the user instead of falling into a confusing
+ * `auth/invalid-api-key` from deep inside the SDK.
+ */
+export function getFirebaseAuth(): Auth {
   if (cachedAuth) return cachedAuth
-  if (!firebaseConfig.apiKey) {
+
+  const missing = (
+    ['apiKey', 'authDomain', 'projectId', 'appId'] as const
+  ).filter((k) => !firebaseConfig[k])
+
+  if (missing.length > 0) {
     throw new Error(
-      'Firebase config missing — set NEXT_PUBLIC_FIREBASE_* env vars before using Firebase Auth.'
+      `Firebase is not configured. Missing env vars: ${missing
+        .map((k) => `NEXT_PUBLIC_FIREBASE_${k.replace(/[A-Z]/g, (c) => '_' + c).toUpperCase()}`)
+        .join(', ')}. Set them in your hosting provider (Vercel) and redeploy.`
     )
   }
+
   cachedApp = getApps()[0] || initializeApp(firebaseConfig as Required<typeof firebaseConfig>)
   cachedAuth = getAuth(cachedApp)
   return cachedAuth
 }
-
-// Export a Proxy that defers initialization until the first property is
-// accessed at runtime. Drop-in replacement for the previous eager export so
-// existing call sites (`signInWithPhoneNumber(firebaseAuth, …)`) keep working.
-export const firebaseAuth = new Proxy({} as Auth, {
-  get: (_target, prop, receiver) => Reflect.get(ensureAuth(), prop, receiver),
-  set: (_target, prop, value, receiver) => Reflect.set(ensureAuth(), prop, value, receiver),
-  has: (_target, prop) => prop in ensureAuth(),
-})
-
-export default firebaseAuth
