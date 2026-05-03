@@ -60,5 +60,15 @@ services:
         sync: false
       - key: FIREBASE_PRIVATE_KEY
         sync: false
+      # Supabase Storage — persistent object storage for uploaded images.
+      # Render's free disk is ephemeral (wiped on every container restart),
+      # so the previous /uploads disk approach lost every uploaded file.
+      # Set these in the Render dashboard.
+      - key: SUPABASE_URL
+        sync: false  # https://<project-id>.supabase.co
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false  # Project Settings -> API -> service_role secret
+      - key: SUPABASE_STORAGE_BUCKET
+        value: uploads
     healthCheckPath: /health
     autoDeploy: true

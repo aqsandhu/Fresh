@@ -613,7 +613,8 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-  const avatarUrl = req.file ? `/uploads/${req.file.filename}` : null;
+  // req.file.url is the Supabase public URL set by the upload middleware.
+  const avatarUrl = req.file?.url || null;
 
   let result;
   try {
@@ -695,7 +696,7 @@ export const updateRider = asyncHandler(async (req: Request, res: Response) => {
   if (riderCheck.rows.length === 0) return notFoundResponse(res, 'Rider not found');
 
   const userId = riderCheck.rows[0].user_id;
-  const avatarUrl = req.file ? `/uploads/${req.file.filename}` : undefined;
+  const avatarUrl = req.file?.url || undefined;
 
   await withTransaction(async (client) => {
     // Update user
@@ -1095,15 +1096,15 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     return errorResponse(res, 'Product with similar name already exists', 409);
   }
 
-  // Handle uploaded images
+  // Handle uploaded images. The upload middleware has already pushed each
+  // file to Supabase Storage and attached the public URL on `f.url`.
   const uploadedFiles = req.files as Express.Multer.File[] | undefined;
-  const uploadDir = process.env.UPLOAD_DIR || 'uploads';
   let primaryImage: string | null = null;
   let images: string[] = [];
 
   if (uploadedFiles && uploadedFiles.length > 0) {
-    images = uploadedFiles.map(f => `/${uploadDir}/${f.filename}`);
-    primaryImage = images[0];
+    images = uploadedFiles.map(f => f.url || '').filter(Boolean);
+    primaryImage = images[0] || null;
   }
 
   const result = await query(
@@ -1154,16 +1155,17 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     }
   }
 
-  // Handle uploaded images
+  // Handle uploaded images — Supabase URLs already attached to f.url.
   const uploadedFiles = req.files as Express.Multer.File[] | undefined;
-  const uploadDir = process.env.UPLOAD_DIR || 'uploads';
 
   if (uploadedFiles && uploadedFiles.length > 0) {
-    const images = uploadedFiles.map(f => `/${uploadDir}/${f.filename}`);
-    setClauses.push(`primary_image = $${paramIndex++}`);
-    values.push(images[0]);
-    setClauses.push(`images = $${paramIndex++}`);
-    values.push(images);
+    const images = uploadedFiles.map(f => f.url || '').filter(Boolean);
+    if (images.length > 0) {
+      setClauses.push(`primary_image = $${paramIndex++}`);
+      values.push(images[0]);
+      setClauses.push(`images = $${paramIndex++}`);
+      values.push(images);
+    }
   }
 
   if (setClauses.length === 0) {
@@ -1470,14 +1472,8 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Category with similar name already exists', 409);
   }
 
-  // Handle uploaded image
-  const uploadedFile = req.file as Express.Multer.File | undefined;
-  const uploadDir = process.env.UPLOAD_DIR || 'uploads';
-  let imageUrl: string | null = null;
-
-  if (uploadedFile) {
-    imageUrl = `/${uploadDir}/${uploadedFile.filename}`;
-  }
+  // Handle uploaded image — Supabase URL on req.file.url.
+  const imageUrl: string | null = req.file?.url || null;
 
   const result = await query(
     `INSERT INTO categories (
@@ -1538,14 +1534,10 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
     }
   }
 
-  // Handle uploaded image
-  const uploadedFile = req.file as Express.Multer.File | undefined;
-  const uploadDir = process.env.UPLOAD_DIR || 'uploads';
-  
-  if (uploadedFile) {
-    const imageUrl = `/${uploadDir}/${uploadedFile.filename}`;
+  // Handle uploaded image — Supabase URL on req.file.url.
+  if (req.file?.url) {
     setClauses.push(`image_url = $${paramIndex++}`);
-    values.push(imageUrl);
+    values.push(req.file.url);
   }
 
   if (setClauses.length === 0) {
