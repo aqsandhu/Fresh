@@ -6,7 +6,6 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
-import { getFileUrl } from '../middleware/upload';
 import logger from '../utils/logger';
 
 /**
@@ -95,8 +94,8 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
     delivery_instructions,
   } = req.body;
 
-  // Get door picture from uploaded file
-  const door_picture_url = req.file ? getFileUrl(req.file.filename) : null;
+  // Door picture pushed to Supabase Storage by upload middleware.
+  const door_picture_url = req.file?.url || null;
 
   let zone_id = null;
   const hasLocation = latitude != null && longitude != null;
@@ -247,10 +246,10 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
     values.push(delivery_instructions);
   }
 
-  // Update door picture if new file uploaded
-  if (req.file) {
+  // Update door picture if new file uploaded — Supabase URL on req.file.url.
+  if (req.file?.url) {
     updates.push(`door_picture_url = $${paramIndex++}`);
-    values.push(getFileUrl(req.file.filename));
+    values.push(req.file.url);
   }
 
   // Update location if lat/lng provided

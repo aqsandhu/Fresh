@@ -754,8 +754,11 @@ export const uploadDoorPicture = asyncHandler(async (req: Request, res: Response
   }
 
   const { address_id } = taskResult.rows[0];
-  // Store a relative URL so every client prefixes its own reachable API host.
-  const imageUrl = `/uploads/${req.file.filename}`;
+  // Supabase Storage URL set by the upload middleware.
+  const imageUrl = req.file.url || '';
+  if (!imageUrl) {
+    return errorResponse(res, 'Image upload failed (storage misconfigured)', 500);
+  }
 
   // Update the address door_picture_url
   await query(
