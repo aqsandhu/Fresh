@@ -57,6 +57,29 @@ router.post(
   authController.refreshToken
 );
 
+// ── 4-digit PIN auth ────────────────────────────────────────────────────
+// Customers use a one-time OTP at register, then a 4-digit PIN for every
+// subsequent login + sensitive re-auth. Falls back to OTP if PIN forgotten.
+router.get('/pin-status', authController.pinStatus);
+router.post(
+  '/set-pin',
+  authenticate,
+  validate(authSchemas.setPin),
+  authController.setPin
+);
+router.post(
+  '/verify-pin',
+  authRateLimiter, // 5 / 15 min — brake on PIN brute-force
+  validate(authSchemas.verifyPin),
+  authController.verifyPin
+);
+router.post(
+  '/reset-pin',
+  authRateLimiter,
+  validate(authSchemas.resetPinConfirm),
+  authController.resetPinConfirm
+);
+
 // ── Protected routes ────────────────────────────────────────────────────
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);

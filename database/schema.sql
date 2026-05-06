@@ -75,6 +75,12 @@ CREATE TABLE users (
     email VARCHAR(255) UNIQUE,
     full_name VARCHAR(255) NOT NULL,
     password_hash VARCHAR(255),  -- Nullable for OTP-only users
+    -- 4-digit PIN (bcrypt-hashed) used as the everyday login factor after the
+    -- one-time OTP at registration. Customer app + website let the user
+    -- log in / re-confirm sensitive actions (checkout) with this PIN
+    -- instead of asking for OTP every time.
+    pin_hash VARCHAR(255),
+    pin_set_at TIMESTAMPTZ,
     role user_role DEFAULT 'customer',
     status user_status DEFAULT 'active',
     

@@ -484,6 +484,165 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   successResponse(res, null, 'Password changed successfully');
 });
 
+// ============================================================================
+// 4-DIGIT PIN AUTH
+// ----------------------------------------------------------------------------
+// Lets a customer log in / re-confirm sensitive actions with a 4-digit PIN
+// after the one-time OTP at registration. Stored as a bcrypt hash on
+// users.pin_hash. Wraps the existing JWT issuance flow so downstream
+// controllers don't need to know which factor was used.
+// ============================================================================
+
+const PIN_BCRYPT_ROUNDS = 10;
+
+/**
+ * GET /api/auth/pin-status?phone=+92...
+ * Lets the login UI decide whether to show "Enter PIN" or fall through to OTP.
+ */
+export const pinStatus = asyncHandler(async (req: Request, res: Response) => {
+  const phone = (req.query.phone as string | undefined) || '';
+  if (!phone) return errorResponse(res, 'phone is required', 400);
+  const normalizedPhone = normalizePhoneNumber(phone);
+
+  const result = await query(
+    `SELECT pin_hash IS NOT NULL AS has_pin, full_name
+       FROM users
+      WHERE phone = $1 AND deleted_at IS NULL`,
+    [normalizedPhone]
+  );
+
+  if (result.rows.length === 0) {
+    return successResponse(res, { exists: false, hasPin: false }, 'OK');
+  }
+  successResponse(
+    res,
+    { exists: true, hasPin: !!result.rows[0].has_pin, fullName: result.rows[0].full_name },
+    'OK'
+  );
+});
+
+/**
+ * POST /api/auth/set-pin
+ * Authenticated. Body: { pin }. Sets / replaces the user's 4-digit PIN.
+ * Used right after OTP register and from Settings → Change PIN.
+ */
+export const setPin = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.id) return unauthorizedResponse(res, 'Authentication required');
+  const { pin } = req.body as { pin: string };
+
+  const pinHash = await bcrypt.hash(pin, PIN_BCRYPT_ROUNDS);
+  const result = await query(
+    `UPDATE users SET pin_hash = $1, pin_set_at = NOW(), updated_at = NOW()
+       WHERE id = $2 AND deleted_at IS NULL
+     RETURNING id`,
+    [pinHash, req.user.id]
+  );
+  if (result.rows.length === 0) return unauthorizedResponse(res, 'User not found');
+
+  logger.info('PIN set', { userId: req.user.id });
+  successResponse(res, { ok: true }, 'PIN saved');
+});
+
+/**
+ * POST /api/auth/verify-pin
+ * Body: { phone, pin }. Issues new JWT pair on success — same shape as
+ * verifyLoginOtp so existing client code can swap one call for the other.
+ *
+ * Rate-limited at the route level to slow down brute-force attempts (5 / 15 min).
+ */
+export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
+  const { phone, pin } = req.body as { phone: string; pin: string };
+  const normalizedPhone = normalizePhoneNumber(phone);
+
+  const result = await query(
+    `SELECT id, phone, full_name, email, pin_hash, role, status, is_phone_verified
+       FROM users
+      WHERE phone = $1 AND deleted_at IS NULL`,
+    [normalizedPhone]
+  );
+
+  if (result.rows.length === 0 || !result.rows[0].pin_hash) {
+    // Return the same error for "no user" and "no PIN set" so an attacker
+    // can't enumerate which phones are registered.
+    return unauthorizedResponse(res, 'Invalid phone or PIN');
+  }
+
+  const user = result.rows[0];
+
+  if (user.status !== 'active') {
+    return errorResponse(res, 'Account is suspended. Please contact support.', 403);
+  }
+
+  const valid = await bcrypt.compare(pin, user.pin_hash);
+  if (!valid) {
+    logger.warn('PIN verify failed', { userId: user.id });
+    return unauthorizedResponse(res, 'Invalid phone or PIN');
+  }
+
+  const tokens = generateTokenPair(user.id, user.phone, user.role);
+
+  await query(
+    'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
+    [user.id]
+  );
+
+  logger.info('PIN login OK', { userId: user.id });
+  successResponse(
+    res,
+    {
+      user: {
+        id: user.id,
+        phone: user.phone,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        is_phone_verified: user.is_phone_verified,
+      },
+      tokens,
+    },
+    'Login successful'
+  );
+});
+
+/**
+ * POST /api/auth/reset-pin/confirm
+ * Body: { idToken, newPin }. Caller has already done a Firebase OTP via the
+ * normal sendOtp flow (so we know the phone owner consented). Verify the
+ * Firebase ID token, then overwrite the PIN.
+ *
+ * No separate /reset-pin/init endpoint — the existing /auth/send-otp covers
+ * that step (the client just navigates to the "forgot PIN" screen which
+ * triggers send-otp + this confirm).
+ */
+export const resetPinConfirm = asyncHandler(async (req: Request, res: Response) => {
+  const { idToken, newPin } = req.body as { idToken: string; newPin: string };
+
+  // Verify the Firebase ID token. Reuses the same helper verify-login uses
+  // so no extra Firebase wiring is needed here.
+  const fbResult = await verifyFirebaseToken(idToken);
+  if (!fbResult.success || !fbResult.phone) {
+    return unauthorizedResponse(res, fbResult.message || 'Invalid verification token');
+  }
+
+  const normalizedPhone = normalizePhoneNumber(fbResult.phone);
+  const userRow = await query(
+    'SELECT id FROM users WHERE phone = $1 AND deleted_at IS NULL',
+    [normalizedPhone]
+  );
+  if (userRow.rows.length === 0) {
+    return errorResponse(res, 'No account found for this phone', 404);
+  }
+
+  const pinHash = await bcrypt.hash(newPin, PIN_BCRYPT_ROUNDS);
+  await query(
+    'UPDATE users SET pin_hash = $1, pin_set_at = NOW(), updated_at = NOW() WHERE id = $2',
+    [pinHash, userRow.rows[0].id]
+  );
+
+  logger.info('PIN reset via OTP', { userId: userRow.rows[0].id });
+  successResponse(res, { ok: true }, 'PIN reset successfully');
+});
+
 /**
  * Admin login
  * POST /api/admin/login
