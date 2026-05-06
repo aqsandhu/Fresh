@@ -134,6 +134,42 @@ export const authSchemas = {
     currentPassword: Joi.string().required(),
     newPassword: commonSchemas.password.required(),
   }),
+
+  // ─── 4-digit PIN flow ──────────────────────────────────────────────────
+  // Common shape: PIN is exactly 4 digits, no other characters.
+  pinStatus: Joi.object({
+    phone: commonSchemas.phone.required(),
+  }),
+
+  setPin: Joi.object({
+    pin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+      'string.length': 'PIN must be exactly 4 digits',
+      'string.pattern.base': 'PIN must contain only digits (0-9)',
+      'any.required': 'PIN is required',
+    }),
+  }),
+
+  // Used both for normal PIN login and for the in-session re-auth at
+  // checkout (only `pin` matters there but we still take phone for the
+  // login case so we can look up the user without an active token).
+  verifyPin: Joi.object({
+    phone: commonSchemas.phone.required(),
+    pin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+      'string.length': 'PIN must be exactly 4 digits',
+      'string.pattern.base': 'PIN must contain only digits (0-9)',
+    }),
+  }),
+
+  resetPinConfirm: Joi.object({
+    idToken: Joi.string().min(100).required().messages({
+      'string.min': 'Invalid Firebase verification token',
+      'any.required': 'Verification token is required',
+    }),
+    newPin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+      'string.length': 'PIN must be exactly 4 digits',
+      'string.pattern.base': 'PIN must contain only digits (0-9)',
+    }),
+  }),
 };
 
 // Product validation schemas
