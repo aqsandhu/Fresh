@@ -10,6 +10,8 @@ import {
   Upload,
   X,
   ArrowRight,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -89,7 +91,18 @@ export const Categories: React.FC = () => {
       toast.success('Category deleted successfully');
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Failed to delete category');
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to delete category');
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: categoryService.toggleCategoryActive,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success(res.isActive ? 'Category activated' : 'Category deactivated');
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Failed to update category');
     },
   });
 
@@ -307,13 +320,22 @@ export const Categories: React.FC = () => {
                       doesn't navigate when the user actually wanted to edit. */}
                   <div className="flex items-center mt-3 space-x-2">
                     <button
+                      onClick={(e) => { e.stopPropagation(); toggleActiveMutation.mutate(category.id); }}
+                      title={category.isActive ? 'Deactivate (hide from store)' : 'Activate'}
+                      className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                    >
+                      {category.isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                    </button>
+                    <button
                       onClick={(e) => { e.stopPropagation(); openEditModal(category); }}
+                      title="Edit"
                       className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                     >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDelete(category.id); }}
+                      title="Delete (only allowed if no products / subcategories)"
                       className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
