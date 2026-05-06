@@ -114,15 +114,20 @@ router.put(
   validate(adminSchemas.updateProduct),
   adminController.updateProduct
 );
+// Bulk + status changes — declare BEFORE the :id routes so the path parser
+// doesn't treat "move-category" or "toggle-active" as a product UUID.
+router.patch('/products/move-category', adminController.moveProductsCategory);
+router.patch('/products/:id/toggle-active', adminController.toggleProductActive);
 router.delete(
   '/products/:id',
-  adminController.deleteProduct
+  adminController.deleteProduct  // ?hard=true for permanent deletion
 );
 
 // Categories
 router.get('/categories', adminController.getAdminCategories);
 router.post('/categories', adminRateLimiter, uploadSingle('image'), coerceCategoryFields, adminController.createCategory);
 router.put('/categories/:id', adminRateLimiter, uploadSingle('image'), coerceCategoryFields, adminController.updateCategory);
+router.patch('/categories/:id/toggle-active', adminController.toggleCategoryActive);
 router.delete('/categories/:id', adminController.deleteCategory);
 
 // WhatsApp Orders

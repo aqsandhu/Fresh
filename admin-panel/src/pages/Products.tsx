@@ -5,6 +5,10 @@ import {
   Plus,
   Edit,
   Trash2,
+  Trash,
+  Eye,
+  EyeOff,
+  FolderInput,
   Package,
   Image as ImageIcon,
   AlertTriangle,
@@ -131,12 +135,63 @@ export const Products: React.FC = () => {
     mutationFn: productService.deleteProduct,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Product deleted successfully');
+      toast.success('Product deactivated');
     },
     onError: (error: any) => {
       toast.error(error?.message || 'Failed to delete product');
     },
   });
+
+  const hardDeleteMutation = useMutation({
+    mutationFn: productService.hardDeleteProduct,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Product permanently deleted');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to permanently delete product');
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: productService.toggleProductStatus,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(res.isActive ? 'Product activated' : 'Product deactivated');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to update product');
+    },
+  });
+
+  const moveCategoryMutation = useMutation({
+    mutationFn: ({ ids, categoryId }: { ids: string[]; categoryId: string }) =>
+      productService.moveProductsToCategory(ids, categoryId),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success(`Moved ${res.moved} product(s)`);
+      setMoveDialogOpen(false);
+      setSelectedIds(new Set());
+      setMoveTargetCategory('');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to move products');
+    },
+  });
+
+  // Selection + move-dialog state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [moveTargetCategory, setMoveTargetCategory] = useState('');
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedIds(new Set());
 
   const openAddModal = () => {
     setEditingProduct(null);
@@ -292,9 +347,22 @@ export const Products: React.FC = () => {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this product?')) {
+  // Default delete is "soft" — flips is_active to false. Recoverable via the
+  // toggle button. Permanent removal lives behind a separate, more emphatic
+  // confirmation in the card.
+  const handleSoftDelete = (id: string) => {
+    if (confirm('Deactivate this product? It will be hidden from customers but recoverable.')) {
       deleteMutation.mutate(id);
+    }
+  };
+
+  const handleHardDelete = (product: Product) => {
+    if (
+      confirm(
+        `PERMANENTLY DELETE "${product.nameEn}"?\n\nThis removes the product, its images, and cannot be undone.\nProducts referenced by past orders cannot be hard-deleted.`
+      )
+    ) {
+      hardDeleteMutation.mutate(product.id);
     }
   };
 
@@ -305,6 +373,32 @@ export const Products: React.FC = () => {
       searchPlaceholder="Search products..."
       onSearch={setSearchQuery}
     >
+      {/* Bulk-action bar — only renders when at least one product is selected.
+          Lets the admin reassign category for many products in one click. */}
+      {selectedIds.size > 0 && (
+        <div className="sticky top-0 z-20 mb-4 bg-primary-50 border border-primary-200 rounded-lg px-4 py-2 flex items-center justify-between">
+          <span className="text-sm font-medium text-primary-900">
+            {selectedIds.size} product{selectedIds.size === 1 ? '' : 's'} selected
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              leftIcon={<FolderInput className="w-4 h-4" />}
+              onClick={() => {
+                setMoveTargetCategory('');
+                setMoveDialogOpen(true);
+              }}
+            >
+              Move to Category
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Filters & Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div className="flex flex-wrap gap-4">
@@ -350,6 +444,22 @@ export const Products: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {(productsData?.products || productsData?.data || []).map((product) => (
               <Card key={product.id} className="relative group">
+                {/* Selection checkbox — appears on hover or when any row is
+                    selected. Used by the "Move to Category" bulk action. */}
+                <label
+                  className={`absolute top-2 left-2 z-10 cursor-pointer flex items-center justify-center w-7 h-7 rounded-md bg-white/90 border border-gray-300 hover:bg-primary-50 transition-opacity ${
+                    selectedIds.size > 0 || selectedIds.has(product.id) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  }`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(product.id)}
+                    onChange={() => toggleSelected(product.id)}
+                    className="w-4 h-4 accent-primary-600"
+                  />
+                </label>
+
                 {/* Product Image */}
                 <div className="relative h-40 bg-gray-100 rounded-lg mb-4 overflow-hidden">
                   <SafeImage
@@ -363,7 +473,7 @@ export const Products: React.FC = () => {
                     }
                   />
                   {product.stockQuantity < 10 && (
-                    <div className="absolute top-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full flex items-center">
+                    <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full flex items-center">
                       <AlertTriangle className="w-3 h-3 mr-1" />
                       Low Stock
                     </div>
@@ -410,18 +520,36 @@ export const Products: React.FC = () => {
                     >
                       {product.isActive ? 'Active' : 'Inactive'}
                     </span>
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-1">
+                      {/* Toggle visibility — flips is_active without losing
+                          the row. Cheaper than full delete + re-create. */}
+                      <button
+                        onClick={() => toggleActiveMutation.mutate(product.id)}
+                        title={product.isActive ? 'Deactivate (hide from store)' : 'Activate'}
+                        className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                      >
+                        {product.isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                      </button>
                       <button
                         onClick={() => openEditModal(product)}
+                        title="Edit"
                         className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(product.id)}
-                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        onClick={() => handleSoftDelete(product.id)}
+                        title="Deactivate (soft delete — recoverable)"
+                        className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleHardDelete(product)}
+                        title="Permanently delete (irreversible)"
+                        className="p-2 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -631,6 +759,51 @@ export const Products: React.FC = () => {
             </div>
           </div>
         </form>
+      </Modal>
+
+      {/* Move-to-Category dialog. Triggered by the bulk-action bar; calls
+          the new PATCH /admin/products/move-category endpoint with all
+          selected ids in a single request. */}
+      <Modal
+        isOpen={moveDialogOpen}
+        onClose={() => setMoveDialogOpen(false)}
+        title="Move products to category"
+        size="md"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Reassigning <strong>{selectedIds.size}</strong> product
+            {selectedIds.size === 1 ? '' : 's'} to a different category.
+          </p>
+          <Select
+            label="Target Category"
+            value={moveTargetCategory}
+            onChange={(e) => setMoveTargetCategory(e.target.value)}
+            placeholder="Choose a category…"
+            options={(categories || []).map((c) => ({
+              value: c.id,
+              label: c.nameEn + (c.isActive === false ? ' (inactive)' : ''),
+            }))}
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setMoveDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                moveCategoryMutation.mutate({
+                  ids: Array.from(selectedIds),
+                  categoryId: moveTargetCategory,
+                })
+              }
+              disabled={!moveTargetCategory || moveCategoryMutation.isPending}
+              isLoading={moveCategoryMutation.isPending}
+              leftIcon={<FolderInput className="w-4 h-4" />}
+            >
+              Move {selectedIds.size}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </Layout>
   );
