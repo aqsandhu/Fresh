@@ -9,6 +9,7 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse, paginatedResponse } from '../utils/response';
 import { generateSlug, normalizePhoneNumber } from '../utils/validators';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
+import { deleteFileFromStorage } from '../config/storage';
 import logger from '../utils/logger';
 
 const SALT_ROUNDS = 12;
@@ -1198,23 +1199,115 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 });
 
 /**
- * Delete product (soft delete - sets is_active to false)
- * DELETE /api/admin/products/:id
+ * Delete product
+ * DELETE /api/admin/products/:id            -> soft delete (is_active = FALSE)
+ * DELETE /api/admin/products/:id?hard=true  -> hard delete (row + storage)
+ *
+ * Soft is the default so an accidental click doesn't lose the product
+ * permanently. Hard delete also removes referenced images from Supabase
+ * Storage and is blocked if the product is referenced by any order_items
+ * (would orphan order history).
  */
 export const deleteProduct = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const hard = req.query.hard === 'true' || req.query.hard === '1';
 
-  const result = await query(
-    'UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id',
-    [id]
-  );
-
-  if (result.rows.length === 0) {
-    return errorResponse(res, 'Product not found', 404);
+  if (!hard) {
+    const result = await query(
+      'UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id',
+      [id]
+    );
+    if (result.rows.length === 0) return errorResponse(res, 'Product not found', 404);
+    logger.info('Product soft-deleted', { productId: id, deletedBy: req.user?.id });
+    return successResponse(res, null, 'Product deactivated');
   }
 
-  logger.info('Product soft-deleted', { productId: id, deletedBy: req.user?.id });
-  successResponse(res, null, 'Product deleted successfully');
+  // Hard delete path. Refuse if the product appears in any past order so
+  // we don't leave dangling FKs in order_items.
+  const orderUse = await query(
+    'SELECT COUNT(*)::int AS cnt FROM order_items WHERE product_id = $1',
+    [id]
+  );
+  if (orderUse.rows[0].cnt > 0) {
+    return errorResponse(
+      res,
+      'This product is in past orders. Deactivate it instead — hard-deleting would break order history.',
+      400
+    );
+  }
+
+  // Read the image references before we drop the row so we can also free the
+  // bucket objects.
+  const imgRows = await query<{ primary_image: string | null; images: string[] | null }>(
+    'SELECT primary_image, images FROM products WHERE id = $1',
+    [id]
+  );
+  if (imgRows.rows.length === 0) return errorResponse(res, 'Product not found', 404);
+
+  await query('DELETE FROM products WHERE id = $1', [id]);
+
+  // Best-effort: free the storage objects that point at /storage/v1/.../<bucket>/<path>.
+  // Failures here are logged and ignored so DB consistency stays the win.
+  const allUrls = [
+    ...(imgRows.rows[0].primary_image ? [imgRows.rows[0].primary_image] : []),
+    ...(imgRows.rows[0].images ?? []),
+  ];
+  for (const url of allUrls) {
+    const m = url.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/);
+    if (m) await deleteFileFromStorage(m[1]);
+  }
+
+  logger.info('Product hard-deleted', { productId: id, deletedBy: req.user?.id });
+  successResponse(res, null, 'Product permanently deleted');
+});
+
+/**
+ * Toggle product active/inactive (without losing the row).
+ * PATCH /api/admin/products/:id/toggle-active
+ */
+export const toggleProductActive = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await query(
+    'UPDATE products SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1 RETURNING id, is_active',
+    [id]
+  );
+  if (result.rows.length === 0) return errorResponse(res, 'Product not found', 404);
+  successResponse(res, result.rows[0], `Product ${result.rows[0].is_active ? 'activated' : 'deactivated'}`);
+});
+
+/**
+ * Move one or more products to a different category in a single transaction.
+ * PATCH /api/admin/products/move-category
+ * Body: { product_ids: string[], category_id: string }
+ *
+ * Lets the admin reorganise the catalog without editing every product
+ * individually. Verifies the target category exists and is active so we
+ * don't move products into a hidden bucket by mistake.
+ */
+export const moveProductsCategory = asyncHandler(async (req: Request, res: Response) => {
+  const { product_ids, category_id } = req.body as { product_ids?: string[]; category_id?: string };
+  if (!Array.isArray(product_ids) || product_ids.length === 0) {
+    return errorResponse(res, 'product_ids must be a non-empty array', 400);
+  }
+  if (!category_id) return errorResponse(res, 'category_id is required', 400);
+
+  const cat = await query('SELECT id, is_active FROM categories WHERE id = $1', [category_id]);
+  if (cat.rows.length === 0) return errorResponse(res, 'Target category not found', 404);
+  if (cat.rows[0].is_active === false) {
+    return errorResponse(res, 'Target category is inactive — activate it before moving products into it', 400);
+  }
+
+  const result = await query(
+    'UPDATE products SET category_id = $1, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id',
+    [category_id, product_ids]
+  );
+
+  logger.info('Products moved to category', {
+    moved: result.rowCount,
+    categoryId: category_id,
+    by: req.user?.id,
+  });
+  successResponse(res, { moved: result.rowCount }, `${result.rowCount} product(s) moved`);
 });
 
 /**
@@ -1572,6 +1665,24 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
   logger.info('Category updated', { categoryId: id, updatedBy: req.user?.id });
 
   successResponse(res, result.rows[0], 'Category updated successfully');
+});
+
+/**
+ * Toggle category active/inactive — visibility flip without deleting.
+ * PATCH /api/admin/categories/:id/toggle-active
+ */
+export const toggleCategoryActive = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await query(
+    'UPDATE categories SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1 RETURNING id, is_active',
+    [id]
+  );
+  if (result.rows.length === 0) return errorResponse(res, 'Category not found', 404);
+  successResponse(
+    res,
+    result.rows[0],
+    `Category ${result.rows[0].is_active ? 'activated' : 'deactivated'}`
+  );
 });
 
 /**

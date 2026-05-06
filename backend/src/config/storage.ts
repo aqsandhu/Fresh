@@ -79,8 +79,22 @@ export async function uploadFileToStorage(
     });
 
   if (error) {
-    logger.error('Supabase upload failed', { folder, objectPath, error });
-    throw new Error(`Storage upload failed: ${error.message}`);
+    logger.error('Supabase upload failed', { folder, objectPath, bucket: STORAGE_BUCKET, error });
+    // Translate the most common setup mistakes into actionable messages so
+    // a 500 on /api/admin/categories tells us exactly what to fix instead
+    // of a cryptic "Invalid path specified in request URL".
+    const raw = (error as any).message || '';
+    if (raw.includes('Invalid path') || raw.includes('Bucket not found') || (error as any).statusCode === 'PGRST125') {
+      throw new Error(
+        `Storage bucket "${STORAGE_BUCKET}" not found. Create it in Supabase Dashboard → Storage → New bucket (set it as Public).`
+      );
+    }
+    if (raw.includes('row-level security') || raw.includes('not authorized')) {
+      throw new Error(
+        `Storage upload denied by RLS. Either set the "${STORAGE_BUCKET}" bucket to Public or add a policy allowing the service role to upload.`
+      );
+    }
+    throw new Error(`Storage upload failed: ${raw}`);
   }
 
   const { data: publicData } = getClient()

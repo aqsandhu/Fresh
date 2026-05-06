@@ -75,6 +75,21 @@ export const categoryService = {
     }
   },
 
+  // Visibility flip without deleting the row — useful when a category is
+  // temporarily out of season or the admin wants to hide it from the
+  // storefront without losing its products.
+  toggleCategoryActive: async (id: string): Promise<{ id: string; isActive: boolean }> => {
+    try {
+      const response = await api.patch<ApiResponse<{ id: string; isActive: boolean }>>(
+        `/admin/categories/${id}/toggle-active`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Error toggling category status:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to update category status');
+    }
+  },
+
   uploadCategoryImage: async (id: string, image: File): Promise<string> => {
     try {
       const formData = new FormData();

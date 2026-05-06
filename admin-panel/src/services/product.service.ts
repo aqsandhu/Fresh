@@ -101,12 +101,37 @@ export const productService = {
     }
   },
 
+  // Soft delete (default) — sets is_active = false. Recoverable via toggle.
   deleteProduct: async (id: string): Promise<void> => {
     try {
       await api.delete<ApiResponse<void>>(`/admin/products/${id}`);
     } catch (error: any) {
       console.error('Error deleting product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete product');
+    }
+  },
+
+  // Permanent delete — drops the row + storage objects. Backend refuses if
+  // the product is referenced by past order_items.
+  hardDeleteProduct: async (id: string): Promise<void> => {
+    try {
+      await api.delete<ApiResponse<void>>(`/admin/products/${id}?hard=true`);
+    } catch (error: any) {
+      console.error('Error hard-deleting product:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to permanently delete product');
+    }
+  },
+
+  moveProductsToCategory: async (productIds: string[], categoryId: string): Promise<{ moved: number }> => {
+    try {
+      const response = await api.patch<ApiResponse<{ moved: number }>>(
+        '/admin/products/move-category',
+        { product_ids: productIds, category_id: categoryId }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Error moving products:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to move products');
     }
   },
 
@@ -122,11 +147,15 @@ export const productService = {
     }
   },
 
-  toggleProductStatus: async (id: string, isActive: boolean): Promise<Product> => {
+  // Backend flips is_active server-side and returns the new value, so we
+  // don't have to know the current state here. The previous endpoint
+  // (`/products/:id/status`) didn't exist on the backend — every call was
+  // 404'ing silently.
+  toggleProductStatus: async (id: string): Promise<{ id: string; isActive: boolean }> => {
     try {
-      const response = await api.patch<ApiResponse<Product>>(`/admin/products/${id}/status`, {
-        is_active: isActive,
-      });
+      const response = await api.patch<ApiResponse<{ id: string; isActive: boolean }>>(
+        `/admin/products/${id}/toggle-active`
+      );
       return response.data;
     } catch (error: any) {
       console.error('Error toggling product status:', error);
