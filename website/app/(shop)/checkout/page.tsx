@@ -5,6 +5,7 @@
 // error during Next's static export pass).
 export const dynamic = 'force-dynamic'
 
+import PinReauthGate from '@/components/auth/PinReauthGate'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
@@ -37,7 +38,20 @@ interface RealAddress {
   landmark?: string
 }
 
-export default function CheckoutPage() {
+// Public wrapper. PinReauthGate intercepts at the route level if the user
+// has been inactive for >30 min and asks for the PIN before rendering the
+// real checkout. Once verified the gate disappears and the existing flow
+// runs unchanged. Logged-in users who *just* logged in (PIN or OTP) skip
+// the gate because pinVerifiedAt is fresh.
+export default function CheckoutPageWrapper() {
+  return (
+    <PinReauthGate>
+      <CheckoutPage />
+    </PinReauthGate>
+  )
+}
+
+function CheckoutPage() {
   const router = useRouter()
   const { items, getSubtotal, getDeliveryCharge, getFinalTotal, clearCart } = useCartStore()
   const { isAuthenticated } = useAuthStore()
