@@ -90,6 +90,54 @@ class AuthService {
       throw handleApiError(error);
     }
   }
+
+  // ─── 4-digit PIN flow ─────────────────────────────────────────────────
+  // Mirrors the website's authApi PIN methods (commit fe406cc on web).
+  // After the one-time OTP at registration the customer logs in with a PIN
+  // forever — no more SMS per session. Used by:
+  //   - RegisterScreen (set PIN after OTP success)
+  //   - LoginScreen (PIN-or-OTP based on /pin-status)
+  //   - SettingsScreen → "Change PIN"
+  //   - Checkout re-auth (when inactive)
+  // The screens themselves still need to be wired up; that's tracked in the
+  // sync-audit doc and will land when the customer-app's OTP path is also
+  // migrated to Firebase.
+
+  async pinStatus(phone: string): Promise<ApiResponse<{ exists: boolean; hasPin: boolean; fullName?: string }>> {
+    try {
+      const response = await apiClient.get('/auth/pin-status', { params: { phone } });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  async setPin(pin: string): Promise<ApiResponse<{ ok: boolean }>> {
+    try {
+      const response = await apiClient.post('/auth/set-pin', { pin });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  async verifyPin(phone: string, pin: string): Promise<ApiResponse<AuthResponse>> {
+    try {
+      const response = await apiClient.post('/auth/verify-pin', { phone, pin });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  async resetPin(idToken: string, newPin: string): Promise<ApiResponse<{ ok: boolean }>> {
+    try {
+      const response = await apiClient.post('/auth/reset-pin', { idToken, newPin });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
 }
 
 export const authService = new AuthService();
