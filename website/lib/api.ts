@@ -194,6 +194,31 @@ export const authApi = {
     return response.data // { success, data: { user, tokens }, message }
   },
 
+  // ─── 4-digit PIN flow ──────────────────────────────────────────────────
+  // After the one-time OTP at registration, every subsequent login uses a
+  // 4-digit PIN. Forgot PIN → reuses send-otp + reset-pin.
+
+  pinStatus: async (phone: string): Promise<{ exists: boolean; hasPin: boolean; fullName?: string }> => {
+    const response = await api.get('/auth/pin-status', { params: { phone } })
+    return response.data?.data || { exists: false, hasPin: false }
+  },
+
+  setPin: async (pin: string) => {
+    const response = await api.post('/auth/set-pin', { pin })
+    return response.data
+  },
+
+  verifyPin: async (phone: string, pin: string) => {
+    const response = await api.post('/auth/verify-pin', { phone, pin })
+    return response.data // { success, data: { user, tokens }, message }
+  },
+
+  // After a Firebase OTP that the user requested via the "forgot PIN" flow.
+  resetPin: async (idToken: string, newPin: string) => {
+    const response = await api.post('/auth/reset-pin', { idToken, newPin })
+    return response.data
+  },
+
   // Get current user profile
   getProfile: async () => {
     const response = await api.get('/auth/me')

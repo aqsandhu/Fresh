@@ -21,6 +21,7 @@ import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
+import PinInput from '@/components/auth/PinInput'
 
 // ── Schemas ─────────────────────────────────────────────────────────────
 const phoneSchema = z.object({
@@ -32,7 +33,7 @@ const phoneSchema = z.object({
 
 type PhoneForm = z.infer<typeof phoneSchema>
 
-type Step = 'phone' | 'otp'
+type Step = 'phone' | 'pin' | 'otp'
 
 // ── Component ───────────────────────────────────────────────────────────
 export default function LoginPage() {
@@ -47,6 +48,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [resendTimer, setResendTimer] = useState(0)
+  const [pin, setPin] = useState('')
 
   const confirmationResultRef = useRef<ConfirmationResult | null>(null)
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
@@ -125,9 +127,71 @@ export default function LoginPage() {
     }
   }
 
+  // ── Phone submit ──────────────────────────────────────────────────────
+  // First check whether this phone has a PIN set. If yes, jump to PIN entry
+  // (no SMS sent). If no, fall back to OTP. New phones bounce to /register.
   const onPhoneSubmit = async (data: PhoneForm) => {
     setPhone(data.phone)
-    await sendOtp(data.phone)
+    setIsLoading(true)
+    try {
+      const status = await authApi.pinStatus(data.phone)
+      if (!status.exists) {
+        toast.error('No account found with this number. Please register first.')
+        router.push(`/register?phone=${encodeURIComponent(data.phone)}`)
+        return
+      }
+      setUserName(status.fullName || null)
+      if (status.hasPin) {
+        // Skip OTP entirely — PIN is the everyday login factor.
+        setNormalizedPhone(data.phone)
+        setPin('')
+        setStep('pin')
+      } else {
+        // Existing user without a PIN yet — fall through to OTP. After login
+        // they can set a PIN from Settings.
+        await sendOtp(data.phone)
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to start sign-in. Please try again.'
+      toast.error(msg)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Verify PIN against backend, set tokens, redirect.
+  const verifyPinHandler = useCallback(async (entered: string) => {
+    if (entered.length !== 4) return
+    setIsLoading(true)
+    try {
+      const res = await authApi.verifyPin(normalizedPhone || phone, entered)
+      const { user, tokens } = res.data
+      setAuth(
+        {
+          id: user.id,
+          name: user.full_name,
+          phone: user.phone,
+          email: user.email,
+          role: user.role,
+        },
+        tokens
+      )
+      toast.success('Login successful!')
+      const redirectTo = searchParams.get('redirect') || '/'
+      router.push(redirectTo)
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Invalid PIN. Please try again.'
+      toast.error(msg)
+      setPin('')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [normalizedPhone, phone, setAuth, router, searchParams])
+
+  // Forgot PIN — fall back to OTP, then user can reset PIN after.
+  const handleForgotPin = async () => {
+    if (!phone) return
+    await sendOtp(phone)
   }
 
   // ── Verify OTP ────────────────────────────────────────────────────────
@@ -223,12 +287,20 @@ export default function LoginPage() {
               <span className="text-white font-bold text-2xl">S</span>
             </div>
             <h1 className="text-2xl font-bold text-gray-900">
-              {step === 'otp' ? 'Verify OTP' : 'Welcome Back'}
+              {step === 'otp'
+                ? 'Verify OTP'
+                : step === 'pin'
+                  ? `Welcome${userName ? `, ${userName}` : ' back'}`
+                  : 'Welcome Back'}
             </h1>
             <p className="text-gray-500 mt-1 text-sm">
-              {step === 'otp'
-                ? <>OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS</>
-                : 'Login to your Fresh Bazar account'}
+              {step === 'otp' ? (
+                <>OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS</>
+              ) : step === 'pin' ? (
+                <>Enter your 4-digit PIN to continue</>
+              ) : (
+                'Login to your Fresh Bazar account'
+              )}
             </p>
             {step === 'otp' && userName && (
               <p className="text-primary-600 font-medium mt-1">Hi, {userName}!</p>
@@ -252,6 +324,40 @@ export default function LoginPage() {
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </form>
+              </motion.div>
+            ) : step === 'pin' ? (
+              <motion.div
+                key="pin"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+              >
+                <div className="space-y-6">
+                  <PinInput value={pin} onChange={setPin} onComplete={verifyPinHandler} disabled={isLoading} />
+                  {isLoading && (
+                    <div className="flex items-center justify-center gap-2 text-primary-600">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="text-sm font-medium">Verifying…</span>
+                    </div>
+                  )}
+                  <div className="text-center text-sm space-y-1.5">
+                    <button
+                      onClick={handleForgotPin}
+                      disabled={isLoading}
+                      className="text-primary-600 font-medium hover:text-primary-700 disabled:opacity-50"
+                    >
+                      Forgot PIN? Sign in with OTP
+                    </button>
+                    <div>
+                      <button
+                        onClick={() => { setStep('phone'); setPin('') }}
+                        className="text-gray-500 hover:text-gray-700 text-xs"
+                      >
+                        Change number
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </motion.div>
             ) : (
               <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
