@@ -17,12 +17,13 @@ import toast from 'react-hot-toast'
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
+import PinInput from '@/components/auth/PinInput'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
 
-type Step = 'phone' | 'otp' | 'profile'
+type Step = 'phone' | 'otp' | 'profile' | 'pin'
 
 // ── Schemas ─────────────────────────────────────────────────────────────
 const phoneSchema = z.object({
@@ -63,6 +64,10 @@ export default function RegisterPage() {
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [resendTimer, setResendTimer] = useState(0)
   const [showPassword, setShowPassword] = useState(false)
+  // PIN setup (final step)
+  const [pin, setPin] = useState('')
+  const [pinConfirm, setPinConfirm] = useState('')
+  const [pinStage, setPinStage] = useState<'create' | 'confirm'>('create')
 
   const confirmationResultRef = useRef<ConfirmationResult | null>(null)
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
@@ -168,6 +173,9 @@ export default function RegisterPage() {
   }, [])
 
   // ── Complete Registration ─────────────────────────────────────────────
+  // Two-stage: verify-register stores the user + tokens (so the next call
+  // is authenticated), then we move to the PIN-setup step. The user can't
+  // skip PIN — it's the primary login factor going forward.
   const onProfileSubmit = async (data: ProfileForm) => {
     setIsLoading(true)
     try {
@@ -191,14 +199,48 @@ export default function RegisterPage() {
         tokens
       )
 
-      toast.success('Account created successfully!')
-      router.push('/')
+      toast.success('Account created — now set your 4-digit PIN')
+      setStep('pin')
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Registration failed. Please try again.'
       toast.error(msg)
       if (msg.includes('expired') || msg.includes('not found')) {
         setStep('phone')
       }
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // ── Set PIN (final step) ─────────────────────────────────────────────
+  // Two-stage entry: enter PIN → re-enter to confirm → POST /auth/set-pin.
+  // The user is already authenticated by this point (verifyRegister set
+  // tokens), so the call goes through the standard auth interceptor.
+  const handlePinFirstEntry = (entered: string) => {
+    setPin(entered)
+    setPinConfirm('')
+    setPinStage('confirm')
+  }
+
+  const handlePinConfirm = async (confirmed: string) => {
+    if (confirmed !== pin) {
+      toast.error('PINs do not match. Please try again.')
+      setPin('')
+      setPinConfirm('')
+      setPinStage('create')
+      return
+    }
+    setIsLoading(true)
+    try {
+      await authApi.setPin(confirmed)
+      toast.success('PIN set! You can use it next time you log in.')
+      router.push('/')
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Failed to save PIN. Please try again.'
+      toast.error(msg)
+      setPin('')
+      setPinConfirm('')
+      setPinStage('create')
     } finally {
       setIsLoading(false)
     }
@@ -421,6 +463,45 @@ export default function RegisterPage() {
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </form>
+              </motion.div>
+            )}
+
+            {/* ── Step 4: Set 4-digit PIN ──────────────────────────────── */}
+            {step === 'pin' && (
+              <motion.div
+                key="pin"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+              >
+                <div className="text-center mb-6">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    {pinStage === 'create' ? 'Create your 4-digit PIN' : 'Confirm your PIN'}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {pinStage === 'create'
+                      ? 'You\'ll use this PIN to log in next time — no more OTP for every login.'
+                      : 'Re-enter the same PIN to confirm.'}
+                  </p>
+                </div>
+                <PinInput
+                  key={pinStage} /* remount = clear focus + value cleanly */
+                  value={pinStage === 'create' ? pin : pinConfirm}
+                  onChange={pinStage === 'create' ? setPin : setPinConfirm}
+                  onComplete={pinStage === 'create' ? handlePinFirstEntry : handlePinConfirm}
+                  disabled={isLoading}
+                />
+                {isLoading && (
+                  <p className="text-center text-sm text-gray-500 mt-4">Saving PIN…</p>
+                )}
+                {pinStage === 'confirm' && !isLoading && (
+                  <button
+                    onClick={() => { setPin(''); setPinConfirm(''); setPinStage('create') }}
+                    className="block mx-auto mt-4 text-sm text-gray-500 hover:text-gray-700"
+                  >
+                    Start over
+                  </button>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
