@@ -15,6 +15,13 @@ interface AuthStore extends AuthState {
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
   setLoading: (isLoading: boolean) => void;
+  // 4-digit PIN flow
+  verifyWithPin: (phone: string, pin: string) => Promise<void>;
+  setPin: (pin: string) => Promise<void>;
+  /** Bumps pinVerifiedAt so the checkout re-auth gate stops asking. */
+  markPinVerified: () => void;
+  /** Last successful PIN verification (epoch ms). */
+  pinVerifiedAt: number | null;
 }
 
 export const useAuthStore = create<AuthStore>()(
@@ -24,6 +31,7 @@ export const useAuthStore = create<AuthStore>()(
       token: null,
       isAuthenticated: false,
       isLoading: false,
+      pinVerifiedAt: null,
 
       sendOtp: async (phone: string) => {
         set({ isLoading: true });
@@ -114,6 +122,40 @@ export const useAuthStore = create<AuthStore>()(
 
       setLoading: (isLoading: boolean) => {
         set({ isLoading });
+      },
+
+      // ── 4-digit PIN flow ──────────────────────────────────────────────
+      verifyWithPin: async (phone: string, pin: string) => {
+        set({ isLoading: true });
+        try {
+          const response = await authService.verifyPin(phone, pin);
+          if (response.success && response.data) {
+            const { user, tokens } = response.data;
+            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
+            set({
+              user,
+              token: tokens.accessToken,
+              isAuthenticated: true,
+              pinVerifiedAt: Date.now(),
+            });
+          }
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      setPin: async (pin: string) => {
+        set({ isLoading: true });
+        try {
+          await authService.setPin(pin);
+          set({ pinVerifiedAt: Date.now() });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      markPinVerified: () => {
+        set({ pinVerifiedAt: Date.now() });
       },
     }),
     {
