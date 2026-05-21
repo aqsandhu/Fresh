@@ -15,6 +15,13 @@ export const formatCurrency = (amount: number | string | null | undefined): stri
   return `Rs. ${sign}${body}`;
 };
 
+/** Suffix shown beside product price, e.g. "/kg" */
+export const formatProductUnitSuffix = (unit?: string | null): string => {
+  const trimmed = unit?.trim();
+  if (!trimmed) return '';
+  return `/${trimmed}`;
+};
+
 // Format date
 export const formatDate = (date: string | Date): string => {
   const d = new Date(date);

@@ -21,6 +21,7 @@ import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort, getDeliveryMessage } from '@/lib/utils'
+import ProductPrice from '@/components/ui/ProductPrice'
 
 export default function CartPage() {
   const router = useRouter()
@@ -109,12 +110,9 @@ export default function CartPage() {
                           {item.product.name}
                         </h3>
                       </Link>
-                      <p className="text-sm text-gray-500">
-                        per {item.product.unit}
-                      </p>
-                      <p className="font-semibold text-primary-700 mt-1">
-                        {formatPriceShort(item.product.price)}
-                      </p>
+                      <div className="mt-1">
+                        <ProductPrice price={item.product.price} unit={item.product.unit} size="sm" />
+                      </div>
 
                       <div className="flex items-center justify-between mt-3">
                         {/* Quantity */}

@@ -26,7 +26,7 @@ import Badge from '@/components/ui/Badge'
 import ProductCard from '@/components/ui/ProductCard'
 import { useCartStore } from '@/store/cartStore'
 import { productsApi } from '@/lib/api'
-import { formatPriceShort } from '@/lib/utils'
+import ProductPrice from '@/components/ui/ProductPrice'
 import { Product } from '@/types'
 
 export default function ProductDetailPage() {
@@ -156,10 +156,7 @@ export default function ProductDetailPage() {
 
               {/* Price */}
               <div className="mb-6">
-                <span className="text-3xl font-bold text-primary-700">
-                  {formatPriceShort(product.price)}
-                </span>
-                <span className="text-gray-500 ml-2">per {product.unit}</span>
+                <ProductPrice price={product.price} unit={product.unit} size="xl" />
               </div>
 
               {/* Description */}

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Plus, Minus, Trash2, Leaf } from 'lucide-react'
 import { Product } from '@/types'
-import { formatPriceShort } from '@/lib/utils'
+import ProductPrice from './ProductPrice'
 import { useCartStore } from '@/store/cartStore'
 import Badge from './Badge'
 import SmartImage from './SmartImage'
@@ -119,10 +119,6 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
 
           {/* Content — grows to fill so price+CTA sit at the bottom edge. */}
           <div className="p-3.5 flex flex-col flex-grow">
-            <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">
-              per {product.unit}
-            </span>
-
             <h3 className="font-semibold text-gray-900 mt-0.5 mb-0.5 line-clamp-1 text-[15px]">
               {product.name}
             </h3>
@@ -134,16 +130,12 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
 
             {/* Price row pinned to the bottom regardless of name length. */}
             <div className="flex items-end justify-between gap-2 mt-auto pt-2">
-              <div className="flex items-baseline gap-1.5 flex-wrap">
-                <span className="text-lg font-bold text-primary-700">
-                  {formatPriceShort(product.price)}
-                </span>
-                {discountPercent > 0 && product.compareAtPrice && (
-                  <span className="text-sm text-gray-400 line-through">
-                    {formatPriceShort(product.compareAtPrice)}
-                  </span>
-                )}
-              </div>
+              <ProductPrice
+                price={product.price}
+                unit={product.unit}
+                size="lg"
+                compareAtPrice={discountPercent > 0 ? product.compareAtPrice : undefined}
+              />
 
               {/* Inline quantity stepper when the item is already in the cart. */}
               {showAddToCart && product.isFresh && quantity > 0 && (

@@ -24,7 +24,7 @@ import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
-import { formatPriceShort } from '@/lib/utils'
+import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import { addressesApi, settingsApi } from '@/lib/api'
 import api from '@/lib/api'
 
@@ -682,7 +682,12 @@ function CheckoutPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{item.product.name}</p>
-                      <p className="text-xs text-gray-500">{item.quantity} x {formatPriceShort(item.product.price)}</p>
+                      <p className="text-xs text-gray-500 inline-flex items-baseline gap-0.5">
+                        {item.quantity} x {formatPriceShort(item.product.price)}
+                        <span className="text-[10px] text-gray-400">
+                          {formatProductUnitSuffix(item.product.unit)}
+                        </span>
+                      </p>
                     </div>
                     <p className="text-sm font-medium">
                       {formatPriceShort(item.product.price * item.quantity)}

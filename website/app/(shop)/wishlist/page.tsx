@@ -15,7 +15,7 @@ import Image from 'next/image'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCartStore } from '@/store/cartStore'
-import { formatPriceShort } from '@/lib/utils'
+import ProductPrice from '@/components/ui/ProductPrice'
 import { productsApi } from '@/lib/api'
 import { Product } from '@/types'
 
@@ -162,16 +162,11 @@ export default function WishlistPage() {
                 </button>
               </div>
               <div className="p-4">
-                <h3 className="font-semibold text-gray-900 mb-1">
+                <h3 className="font-semibold text-gray-900 mb-3">
                   {item.product.name}
                 </h3>
-                <p className="text-gray-500 text-sm mb-3">
-                  {item.product.unit}
-                </p>
                 <div className="flex items-center justify-between">
-                  <span className="text-xl font-bold text-primary-600">
-                    {formatPriceShort(item.product.price)}
-                  </span>
+                  <ProductPrice price={item.product.price} unit={item.product.unit} size="lg" />
                   <Button
                     size="sm"
                     onClick={() => addToCart(item.product)}

@@ -22,7 +22,7 @@ import {
   ArrowRight
 } from 'lucide-react'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
-import { cn, formatPriceShort } from '@/lib/utils'
+import { cn, formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import CartDropdown from './CartDropdown'
 import { productsApi, categoriesApi, bannerApi } from '@/lib/api'
 import { Product, Category } from '@/types'
@@ -324,10 +324,12 @@ export default function Header() {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="font-medium text-gray-900 truncate">{product.name}</p>
-                                  <p className="text-sm text-gray-500">{product.unit}</p>
                                 </div>
-                                <span className="font-semibold text-primary-600">
+                                <span className="font-semibold text-primary-600 inline-flex items-baseline gap-0.5">
                                   {formatPriceShort(product.price)}
+                                  <span className="text-[10px] font-normal text-gray-500">
+                                    {formatProductUnitSuffix(product.unit)}
+                                  </span>
                                 </span>
                               </Link>
                             ))}

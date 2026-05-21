@@ -14,8 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList, Product } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { formatCurrency } from '@utils/helpers';
-import { Button, EmptyState } from '@components';
+import { Button, EmptyState, ProductPrice } from '@components';
 import { useWishlistStore, useCartStore } from '@store';
 
 export const WishlistScreen: React.FC = () => {
@@ -93,12 +92,7 @@ export const WishlistScreen: React.FC = () => {
           <Text style={styles.name} numberOfLines={1}>
             {product.name}
           </Text>
-          {!!product.unit && (
-            <Text style={styles.unit}>
-              {product.unit}
-            </Text>
-          )}
-          <Text style={styles.price}>{formatCurrency(product.price)}</Text>
+          <ProductPrice price={product.price} unit={product.unit} size="sm" style={styles.price} />
 
           <View style={styles.actions}>
             <TouchableOpacity
