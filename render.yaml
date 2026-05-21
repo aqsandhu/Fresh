@@ -60,6 +60,10 @@ services:
         sync: false
       - key: FIREBASE_PRIVATE_KEY
         sync: false
+      - key: OTP_BYPASS_ENABLED
+        sync: false  # true = fixed OTP (temporary dev). false = production Firebase OTP
+      - key: OTP_BYPASS_CODE
+        value: "123789"
       # Supabase Storage — persistent object storage for uploaded images.
       # Render's free disk is ephemeral (wiped on every container restart),
       # so the previous /uploads disk approach lost every uploaded file.

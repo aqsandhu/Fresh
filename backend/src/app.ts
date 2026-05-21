@@ -27,6 +27,7 @@ import { setupSwagger } from './config/swagger';
 import { testConnection, closePool } from './config/database';
 import { bootstrapAdmin } from './scripts/bootstrapAdmin';
 import { ensureStorageBucket } from './config/storage';
+import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -227,6 +228,7 @@ const startServer = async () => {
     logger.info('Socket.IO initialized');
 
     // Start HTTP server
+    logOtpBypassWarningIfEnabled();
     httpServer.listen(PORT, () => {
       logger.info(`=================================`);
       logger.info(`Fresh Bazar API running on port ${PORT}`);

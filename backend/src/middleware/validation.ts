@@ -5,6 +5,7 @@
 import { Request, Response, NextFunction } from 'express';
 import Joi, { ObjectSchema, ValidationError as JoiValidationError } from 'joi';
 import { ValidationError } from './errorHandler';
+import { isOtpBypassEnabled } from '../config/otpBypass';
 
 // Validation source types
 type ValidationSource = 'body' | 'query' | 'params' | 'headers' | 'cookies';
@@ -91,20 +92,38 @@ export const commonSchemas = {
   search: Joi.string().min(1).max(100).trim(),
 };
 
-// Auth validation schemas
-export const authSchemas = {
-  sendOtp: Joi.object({
-    phone: commonSchemas.phone.required(),
-  }),
+const otpCodeField = Joi.string().length(6).pattern(/^\d{6}$/).required().messages({
+  'string.length': 'OTP must be exactly 6 digits',
+  'string.pattern.base': 'OTP must contain only digits',
+  'any.required': 'OTP code is required',
+});
 
-  verifyLogin: Joi.object({
+function buildVerifyLoginSchema(): ObjectSchema {
+  if (isOtpBypassEnabled()) {
+    return Joi.object({
+      phone: commonSchemas.phone.required(),
+      code: otpCodeField,
+    });
+  }
+  return Joi.object({
     idToken: Joi.string().min(100).required().messages({
       'string.min': 'Invalid verification token',
       'any.required': 'Verification token is required',
     }),
-  }),
+  });
+}
 
-  verifyRegister: Joi.object({
+function buildVerifyRegisterSchema(): ObjectSchema {
+  if (isOtpBypassEnabled()) {
+    return Joi.object({
+      phone: commonSchemas.phone.required(),
+      code: otpCodeField,
+      full_name: commonSchemas.name.required(),
+      email: commonSchemas.email,
+      password: commonSchemas.password.optional(),
+    });
+  }
+  return Joi.object({
     idToken: Joi.string().min(100).required().messages({
       'string.min': 'Invalid verification token',
       'any.required': 'Verification token is required',
@@ -112,7 +131,45 @@ export const authSchemas = {
     full_name: commonSchemas.name.required(),
     email: commonSchemas.email,
     password: commonSchemas.password.optional(),
+  });
+}
+
+function buildResetPinConfirmSchema(): ObjectSchema {
+  if (isOtpBypassEnabled()) {
+    return Joi.object({
+      phone: commonSchemas.phone.required(),
+      code: otpCodeField,
+      newPin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+        'string.length': 'PIN must be exactly 4 digits',
+        'string.pattern.base': 'PIN must contain only digits (0-9)',
+      }),
+    });
+  }
+  return Joi.object({
+    idToken: Joi.string().min(100).required().messages({
+      'string.min': 'Invalid Firebase verification token',
+      'any.required': 'Verification token is required',
+    }),
+    newPin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+      'string.length': 'PIN must be exactly 4 digits',
+      'string.pattern.base': 'PIN must contain only digits (0-9)',
+    }),
+  });
+}
+
+// Auth validation schemas
+export const authSchemas = {
+  sendOtp: Joi.object({
+    phone: commonSchemas.phone.required(),
   }),
+
+  get verifyLogin() {
+    return buildVerifyLoginSchema();
+  },
+
+  get verifyRegister() {
+    return buildVerifyRegisterSchema();
+  },
 
   register: Joi.object({
     phone: commonSchemas.phone.required(),
@@ -161,16 +218,9 @@ export const authSchemas = {
     }),
   }),
 
-  resetPinConfirm: Joi.object({
-    idToken: Joi.string().min(100).required().messages({
-      'string.min': 'Invalid Firebase verification token',
-      'any.required': 'Verification token is required',
-    }),
-    newPin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
-      'string.length': 'PIN must be exactly 4 digits',
-      'string.pattern.base': 'PIN must contain only digits (0-9)',
-    }),
-  }),
+  get resetPinConfirm() {
+    return buildResetPinConfirmSchema();
+  },
 };
 
 // Product validation schemas

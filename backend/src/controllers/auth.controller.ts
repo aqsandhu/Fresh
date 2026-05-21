@@ -16,7 +16,8 @@ import {
   conflictResponse,
 } from '../utils/response';
 import { normalizePhoneNumber } from '../utils/validators';
-import { verifyFirebaseToken } from '../services/otp.service';
+import { verifyPhoneFromRequest } from '../services/otp.service';
+import { isOtpBypassEnabled } from '../config/otpBypass';
 import logger from '../utils/logger';
 
 const SALT_ROUNDS = 12;
@@ -48,7 +49,10 @@ export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) =
     phone: normalizedPhone,
     userExists,
     userName: userExists ? existingUser.rows[0].full_name : null,
-  }, 'Ready for OTP verification');
+    otpBypass: isOtpBypassEnabled(),
+  }, isOtpBypassEnabled()
+    ? 'OTP bypass active — use the configured fixed code'
+    : 'Ready for OTP verification');
 });
 
 // ============================================================================
@@ -56,10 +60,7 @@ export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) =
 // POST /api/auth/verify-login
 // ============================================================================
 export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) => {
-  const { idToken } = req.body;
-
-  // Verify Firebase ID token — phone number is extracted from the token
-  const tokenResult = await verifyFirebaseToken(idToken);
+  const tokenResult = await verifyPhoneFromRequest(req.body);
   if (!tokenResult.success) {
     return unauthorizedResponse(res, tokenResult.message);
   }
@@ -120,10 +121,9 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
 // POST /api/auth/verify-register
 // ============================================================================
 export const verifyRegisterOtp = asyncHandler(async (req: Request, res: Response) => {
-  const { idToken, full_name, email, password } = req.body;
+  const { full_name, email, password } = req.body;
 
-  // Verify Firebase ID token — phone number is extracted from the token
-  const tokenResult = await verifyFirebaseToken(idToken);
+  const tokenResult = await verifyPhoneFromRequest(req.body);
   if (!tokenResult.success) {
     return unauthorizedResponse(res, tokenResult.message);
   }
@@ -615,11 +615,9 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
  * triggers send-otp + this confirm).
  */
 export const resetPinConfirm = asyncHandler(async (req: Request, res: Response) => {
-  const { idToken, newPin } = req.body as { idToken: string; newPin: string };
+  const { newPin } = req.body as { newPin: string };
 
-  // Verify the Firebase ID token. Reuses the same helper verify-login uses
-  // so no extra Firebase wiring is needed here.
-  const fbResult = await verifyFirebaseToken(idToken);
+  const fbResult = await verifyPhoneFromRequest(req.body);
   if (!fbResult.success || !fbResult.phone) {
     return unauthorizedResponse(res, fbResult.message || 'Invalid verification token');
   }
