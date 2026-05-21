@@ -127,3 +127,53 @@ export async function deleteFileFromStorage(objectPath: string): Promise<void> {
 export function isStorageConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 }
+
+/**
+ * Ensure the configured storage bucket exists on startup.
+ * Uses the service role — no manual Supabase Dashboard step required in prod
+ * as long as SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set on Render.
+ */
+export async function ensureStorageBucket(): Promise<void> {
+  if (!isStorageConfigured()) {
+    logger.warn(
+      'Supabase Storage env vars missing (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY). ' +
+      'Uploads will be skipped until these are set on Render.'
+    );
+    return;
+  }
+
+  try {
+    const client = getClient();
+    const { data: buckets, error: listError } = await client.storage.listBuckets();
+
+    if (listError) {
+      logger.error('Failed to list Supabase storage buckets', { error: listError });
+      return;
+    }
+
+    const exists = buckets?.some((b) => b.name === STORAGE_BUCKET);
+    if (exists) {
+      logger.info(`Supabase storage bucket "${STORAGE_BUCKET}" is ready`);
+      return;
+    }
+
+    const { error: createError } = await client.storage.createBucket(STORAGE_BUCKET, {
+      public: true,
+      fileSizeLimit: 5242880,
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    });
+
+    if (createError) {
+      logger.error(
+        `Could not auto-create bucket "${STORAGE_BUCKET}". ` +
+        'Create it manually: Supabase Dashboard → Storage → New bucket → name "uploads" → Public.',
+        { error: createError }
+      );
+      return;
+    }
+
+    logger.info(`Created Supabase storage bucket "${STORAGE_BUCKET}" (public)`);
+  } catch (err) {
+    logger.error('Storage bucket bootstrap failed', { err });
+  }
+}
