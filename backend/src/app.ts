@@ -29,6 +29,7 @@ import { bootstrapAdmin } from './scripts/bootstrapAdmin';
 import { ensureStorageBucket } from './config/storage';
 import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
 import { ensurePinColumns } from './config/pinAuth';
+import { ensureAddressColumns } from './config/addressSchema';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -212,6 +213,7 @@ const startServer = async () => {
       // Continue starting server - don't exit
     } else {
       await ensurePinColumns();
+      await ensureAddressColumns();
       // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars are set.
       // Safe to call on every boot — idempotently upserts the super-admin row.
       const adminResult = await bootstrapAdmin();
@@ -249,6 +251,7 @@ const startServer = async () => {
         if (connected) {
           logger.info('Database connection established after startup!');
           await ensurePinColumns();
+          await ensureAddressColumns();
         } else {
           setTimeout(retryDb, 30000); // Retry every 30 seconds
         }
