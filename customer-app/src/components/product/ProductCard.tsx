@@ -2,7 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { formatCurrency, truncateText } from '@utils/helpers';
+import { truncateText } from '@utils/helpers';
+import { ProductPrice } from './ProductPrice';
 import { Product } from '@types';
 import { useCartStore } from '@store';
 
@@ -46,14 +47,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <Image source={{ uri: product.images[0] }} style={styles.horizontalImage} />
         <View style={styles.horizontalContent}>
           <Text style={styles.name}>{truncateText(product.name, 25)}</Text>
-          <Text style={styles.unit}>{product.unit}</Text>
           <View style={styles.priceRow}>
-            <Text style={styles.price}>{formatCurrency(product.price)}</Text>
-            {product.originalPrice && (
-              <Text style={styles.originalPrice}>
-                {formatCurrency(product.originalPrice)}
-              </Text>
-            )}
+            <ProductPrice price={product.price} unit={product.unit} size="sm" originalPrice={product.originalPrice} />
           </View>
         </View>
         <View style={styles.actionContainer}>
@@ -93,16 +88,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       )}
       <View style={styles.content}>
         <Text style={styles.name}>{truncateText(product.name, 20)}</Text>
-        <Text style={styles.unit}>{product.unit}</Text>
         <View style={styles.footer}>
-          <View style={styles.priceRow}>
-            <Text style={styles.price}>{formatCurrency(product.price)}</Text>
-            {product.originalPrice && (
-              <Text style={styles.originalPrice}>
-                {formatCurrency(product.originalPrice)}
-              </Text>
-            )}
-          </View>
+          <ProductPrice price={product.price} unit={product.unit} size="sm" originalPrice={product.originalPrice} />
           {quantity > 0 ? (
             <View style={styles.quantityControl}>
               <TouchableOpacity onPress={handleDecrement} style={styles.quantityBtn}>

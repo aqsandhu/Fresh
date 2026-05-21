@@ -13,13 +13,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { CategoryStackParamList, Product } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { formatCurrency, truncateText } from '@utils/helpers';
+import { truncateText } from '@utils/helpers';
 import {
   Button,
   QuantitySelector,
   ErrorView,
   Skeleton,
   LoadingOverlay,
+  ProductPrice,
 } from '@components';
 import { productService } from '@services/product.service';
 import { useCartStore, useWishlistStore } from '@store';
@@ -172,15 +173,13 @@ export const ProductDetailScreen: React.FC = () => {
             </View>
           </View>
 
-          <View style={styles.priceRow}>
-            <Text style={styles.price}>{formatCurrency(product.price)}</Text>
-            <Text style={styles.unit}>/{product.unit}</Text>
-            {product.originalPrice && (
-              <Text style={styles.originalPrice}>
-                {formatCurrency(product.originalPrice)}
-              </Text>
-            )}
-          </View>
+          <ProductPrice
+            price={product.price}
+            unit={product.unit}
+            size="lg"
+            originalPrice={product.originalPrice}
+            style={styles.priceRow}
+          />
 
           {/* Tags */}
           {product.tags.length > 0 && (

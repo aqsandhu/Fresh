@@ -6,7 +6,7 @@ import SmartImage from '@/components/ui/SmartImage'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Minus, Plus, Trash2, X, ShoppingBag } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
-import { formatPriceShort } from '@/lib/utils'
+import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import { settingsApi } from '@/lib/api'
 import Button from '@/components/ui/Button'
 
@@ -115,8 +115,11 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                     {/* Details */}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{item.product.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {formatPriceShort(item.product.price)} / {item.product.unit}
+                      <p className="text-xs text-gray-500 inline-flex items-baseline gap-0.5">
+                        {formatPriceShort(item.product.price)}
+                        <span className="text-[10px] text-gray-400">
+                          {formatProductUnitSuffix(item.product.unit)}
+                        </span>
                       </p>
                     </div>
 

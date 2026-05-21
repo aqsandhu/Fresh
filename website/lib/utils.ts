@@ -44,6 +44,13 @@ export function formatPriceShort(price: number): string {
   return formatRupees(price)
 }
 
+/** Suffix shown beside product price, e.g. "/kg" */
+export function formatProductUnitSuffix(unit?: string | null): string {
+  const trimmed = unit?.trim()
+  if (!trimmed) return ''
+  return `/${trimmed}`
+}
+
 // Helper to safely get a product image with fallback placeholder.
 export function getProductImage(product: any): string {
   if (!product) return '/placeholder-product.png'

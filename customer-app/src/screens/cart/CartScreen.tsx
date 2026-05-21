@@ -14,7 +14,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { CartStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { formatCurrency } from '@utils/helpers';
-import { Button, EmptyState, QuantitySelector } from '@components';
+import { Button, EmptyState, QuantitySelector, ProductPrice } from '@components';
 import { useCartStore } from '@store';
 import { orderService } from '@services/order.service';
 
@@ -58,7 +58,7 @@ export const CartScreen: React.FC = () => {
         <View style={styles.itemHeader}>
           <View style={styles.itemInfo}>
             <Text style={styles.itemName}>{item.product.name}</Text>
-            <Text style={styles.itemUnit}>{item.product.unit}</Text>
+            <ProductPrice price={item.product.price} unit={item.product.unit} size="sm" />
           </View>
           <TouchableOpacity
             onPress={() => handleRemove(item.product.id)}

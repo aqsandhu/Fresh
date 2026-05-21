@@ -14,7 +14,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { productsApi } from '@/lib/api'
 import { Product } from '@/types'
-import { formatPriceShort } from '@/lib/utils'
+import ProductPrice from '@/components/ui/ProductPrice'
 import Button from '@/components/ui/Button'
 import { useCartStore } from '@/store/cartStore'
 import toast from 'react-hot-toast'
@@ -238,18 +238,13 @@ export default function SearchPage() {
                       {product.name}
                     </h3>
                   </Link>
-                  <p className="text-gray-500 text-sm mb-3">{product.unit}</p>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xl font-bold text-primary-600">
-                        {formatPriceShort(product.price)}
-                      </span>
-                      {product.compareAtPrice && (
-                        <span className="text-sm text-gray-400 line-through ml-2">
-                          {formatPriceShort(product.compareAtPrice)}
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between mt-3">
+                    <ProductPrice
+                      price={product.price}
+                      unit={product.unit}
+                      size="lg"
+                      compareAtPrice={product.compareAtPrice}
+                    />
                     <Button
                       size="sm"
                       onClick={() => handleAddToCart(product)}
