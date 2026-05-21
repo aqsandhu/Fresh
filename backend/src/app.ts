@@ -248,6 +248,7 @@ const startServer = async () => {
         const connected = await testConnection(1, 0);
         if (connected) {
           logger.info('Database connection established after startup!');
+          await ensurePinColumns();
         } else {
           setTimeout(retryDb, 30000); // Retry every 30 seconds
         }

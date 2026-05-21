@@ -18,6 +18,7 @@ import {
 import { normalizePhoneNumber } from '../utils/validators';
 import { verifyPhoneFromRequest } from '../services/otp.service';
 import { isOtpBypassEnabled } from '../config/otpBypass';
+import { getPinStatusForPhone, ensurePinColumns, hasPinColumns } from '../config/pinAuth';
 import logger from '../utils/logger';
 
 const SALT_ROUNDS = 12;
@@ -510,45 +511,8 @@ export const pinStatus = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'Invalid phone number', 400);
   }
 
-  try {
-    const result = await query(
-      `SELECT pin_hash IS NOT NULL AS has_pin, full_name
-         FROM users
-        WHERE phone = $1 AND deleted_at IS NULL`,
-      [normalizedPhone]
-    );
-
-    if (result.rows.length === 0) {
-      return successResponse(res, { exists: false, hasPin: false }, 'OK');
-    }
-
-    return successResponse(
-      res,
-      {
-        exists: true,
-        hasPin: !!result.rows[0].has_pin,
-        fullName: result.rows[0].full_name,
-      },
-      'OK'
-    );
-  } catch (error: any) {
-    // Older databases may not have pin_hash yet — treat as exists without PIN.
-    if (error?.code === '42703' || String(error?.message || '').includes('pin_hash')) {
-      const fallback = await query(
-        `SELECT full_name FROM users WHERE phone = $1 AND deleted_at IS NULL`,
-        [normalizedPhone]
-      );
-      if (fallback.rows.length === 0) {
-        return successResponse(res, { exists: false, hasPin: false }, 'OK');
-      }
-      return successResponse(
-        res,
-        { exists: true, hasPin: false, fullName: fallback.rows[0].full_name },
-        'OK'
-      );
-    }
-    throw error;
-  }
+  const status = await getPinStatusForPhone(normalizedPhone);
+  return successResponse(res, status, 'OK');
 });
 
 /**
@@ -559,6 +523,15 @@ export const pinStatus = asyncHandler(async (req: Request, res: Response) => {
 export const setPin = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user?.id) return unauthorizedResponse(res, 'Authentication required');
   const { pin } = req.body as { pin: string };
+
+  const pinReady = await ensurePinColumns();
+  if (!pinReady) {
+    return errorResponse(
+      res,
+      'PIN is not available yet. Database migration pending — please try again in a minute.',
+      503
+    );
+  }
 
   const pinHash = await bcrypt.hash(pin, PIN_BCRYPT_ROUNDS);
   const result = await query(
@@ -583,6 +556,11 @@ export const setPin = asyncHandler(async (req: Request, res: Response) => {
 export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   const { phone, pin } = req.body as { phone: string; pin: string };
   const normalizedPhone = normalizePhoneNumber(phone);
+
+  await ensurePinColumns();
+  if (!(await hasPinColumns())) {
+    return unauthorizedResponse(res, 'Invalid phone or PIN');
+  }
 
   const result = await query(
     `SELECT id, phone, full_name, email, pin_hash, role, status, is_phone_verified
@@ -659,6 +637,11 @@ export const resetPinConfirm = asyncHandler(async (req: Request, res: Response) 
   );
   if (userRow.rows.length === 0) {
     return errorResponse(res, 'No account found for this phone', 404);
+  }
+
+  const pinReady = await ensurePinColumns();
+  if (!pinReady) {
+    return errorResponse(res, 'PIN reset is not available yet. Please try again shortly.', 503);
   }
 
   const pinHash = await bcrypt.hash(newPin, PIN_BCRYPT_ROUNDS);
