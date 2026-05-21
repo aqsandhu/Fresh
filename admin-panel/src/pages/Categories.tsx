@@ -222,11 +222,11 @@ export const Categories: React.FC = () => {
 
     // Create FormData for file upload
     const submitData = new FormData();
-    submitData.append('nameEn', formData.nameEn);
-    submitData.append('nameUr', formData.nameUr);
+    submitData.append('name_en', formData.nameEn);
+    submitData.append('name_ur', formData.nameUr);
     if (formData.icon) submitData.append('icon', formData.icon);
-    submitData.append('isActive', String(formData.isActive ?? true));
-    submitData.append('displayOrder', String(formData.displayOrder ?? 0));
+    submitData.append('is_active', String(formData.isActive ?? true));
+    submitData.append('display_order', String(formData.displayOrder ?? 0));
     
     if (selectedImage) {
       submitData.append('image', selectedImage);
@@ -379,6 +379,7 @@ export const Categories: React.FC = () => {
               Cancel
             </Button>
             <Button
+              type="submit"
               onClick={handleSubmit}
               isLoading={createMutation.isPending || updateMutation.isPending}
             >
@@ -387,7 +388,7 @@ export const Categories: React.FC = () => {
           </div>
         }
       >
-        <form className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
               label="Category Name (English)"

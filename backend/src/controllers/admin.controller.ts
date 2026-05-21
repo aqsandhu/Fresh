@@ -1566,12 +1566,15 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Name (English) and Name (Urdu) are required', 400);
   }
 
-  const slug = generateSlug(nameEn);
+  let slug = generateSlug(nameEn);
+  if (!slug) {
+    slug = `category-${Date.now()}`;
+  }
 
-  // Check if slug exists
+  // Check if slug exists — append suffix on collision instead of hard failing
   const existingResult = await query('SELECT id FROM categories WHERE slug = $1', [slug]);
   if (existingResult.rows.length > 0) {
-    return errorResponse(res, 'Category with similar name already exists', 409);
+    slug = `${slug}-${Date.now()}`;
   }
 
   // Handle uploaded image — Supabase URL on req.file.url.
