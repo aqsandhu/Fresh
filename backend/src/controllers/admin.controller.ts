@@ -1527,9 +1527,10 @@ export const getAdminCategories = asyncHandler(async (req: Request, res: Respons
       c.id, c.name_ur, c.name_en, c.slug, c.icon_url, c.image_url,
       c.parent_id, c.display_order, c.is_active,
       c.qualifies_for_free_delivery, c.minimum_order_for_free_delivery,
-      COUNT(p.id) as product_count
+      COUNT(p.id) FILTER (WHERE p.is_active = TRUE) as product_count,
+      COUNT(p.id) as total_product_count
     FROM categories c
-    LEFT JOIN products p ON c.id = p.category_id AND p.is_active = TRUE
+    LEFT JOIN products p ON c.id = p.category_id
     GROUP BY c.id
     ORDER BY c.display_order ASC, c.name_en ASC`
   );
@@ -1692,34 +1693,61 @@ export const toggleCategoryActive = asyncHandler(async (req: Request, res: Respo
 export const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  // Check if category has any products
-  const productsResult = await query(
-    'SELECT COUNT(*) FROM products WHERE category_id = $1',
-    [id]
-  );
-  
-  if (parseInt(productsResult.rows[0].count) > 0) {
-    return errorResponse(res, 'Cannot delete category with products. Please move or delete products first.', 400);
+  const categoryCheck = await query('SELECT id FROM categories WHERE id = $1', [id]);
+  if (categoryCheck.rows.length === 0) {
+    return notFoundResponse(res, 'Category not found');
   }
 
-  // Check if category has subcategories
-  const childResult = await query(
-    'SELECT COUNT(*) FROM categories WHERE parent_id = $1',
+  // Active products must be moved or deactivated first — the admin UI shows
+  // only this count, so blocking here matches what the user sees.
+  const activeProductsResult = await query(
+    'SELECT COUNT(*)::int AS cnt FROM products WHERE category_id = $1 AND is_active = TRUE',
     [id]
   );
+  if (activeProductsResult.rows[0].cnt > 0) {
+    return errorResponse(
+      res,
+      'Cannot delete category with active products. Move or deactivate products first.',
+      400
+    );
+  }
 
-  if (parseInt(childResult.rows[0].count) > 0) {
+  const childResult = await query(
+    'SELECT COUNT(*)::int AS cnt FROM categories WHERE parent_id = $1',
+    [id]
+  );
+  if (childResult.rows[0].cnt > 0) {
     return errorResponse(res, 'Cannot delete category with subcategories. Please delete subcategories first.', 400);
   }
 
-  const result = await query(
-    'DELETE FROM categories WHERE id = $1 RETURNING id',
+  // Inactive products still block deletion if they appear in past orders.
+  const inOrdersResult = await query(
+    `SELECT COUNT(DISTINCT p.id)::int AS cnt
+     FROM products p
+     JOIN order_items oi ON oi.product_id = p.id
+     WHERE p.category_id = $1`,
     [id]
   );
-
-  if (result.rows.length === 0) {
-    return errorResponse(res, 'Category not found', 404);
+  if (inOrdersResult.rows[0].cnt > 0) {
+    return errorResponse(
+      res,
+      'Cannot delete category: some products in this category are referenced by past orders. Move those products to another category first.',
+      400
+    );
   }
+
+  // Clean up inactive products (and their cart rows) so the category FK
+  // doesn't prevent deletion — this is what admins expect when the UI shows
+  // "0 products".
+  await withTransaction(async (client) => {
+    await client.query(
+      `DELETE FROM cart_items
+       WHERE product_id IN (SELECT id FROM products WHERE category_id = $1)`,
+      [id]
+    );
+    await client.query('DELETE FROM products WHERE category_id = $1', [id]);
+    await client.query('DELETE FROM categories WHERE id = $1', [id]);
+  });
 
   logger.info('Category deleted', { categoryId: id, deletedBy: req.user?.id });
   successResponse(res, null, 'Category deleted successfully');

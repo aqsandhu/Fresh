@@ -145,7 +145,9 @@ apiClient.interceptors.response.use(
       original._retried = true;
       const newToken = await refreshAccessToken();
       if (newToken) {
-        original.headers = original.headers ?? {};
+        if (!original.headers) {
+          original.headers = {} as InternalAxiosRequestConfig['headers'];
+        }
         (original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
         return apiClient.request(original);
       }

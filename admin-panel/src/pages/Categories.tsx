@@ -239,9 +239,24 @@ export const Categories: React.FC = () => {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this category?')) {
-      deleteMutation.mutate(id);
+  const handleDelete = (category: Category) => {
+    const activeCount = Number(category.productCount ?? 0);
+    const totalCount = Number(category.totalProductCount ?? activeCount);
+    const inactiveCount = Math.max(0, totalCount - activeCount);
+
+    let message = `Delete "${category.nameEn}"?`;
+    if (activeCount > 0) {
+      message += `\n\nThis category has ${activeCount} active product(s). Move or deactivate them first.`;
+      alert(message);
+      return;
+    }
+    if (inactiveCount > 0) {
+      message += `\n\n${inactiveCount} inactive product(s) in this category will also be removed.`;
+    }
+    message += '\n\nThis action cannot be undone.';
+
+    if (confirm(message)) {
+      deleteMutation.mutate(category.id);
     }
   };
 
@@ -312,7 +327,11 @@ export const Categories: React.FC = () => {
                     </Badge>
                     {category.productCount !== undefined && (
                       <span className="text-xs text-gray-500">
-                        {category.productCount} products
+                        {category.productCount} active
+                        {category.totalProductCount !== undefined &&
+                          category.totalProductCount > category.productCount &&
+                          ` (${category.totalProductCount} total)`}
+                        {' '}products
                       </span>
                     )}
                   </div>
@@ -334,9 +353,10 @@ export const Categories: React.FC = () => {
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleDelete(category.id); }}
-                      title="Delete (only allowed if no products / subcategories)"
-                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      onClick={(e) => { e.stopPropagation(); handleDelete(category); }}
+                      title="Delete (only allowed if no active products / subcategories)"
+                      disabled={deleteMutation.isPending}
+                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
