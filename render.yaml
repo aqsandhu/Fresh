@@ -25,6 +25,8 @@ services:
       # Get from Supabase Dashboard > Project Settings > Database > Connection String
       - key: DATABASE_URL
         sync: false  # Set in dashboard: postgresql://postgres:PASSWORD@db.XXX.supabase.co:5432/postgres
+      - key: DATABASE_MIGRATION_URL
+        sync: false  # Optional direct :5432 URL if pooler blocks ALTER TABLE
       # Option 2: Use individual variables (fallback if DATABASE_URL not set)
       - key: DB_HOST
         value: db.kvyjqqtkpozxpvuoalyw.supabase.co
