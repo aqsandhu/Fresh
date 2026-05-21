@@ -60,7 +60,11 @@ router.post(
 // ── 4-digit PIN auth ────────────────────────────────────────────────────
 // Customers use a one-time OTP at register, then a 4-digit PIN for every
 // subsequent login + sensitive re-auth. Falls back to OTP if PIN forgotten.
-router.get('/pin-status', authController.pinStatus);
+router.get(
+  '/pin-status',
+  validate(authSchemas.pinStatus, 'query'),
+  authController.pinStatus
+);
 router.post(
   '/set-pin',
   authenticate,

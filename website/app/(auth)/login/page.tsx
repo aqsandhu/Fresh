@@ -71,8 +71,17 @@ export default function LoginPage() {
   const {
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<PhoneForm>({ resolver: zodResolver(phoneSchema) })
+
+  useEffect(() => {
+    const phoneParam = searchParams.get('phone')
+    if (phoneParam) {
+      setPhone(phoneParam)
+      setValue('phone', phoneParam)
+    }
+  }, [searchParams, setValue])
 
   // ── Initialize reCAPTCHA ──────────────────────────────────────────────
   const initRecaptcha = () => {
@@ -144,20 +153,25 @@ export default function LoginPage() {
     setIsLoading(true)
     try {
       const status = await authApi.pinStatus(data.phone)
+
       if (!status.exists) {
-        toast.error('No account found with this number. Please register first.')
-        router.push(`/register?phone=${encodeURIComponent(data.phone)}`)
+        const redirect = searchParams.get('redirect')
+        const params = new URLSearchParams({
+          phone: data.phone,
+          autoOtp: '1',
+        })
+        if (redirect) params.set('redirect', redirect)
+        router.push(`/register?${params.toString()}`)
         return
       }
+
       setUserName(status.fullName || null)
+      setNormalizedPhone(data.phone)
+
       if (status.hasPin) {
-        // Skip OTP entirely — PIN is the everyday login factor.
-        setNormalizedPhone(data.phone)
         setPin('')
         setStep('pin')
       } else {
-        // Existing user without a PIN yet — fall through to OTP. After login
-        // they can set a PIN from Settings.
         await sendOtp(data.phone)
       }
     } catch (err: any) {
@@ -353,9 +367,12 @@ export default function LoginPage() {
                   />
 
                   <Button type="submit" fullWidth isLoading={isLoading} size="lg">
-                    Send OTP via SMS
+                    Continue
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
+                  <p className="text-center text-xs text-gray-500">
+                    New customer? Enter your number — we&apos;ll verify with OTP on the next screen.
+                  </p>
                 </form>
               </motion.div>
             ) : step === 'pin' ? (

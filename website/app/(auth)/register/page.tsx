@@ -73,6 +73,7 @@ export default function RegisterPage() {
 
   const confirmationResultRef = useRef<ConfirmationResult | null>(null)
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
+  const autoOtpStarted = useRef(false)
 
   // Resend countdown
   useEffect(() => {
@@ -109,20 +110,23 @@ export default function RegisterPage() {
   }
 
   // ── Send OTP ──────────────────────────────────────────────────────────
-  const sendOtp = async (phoneNumber: string) => {
+  const sendOtp = useCallback(async (phoneNumber: string) => {
     setIsLoading(true)
     try {
-      // Step 1: Check user existence with backend
       const res = await authApi.sendOtp(phoneNumber)
       const data = res.data
 
       if (data.userExists) {
-        toast.error('This number is already registered. Please login instead.')
-        router.push(`/login`)
+        toast.error('This number is already registered. Please login with your PIN.')
+        const redirect = searchParams.get('redirect')
+        const loginParams = new URLSearchParams({ phone: phoneNumber })
+        if (redirect) loginParams.set('redirect', redirect)
+        router.push(`/login?${loginParams.toString()}`)
         return
       }
 
       setNormalizedPhone(data.phone)
+      setPhone(phoneNumber)
 
       if (isOtpBypassEnabled()) {
         setStep('otp')
@@ -132,7 +136,6 @@ export default function RegisterPage() {
         return
       }
 
-      // Step 2: Send OTP via Firebase (SMS)
       const verifier = initRecaptcha()
       const confirmation = await signInWithPhoneNumber(getFirebaseAuth(), data.phone, verifier)
       confirmationResultRef.current = confirmation
@@ -145,14 +148,22 @@ export default function RegisterPage() {
       const backendMsg = err?.response?.data?.message
       const msg = backendMsg || firebaseErrorMessage(err, 'Failed to send OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
-      // eslint-disable-next-line no-console
       console.error('[Firebase OTP send error]', err)
       recaptchaVerifierRef.current?.clear()
       recaptchaVerifierRef.current = null
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [router, searchParams])
+
+  useEffect(() => {
+    const phoneParam = searchParams.get('phone')
+    const shouldAutoOtp = searchParams.get('autoOtp') === '1'
+    if (!shouldAutoOtp || !phoneParam || autoOtpStarted.current) return
+    autoOtpStarted.current = true
+    phoneForm.setValue('phone', phoneParam)
+    sendOtp(phoneParam)
+  }, [searchParams, sendOtp, phoneForm])
 
   const onPhoneSubmit = async (data: PhoneForm) => {
     setPhone(data.phone)
@@ -266,7 +277,8 @@ export default function RegisterPage() {
     try {
       await authApi.setPin(confirmed)
       toast.success('PIN set! You can use it next time you log in.')
-      router.push('/')
+      const redirectTo = searchParams.get('redirect') || '/'
+      router.push(redirectTo)
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to save PIN. Please try again.'
       toast.error(msg)
@@ -314,8 +326,11 @@ export default function RegisterPage() {
     { key: 'phone', label: 'Phone' },
     { key: 'otp', label: 'Verify' },
     { key: 'profile', label: 'Profile' },
+    { key: 'pin', label: 'PIN' },
   ]
-  const currentStepIndex = steps.findIndex((s) => s.key === step)
+  const currentStepIndex = step === 'pin'
+    ? steps.length - 1
+    : steps.findIndex((s) => s.key === step)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center py-12 px-4">
