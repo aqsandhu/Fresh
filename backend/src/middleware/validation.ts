@@ -127,8 +127,9 @@ export const authSchemas = {
   }),
   
   refresh: Joi.object({
-    refreshToken: Joi.string().required(),
-  }),
+    refreshToken: Joi.string(),
+    refresh_token: Joi.string(),
+  }).or('refreshToken', 'refresh_token'),
   
   changePassword: Joi.object({
     currentPassword: Joi.string().required(),

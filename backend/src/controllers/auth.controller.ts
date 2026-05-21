@@ -299,7 +299,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
  * POST /api/auth/refresh
  */
 export const refreshToken = asyncHandler(async (req: Request, res: Response) => {
-  const { refreshToken } = req.body;
+  const refreshToken = req.body.refreshToken || req.body.refresh_token;
 
   if (!refreshToken) {
     return unauthorizedResponse(res, 'Refresh token required');

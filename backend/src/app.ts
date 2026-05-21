@@ -26,6 +26,7 @@ import { setupSwagger } from './config/swagger';
 // Import database and middleware
 import { testConnection, closePool } from './config/database';
 import { bootstrapAdmin } from './scripts/bootstrapAdmin';
+import { ensureStorageBucket } from './config/storage';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -217,6 +218,9 @@ const startServer = async () => {
         logger.info(`Admin bootstrap: ${adminResult.status} — ${adminResult.message}`);
       }
     }
+
+    // Ensure Supabase Storage bucket exists (creates "uploads" if missing)
+    await ensureStorageBucket();
 
     // Initialize Socket.IO
     initializeSocket(httpServer);

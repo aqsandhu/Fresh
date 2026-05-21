@@ -60,6 +60,18 @@ export const Categories: React.FC = () => {
   });
 
   const createMutation = useMutation({
+    mutationFn: (data: CreateCategoryData) => categoryService.createCategory(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Category created successfully');
+      closeModal();
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Failed to create category');
+    },
+  });
+
+  const createWithImageMutation = useMutation({
     mutationFn: (data: FormData) => categoryService.createCategoryWithImage(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
@@ -67,11 +79,24 @@ export const Categories: React.FC = () => {
       closeModal();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Failed to create category');
+      toast.error(err?.message || 'Failed to create category');
     },
   });
 
   const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<CreateCategoryData> }) =>
+      categoryService.updateCategory(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success('Category updated successfully');
+      closeModal();
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Failed to update category');
+    },
+  });
+
+  const updateWithImageMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: FormData }) =>
       categoryService.updateCategoryWithImage(id, data),
     onSuccess: () => {
@@ -80,7 +105,7 @@ export const Categories: React.FC = () => {
       closeModal();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Failed to update category');
+      toast.error(err?.message || 'Failed to update category');
     },
   });
 
@@ -220,22 +245,38 @@ export const Categories: React.FC = () => {
       return;
     }
 
-    // Create FormData for file upload
-    const submitData = new FormData();
-    submitData.append('name_en', formData.nameEn);
-    submitData.append('name_ur', formData.nameUr);
-    if (formData.icon) submitData.append('icon', formData.icon);
-    submitData.append('is_active', String(formData.isActive ?? true));
-    submitData.append('display_order', String(formData.displayOrder ?? 0));
-    
-    if (selectedImage) {
-      submitData.append('image', selectedImage);
-    }
+    const payload: CreateCategoryData = {
+      nameEn: formData.nameEn,
+      nameUr: formData.nameUr,
+      icon: formData.icon,
+      isActive: formData.isActive ?? true,
+      displayOrder: formData.displayOrder ?? 0,
+    };
 
     if (editingCategory) {
-      updateMutation.mutate({ id: editingCategory.id, data: submitData });
+      if (selectedImage) {
+        const submitData = new FormData();
+        submitData.append('name_en', formData.nameEn);
+        submitData.append('name_ur', formData.nameUr);
+        if (formData.icon) submitData.append('icon', formData.icon);
+        submitData.append('is_active', String(formData.isActive ?? true));
+        submitData.append('display_order', String(formData.displayOrder ?? 0));
+        submitData.append('image', selectedImage);
+        updateWithImageMutation.mutate({ id: editingCategory.id, data: submitData });
+      } else {
+        updateMutation.mutate({ id: editingCategory.id, data: payload });
+      }
+    } else if (selectedImage) {
+      const submitData = new FormData();
+      submitData.append('name_en', formData.nameEn);
+      submitData.append('name_ur', formData.nameUr);
+      if (formData.icon) submitData.append('icon', formData.icon);
+      submitData.append('is_active', String(formData.isActive ?? true));
+      submitData.append('display_order', String(formData.displayOrder ?? 0));
+      submitData.append('image', selectedImage);
+      createWithImageMutation.mutate(submitData);
     } else {
-      createMutation.mutate(submitData);
+      createMutation.mutate(payload);
     }
   };
 
@@ -381,7 +422,12 @@ export const Categories: React.FC = () => {
             <Button
               type="submit"
               onClick={handleSubmit}
-              isLoading={createMutation.isPending || updateMutation.isPending}
+              isLoading={
+                createMutation.isPending ||
+                createWithImageMutation.isPending ||
+                updateMutation.isPending ||
+                updateWithImageMutation.isPending
+              }
             >
               {editingCategory ? 'Update' : 'Create'}
             </Button>

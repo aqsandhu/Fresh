@@ -42,6 +42,19 @@ export function toSnakeCase(data: unknown): unknown {
   return convertKeys(data, camelToSnake);
 }
 
+function cloneFormData(source: FormData): FormData {
+  const clone = new FormData();
+  source.forEach((value, key) => {
+    clone.append(key, value);
+  });
+  return clone;
+}
+
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retried?: boolean;
+  _formDataBackup?: FormData;
+};
+
 // Create axios instance
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -68,6 +81,8 @@ apiClient.interceptors.request.use(
       if (config.headers) {
         delete config.headers['Content-Type'];
       }
+      // FormData streams are consumed on first send — keep a clone for 401 retries.
+      (config as RetryableRequestConfig)._formDataBackup = cloneFormData(config.data);
     }
     // Convert query params
     if (config.params) {
@@ -98,11 +113,10 @@ async function refreshAccessToken(): Promise<string | null> {
       // 401 interceptor — otherwise a failing refresh would recurse.
       const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {
         refreshToken: stored,
+        refresh_token: stored,
       });
-      // Backend wraps payload in { success, data: { tokens: {...} } } and
-      // (because of the response converter) we don't get to use it here, so
-      // we read the raw response shape.
-      const tokens = data?.data?.tokens;
+      const payload = data?.data ?? data;
+      const tokens = payload?.tokens ?? payload;
       const accessToken = tokens?.accessToken || tokens?.access_token;
       const refreshToken = tokens?.refreshToken || tokens?.refresh_token;
       if (!accessToken) return null;
@@ -145,7 +159,7 @@ apiClient.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const message = (error.response?.data as { message?: string })?.message || 'Something went wrong';
-    const original = error.config as InternalAxiosRequestConfig & { _retried?: boolean };
+    const original = error.config as RetryableRequestConfig;
 
     if (error.response?.status === 401 && original && !original._retried) {
       // Try to refresh the access token transparently and retry the request.
@@ -156,6 +170,10 @@ apiClient.interceptors.response.use(
           original.headers = {} as InternalAxiosRequestConfig['headers'];
         }
         (original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+        // Restore FormData body — the first attempt may have consumed the stream.
+        if (original._formDataBackup) {
+          original.data = cloneFormData(original._formDataBackup);
+        }
         return apiClient.request(original);
       }
       // Refresh failed → kick the user out.
