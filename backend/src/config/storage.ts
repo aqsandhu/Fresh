@@ -21,9 +21,18 @@ import path from 'path';
 import logger from '../utils/logger';
 import { query } from './database';
 
-const STORAGE_BUCKET = (process.env.SUPABASE_STORAGE_BUCKET || 'uploads').trim();
+const STORAGE_BUCKET = sanitizeEnvValue(process.env.SUPABASE_STORAGE_BUCKET || 'uploads');
 
-/** Derive https://<ref>.supabase.co from a Supabase Postgres connection string. */
+/** Strip line breaks / stray whitespace from env secrets pasted into Render. */
+function sanitizeEnvValue(value: string): string {
+  return value.replace(/[\r\n]+/g, '').trim();
+}
+
+/** API keys must be a single token — remove any accidental whitespace/newlines. */
+function sanitizeSecret(value: string | undefined): string {
+  if (!value) return '';
+  return value.replace(/\s+/g, '');
+}
 function deriveSupabaseUrlFromDatabaseUrl(databaseUrl: string): string | null {
   const dbHost = databaseUrl.match(/@db\.([a-z0-9-]+)\.supabase\.co/i);
   if (dbHost?.[1]) return `https://${dbHost[1]}.supabase.co`;
@@ -42,8 +51,10 @@ function normalizeSupabaseUrl(url: string): string {
 }
 
 function resolveSupabaseUrl(): string {
-  const explicit = process.env.SUPABASE_URL?.trim();
-  if (explicit) return normalizeSupabaseUrl(explicit);
+  const explicit = process.env.SUPABASE_URL
+    ? normalizeSupabaseUrl(sanitizeEnvValue(process.env.SUPABASE_URL))
+    : '';
+  if (explicit) return explicit;
 
   const fromDb = process.env.DATABASE_URL
     ? deriveSupabaseUrlFromDatabaseUrl(process.env.DATABASE_URL)
@@ -57,7 +68,15 @@ function resolveSupabaseUrl(): string {
 }
 
 const SUPABASE_URL = resolveSupabaseUrl();
-const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_SERVICE_ROLE_KEY = sanitizeSecret(rawServiceKey);
+
+if (rawServiceKey && /[\r\n]/.test(rawServiceKey)) {
+  logger.warn(
+    'SUPABASE_SERVICE_ROLE_KEY contained line breaks and was auto-corrected. ' +
+    'Re-paste the key as a single line in Render → Environment.'
+  );
+}
 
 let cachedClient: SupabaseClient | null = null;
 
