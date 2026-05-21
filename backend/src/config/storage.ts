@@ -4,29 +4,60 @@
 // Persistent object storage for user uploads (product images, category
 // images, door pictures, rider CNIC / vehicle / delivery-proof images).
 //
-// Replaces the previous local-disk multer flow which lost every uploaded
-// file the moment Render's free-tier container restarted (the disk is
-// ephemeral). Supabase Storage is durable and serves public files via
-// CDN-backed HTTPS URLs that we store directly in the DB.
-//
 // Required env vars (set on Render dashboard):
 //   SUPABASE_URL              - https://<project-id>.supabase.co
-//   SUPABASE_SERVICE_ROLE_KEY - server-only key from Supabase project
-//                               settings -> API. NEVER expose this to a
-//                               browser; it bypasses RLS.
+//   SUPABASE_SERVICE_ROLE_KEY - server-only key (NOT the anon key)
 //
 // Optional:
 //   SUPABASE_STORAGE_BUCKET   - bucket name (defaults to "uploads")
+//
+// NOTE: DATABASE_URL alone is enough for Postgres but NOT for Storage.
+// If SUPABASE_URL is missing we derive it from DATABASE_URL automatically.
 // ============================================================================
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import logger from '../utils/logger';
+import { query } from './database';
 
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'uploads';
+const STORAGE_BUCKET = (process.env.SUPABASE_STORAGE_BUCKET || 'uploads').trim();
+
+/** Derive https://<ref>.supabase.co from a Supabase Postgres connection string. */
+function deriveSupabaseUrlFromDatabaseUrl(databaseUrl: string): string | null {
+  const dbHost = databaseUrl.match(/@db\.([a-z0-9-]+)\.supabase\.co/i);
+  if (dbHost?.[1]) return `https://${dbHost[1]}.supabase.co`;
+
+  const poolerUser = databaseUrl.match(/postgres(?:ql)?:\/\/postgres\.([a-z0-9-]+):/i);
+  if (poolerUser?.[1]) return `https://${poolerUser[1]}.supabase.co`;
+
+  return null;
+}
+
+function normalizeSupabaseUrl(url: string): string {
+  return url
+    .trim()
+    .replace(/\/rest\/v1\/?$/i, '')
+    .replace(/\/+$/, '');
+}
+
+function resolveSupabaseUrl(): string {
+  const explicit = process.env.SUPABASE_URL?.trim();
+  if (explicit) return normalizeSupabaseUrl(explicit);
+
+  const fromDb = process.env.DATABASE_URL
+    ? deriveSupabaseUrlFromDatabaseUrl(process.env.DATABASE_URL)
+    : null;
+  if (fromDb) {
+    logger.info('Derived SUPABASE_URL from DATABASE_URL', { url: fromDb });
+    return fromDb;
+  }
+
+  return '';
+}
+
+const SUPABASE_URL = resolveSupabaseUrl();
+const SUPABASE_SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
 let cachedClient: SupabaseClient | null = null;
 
@@ -34,7 +65,8 @@ function getClient(): SupabaseClient {
   if (cachedClient) return cachedClient;
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error(
-      'Supabase Storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY env vars.'
+      'Supabase Storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on Render ' +
+      '(Project Settings → API → service_role secret). DATABASE_URL alone does not enable Storage.'
     );
   }
   cachedClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -44,72 +76,107 @@ function getClient(): SupabaseClient {
 }
 
 export interface UploadedFileInfo {
-  /** Public CDN URL — store this directly in the DB. */
   url: string;
-  /** Bucket-relative path, useful for deletes / debugging. */
   path: string;
+}
+
+function extensionForFile(file: Express.Multer.File): string {
+  const fromName = path.extname(file.originalname || '').toLowerCase();
+  if (fromName) return fromName;
+
+  const mimeMap: Record<string, string> = {
+    'image/jpeg': '.jpg',
+    'image/jpg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+    'image/gif': '.gif',
+  };
+  return mimeMap[file.mimetype] || '.jpg';
 }
 
 /**
  * Upload a single multer-parsed file (memory storage) to Supabase Storage.
- *
- * @param file        The multer file object (must use memoryStorage).
- * @param folder      Logical sub-folder inside the bucket (e.g. "products",
- *                    "categories", "addresses/door-pictures"). Helps
- *                    auditing + lifecycle policies later.
+ * Files land at:  <bucket>/<folder>/<uuid>.<ext>
+ * e.g. uploads/categories/a1b2c3.jpg
  */
 export async function uploadFileToStorage(
   file: Express.Multer.File,
   folder = 'misc'
 ): Promise<UploadedFileInfo> {
-  if (!file?.buffer) {
-    throw new Error('uploadFileToStorage requires multer memoryStorage');
+  if (!file?.buffer?.length) {
+    throw new Error('uploadFileToStorage requires multer memoryStorage with a non-empty buffer');
   }
 
-  const ext = path.extname(file.originalname || '').toLowerCase() || '';
+  const ext = extensionForFile(file);
   const objectPath = `${folder}/${uuidv4()}${ext}`;
 
-  const { error } = await getClient()
+  const body = file.buffer instanceof Uint8Array ? file.buffer : new Uint8Array(file.buffer);
+
+  const { data, error } = await getClient()
     .storage
     .from(STORAGE_BUCKET)
-    .upload(objectPath, file.buffer, {
+    .upload(objectPath, body, {
       contentType: file.mimetype || 'application/octet-stream',
-      cacheControl: '31536000', // 1 year — files are content-addressed
+      cacheControl: '31536000',
       upsert: false,
     });
 
   if (error) {
-    logger.error('Supabase upload failed', { folder, objectPath, bucket: STORAGE_BUCKET, error });
-    // Translate the most common setup mistakes into actionable messages so
-    // a 500 on /api/admin/categories tells us exactly what to fix instead
-    // of a cryptic "Invalid path specified in request URL".
-    const raw = (error as any).message || '';
-    if (raw.includes('Invalid path') || raw.includes('Bucket not found') || (error as any).statusCode === 'PGRST125') {
+    logger.error('Supabase upload failed', {
+      supabaseUrl: SUPABASE_URL,
+      bucket: STORAGE_BUCKET,
+      folder,
+      objectPath,
+      mimetype: file.mimetype,
+      size: file.size,
+      error,
+    });
+
+    const raw = (error as { message?: string }).message || '';
+    const statusCode = (error as { statusCode?: string }).statusCode;
+
+    if (
+      raw.includes('Invalid path') ||
+      raw.includes('Bucket not found') ||
+      statusCode === '404' ||
+      statusCode === 'PGRST125'
+    ) {
       throw new Error(
-        `Storage bucket "${STORAGE_BUCKET}" not found. Create it in Supabase Dashboard → Storage → New bucket (set it as Public).`
+        `Storage bucket "${STORAGE_BUCKET}" is not registered in Supabase Storage for project ${SUPABASE_URL}. ` +
+        'Open Supabase → Storage → create a bucket named exactly "uploads" (Public). ' +
+        'A folder inside another bucket is not the same as a bucket.'
       );
     }
-    if (raw.includes('row-level security') || raw.includes('not authorized')) {
+    if (raw.includes('row-level security') || raw.includes('not authorized') || raw.includes('403')) {
       throw new Error(
-        `Storage upload denied by RLS. Either set the "${STORAGE_BUCKET}" bucket to Public or add a policy allowing the service role to upload.`
+        `Storage upload denied for bucket "${STORAGE_BUCKET}". ` +
+        'Set the bucket to Public and ensure SUPABASE_SERVICE_ROLE_KEY (not anon key) is set on Render.'
       );
+    }
+    if (raw.includes('mime type') || raw.includes('Invalid MIME')) {
+      throw new Error(`File type not allowed by bucket policy: ${file.mimetype}`);
     }
     throw new Error(`Storage upload failed: ${raw}`);
+  }
+
+  if (!data?.path) {
+    throw new Error('Storage upload returned no path');
   }
 
   const { data: publicData } = getClient()
     .storage
     .from(STORAGE_BUCKET)
-    .getPublicUrl(objectPath);
+    .getPublicUrl(data.path);
 
-  return { url: publicData.publicUrl, path: objectPath };
+  logger.info('Supabase upload succeeded', {
+    bucket: STORAGE_BUCKET,
+    path: data.path,
+    url: publicData.publicUrl,
+  });
+
+  return { url: publicData.publicUrl, path: data.path };
 }
 
-/**
- * Delete a previously uploaded object. Best-effort — failures are logged
- * but not thrown (we never want a delete failure to break a user-facing
- * mutation; orphaned objects can be GC'd later).
- */
 export async function deleteFileFromStorage(objectPath: string): Promise<void> {
   if (!objectPath) return;
   try {
@@ -123,24 +190,114 @@ export async function deleteFileFromStorage(objectPath: string): Promise<void> {
   }
 }
 
-/** True iff env vars are present. Lets callers decide whether to attempt. */
 export function isStorageConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 }
 
+export function getStorageConfig() {
+  return {
+    supabaseUrl: SUPABASE_URL || null,
+    bucket: STORAGE_BUCKET,
+    configured: isStorageConfigured(),
+  };
+}
+
 /**
- * Ensure the configured storage bucket exists on startup.
- * Uses the service role — no manual Supabase Dashboard step required in prod
- * as long as SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set on Render.
+ * Ensure the bucket row exists in storage.buckets via Postgres.
+ * This fixes the common case where a "folder" was created in the UI but
+ * the bucket record was never registered (API then returns PGRST125).
+ */
+async function ensureStorageBucketViaDatabase(): Promise<void> {
+  try {
+    await query(
+      `INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+       VALUES ($1, $1, true, 5242880, NULL)
+       ON CONFLICT (id) DO UPDATE SET
+         public = true,
+         file_size_limit = GREATEST(storage.buckets.file_size_limit, 5242880),
+         allowed_mime_types = NULL`,
+      [STORAGE_BUCKET]
+    );
+    logger.info(`Storage bucket "${STORAGE_BUCKET}" ensured via database`);
+  } catch (err) {
+    logger.warn('Could not upsert storage.buckets row (non-fatal)', { bucket: STORAGE_BUCKET, err });
+  }
+}
+
+/**
+ * Public read + authenticated insert policies for the uploads bucket.
+ */
+async function ensureStoragePoliciesViaDatabase(): Promise<void> {
+  const bucket = STORAGE_BUCKET;
+
+  const policies = [
+    {
+      name: 'freshbazar_uploads_public_read',
+      sql: `
+        CREATE POLICY freshbazar_uploads_public_read ON storage.objects
+          FOR SELECT TO public
+          USING (bucket_id = '${bucket}');
+      `,
+    },
+    {
+      name: 'freshbazar_uploads_service_insert',
+      sql: `
+        CREATE POLICY freshbazar_uploads_service_insert ON storage.objects
+          FOR INSERT TO authenticated, service_role
+          WITH CHECK (bucket_id = '${bucket}');
+      `,
+    },
+    {
+      name: 'freshbazar_uploads_service_update',
+      sql: `
+        CREATE POLICY freshbazar_uploads_service_update ON storage.objects
+          FOR UPDATE TO authenticated, service_role
+          USING (bucket_id = '${bucket}');
+      `,
+    },
+    {
+      name: 'freshbazar_uploads_service_delete',
+      sql: `
+        CREATE POLICY freshbazar_uploads_service_delete ON storage.objects
+          FOR DELETE TO authenticated, service_role
+          USING (bucket_id = '${bucket}');
+      `,
+    },
+  ];
+
+  for (const policy of policies) {
+    try {
+      const exists = await query(
+        `SELECT 1 FROM pg_policies
+         WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = $1`,
+        [policy.name]
+      );
+      if (exists.rowCount === 0) {
+        await query(policy.sql);
+        logger.info(`Created storage policy ${policy.name}`);
+      }
+    } catch (err) {
+      logger.warn(`Could not create storage policy ${policy.name} (non-fatal)`, { err });
+    }
+  }
+}
+
+/**
+ * Ensure bucket exists via Storage API + Postgres + policies.
  */
 export async function ensureStorageBucket(): Promise<void> {
   if (!isStorageConfigured()) {
     logger.warn(
-      'Supabase Storage env vars missing (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY). ' +
-      'Uploads will be skipped until these are set on Render.'
+      'Supabase Storage not fully configured. Set SUPABASE_SERVICE_ROLE_KEY on Render ' +
+      '(service_role, NOT anon). SUPABASE_URL can be derived from DATABASE_URL automatically.'
     );
     return;
   }
+
+  logger.info('Supabase Storage config', getStorageConfig());
+
+  await ensureStorageBucketViaDatabase();
+  await ensureStoragePoliciesViaDatabase();
 
   try {
     const client = getClient();
@@ -148,32 +305,26 @@ export async function ensureStorageBucket(): Promise<void> {
 
     if (listError) {
       logger.error('Failed to list Supabase storage buckets', { error: listError });
-      return;
+    } else {
+      const names = buckets?.map((b) => b.name) ?? [];
+      logger.info('Supabase buckets visible to API', { names, configured: STORAGE_BUCKET });
+
+      if (!names.includes(STORAGE_BUCKET)) {
+        logger.warn(
+          `Bucket "${STORAGE_BUCKET}" not returned by Storage API — attempting API create`
+        );
+        const { error: createError } = await client.storage.createBucket(STORAGE_BUCKET, {
+          public: true,
+          fileSizeLimit: 5242880,
+        });
+        if (createError) {
+          logger.error('Storage API createBucket failed', { error: createError });
+        } else {
+          logger.info(`Created bucket "${STORAGE_BUCKET}" via Storage API`);
+        }
+      }
     }
-
-    const exists = buckets?.some((b) => b.name === STORAGE_BUCKET);
-    if (exists) {
-      logger.info(`Supabase storage bucket "${STORAGE_BUCKET}" is ready`);
-      return;
-    }
-
-    const { error: createError } = await client.storage.createBucket(STORAGE_BUCKET, {
-      public: true,
-      fileSizeLimit: 5242880,
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
-    });
-
-    if (createError) {
-      logger.error(
-        `Could not auto-create bucket "${STORAGE_BUCKET}". ` +
-        'Create it manually: Supabase Dashboard → Storage → New bucket → name "uploads" → Public.',
-        { error: createError }
-      );
-      return;
-    }
-
-    logger.info(`Created Supabase storage bucket "${STORAGE_BUCKET}" (public)`);
   } catch (err) {
-    logger.error('Storage bucket bootstrap failed', { err });
+    logger.error('Storage bucket bootstrap via API failed', { err });
   }
 }

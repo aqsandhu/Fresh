@@ -1579,7 +1579,14 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
 
   // Handle uploaded image — Supabase URL on req.file.url.
   const imageUrl: string | null = req.file?.url || null;
-  const imageUploadSkipped = Boolean(req.file && !imageUrl);
+
+  if (req.file && !imageUrl) {
+    return errorResponse(
+      res,
+      'Category image upload failed. Verify Supabase Storage bucket "uploads" exists (Public) and SUPABASE_SERVICE_ROLE_KEY is set on Render.',
+      502
+    );
+  }
 
   const result = await query(
     `INSERT INTO categories (
@@ -1596,13 +1603,9 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
     ]
   );
 
-  logger.info('Category created', { categoryId: result.rows[0].id, createdBy: req.user?.id });
+  logger.info('Category created', { categoryId: result.rows[0].id, createdBy: req.user?.id, imageUrl });
 
-  const message = imageUploadSkipped
-    ? 'Category created successfully (image upload failed — check Supabase Storage bucket "uploads")'
-    : 'Category created successfully';
-
-  createdResponse(res, result.rows[0], message);
+  createdResponse(res, result.rows[0], 'Category created successfully');
 });
 
 /**
@@ -1645,6 +1648,13 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
   }
 
   // Handle uploaded image — Supabase URL on req.file.url.
+  if (req.file && !req.file.url) {
+    return errorResponse(
+      res,
+      'Category image upload failed. Verify Supabase Storage bucket "uploads" exists (Public) and SUPABASE_SERVICE_ROLE_KEY is set on Render.',
+      502
+    );
+  }
   if (req.file?.url) {
     setClauses.push(`image_url = $${paramIndex++}`);
     values.push(req.file.url);
