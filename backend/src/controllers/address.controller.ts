@@ -4,6 +4,7 @@
 
 import { Request, Response } from 'express';
 import { query } from '../config/database';
+import { ensureAddressColumns, hasLocationAddedByColumn } from '../config/addressSchema';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
 import logger from '../utils/logger';
@@ -126,28 +127,51 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
     zone_id = zoneResult.rows.length > 0 ? zoneResult.rows[0].id : null;
   }
 
+  await ensureAddressColumns();
+  const trackLocationSource = await hasLocationAddedByColumn();
+
   // Create address
   let result;
   if (hasLocation) {
-    result = await query(
-      `INSERT INTO addresses (
-        user_id, address_type, written_address, landmark,
-        location, area_name, city, province, postal_code,
-        zone_id, door_picture_url, is_default, delivery_instructions,
-        location_added_by
-      ) VALUES (
-        $1, $2, $3, $4,
-        ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography,
-        $7, $8, $9, $10,
-        $11, $12, $13, $14,
-        'user'
-      ) RETURNING *`,
-      [
-        req.user.id, address_type, written_address, landmark || null,
-        parsedLng, parsedLat, area_name, city, province, postal_code || null,
-        zone_id, door_picture_url, defaultFlag, delivery_instructions || null,
-      ]
-    );
+    if (trackLocationSource) {
+      result = await query(
+        `INSERT INTO addresses (
+          user_id, address_type, written_address, landmark,
+          location, area_name, city, province, postal_code,
+          zone_id, door_picture_url, is_default, delivery_instructions,
+          location_added_by
+        ) VALUES (
+          $1, $2, $3, $4,
+          ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography,
+          $7, $8, $9, $10,
+          $11, $12, $13, $14,
+          'user'
+        ) RETURNING *`,
+        [
+          req.user.id, address_type, written_address, landmark || null,
+          parsedLng, parsedLat, area_name, city, province, postal_code || null,
+          zone_id, door_picture_url, defaultFlag, delivery_instructions || null,
+        ]
+      );
+    } else {
+      result = await query(
+        `INSERT INTO addresses (
+          user_id, address_type, written_address, landmark,
+          location, area_name, city, province, postal_code,
+          zone_id, door_picture_url, is_default, delivery_instructions
+        ) VALUES (
+          $1, $2, $3, $4,
+          ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography,
+          $7, $8, $9, $10,
+          $11, $12, $13, $14
+        ) RETURNING *`,
+        [
+          req.user.id, address_type, written_address, landmark || null,
+          parsedLng, parsedLat, area_name, city, province, postal_code || null,
+          zone_id, door_picture_url, defaultFlag, delivery_instructions || null,
+        ]
+      );
+    }
   } else {
     result = await query(
       `INSERT INTO addresses (
@@ -207,6 +231,8 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
     return notFoundResponse(res, 'Address not found');
   }
 
+  await ensureAddressColumns();
+
   // Build update query
   const updates: string[] = [];
   const values: any[] = [];
@@ -263,13 +289,17 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
     values.push(req.file.url);
   }
 
+  const trackLocationSource = await hasLocationAddedByColumn();
+
   // Update location if lat/lng provided
   if (latitude != null && longitude != null) {
     updates.push(`location = ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)::geography`);
     values.push(longitude, latitude);
     paramIndex += 2;
-    updates.push(`location_added_by = $${paramIndex++}`);
-    values.push('user');
+    if (trackLocationSource) {
+      updates.push(`location_added_by = $${paramIndex++}`);
+      values.push('user');
+    }
 
     // Also update delivery zone
     const zoneResult = await query(
