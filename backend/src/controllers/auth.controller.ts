@@ -502,23 +502,53 @@ const PIN_BCRYPT_ROUNDS = 10;
 export const pinStatus = asyncHandler(async (req: Request, res: Response) => {
   const phone = (req.query.phone as string | undefined) || '';
   if (!phone) return errorResponse(res, 'phone is required', 400);
-  const normalizedPhone = normalizePhoneNumber(phone);
 
-  const result = await query(
-    `SELECT pin_hash IS NOT NULL AS has_pin, full_name
-       FROM users
-      WHERE phone = $1 AND deleted_at IS NULL`,
-    [normalizedPhone]
-  );
-
-  if (result.rows.length === 0) {
-    return successResponse(res, { exists: false, hasPin: false }, 'OK');
+  let normalizedPhone: string;
+  try {
+    normalizedPhone = normalizePhoneNumber(phone);
+  } catch {
+    return errorResponse(res, 'Invalid phone number', 400);
   }
-  successResponse(
-    res,
-    { exists: true, hasPin: !!result.rows[0].has_pin, fullName: result.rows[0].full_name },
-    'OK'
-  );
+
+  try {
+    const result = await query(
+      `SELECT pin_hash IS NOT NULL AS has_pin, full_name
+         FROM users
+        WHERE phone = $1 AND deleted_at IS NULL`,
+      [normalizedPhone]
+    );
+
+    if (result.rows.length === 0) {
+      return successResponse(res, { exists: false, hasPin: false }, 'OK');
+    }
+
+    return successResponse(
+      res,
+      {
+        exists: true,
+        hasPin: !!result.rows[0].has_pin,
+        fullName: result.rows[0].full_name,
+      },
+      'OK'
+    );
+  } catch (error: any) {
+    // Older databases may not have pin_hash yet — treat as exists without PIN.
+    if (error?.code === '42703' || String(error?.message || '').includes('pin_hash')) {
+      const fallback = await query(
+        `SELECT full_name FROM users WHERE phone = $1 AND deleted_at IS NULL`,
+        [normalizedPhone]
+      );
+      if (fallback.rows.length === 0) {
+        return successResponse(res, { exists: false, hasPin: false }, 'OK');
+      }
+      return successResponse(
+        res,
+        { exists: true, hasPin: false, fullName: fallback.rows[0].full_name },
+        'OK'
+      );
+    }
+    throw error;
+  }
 });
 
 /**

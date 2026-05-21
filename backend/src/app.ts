@@ -28,6 +28,7 @@ import { testConnection, closePool } from './config/database';
 import { bootstrapAdmin } from './scripts/bootstrapAdmin';
 import { ensureStorageBucket } from './config/storage';
 import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
+import { ensurePinColumns } from './config/pinAuth';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -210,6 +211,7 @@ const startServer = async () => {
       logger.warn('  postgresql://postgres:PASSWORD@PROJECT_ID.pooler.supabase.com:6543/postgres');
       // Continue starting server - don't exit
     } else {
+      await ensurePinColumns();
       // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars are set.
       // Safe to call on every boot — idempotently upserts the super-admin row.
       const adminResult = await bootstrapAdmin();
