@@ -294,21 +294,24 @@ export const cartSchemas = {
   }),
 };
 
-// Address validation schemas
+// Address validation schemas — multipart form sends strings; coerce booleans/numbers.
+const formBoolean = Joi.boolean().truthy('true', '1', 1).falsy('false', '0', 0);
+const formNumber = Joi.number().empty('').allow(null);
+
 export const addressSchemas = {
   create: Joi.object({
     address_type: Joi.string().valid('home', 'work', 'office', 'other').default('home'),
     written_address: Joi.string().min(5).max(500).required(),
-    landmark: Joi.string().allow('').max(255),
-    latitude: commonSchemas.latitude.optional().allow(null),
-    longitude: commonSchemas.longitude.optional().allow(null),
-    area_name: Joi.string().max(255),
+    landmark: Joi.string().allow('').max(255).default(''),
+    latitude: formNumber.optional(),
+    longitude: formNumber.optional(),
+    area_name: Joi.string().max(255).allow('').default('N/A'),
     city: Joi.string().max(100).default('Gujrat'),
     province: Joi.string().max(100).default('Punjab'),
-    postal_code: Joi.string().max(20),
-    is_default: Joi.boolean().default(false),
-    delivery_instructions: Joi.string().max(1000),
-  }),
+    postal_code: Joi.string().max(20).allow('').empty(''),
+    is_default: formBoolean.default(false),
+    delivery_instructions: Joi.string().max(1000).allow('').empty(''),
+  }).prefs({ convert: true }),
   
   update: Joi.object({
     address_type: Joi.string().valid('home', 'work', 'office', 'other'),

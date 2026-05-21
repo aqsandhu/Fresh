@@ -62,7 +62,6 @@ function CheckoutPage() {
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [orderPlaced, setOrderPlaced] = useState(false)
   const [loadingAddresses, setLoadingAddresses] = useState(true)
-  const [savingAddress, setSavingAddress] = useState(false)
   const [timeSlots, setTimeSlots] = useState<{ id: string; slot_name: string; start_time: string; end_time: string; is_free_delivery_slot: boolean; available_slots: number }[]>([])
   const [loadingSlots, setLoadingSlots] = useState(true)
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
@@ -154,64 +153,75 @@ function CheckoutPage() {
     }
   }
 
-  const handleSaveAddress = async () => {
+  const handleSaveAddress = async (): Promise<string> => {
     if (!newWrittenAddress.trim()) {
-      toast.error('Please enter your address')
-      return
+      throw new Error('Please enter your delivery address')
+    }
+    if (newWrittenAddress.trim().length < 5) {
+      throw new Error('Address must be at least 5 characters')
     }
 
-    setSavingAddress(true)
-    try {
+    const payload: Record<string, string | boolean | number> = {
+      address_type: newAddressType,
+      written_address: newWrittenAddress.trim(),
+      area_name: newAreaName.trim() || 'N/A',
+      city: newCity,
+      landmark: newLandmark.trim(),
+      is_default: addresses.length === 0,
+    }
+    if (mapLocation) {
+      payload.latitude = mapLocation.lat
+      payload.longitude = mapLocation.lng
+    }
+
+    let created: RealAddress
+
+    if (doorPicture) {
       const formData = new FormData()
-      formData.append('address_type', newAddressType)
-      formData.append('written_address', newWrittenAddress)
-      formData.append('area_name', newAreaName || 'N/A')
-      formData.append('city', newCity)
-      formData.append('landmark', newLandmark)
-      if (mapLocation) {
-        formData.append('latitude', mapLocation.lat.toString())
-        formData.append('longitude', mapLocation.lng.toString())
-      }
-      formData.append('is_default', addresses.length === 0 ? 'true' : 'false')
-
-      if (doorPicture) {
-        formData.append('door_picture', doorPicture)
-      }
-
-      const res = await api.post('/addresses', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      Object.entries(payload).forEach(([key, value]) => {
+        formData.append(key, String(value))
       })
-      const created = res.data?.data || res.data
-      setAddresses(prev => [...prev, created])
-      setSelectedAddress(created.id)
-      setShowNewAddress(false)
-      setNewWrittenAddress('')
-      setNewAreaName('')
-      setNewLandmark('')
-      setDoorPicture(null)
-      setMapLocation(null)
-      setShowMapPicker(false)
-      toast.success('Address saved!')
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to save address'
-      toast.error(msg)
-    } finally {
-      setSavingAddress(false)
+      formData.append('door_picture', doorPicture)
+      const res = await api.post('/addresses', formData)
+      created = res.data?.data || res.data
+    } else {
+      const res = await addressesApi.create(payload)
+      created = res as unknown as RealAddress
     }
+
+    if (!created?.id) {
+      throw new Error('Address could not be saved')
+    }
+
+    setAddresses((prev) => [...prev, created])
+    setSelectedAddress(created.id)
+    setShowNewAddress(false)
+    return created.id
   }
 
+  const resolveAddressId = async (): Promise<string> => {
+    if (showNewAddress || !selectedAddress) {
+      return handleSaveAddress()
+    }
+    return selectedAddress
+  }
+
+  const canPlaceOrder =
+    (!showNewAddress && Boolean(selectedAddress)) ||
+    (showNewAddress && newWrittenAddress.trim().length >= 5)
+
   const handlePlaceOrder = async () => {
-    if (!selectedAddress) {
-      toast.error('Please select a delivery address')
+    if (!selectedTimeSlot && timeSlots.length > 0) {
+      toast.error('Please select a delivery time slot')
       return
     }
 
     setIsPlacingOrder(true)
     try {
-      // Step 1: Clear server cart
+      const addressId = await resolveAddressId()
+
       try { await api.delete('/cart/clear') } catch { /* ok if empty */ }
 
-      // Step 2: Add all client cart items to server cart
       for (const item of items) {
         await api.post('/cart/add', {
           product_id: item.product.id,
@@ -219,30 +229,31 @@ function CheckoutPage() {
         })
       }
 
-      // Step 3: Place order
-      const orderPayload: any = {
-        address_id: selectedAddress,
+      const orderPayload: Record<string, string> = {
+        address_id: addressId,
         payment_method: 'cash_on_delivery',
         customer_notes: '',
       }
-      // Only send requested_delivery_date for tomorrow orders
       if (selectedDay === 'tomorrow') {
         orderPayload.requested_delivery_date = getDateString('tomorrow')
       }
       if (selectedTimeSlot) {
         orderPayload.time_slot_id = selectedTimeSlot
       }
-      const orderRes = await api.post('/orders', orderPayload)
 
+      const orderRes = await api.post('/orders', orderPayload)
       const orderData = orderRes.data?.data || orderRes.data
       const order = orderData?.order || orderData
-      
+
       setOrderPlaced(true)
       clearCart()
       toast.success('Order placed successfully!')
       router.push(`/track/${order?.id || 'success'}`)
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to place order. Please try again.'
+      const msg =
+        err?.message ||
+        err?.response?.data?.message ||
+        'Failed to place order. Please try again.'
       toast.error(msg)
     } finally {
       setIsPlacingOrder(false)
@@ -331,7 +342,11 @@ function CheckoutPage() {
 
                   {/* Add New Address */}
                   <button
-                    onClick={() => setShowNewAddress(!showNewAddress)}
+                    onClick={() => {
+                      const next = !showNewAddress
+                      setShowNewAddress(next)
+                      if (next) setSelectedAddress('')
+                    }}
                     className="flex items-center gap-2 text-primary-600 font-medium"
                   >
                     <Plus className="w-5 h-5" />
@@ -529,14 +544,9 @@ function CheckoutPage() {
                         </p>
                       </div>
 
-                      <div className="mt-4 flex gap-3">
-                        <Button variant="outline" onClick={() => setShowNewAddress(false)}>
-                          Cancel
-                        </Button>
-                        <Button onClick={handleSaveAddress} disabled={savingAddress}>
-                          {savingAddress ? 'Saving...' : 'Save Address'}
-                        </Button>
-                      </div>
+                      <p className="mt-4 text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                        Your address will be saved automatically when you place the order.
+                      </p>
                     </motion.div>
                   )}
                 </>
@@ -722,7 +732,7 @@ function CheckoutPage() {
                 fullWidth
                 size="lg"
                 isLoading={isPlacingOrder}
-                disabled={!selectedAddress || isPlacingOrder}
+                disabled={!canPlaceOrder || isPlacingOrder}
               >
                 {isPlacingOrder ? 'Placing Order...' : 'Place Order'}
               </Button>

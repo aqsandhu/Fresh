@@ -194,7 +194,6 @@ export const authApi = {
     idToken: string
     full_name: string
     email?: string
-    password: string
   }) => {
     const response = await api.post('/auth/verify-register', data)
     return response.data // { success, data: { user, tokens }, message }
@@ -205,7 +204,6 @@ export const authApi = {
     code: string
     full_name: string
     email?: string
-    password: string
   }) => {
     const response = await api.post('/auth/verify-register', data)
     return response.data
