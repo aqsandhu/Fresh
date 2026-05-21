@@ -7,6 +7,7 @@ import { query } from './database';
 import logger from '../utils/logger';
 
 let locationAddedByCached: boolean | null = null;
+let addressMigrationsDone = false;
 
 function getMigrationConnectionString(): string | null {
   const direct = process.env.DATABASE_MIGRATION_URL || process.env.DIRECT_DATABASE_URL;
@@ -53,7 +54,7 @@ export async function hasLocationAddedByColumn(): Promise<boolean> {
   return locationAddedByCached;
 }
 
-async function runAlterOnConnection(connectionString: string): Promise<boolean> {
+async function runAddressMigrationsOnConnection(connectionString: string): Promise<void> {
   const pool = new Pool({
     connectionString,
     ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
@@ -66,37 +67,43 @@ async function runAlterOnConnection(connectionString: string): Promise<boolean> 
       ALTER TABLE addresses
         ADD COLUMN IF NOT EXISTS location_added_by VARCHAR(20) DEFAULT 'user'
     `);
-    return true;
+    await pool.query(`
+      ALTER TABLE addresses
+        ALTER COLUMN door_picture_url DROP NOT NULL
+    `);
+    await pool.query(`
+      ALTER TABLE addresses
+        ALTER COLUMN location DROP NOT NULL
+    `);
   } finally {
     await pool.end().catch(() => undefined);
   }
 }
 
-/** Try to add location_added_by column. Returns true when column is present afterward. */
+/** Run idempotent address table migrations (safe to call on every boot / request). */
 export async function ensureAddressColumns(): Promise<boolean> {
-  if (await hasLocationAddedByColumn()) return true;
+  if (addressMigrationsDone) {
+    return hasLocationAddedByColumn();
+  }
 
   const migrationUrl = getMigrationConnectionString();
   if (!migrationUrl) {
-    logger.warn('location_added_by column missing and no DATABASE_URL for migration');
+    logger.warn('Address schema migrations skipped — no DATABASE_URL');
     return false;
   }
 
   try {
-    await runAlterOnConnection(migrationUrl);
+    await runAddressMigrationsOnConnection(migrationUrl);
+    addressMigrationsDone = true;
     locationAddedByCached = null;
     const ready = await hasLocationAddedByColumn();
-    if (ready) {
-      logger.info('location_added_by column added on addresses table');
-    } else {
-      logger.warn(
-        'location_added_by still missing after migration — run database/migrations/02-add-location-added-by-to-addresses.sql in Supabase SQL Editor'
-      );
-    }
-    return ready;
+    logger.info('Address schema migrations applied', { location_added_by: ready });
+    return true;
   } catch (error: any) {
-    logger.warn('Could not add location_added_by column automatically', { error: error?.message });
-    locationAddedByCached = false;
+    logger.warn(
+      'Could not apply address schema migrations automatically — run database/migrations/02-add-location-added-by-to-addresses.sql in Supabase SQL Editor',
+      { error: error?.message }
+    );
     return false;
   }
 }

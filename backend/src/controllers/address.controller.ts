@@ -102,8 +102,8 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
   const defaultFlag =
     is_default === true || is_default === 'true' || is_default === '1' || is_default === 1;
 
-  // Door picture pushed to Supabase Storage by upload middleware.
-  const door_picture_url = req.file?.url || null;
+  // Door picture optional at checkout; empty string satisfies legacy NOT NULL constraint.
+  const door_picture_url = req.file?.url || '';
 
   let zone_id = null;
   const hasLocation =

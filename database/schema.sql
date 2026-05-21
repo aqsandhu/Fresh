@@ -342,12 +342,12 @@ CREATE TABLE addresses (
     landmark VARCHAR(255),  -- Nearby landmark
     
     -- Google Maps integration
-    location GEOGRAPHY(POINT, 4326) NOT NULL,  -- Lat/Lng
+    location GEOGRAPHY(POINT, 4326),  -- Lat/Lng (optional until pinned)
     location_accuracy DECIMAL(5,2),  -- GPS accuracy in meters
     google_place_id VARCHAR(255),
     
-    -- Door picture (required)
-    door_picture_url TEXT NOT NULL,
+    -- Door picture (optional at checkout; rider can add later)
+    door_picture_url TEXT,
     
     -- Area info
     area_name VARCHAR(255),
@@ -378,7 +378,7 @@ CREATE TABLE addresses (
 
 COMMENT ON TABLE addresses IS 'Customer addresses with GPS location and door pictures';
 COMMENT ON COLUMN addresses.house_number IS 'Assigned by admin on first order, editable later';
-COMMENT ON COLUMN addresses.door_picture_url IS 'Required photo of customer door for easy identification';
+COMMENT ON COLUMN addresses.door_picture_url IS 'Photo of customer door; optional at checkout, can be added by rider';
 COMMENT ON COLUMN addresses.zone_id IS 'Links address to delivery zone for zone-based delivery operations';
 
 -- ============================================================================
