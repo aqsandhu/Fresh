@@ -133,9 +133,9 @@ describe('Cart Endpoints', () => {
       });
 
       const result = await mockQuery(
-        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, total_price) 
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-        [mockCartId, newItem.product_id, newItem.quantity, newItem.unit_price, newItem.quantity * newItem.unit_price]
+        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price) 
+         VALUES ($1, $2, $3, $4) RETURNING *`,
+        [mockCartId, newItem.product_id, newItem.quantity, newItem.unit_price]
       );
 
       expect(result.rows[0].product_id).toBe('prod-3');
@@ -154,9 +154,9 @@ describe('Cart Endpoints', () => {
       });
 
       const result = await mockQuery(
-        `UPDATE cart_items SET quantity = $1, total_price = unit_price * $1 
-         WHERE cart_id = $2 AND product_id = $3 RETURNING *`,
-        [newQuantity, mockCartId, existingItem.product_id]
+        `UPDATE cart_items SET quantity = $1, unit_price = $2
+         WHERE cart_id = $3 AND product_id = $4 RETURNING *`,
+        [newQuantity, 150, mockCartId, existingItem.product_id]
       );
 
       expect(result.rows[0].quantity).toBe(5);
@@ -201,8 +201,8 @@ describe('Cart Endpoints', () => {
       });
 
       const result = await mockQuery(
-        'UPDATE cart_items SET quantity = $1, total_price = $2 WHERE id = $3 RETURNING *',
-        [newQuantity, newQuantity * unitPrice, itemId]
+        'UPDATE cart_items SET quantity = $1 WHERE id = $2 RETURNING *',
+        [newQuantity, itemId]
       );
 
       expect(result.rows[0].quantity).toBe(5);

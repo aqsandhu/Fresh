@@ -166,9 +166,9 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     } else {
       // Add new item
       await client.query(
-        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, total_price, special_instructions)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [cart.id, product_id, quantity, product.price, product.price * quantity, special_instructions]
+        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, special_instructions)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [cart.id, product_id, quantity, product.price, special_instructions || null]
       );
     }
 
