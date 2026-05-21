@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowRight, ArrowLeft, Shield, Lock, Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react'
+import { ArrowRight, ArrowLeft, Shield, Loader2, CheckCircle2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
@@ -37,16 +37,6 @@ const phoneSchema = z.object({
 const profileSchema = z.object({
   full_name: z.string().min(2, 'Name must be at least 2 characters').max(100),
   email: z.string().email('Enter a valid email').optional().or(z.literal('')),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .regex(/[a-z]/, 'Must contain a lowercase letter')
-    .regex(/[A-Z]/, 'Must contain an uppercase letter')
-    .regex(/[0-9]/, 'Must contain a number'),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
-  path: ['confirmPassword'],
 })
 
 type PhoneForm = z.infer<typeof phoneSchema>
@@ -65,7 +55,6 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [resendTimer, setResendTimer] = useState(0)
-  const [showPassword, setShowPassword] = useState(false)
   // PIN setup (final step)
   const [pin, setPin] = useState('')
   const [pinConfirm, setPinConfirm] = useState('')
@@ -220,13 +209,11 @@ export default function RegisterPage() {
             code: verifiedOtpCode,
             full_name: data.full_name,
             email: data.email || undefined,
-            password: data.password,
           })
         : await authApi.verifyRegister({
             idToken: firebaseIdToken,
             full_name: data.full_name,
             email: data.email || undefined,
-            password: data.password,
           })
 
       const { user, tokens } = res.data
@@ -242,7 +229,10 @@ export default function RegisterPage() {
         tokens
       )
 
-      toast.success('Account created — now set your 4-digit PIN')
+      toast.success('Almost done — create your 4-digit PIN')
+      setPinStage('create')
+      setPin('')
+      setPinConfirm('')
       setStep('pin')
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Registration failed. Please try again.'
@@ -324,8 +314,8 @@ export default function RegisterPage() {
   // ── Step Indicator ────────────────────────────────────────────────────
   const steps = [
     { key: 'phone', label: 'Phone' },
-    { key: 'otp', label: 'Verify' },
-    { key: 'profile', label: 'Profile' },
+    { key: 'otp', label: 'OTP' },
+    { key: 'profile', label: 'Name' },
     { key: 'pin', label: 'PIN' },
   ]
   const currentStepIndex = step === 'pin'
@@ -460,12 +450,12 @@ export default function RegisterPage() {
               </motion.div>
             )}
 
-            {/* ── Step 3: Profile & Password ─────────────────────────── */}
+            {/* ── Step 3: Name ───────────────────────────────────────── */}
             {step === 'profile' && (
               <motion.div key="profile" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                 <div className="mb-4 flex items-center gap-2 bg-green-50 text-green-700 text-sm px-4 py-2.5 rounded-xl">
                   <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                  <span>Phone <strong>{phone}</strong> verified!</span>
+                  <span>Phone verified! One more step before your PIN.</span>
                 </div>
 
                 <form onSubmit={profileForm.handleSubmit(onProfileSubmit)} className="space-y-4">
@@ -484,33 +474,8 @@ export default function RegisterPage() {
                     error={profileForm.formState.errors.email?.message}
                   />
 
-                  <div className="relative">
-                    <Input
-                      label="Password"
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Min 8 chars, 1 uppercase, 1 number"
-                      {...profileForm.register('password')}
-                      error={profileForm.formState.errors.password?.message}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-9 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  <Input
-                    label="Confirm Password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Re-enter your password"
-                    {...profileForm.register('confirmPassword')}
-                    error={profileForm.formState.errors.confirmPassword?.message}
-                  />
-
                   <Button type="submit" fullWidth isLoading={isLoading} size="lg">
-                    Create Account
+                    Continue to PIN
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </form>
@@ -527,12 +492,12 @@ export default function RegisterPage() {
               >
                 <div className="text-center mb-6">
                   <h2 className="text-xl font-semibold text-gray-900">
-                    {pinStage === 'create' ? 'Create your 4-digit PIN' : 'Confirm your PIN'}
+                    {pinStage === 'create' ? 'Choose your 4-digit PIN' : 'Confirm your PIN'}
                   </h2>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-gray-500 mt-2">
                     {pinStage === 'create'
-                      ? 'You\'ll use this PIN to log in next time — no more OTP for every login.'
-                      : 'Re-enter the same PIN to confirm.'}
+                      ? 'You will use this PIN every time you login — quick and easy, no OTP needed.'
+                      : 'Enter the same PIN again to confirm.'}
                   </p>
                 </div>
                 <PinInput

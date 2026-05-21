@@ -83,10 +83,10 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
   const {
     address_type = 'home',
     written_address,
-    landmark,
+    landmark = '',
     latitude,
     longitude,
-    area_name,
+    area_name = 'N/A',
     city = 'Gujrat',
     province = 'Punjab',
     postal_code,
@@ -94,11 +94,22 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
     delivery_instructions,
   } = req.body;
 
+  const parsedLat =
+    latitude != null && latitude !== '' ? parseFloat(String(latitude)) : null;
+  const parsedLng =
+    longitude != null && longitude !== '' ? parseFloat(String(longitude)) : null;
+  const defaultFlag =
+    is_default === true || is_default === 'true' || is_default === '1' || is_default === 1;
+
   // Door picture pushed to Supabase Storage by upload middleware.
   const door_picture_url = req.file?.url || null;
 
   let zone_id = null;
-  const hasLocation = latitude != null && longitude != null;
+  const hasLocation =
+    parsedLat != null &&
+    parsedLng != null &&
+    Number.isFinite(parsedLat) &&
+    Number.isFinite(parsedLng);
 
   if (hasLocation) {
     // Find delivery zone based on location
@@ -110,7 +121,7 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
          boundary::geometry
        ))
        LIMIT 1`,
-      [longitude, latitude]
+      [parsedLng, parsedLat]
     );
     zone_id = zoneResult.rows.length > 0 ? zoneResult.rows[0].id : null;
   }
@@ -132,9 +143,9 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
         'user'
       ) RETURNING *`,
       [
-        req.user.id, address_type, written_address, landmark,
-        longitude, latitude, area_name, city, province, postal_code,
-        zone_id, door_picture_url, is_default, delivery_instructions,
+        req.user.id, address_type, written_address, landmark || null,
+        parsedLng, parsedLat, area_name, city, province, postal_code || null,
+        zone_id, door_picture_url, defaultFlag, delivery_instructions || null,
       ]
     );
   } else {
@@ -150,9 +161,9 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
         $9, $10, $11, $12
       ) RETURNING *`,
       [
-        req.user.id, address_type, written_address, landmark,
-        area_name, city, province, postal_code,
-        zone_id, door_picture_url, is_default, delivery_instructions,
+        req.user.id, address_type, written_address, landmark || null,
+        area_name, city, province, postal_code || null,
+        zone_id, door_picture_url, defaultFlag, delivery_instructions || null,
       ]
     );
   }
