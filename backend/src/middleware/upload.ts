@@ -113,13 +113,13 @@ function pushFilesToStorage(folder: string) {
 
       next();
     } catch (err: any) {
-      // Don't fail the whole admin mutation when storage is misconfigured —
-      // controllers fall back to null image_url and the row still gets created.
-      logger.error('Storage upload failed — continuing without file URL', {
+      logger.error('Storage upload failed', {
         folder,
         message: err?.message || String(err),
       });
-      next();
+      // When the client sent a file, surface the error instead of silently
+      // saving the row without an image_url (which looked like "upload worked").
+      next(err);
     }
   };
 }
