@@ -225,7 +225,7 @@ export const Riders: React.FC = () => {
       email: rider.email || '',
       password: '',
       cnic: rider.cnic || '',
-      vehicleType: rider.vehicleType,
+      vehicleType: (rider.vehicleType as CreateRiderData['vehicleType']) || 'bike',
       vehicleNumber: rider.vehicleNumber,
       drivingLicenseNumber: rider.drivingLicenseNumber || '',
       emergencyContactName: rider.emergencyContactName || '',

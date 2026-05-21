@@ -15,6 +15,7 @@ interface TableProps<T> {
   keyExtractor: (item: T) => string;
   isLoading?: boolean;
   emptyMessage?: string;
+  rowClassName?: (item: T) => string;
   pagination?: {
     page: number;
     totalPages: number;
@@ -29,6 +30,7 @@ export function Table<T>({
   keyExtractor,
   isLoading = false,
   emptyMessage = 'No data available',
+  rowClassName,
   pagination,
   onRowClick,
 }: TableProps<T>) {
@@ -77,7 +79,7 @@ export function Table<T>({
             {data.map((item) => (
               <tr
                 key={keyExtractor(item)}
-                className={onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''}
+                className={`${onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''} ${rowClassName ? rowClassName(item) : ''}`}
                 onClick={() => onRowClick?.(item)}
               >
                 {columns.map((column) => (

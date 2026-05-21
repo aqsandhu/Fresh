@@ -430,7 +430,7 @@ export const Products: React.FC = () => {
             </div>
           ))}
         </div>
-      ) : (productsData?.products || productsData?.data || []).length === 0 ? (
+      ) : (productsData?.products || []).length === 0 ? (
         <Card className="text-center py-12">
           <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
@@ -442,7 +442,7 @@ export const Products: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {(productsData?.products || productsData?.data || []).map((product) => (
+            {(productsData?.products || []).map((product) => (
               <Card key={product.id} className="relative group">
                 {/* Selection checkbox — appears on hover or when any row is
                     selected. Used by the "Move to Category" bulk action. */}

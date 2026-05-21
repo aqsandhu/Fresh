@@ -1,16 +1,13 @@
 // ============================================================================
 // Admin Panel Types — Self-contained (no monorepo dependencies)
+// API responses are converted to camelCase in services/api.ts
 // ============================================================================
-
-// ---------------------------------------------------------------------------
-// Shared domain types (defined locally for Netlify compatibility)
-// ---------------------------------------------------------------------------
 
 export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider' | 'moderator';
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending';
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready_for_pickup' | 'out_for_delivery' | 'delivered' | 'cancelled' | 'refunded';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
-export type PaymentMethod = 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'online';
+export type PaymentMethod = 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'online' | 'cash_on_delivery';
 export type RiderStatus = 'available' | 'busy' | 'offline' | 'on_leave';
 export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'pack';
 export type AttaRequestStatus = 'pending_pickup' | 'picked_up' | 'at_mill' | 'milling' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled';
@@ -18,64 +15,126 @@ export type AttaRequestStatus = 'pending_pickup' | 'picked_up' | 'at_mill' | 'mi
 export interface User {
   id: string;
   phone: string;
-  full_name: string;
+  fullName: string;
   email?: string;
   role: UserRole;
   status: UserStatus;
-  avatar_url?: string;
-  created_at?: string;
+  avatarUrl?: string;
+  createdAt?: string;
 }
 
 export interface Product {
   id: string;
-  name: string;
-  description?: string;
+  nameEn: string;
+  nameUr?: string;
+  descriptionEn?: string;
   price: number;
-  sale_price?: number;
-  unit: UnitType;
-  unit_quantity: number;
-  stock_quantity: number;
-  image_url?: string;
-  category_id: string;
-  is_featured: boolean;
-  is_active: boolean;
+  compareAtPrice?: number;
+  unitType: UnitType | string;
+  unitValue?: number;
+  stockQuantity: number;
+  primaryImage?: string;
+  images?: string[];
+  categoryId: string;
+  categoryName?: string;
+  isFeatured: boolean;
+  isActive: boolean;
 }
 
 export interface Category {
   id: string;
-  name: string;
-  description?: string;
-  image_url?: string;
-  is_active: boolean;
+  nameEn: string;
+  nameUr: string;
+  slug?: string;
+  icon?: string;
+  iconUrl?: string;
+  imageUrl?: string;
+  parentId?: string;
+  displayOrder?: number;
+  isActive: boolean;
+  productCount?: number;
+  totalProductCount?: number;
+  qualifiesForFreeDelivery?: boolean;
+  minimumOrderForFreeDelivery?: number;
 }
 
 export interface Order {
   id: string;
-  order_number: string;
-  user_id: string;
+  orderNumber: string;
+  userId: string;
   status: OrderStatus;
-  payment_status: PaymentStatus;
-  payment_method: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethod;
   subtotal: number;
-  delivery_charge: number;
-  total_amount: number;
-  created_at: string;
+  deliveryCharge: number;
+  discountAmount?: number;
+  totalAmount: number;
+  paidAmount?: number;
+  placedAt: string;
+  createdAt?: string;
+  confirmedAt?: string;
+  preparingAt?: string;
+  readyAt?: string;
+  outForDeliveryAt?: string;
+  deliveredAt?: string;
+  cancelledAt?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerNotes?: string;
+  riderId?: string;
+  riderName?: string;
+  riderPhone?: string;
+  showCustomerPhone?: boolean;
+  addressId?: string;
+  slotName?: string;
+  startTime?: string;
+  endTime?: string;
+  requestedDeliveryDate?: string;
+  deliveryAddressSnapshot?: {
+    houseNumber?: string;
+    writtenAddress?: string;
+    areaName?: string;
+    city?: string;
+    province?: string;
+    landmark?: string;
+    location?: { latitude?: number; longitude?: number; lat?: number; lng?: number };
+  };
+  addressLatitude?: number;
+  addressLongitude?: number;
+  addressDoorPictureUrl?: string;
+  items?: OrderItem[];
+}
+
+export interface OrderItem {
+  id: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
 }
 
 export interface Rider {
   id: string;
-  user_id: string;
-  full_name?: string;
+  userId: string;
+  fullName?: string;
   phone?: string;
-  vehicle_type: string;
+  email?: string;
+  cnic?: string;
+  vehicleType: 'bike' | 'car' | 'van' | string;
+  vehicleNumber?: string;
+  drivingLicenseNumber?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+  bankAccountTitle?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  avatarUrl?: string;
   status: RiderStatus;
+  verificationStatus?: string;
   rating: number;
-  total_deliveries: number;
+  totalDeliveries: number;
 }
-
-// ---------------------------------------------------------------------------
-// API Response Types
-// ---------------------------------------------------------------------------
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -85,7 +144,10 @@ export interface ApiResponse<T = any> {
 }
 
 export interface PaginatedResponse<T> {
-  data: T[];
+  data?: T[];
+  requests?: T[];
+  orders?: T[];
+  customers?: T[];
   pagination: {
     page: number;
     limit: number;
@@ -93,10 +155,6 @@ export interface PaginatedResponse<T> {
     totalPages: number;
   };
 }
-
-// ---------------------------------------------------------------------------
-// Auth Types
-// ---------------------------------------------------------------------------
 
 export interface LoginCredentials {
   phone: string;
@@ -113,105 +171,144 @@ export interface AuthResponse {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Address Types
-// ---------------------------------------------------------------------------
-
 export interface Address {
   id: string;
-  user_id: string;
-  label: string;
-  house_number: string;
-  street_address: string;
-  area: string;
+  userId: string;
+  label?: string;
+  addressType?: string;
+  houseNumber?: string;
+  writtenAddress?: string;
+  streetAddress?: string;
+  area?: string;
+  areaName?: string;
   city: string;
-  is_default: boolean;
+  province?: string;
+  landmark?: string;
+  deliveryInstructions?: string;
+  isDefault: boolean;
+  hasLocation?: boolean;
+  locationAddedBy?: string;
+  zoneName?: string;
+  doorPictureUrl?: string;
   latitude?: number;
   longitude?: number;
+  createdAt?: string;
 }
 
 export interface Customer {
   id: string;
   phone: string;
-  full_name: string;
+  fullName: string;
   email?: string;
   role: UserRole;
   status: UserStatus;
-  created_at: string;
+  createdAt: string;
+  totalOrders?: number;
+  totalSpent?: number;
+  totalAddresses?: number;
+  addresses?: Address[];
 }
-
-// ---------------------------------------------------------------------------
-// Atta Types
-// ---------------------------------------------------------------------------
 
 export interface AttaRequest {
   id: string;
-  request_number: string;
-  user_id: string;
-  wheat_quality: string;
-  wheat_quantity_kg: number;
-  flour_type: string;
+  requestNumber: string;
+  userId: string;
+  customerName?: string;
+  customerPhone?: string;
+  wheatQuality: string;
+  wheatQuantityKg: number;
+  flourType: string;
   status: AttaRequestStatus;
-  total_amount: number;
-  created_at: string;
+  totalAmount: number;
+  createdAt: string;
 }
-
-// ---------------------------------------------------------------------------
-// Dashboard Types
-// ---------------------------------------------------------------------------
 
 export interface DashboardData {
-  totalOrders: number;
-  totalRevenue: number;
-  totalCustomers: number;
-  totalProducts: number;
+  totalOrders?: number;
+  totalRevenue?: number;
+  totalCustomers?: number;
+  totalProducts?: number;
+  today?: {
+    totalSales?: number;
+    totalOrders?: number;
+    pendingOrders?: number;
+    deliveredOrders?: number;
+  };
+  weekly?: {
+    totalSales?: number;
+    totalOrders?: number;
+  };
+  monthly?: {
+    totalSales?: number;
+    totalOrders?: number;
+  };
+  riders?: {
+    totalRiders?: number;
+    availableRiders?: number;
+    busyRiders?: number;
+  };
   recentOrders: Order[];
-  topProducts: Product[];
+  topProducts?: Product[];
+  lowStockProducts?: Product[];
 }
 
-// ---------------------------------------------------------------------------
-// Settings Types
-// ---------------------------------------------------------------------------
-
 export interface DeliverySettings {
-  freeThreshold: number;
-  standardCharge: number;
+  baseCharge: number;
+  freeDeliveryThreshold: number;
+  expressCharge: number;
 }
 
 export interface TimeSlot {
   id: string;
-  date: string;
-  start_time: string;
-  end_time: string;
-  max_orders: number;
+  slotName?: string;
+  startTime: string;
+  endTime: string;
+  maxOrders: number;
+  isActive?: boolean;
+  isFreeDeliverySlot?: boolean;
 }
 
 export interface BusinessHours {
   day: string;
   open: string;
   close: string;
+  isOpen?: boolean;
 }
 
 export interface Settings {
-  business_name: string;
-  contact_phone: string;
-  delivery_settings: DeliverySettings;
+  businessName?: string;
+  contactPhone?: string;
+  delivery?: DeliverySettings;
+  deliverySettings?: DeliverySettings;
 }
 
-// ---------------------------------------------------------------------------
-// Rider Stats
-// ---------------------------------------------------------------------------
+export interface RiderPeriodStats {
+  orders: number;
+  earnings: number;
+}
 
 export interface RiderStats {
-  totalRiders: number;
-  activeRiders: number;
-  totalDeliveries: number;
-  averageRating: number;
+  rider?: Rider;
+  stats: {
+    today: RiderPeriodStats;
+    thisWeek: RiderPeriodStats;
+    lastWeek: RiderPeriodStats;
+    thisMonth: RiderPeriodStats;
+    lastMonth: RiderPeriodStats;
+  };
+  payment: {
+    totalCollected: number;
+    totalEarned: number;
+    paymentPending: number;
+  };
+  deliveryCharges?: Array<{
+    id: string;
+    chargePerOrder: number;
+    slotName?: string;
+    startTime?: string;
+    endTime?: string;
+  }>;
 }
-
-// ---------------------------------------------------------------------------
-// Admin-panel-specific Types
-// ---------------------------------------------------------------------------
 
 export interface CreateProductData {
   nameEn: string;
