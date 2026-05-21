@@ -5,7 +5,6 @@ import {
   Plus,
   Edit,
   Trash2,
-  Trash,
   Eye,
   EyeOff,
   FolderInput,
@@ -56,6 +55,7 @@ export const Products: React.FC = () => {
   // Pre-fill the category filter from the URL when arriving from
   // /admin/categories so clicking a category lands you on its products.
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || '');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
 
   // Keep the URL in sync with the filter selection so the back button works
   // and the URL is shareable.
@@ -91,11 +91,12 @@ export const Products: React.FC = () => {
   });
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['products', { search: searchQuery, category: categoryFilter, page }],
+    queryKey: ['products', { search: searchQuery, category: categoryFilter, status: statusFilter, page }],
     queryFn: () =>
       productService.getProducts({
         search: searchQuery || undefined,
         categoryId: categoryFilter || undefined,
+        isActive: statusFilter === 'all' ? undefined : statusFilter === 'active',
         page,
         limit: 12,
       }),
@@ -132,24 +133,24 @@ export const Products: React.FC = () => {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: productService.deleteProduct,
+    mutationFn: productService.hardDeleteProduct,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Product deactivated');
+      toast.success('Product deleted successfully');
     },
     onError: (error: any) => {
       toast.error(error?.message || 'Failed to delete product');
     },
   });
 
-  const hardDeleteMutation = useMutation({
-    mutationFn: productService.hardDeleteProduct,
+  const deactivateMutation = useMutation({
+    mutationFn: productService.deleteProduct,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
-      toast.success('Product permanently deleted');
+      toast.success('Product deactivated (in order history — cannot permanently delete)');
     },
     onError: (error: any) => {
-      toast.error(error?.message || 'Failed to permanently delete product');
+      toast.error(error?.message || 'Failed to deactivate product');
     },
   });
 
@@ -347,23 +348,24 @@ export const Products: React.FC = () => {
     }
   };
 
-  // Default delete is "soft" — flips is_active to false. Recoverable via the
-  // toggle button. Permanent removal lives behind a separate, more emphatic
-  // confirmation in the card.
-  const handleSoftDelete = (id: string) => {
-    if (confirm('Deactivate this product? It will be hidden from customers but recoverable.')) {
-      deleteMutation.mutate(id);
-    }
-  };
+  const handleDelete = (product: Product) => {
+    const message =
+      `Delete "${product.nameEn}"?\n\n` +
+      'If this product was never ordered, it will be permanently removed.\n' +
+      'Products in past orders can only be deactivated.';
 
-  const handleHardDelete = (product: Product) => {
-    if (
-      confirm(
-        `PERMANENTLY DELETE "${product.nameEn}"?\n\nThis removes the product, its images, and cannot be undone.\nProducts referenced by past orders cannot be hard-deleted.`
-      )
-    ) {
-      hardDeleteMutation.mutate(product.id);
-    }
+    if (!confirm(message)) return;
+
+    deleteMutation.mutate(product.id, {
+      onError: (error: any) => {
+        const msg = error?.message || '';
+        if (msg.toLowerCase().includes('past orders')) {
+          if (confirm(`${msg}\n\nDeactivate this product instead?`)) {
+            deactivateMutation.mutate(product.id);
+          }
+        }
+      },
+    });
   };
 
   return (
@@ -406,10 +408,27 @@ export const Products: React.FC = () => {
             <Select
               placeholder="All Categories"
               value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setPage(1);
+              }}
               options={[
                 { value: '', label: 'All Categories' },
                 ...(categories?.map((c) => ({ value: c.id, label: c.nameEn })) || []),
+              ]}
+            />
+          </div>
+          <div className="w-40">
+            <Select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as 'active' | 'inactive' | 'all');
+                setPage(1);
+              }}
+              options={[
+                { value: 'active', label: 'Active only' },
+                { value: 'inactive', label: 'Inactive only' },
+                { value: 'all', label: 'All products' },
               ]}
             />
           </div>
@@ -538,18 +557,12 @@ export const Products: React.FC = () => {
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleSoftDelete(product.id)}
-                        title="Deactivate (soft delete — recoverable)"
-                        className="p-2 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors"
+                        onClick={() => handleDelete(product)}
+                        title="Delete product"
+                        disabled={deleteMutation.isPending || deactivateMutation.isPending}
+                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
                       >
                         <Trash2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleHardDelete(product)}
-                        title="Permanently delete (irreversible)"
-                        className="p-2 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                      >
-                        <Trash className="w-4 h-4" />
                       </button>
                     </div>
                   </div>

@@ -101,21 +101,20 @@ export const productService = {
     }
   },
 
-  // Soft delete (default) — sets is_active = false. Recoverable via toggle.
+  // Soft delete — sets is_active = false. Use ?soft=true explicitly.
   deleteProduct: async (id: string): Promise<void> => {
     try {
-      await api.delete<ApiResponse<void>>(`/admin/products/${id}`);
+      await api.delete<ApiResponse<void>>(`/admin/products/${id}?soft=true`);
     } catch (error: any) {
       console.error('Error deleting product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete product');
     }
   },
 
-  // Permanent delete — drops the row + storage objects. Backend refuses if
-  // the product is referenced by past order_items.
+  // Permanent delete (default DELETE) — removes row + storage objects.
   hardDeleteProduct: async (id: string): Promise<void> => {
     try {
-      await api.delete<ApiResponse<void>>(`/admin/products/${id}?hard=true`);
+      await api.delete<ApiResponse<void>>(`/admin/products/${id}`);
     } catch (error: any) {
       console.error('Error hard-deleting product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to permanently delete product');

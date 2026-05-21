@@ -1028,6 +1028,12 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
       params.push(`%${sanitizedSearch}%`); paramIndex++;
     }
   }
+  if (req.query.is_active !== undefined) {
+    const raw = req.query.is_active;
+    const active = raw === 'true' || raw === '1';
+    sql += ` AND p.is_active = $${paramIndex}`;
+    params.push(active); paramIndex++;
+  }
 
   const countResult = await query(`SELECT COUNT(*) ${sql}`, params);
   const total = parseInt(countResult.rows[0].count);
@@ -1200,8 +1206,9 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 
 /**
  * Delete product
- * DELETE /api/admin/products/:id            -> soft delete (is_active = FALSE)
- * DELETE /api/admin/products/:id?hard=true  -> hard delete (row + storage)
+ * DELETE /api/admin/products/:id              -> permanent delete (default)
+ * DELETE /api/admin/products/:id?soft=true    -> soft delete (is_active = FALSE)
+ * DELETE /api/admin/products/:id?hard=true    -> permanent delete (explicit)
  *
  * Soft is the default so an accidental click doesn't lose the product
  * permanently. Hard delete also removes referenced images from Supabase
@@ -1210,7 +1217,8 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
  */
 export const deleteProduct = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const hard = req.query.hard === 'true' || req.query.hard === '1';
+  const soft = req.query.soft === 'true' || req.query.soft === '1';
+  const hard = !soft || req.query.hard === 'true' || req.query.hard === '1';
 
   if (!hard) {
     const result = await query(
@@ -1222,8 +1230,7 @@ export const deleteProduct = asyncHandler(async (req: Request, res: Response) =>
     return successResponse(res, null, 'Product deactivated');
   }
 
-  // Hard delete path. Refuse if the product appears in any past order so
-  // we don't leave dangling FKs in order_items.
+  // Permanent delete — blocked only when the product appears in past orders.
   const orderUse = await query(
     'SELECT COUNT(*)::int AS cnt FROM order_items WHERE product_id = $1',
     [id]
@@ -1231,23 +1238,24 @@ export const deleteProduct = asyncHandler(async (req: Request, res: Response) =>
   if (orderUse.rows[0].cnt > 0) {
     return errorResponse(
       res,
-      'This product is in past orders. Deactivate it instead — hard-deleting would break order history.',
+      'This product is in past orders. Deactivate it instead — permanent delete would break order history.',
       400
     );
   }
 
-  // Read the image references before we drop the row so we can also free the
-  // bucket objects.
   const imgRows = await query<{ primary_image: string | null; images: string[] | null }>(
     'SELECT primary_image, images FROM products WHERE id = $1',
     [id]
   );
   if (imgRows.rows.length === 0) return errorResponse(res, 'Product not found', 404);
 
-  await query('DELETE FROM products WHERE id = $1', [id]);
+  // cart_items also reference products — remove those rows first or the
+  // DELETE fails with an FK error that looked like "delete didn't work".
+  await withTransaction(async (client) => {
+    await client.query('DELETE FROM cart_items WHERE product_id = $1', [id]);
+    await client.query('DELETE FROM products WHERE id = $1', [id]);
+  });
 
-  // Best-effort: free the storage objects that point at /storage/v1/.../<bucket>/<path>.
-  // Failures here are logged and ignored so DB consistency stays the win.
   const allUrls = [
     ...(imgRows.rows[0].primary_image ? [imgRows.rows[0].primary_image] : []),
     ...(imgRows.rows[0].images ?? []),
