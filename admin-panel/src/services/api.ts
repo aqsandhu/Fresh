@@ -61,6 +61,13 @@ apiClient.interceptors.request.use(
     // Convert request body keys from camelCase to snake_case
     if (config.data && !(config.data instanceof FormData)) {
       config.data = toSnakeCase(config.data);
+    } else if (config.data instanceof FormData) {
+      // Let axios/browser set Content-Type with the multipart boundary.
+      // Hard-coding 'multipart/form-data' without a boundary breaks parsing
+      // on the server — req.body ends up empty and category/product creates fail.
+      if (config.headers) {
+        delete config.headers['Content-Type'];
+      }
     }
     // Convert query params
     if (config.params) {
@@ -187,12 +194,8 @@ export const api = {
     apiClient.delete<T>(url).then(res => res.data),
   
   postForm: <T>(url: string, data: FormData) => 
-    apiClient.post<T>(url, data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }).then(res => res.data),
+    apiClient.post<T>(url, data).then(res => res.data),
   
   putForm: <T>(url: string, data: FormData) => 
-    apiClient.put<T>(url, data, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    }).then(res => res.data),
+    apiClient.put<T>(url, data).then(res => res.data),
 };

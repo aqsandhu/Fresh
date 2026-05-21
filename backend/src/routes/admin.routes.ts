@@ -87,11 +87,34 @@ const coerceProductFields = (req: any, res: any, next: any) => {
 // Middleware to coerce FormData string values for category fields
 const coerceCategoryFields = (req: any, res: any, next: any) => {
   const body = req.body;
-  if (body.display_order !== undefined) body.display_order = parseInt(body.display_order, 10);
-  if (body.is_active !== undefined) body.is_active = body.is_active === 'true' || body.is_active === true;
-  if (body.is_featured !== undefined) body.is_featured = body.is_featured === 'true' || body.is_featured === true;
-  if (body.parent_id !== undefined && body.parent_id !== '') body.parent_id = parseInt(body.parent_id, 10);
-  else body.parent_id = null;
+
+  // Admin panel sends camelCase keys in multipart FormData
+  if (body.nameEn && !body.name_en) body.name_en = body.nameEn;
+  if (body.nameUr && !body.name_ur) body.name_ur = body.nameUr;
+  if (body.displayOrder !== undefined && body.display_order === undefined) {
+    body.display_order = body.displayOrder;
+  }
+  if (body.isActive !== undefined && body.is_active === undefined) {
+    body.is_active = body.isActive;
+  }
+  if (body.parentId !== undefined && body.parent_id === undefined) {
+    body.parent_id = body.parentId;
+  }
+
+  if (body.display_order !== undefined) {
+    body.display_order = parseInt(String(body.display_order), 10);
+  }
+  if (body.is_active !== undefined) {
+    body.is_active = body.is_active === 'true' || body.is_active === true;
+  }
+  if (body.is_featured !== undefined) {
+    body.is_featured = body.is_featured === 'true' || body.is_featured === true;
+  }
+  if (body.parent_id !== undefined && body.parent_id !== '') {
+    // parent_id is a UUID — keep as string
+  } else {
+    body.parent_id = null;
+  }
   next();
 };
 
@@ -125,8 +148,8 @@ router.delete(
 
 // Categories
 router.get('/categories', adminController.getAdminCategories);
-router.post('/categories', adminRateLimiter, uploadSingle('image'), coerceCategoryFields, adminController.createCategory);
-router.put('/categories/:id', adminRateLimiter, uploadSingle('image'), coerceCategoryFields, adminController.updateCategory);
+router.post('/categories', adminRateLimiter, uploadSingle('image', 'categories'), coerceCategoryFields, adminController.createCategory);
+router.put('/categories/:id', adminRateLimiter, uploadSingle('image', 'categories'), coerceCategoryFields, adminController.updateCategory);
 router.patch('/categories/:id/toggle-active', adminController.toggleCategoryActive);
 router.delete('/categories/:id', adminController.deleteCategory);
 
