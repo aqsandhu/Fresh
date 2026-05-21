@@ -13,6 +13,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, VALIDATION, ERROR_MESSAGES } from '@utils/constants';
+import { isOtpBypassEnabled, otpBypassHint } from '@utils/otpBypass';
 import { Button, Input, LoadingOverlay } from '@components';
 import { useAuthStore } from '@store';
 
@@ -101,7 +102,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
             />
 
             <Text style={styles.hint}>
-              We'll send you a verification code via SMS
+              {isOtpBypassEnabled()
+                ? otpBypassHint()
+                : "We'll send you a verification code via SMS"}
             </Text>
           </View>
 

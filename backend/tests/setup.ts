@@ -54,6 +54,7 @@ jest.mock('firebase-admin', () => ({
 // Mock Firebase Auth Service
 jest.mock('@/services/otp.service', () => ({
   verifyFirebaseToken: jest.fn().mockResolvedValue({ success: true, phone: '+923001234567', message: 'Token verified' }),
+  verifyPhoneFromRequest: jest.fn().mockResolvedValue({ success: true, phone: '+923001234567', message: 'Token verified' }),
 }));
 
 // Mock logger to reduce test noise

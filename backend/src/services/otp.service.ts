@@ -4,6 +4,17 @@
 
 import * as admin from 'firebase-admin';
 import logger from '../utils/logger';
+import {
+  isOtpBypassEnabled,
+  verifyOtpBypassCode,
+} from '../config/otpBypass';
+import { normalizePhoneNumber } from '../utils/validators';
+
+export type PhoneAuthRequest = {
+  idToken?: string;
+  phone?: string;
+  code?: string;
+};
 
 function getFirebaseApp(): admin.app.App {
   if (admin.apps.length > 0) {
@@ -52,4 +63,32 @@ export async function verifyFirebaseToken(
 
     return { success: false, message: 'Phone verification failed. Please try again.' };
   }
+}
+
+/**
+ * Verify phone auth from an API request body.
+ * Uses fixed OTP bypass when OTP_BYPASS_ENABLED=true; otherwise Firebase idToken.
+ */
+export async function verifyPhoneFromRequest(
+  body: PhoneAuthRequest
+): Promise<{ success: boolean; phone?: string; message: string }> {
+  if (isOtpBypassEnabled()) {
+    if (!body.phone || !body.code) {
+      return { success: false, message: 'Phone and OTP code are required' };
+    }
+    if (!verifyOtpBypassCode(body.code)) {
+      return { success: false, message: 'Invalid OTP. Please try again.' };
+    }
+    return {
+      success: true,
+      phone: normalizePhoneNumber(body.phone),
+      message: 'Bypass OTP verified',
+    };
+  }
+
+  if (!body.idToken) {
+    return { success: false, message: 'Verification token is required' };
+  }
+
+  return verifyFirebaseToken(body.idToken);
 }

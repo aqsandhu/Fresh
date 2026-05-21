@@ -22,6 +22,7 @@ import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
+import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint } from '@/lib/otpBypass'
 
 type Step = 'phone' | 'otp' | 'profile' | 'pin'
 
@@ -60,6 +61,7 @@ export default function RegisterPage() {
   const [phone, setPhone] = useState(searchParams.get('phone') || '')
   const [normalizedPhone, setNormalizedPhone] = useState('')
   const [firebaseIdToken, setFirebaseIdToken] = useState('')
+  const [verifiedOtpCode, setVerifiedOtpCode] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [resendTimer, setResendTimer] = useState(0)
@@ -122,6 +124,14 @@ export default function RegisterPage() {
 
       setNormalizedPhone(data.phone)
 
+      if (isOtpBypassEnabled()) {
+        setStep('otp')
+        setOtp(['', '', '', '', '', ''])
+        setResendTimer(60)
+        toast.success(otpBypassHint(), { duration: 6000 })
+        return
+      }
+
       // Step 2: Send OTP via Firebase (SMS)
       const verifier = initRecaptcha()
       const confirmation = await signInWithPhoneNumber(getFirebaseAuth(), data.phone, verifier)
@@ -151,11 +161,25 @@ export default function RegisterPage() {
 
   // ── Verify OTP → Go to profile step ───────────────────────────────────
   const verifyOtp = useCallback(async (code: string) => {
-    if (code.length !== 6 || !confirmationResultRef.current) return
+    if (code.length !== 6) return
+    if (!isOtpBypassEnabled() && !confirmationResultRef.current) return
     setIsLoading(true)
     try {
+      if (isOtpBypassEnabled()) {
+        if (!isValidOtpBypassCode(code)) {
+          toast.error('Invalid OTP. Please try again.')
+          setOtp(['', '', '', '', '', ''])
+          setTimeout(() => document.getElementById('rotp-0')?.focus(), 100)
+          return
+        }
+        setVerifiedOtpCode(code)
+        setStep('profile')
+        toast.success('Phone verified! Now set up your profile.')
+        return
+      }
+
       // Confirm OTP with Firebase → get ID token
-      const result = await confirmationResultRef.current.confirm(code)
+      const result = await confirmationResultRef.current!.confirm(code)
       const idToken = await result.user.getIdToken()
       setFirebaseIdToken(idToken)
       setStep('profile')
@@ -179,12 +203,20 @@ export default function RegisterPage() {
   const onProfileSubmit = async (data: ProfileForm) => {
     setIsLoading(true)
     try {
-      const res = await authApi.verifyRegister({
-        idToken: firebaseIdToken,
-        full_name: data.full_name,
-        email: data.email || undefined,
-        password: data.password,
-      })
+      const res = isOtpBypassEnabled()
+        ? await authApi.verifyRegisterWithCode({
+            phone: normalizedPhone,
+            code: verifiedOtpCode,
+            full_name: data.full_name,
+            email: data.email || undefined,
+            password: data.password,
+          })
+        : await authApi.verifyRegister({
+            idToken: firebaseIdToken,
+            full_name: data.full_name,
+            email: data.email || undefined,
+            password: data.password,
+          })
 
       const { user, tokens } = res.data
 
@@ -351,7 +383,11 @@ export default function RegisterPage() {
               <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
                 <div className="space-y-6">
                   <p className="text-center text-sm text-gray-500">
-                    Enter the OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS
+                    {isOtpBypassEnabled() ? (
+                      <span className="text-amber-600">{otpBypassHint()}</span>
+                    ) : (
+                      <>Enter the OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS</>
+                    )}
                   </p>
 
                   <div className="flex justify-center gap-2.5">

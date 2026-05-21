@@ -21,6 +21,7 @@ import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
+import { isOtpBypassEnabled, otpBypassHint } from '@/lib/otpBypass'
 import PinInput from '@/components/auth/PinInput'
 
 // ── Schemas ─────────────────────────────────────────────────────────────
@@ -100,6 +101,14 @@ export default function LoginPage() {
 
       setNormalizedPhone(data.phone)
       setUserName(data.userName)
+
+      if (isOtpBypassEnabled()) {
+        setStep('otp')
+        setOtp(['', '', '', '', '', ''])
+        setResendTimer(60)
+        toast.success(otpBypassHint(), { duration: 6000 })
+        return
+      }
 
       // Step 2: Send OTP via Firebase (SMS)
       const verifier = initRecaptcha()
@@ -196,11 +205,31 @@ export default function LoginPage() {
 
   // ── Verify OTP ────────────────────────────────────────────────────────
   const verifyOtp = useCallback(async (code: string) => {
-    if (code.length !== 6 || !confirmationResultRef.current) return
+    if (code.length !== 6) return
+    if (!isOtpBypassEnabled() && !confirmationResultRef.current) return
     setIsLoading(true)
     try {
+      if (isOtpBypassEnabled()) {
+        const res = await authApi.verifyLoginWithCode(normalizedPhone || phone, code)
+        const { user, tokens } = res.data
+        setAuth(
+          {
+            id: user.id,
+            name: user.full_name,
+            phone: user.phone,
+            email: user.email,
+            role: user.role,
+          },
+          tokens
+        )
+        toast.success('Login successful!')
+        const redirectTo = searchParams.get('redirect') || '/'
+        router.push(redirectTo)
+        return
+      }
+
       // Step 1: Confirm OTP with Firebase
-      const result = await confirmationResultRef.current.confirm(code)
+      const result = await confirmationResultRef.current!.confirm(code)
       const idToken = await result.user.getIdToken()
 
       // Step 2: Send Firebase ID token to backend
@@ -232,7 +261,7 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [setAuth, router, searchParams])
+  }, [setAuth, router, searchParams, normalizedPhone, phone])
 
   // ── Resend OTP ────────────────────────────────────────────────────────
   const handleResend = async () => {
@@ -295,7 +324,11 @@ export default function LoginPage() {
             </h1>
             <p className="text-gray-500 mt-1 text-sm">
               {step === 'otp' ? (
-                <>OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS</>
+                isOtpBypassEnabled() ? (
+                  <span className="text-amber-600">{otpBypassHint()}</span>
+                ) : (
+                  <>OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS</>
+                )
               ) : step === 'pin' ? (
                 <>Enter your 4-digit PIN to continue</>
               ) : (

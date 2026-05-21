@@ -17,6 +17,7 @@ import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button, LoadingOverlay } from '@components';
 import { useAuthStore } from '@store';
 import { formatPhoneNumber } from '@utils/helpers';
+import { isOtpBypassEnabled, otpBypassHint } from '@utils/otpBypass';
 
 type OTPScreenProps = NativeStackScreenProps<AuthStackParamList, 'OTP'>;
 
@@ -125,8 +126,14 @@ export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
             </View>
             <Text style={styles.title}>Enter OTP</Text>
             <Text style={styles.subtitle}>
-              We've sent a 6-digit code to{'\n'}
-              <Text style={styles.phoneText}>{formatPhoneNumber(phone)}</Text>
+              {isOtpBypassEnabled() ? (
+                otpBypassHint()
+              ) : (
+                <>
+                  We've sent a 6-digit code to{'\n'}
+                  <Text style={styles.phoneText}>{formatPhoneNumber(phone)}</Text>
+                </>
+              )}
             </Text>
           </View>
 

@@ -183,6 +183,12 @@ export const authApi = {
     return response.data // { success, data: { user, tokens }, message }
   },
 
+  // Temporary bypass — phone + fixed OTP code (when NEXT_PUBLIC_OTP_BYPASS=true)
+  verifyLoginWithCode: async (phone: string, code: string) => {
+    const response = await api.post('/auth/verify-login', { phone, code })
+    return response.data
+  },
+
   // Step 2b: Verify Firebase ID token and register (new user)
   verifyRegister: async (data: {
     idToken: string
@@ -192,6 +198,17 @@ export const authApi = {
   }) => {
     const response = await api.post('/auth/verify-register', data)
     return response.data // { success, data: { user, tokens }, message }
+  },
+
+  verifyRegisterWithCode: async (data: {
+    phone: string
+    code: string
+    full_name: string
+    email?: string
+    password: string
+  }) => {
+    const response = await api.post('/auth/verify-register', data)
+    return response.data
   },
 
   // ─── 4-digit PIN flow ──────────────────────────────────────────────────
@@ -216,6 +233,11 @@ export const authApi = {
   // After a Firebase OTP that the user requested via the "forgot PIN" flow.
   resetPin: async (idToken: string, newPin: string) => {
     const response = await api.post('/auth/reset-pin', { idToken, newPin })
+    return response.data
+  },
+
+  resetPinWithCode: async (phone: string, code: string, newPin: string) => {
+    const response = await api.post('/auth/reset-pin', { phone, code, newPin })
     return response.data
   },
 
