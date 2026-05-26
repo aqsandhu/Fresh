@@ -84,7 +84,11 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
     return m === 'GET' ? ['orders.view'] : ['orders.update'];
   }
   if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
-  if (p.startsWith('/cities') || p.startsWith('/delivery-zones')) {
+  if (p.startsWith('/cities')) {
+    if (m === 'GET') return null; // any admin needs city list for the header switcher
+    return ['settings.update'];
+  }
+  if (p.startsWith('/delivery-zones')) {
     return m === 'GET' ? ['settings.view'] : ['settings.update'];
   }
   if (p.startsWith('/settings') || p.startsWith('/site-settings')) {
