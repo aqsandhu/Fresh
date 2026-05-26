@@ -28,6 +28,7 @@ import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import { addressesApi, settingsApi } from '@/lib/api'
 import api from '@/lib/api'
 import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
+import AddressActions from '@/components/checkout/AddressActions'
 
 interface RealAddress {
   id: string
@@ -81,21 +82,26 @@ function CheckoutPage() {
   const [showMapPicker, setShowMapPicker] = useState(false)
   const [serverSubtotal, setServerSubtotal] = useState<number | null>(null)
   const [serverDeliveryCharge, setServerDeliveryCharge] = useState<number | null>(null)
+  const [cartSynced, setCartSynced] = useState(false)
+  const [deliveryLoading, setDeliveryLoading] = useState(false)
 
   const localSubtotal = getSubtotal()
   const selectedSlotObj = timeSlots.find(s => s.id === selectedTimeSlot)
   const isFreeDeliverySlot = selectedSlotObj?.is_free_delivery_slot === true
   const subtotal = serverSubtotal ?? localSubtotal
-  // Local fallback always uses the same rule as the backend (veg/fruit OR
-  // free-delivery slot). Server value (computed on /cart/delivery-charge)
-  // overrides if it was successfully fetched.
+  // Local calc mirrors the backend rule (veg/fruit OR free-delivery slot) so
+  // the UI is correct instantly. When the server confirms via
+  // /cart/delivery-charge we use that value as the source of truth.
   const deliveryCharge = serverDeliveryCharge ?? getDeliveryCharge(isFreeDeliverySlot)
   const total = subtotal + deliveryCharge
 
-  const syncCartPricing = useCallback(async () => {
-    if (!isAuthenticated || items.length === 0) return
+  // Sync the local cart to the server exactly ONCE per checkout visit. After
+  // that we leave the server cart alone — quantity edits happen on the cart
+  // page, this view is just the final checkout step.
+  const syncCartToServer = useCallback(async () => {
+    if (!isAuthenticated || items.length === 0 || cartSynced) return
     try {
-      try { await api.delete('/cart/clear') } catch { /* empty cart is fine */ }
+      try { await api.delete('/cart/clear') } catch { /* empty is fine */ }
       for (const item of items) {
         await api.post('/cart/add', {
           product_id: item.product.id,
@@ -107,20 +113,34 @@ function CheckoutPage() {
       if (cart?.subtotal != null) {
         setServerSubtotal(parseFloat(String(cart.subtotal)))
       }
-      if (selectedTimeSlot) {
-        const delRes = await api.post('/cart/delivery-charge', { time_slot_id: selectedTimeSlot })
-        const delData = delRes.data?.data || delRes.data
-        if (delData?.delivery_charge != null) {
-          setServerDeliveryCharge(parseFloat(String(delData.delivery_charge)))
-        }
+      setCartSynced(true)
+    } catch {
+      setCartSynced(true) // don't keep retrying; local fallback takes over
+    }
+  }, [isAuthenticated, items, cartSynced])
+
+  // Cheap second call: only refetch the delivery charge when the selected
+  // time slot changes. No cart mutation, no per-item POST loop.
+  const refetchDeliveryCharge = useCallback(async (timeSlotId: string) => {
+    if (!isAuthenticated || !timeSlotId) {
+      setServerDeliveryCharge(null)
+      return
+    }
+    setDeliveryLoading(true)
+    try {
+      const delRes = await api.post('/cart/delivery-charge', { time_slot_id: timeSlotId })
+      const delData = delRes.data?.data || delRes.data
+      if (delData?.delivery_charge != null) {
+        setServerDeliveryCharge(parseFloat(String(delData.delivery_charge)))
       } else {
         setServerDeliveryCharge(null)
       }
     } catch {
-      setServerSubtotal(null)
       setServerDeliveryCharge(null)
+    } finally {
+      setDeliveryLoading(false)
     }
-  }, [isAuthenticated, items, selectedTimeSlot])
+  }, [isAuthenticated])
 
   const getDateString = (day: 'today' | 'tomorrow') => {
     const d = new Date()
@@ -144,9 +164,19 @@ function CheckoutPage() {
     loadTimeSlots('today')
   }, [isAuthenticated])
 
+  // Sync the cart server-side exactly once. After that we only refetch the
+  // delivery charge when the slot changes — this makes slot changes feel
+  // instant instead of re-uploading the whole cart on every click.
   useEffect(() => {
-    syncCartPricing()
-  }, [syncCartPricing])
+    if (!isAuthenticated || items.length === 0 || cartSynced) return
+    syncCartToServer()
+  }, [isAuthenticated, items.length, cartSynced, syncCartToServer])
+
+  // Re-price delivery only when the selected slot changes.
+  useEffect(() => {
+    if (!cartSynced || !selectedTimeSlot) return
+    refetchDeliveryCharge(selectedTimeSlot)
+  }, [cartSynced, selectedTimeSlot, refetchDeliveryCharge])
 
   const loadTimeSlots = async (day: 'today' | 'tomorrow') => {
     setLoadingSlots(true)
@@ -349,39 +379,62 @@ function CheckoutPage() {
                   {addresses.length > 0 && (
                     <div className="space-y-3 mb-4">
                       {addresses.map((address) => (
-                        <label
+                        <div
                           key={address.id}
-                          className={`flex items-start gap-3 p-4 border-2 rounded-xl cursor-pointer transition-colors ${
+                          className={`p-4 border-2 rounded-xl transition-colors ${
                             selectedAddress === address.id
                               ? 'border-primary-500 bg-primary-50'
                               : 'border-gray-200 hover:border-gray-300'
                           }`}
                         >
-                          <input
-                            type="radio"
-                            name="address"
-                            value={address.id}
-                            checked={selectedAddress === address.id}
-                            onChange={(e) => {
-                              setSelectedAddress(e.target.value)
-                              setShowNewAddress(false)
-                            }}
-                            className="mt-1"
-                          />
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium capitalize">{address.address_type}</span>
-                              {address.is_default && (
-                                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                                  Default
-                                </span>
-                              )}
+                          <label className="flex items-start gap-3 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="address"
+                              value={address.id}
+                              checked={selectedAddress === address.id}
+                              onChange={(e) => {
+                                setSelectedAddress(e.target.value)
+                                setShowNewAddress(false)
+                              }}
+                              className="mt-1"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-medium capitalize">{address.address_type}</span>
+                                {address.is_default && (
+                                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                                    Default
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-gray-600 text-sm mt-1">
+                                {[address.written_address, address.area_name, address.city]
+                                  .filter(Boolean)
+                                  .join(', ')}
+                              </p>
                             </div>
-                            <p className="text-gray-600 text-sm mt-1">
-                              {[address.written_address, address.area_name, address.city].filter(Boolean).join(', ')}
-                            </p>
-                          </div>
-                        </label>
+                          </label>
+                          <AddressActions
+                            address={address}
+                            onUpdated={(updated) => {
+                              setAddresses((prev) =>
+                                prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
+                              )
+                            }}
+                            onDeleted={(deletedId) => {
+                              setAddresses((prev) => {
+                                const next = prev.filter((a) => a.id !== deletedId)
+                                if (selectedAddress === deletedId) {
+                                  const fallback = next.find((a) => a.is_default) || next[0]
+                                  setSelectedAddress(fallback?.id || '')
+                                  if (next.length === 0) setShowNewAddress(true)
+                                }
+                                return next
+                              })
+                            }}
+                          />
+                        </div>
                       ))}
                     </div>
                   )}
@@ -763,9 +816,16 @@ function CheckoutPage() {
                   <span>Subtotal</span>
                   <span>{formatPriceShort(subtotal)}</span>
                 </div>
-                <div className="flex justify-between text-gray-600">
+                <div className="flex justify-between items-center text-gray-600">
                   <span>Delivery</span>
-                  <span className={deliveryCharge === 0 ? 'text-green-600' : ''}>
+                  <span
+                    className={`inline-flex items-center gap-1 ${
+                      deliveryCharge === 0 ? 'text-green-600 font-semibold' : ''
+                    }`}
+                  >
+                    {deliveryLoading && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                    )}
                     {deliveryCharge === 0 ? 'FREE' : formatPriceShort(deliveryCharge)}
                   </span>
                 </div>
