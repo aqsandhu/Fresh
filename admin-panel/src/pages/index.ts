@@ -10,4 +10,5 @@ export { WhatsAppOrders } from './WhatsAppOrders';
 export { Addresses } from './Addresses';
 export { ServiceCities } from './ServiceCities';
 export { DeliveryZones } from './DeliveryZones';
+export { Roles } from './Roles';
 export { Settings } from './Settings';

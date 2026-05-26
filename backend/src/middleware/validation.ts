@@ -245,6 +245,10 @@ export const productSchemas = {
     subcategory_id: commonSchemas.uuid,
     price: commonSchemas.price.required(),
     compare_at_price: commonSchemas.price.allow(null, 0),
+    // Optional per-unit overrides. NULL => derive from `price`.
+    half_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
+    quarter_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
+    half_dozen_price: commonSchemas.price.allow(null, '', 0).optional(),
     unit_type: Joi.string().valid('kg', 'gram', 'piece', 'dozen', 'liter', 'ml', 'pack').default('kg'),
     unit_value: Joi.number().positive().default(1),
     stock_quantity: Joi.number().integer().min(0).default(0),
@@ -262,6 +266,9 @@ export const productSchemas = {
     subcategory_id: commonSchemas.uuid,
     price: commonSchemas.price,
     compare_at_price: commonSchemas.price.allow(null, 0),
+    half_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
+    quarter_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
+    half_dozen_price: commonSchemas.price.allow(null, '', 0).optional(),
     unit_type: Joi.string().valid('kg', 'gram', 'piece', 'dozen', 'liter', 'ml', 'pack'),
     unit_value: Joi.number().positive(),
     stock_quantity: Joi.number().integer().min(0),
@@ -278,6 +285,7 @@ export const cartSchemas = {
   addItem: Joi.object({
     product_id: commonSchemas.uuid.required(),
     quantity: commonSchemas.quantity.required(),
+    unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
     special_instructions: Joi.string().max(500),
   }),
   

@@ -1,14 +1,17 @@
 'use client'
 
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ShoppingCart, Plus, Minus, Trash2, Leaf } from 'lucide-react'
-import { Product } from '@/types'
+import { ShoppingCart, Plus, Minus, Trash2, Leaf, ChevronDown } from 'lucide-react'
+import { Product, ProductUnit } from '@/types'
 import ProductPrice from './ProductPrice'
 import { useCartStore } from '@/store/cartStore'
 import Badge from './Badge'
 import SmartImage from './SmartImage'
 import toast from 'react-hot-toast'
+import { getUnitOptions, unitLabelShort } from '@/lib/unitPricing'
+import { formatPriceShort } from '@/lib/utils'
 
 interface ProductCardProps {
   product: Product
@@ -29,26 +32,43 @@ function ImageFallback() {
 
 export default function ProductCard({ product, showAddToCart = true }: ProductCardProps) {
   const { addItem, updateQuantity, items } = useCartStore()
-  const cartItem = items.find((item) => item.product.id === product.id)
+  const unitOptions = useMemo(() => getUnitOptions(product), [product])
+  const hasFractionUnits = unitOptions.length > 1
+  const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
+  const [unitMenuOpen, setUnitMenuOpen] = useState(false)
+  const activeOption =
+    unitOptions.find((o) => o.unit === selectedUnit) || unitOptions[0]
+  const displayPrice = activeOption?.price ?? product.price
+
+  // We treat each (product, unit) as a distinct cart line so a customer can
+  // have "1 kg apples" and "half kg apples" side by side.
+  const cartItem = items.find(
+    (item) =>
+      item.product.id === product.id && (item.unit || 'full') === selectedUnit
+  )
   const quantity = cartItem?.quantity || 0
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    addItem(product, 1)
-    toast.success(`${product.name} added to cart`, { duration: 2000, icon: '🛒' })
+    addItem(product, 1, selectedUnit)
+    const suffix = unitLabelShort(selectedUnit)
+    toast.success(
+      `${product.name}${suffix ? ` (${suffix})` : ''} added to cart`,
+      { duration: 2000, icon: '🛒' }
+    )
   }
 
   const handleIncrement = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    updateQuantity(product.id, quantity + 1)
+    updateQuantity(product.id, quantity + 1, selectedUnit)
   }
 
   const handleDecrement = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    updateQuantity(product.id, quantity - 1)
+    updateQuantity(product.id, quantity - 1, selectedUnit)
   }
 
   const discountPercent = product.compareAtPrice && product.compareAtPrice > product.price
@@ -131,13 +151,75 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               </p>
             )}
 
+            {/* Unit selector — only shown when the product offers fractional
+                units (kg / dozen). Tapping the chip opens a tiny menu so the
+                user can switch between Per kg / Half kg / Quarter kg etc. */}
+            {hasFractionUnits && (
+              <div
+                className="relative mt-1 mb-1"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setUnitMenuOpen((v) => !v)
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 px-2 py-1 rounded-md transition-colors"
+                  aria-haspopup="listbox"
+                  aria-expanded={unitMenuOpen}
+                >
+                  {activeOption?.label || 'Per unit'}
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {unitMenuOpen && (
+                  <div className="absolute z-20 top-full left-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                    {unitOptions.map((opt) => (
+                      <button
+                        key={opt.unit}
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setSelectedUnit(opt.unit)
+                          setUnitMenuOpen(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors ${
+                          opt.unit === selectedUnit
+                            ? 'bg-primary-50 text-primary-700 font-semibold'
+                            : 'text-gray-700'
+                        }`}
+                      >
+                        <span>{opt.label}</span>
+                        <span className="text-gray-600 font-medium">
+                          {formatPriceShort(opt.price)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Price row pinned to the bottom regardless of name length. */}
             <div className="flex items-end justify-between gap-2 mt-auto pt-2">
               <ProductPrice
-                price={product.price}
-                unit={product.unit}
+                price={displayPrice}
+                unit={
+                  selectedUnit === 'full'
+                    ? product.unit
+                    : unitLabelShort(selectedUnit)
+                }
                 size="lg"
-                compareAtPrice={discountPercent > 0 ? product.compareAtPrice : undefined}
+                compareAtPrice={
+                  selectedUnit === 'full' && discountPercent > 0
+                    ? product.compareAtPrice
+                    : undefined
+                }
               />
 
               {/* Inline quantity stepper when the item is already in the cart. */}

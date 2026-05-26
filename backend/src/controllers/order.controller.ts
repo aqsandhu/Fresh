@@ -343,11 +343,12 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       await client.query(
         `INSERT INTO order_items (
           order_id, product_id, product_name, product_image, product_sku,
-          unit_price, quantity, total_price, weight_kg
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          unit_price, quantity, total_price, weight_kg, unit
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           order.id, item.product_id, product.name_en, product.primary_image, product.sku,
           item.unit_price, item.quantity, item.total_price, item.weight_kg || null,
+          item.unit || 'full',
         ]
       );
 

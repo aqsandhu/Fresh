@@ -13,8 +13,13 @@ import toast from 'react-hot-toast'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import api, { addressesApi } from '@/lib/api'
-import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
+import {
+  getAccuratePosition,
+  REQUIRED_LOCATION_ACCURACY_M,
+  FALLBACK_LOCATION_ACCURACY_M,
+} from '@/lib/geolocation'
 import { resolveImageUrl } from '@/lib/utils'
+import DraggableMapPicker from './DraggableMapPicker'
 
 export type AddressFormInitial = {
   id?: string
@@ -121,21 +126,31 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 
   const handleGetGps = async () => {
     setIsLocating(true)
-    toast.loading('Getting precise GPS location...', { id: 'gps' })
+    toast.loading(`Locking GPS at ${REQUIRED_LOCATION_ACCURACY_M}m...`, { id: 'gps' })
     try {
       const pos = await getAccuratePosition()
+      toast.dismiss('gps')
       if (pos) {
         setMapLocation({ lat: pos.lat, lng: pos.lng })
         setMapAccuracy(pos.accuracy)
-        toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
+        // Open the map so the customer can drag/adjust if needed.
+        setShowMapPicker(true)
+        if (pos.tier === 'tight') {
+          toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
+        } else {
+          toast.success(
+            `Located at ±${Math.round(pos.accuracy)}m. You can drag the marker to fine-tune.`,
+            { duration: 5000 }
+          )
+        }
       } else {
         toast.error(
-          `Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`
+          `Could not get GPS within ${FALLBACK_LOCATION_ACCURACY_M}m. Tap the map to pin manually, or move to an open area and try again.`,
+          { duration: 6000 }
         )
       }
     } finally {
       setIsLocating(false)
-      toast.dismiss('gps')
     }
   }
 
@@ -388,19 +403,21 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 
         {showMapPicker && (
           <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
-            <iframe
-              title="Map preview"
-              width="100%"
-              height="280"
-              style={{ border: 0 }}
-              loading="lazy"
-              src={`https://maps.google.com/maps?q=${
-                mapLocation?.lat || 32.5742
-              },${mapLocation?.lng || 74.0789}&z=15&output=embed`}
+            <DraggableMapPicker
+              lat={mapLocation?.lat ?? 32.5742}
+              lng={mapLocation?.lng ?? 74.0789}
+              accuracy={mapAccuracy}
+              onChange={(lat, lng) => {
+                setMapLocation({ lat, lng })
+                // User adjusted the pin manually — accuracy no longer matches
+                // the GPS reading, clear it so the green ring goes away.
+                setMapAccuracy(null)
+              }}
             />
             <div className="p-3 bg-gray-50 space-y-3">
               <p className="text-xs text-gray-500">
-                Enter your exact coordinates or use &quot;Get My Current Location&quot;.
+                Drag the green marker or tap the map to fine-tune the location.
+                You can also use &quot;Get My Current Location&quot;.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -444,7 +461,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
                   className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
                 >
                   <MapPin className="w-4 h-4" />
-                  {isLocating ? 'Getting GPS...' : 'Get My Current Location'}
+                  {isLocating ? 'Locking GPS…' : 'Get My Current Location'}
                 </button>
                 <button
                   type="button"

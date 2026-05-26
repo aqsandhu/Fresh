@@ -2,8 +2,20 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { CartState, Product } from '@/types'
+import { CartState, Product, ProductUnit } from '@/types'
 import { calculateClientDeliveryCharge } from '@/lib/deliveryRules'
+import { getUnitOptions } from '@/lib/unitPricing'
+
+// A cart line is uniquely identified by (productId, unit) — the same product
+// can appear twice (e.g., 1 kg + half kg).
+const lineKey = (productId: string, unit: ProductUnit = 'full') =>
+  `${productId}::${unit}`
+
+function priceForUnit(product: Product, unit: ProductUnit = 'full'): number {
+  const opts = getUnitOptions(product)
+  const found = opts.find((o) => o.unit === unit)
+  return found?.price ?? product.price
+}
 
 const DEFAULT_BASE_CHARGE = 100
 const DEFAULT_FREE_THRESHOLD = 500
@@ -40,16 +52,17 @@ export const useCartStore = create<CartState>()(
         })
       },
 
-      addItem: (product: Product, quantity = 1) => {
+      addItem: (product: Product, quantity = 1, unit: ProductUnit = 'full') => {
         set((state) => {
+          const targetKey = lineKey(product.id, unit)
           const existingItem = state.items.find(
-            (item) => item.product.id === product.id
+            (item) => lineKey(item.product.id, item.unit) === targetKey
           )
 
           if (existingItem) {
             return {
               items: state.items.map((item) =>
-                item.product.id === product.id
+                lineKey(item.product.id, item.unit) === targetKey
                   ? { ...item, quantity: item.quantity + quantity }
                   : item
               ),
@@ -57,26 +70,38 @@ export const useCartStore = create<CartState>()(
           }
 
           return {
-            items: [...state.items, { product, quantity }],
+            items: [
+              ...state.items,
+              {
+                product,
+                quantity,
+                unit,
+                unitPrice: priceForUnit(product, unit),
+              },
+            ],
           }
         })
       },
 
-      removeItem: (productId: string) => {
+      removeItem: (productId: string, unit: ProductUnit = 'full') => {
         set((state) => ({
-          items: state.items.filter((item) => item.product.id !== productId),
+          items: state.items.filter(
+            (item) => lineKey(item.product.id, item.unit) !== lineKey(productId, unit)
+          ),
         }))
       },
 
-      updateQuantity: (productId: string, quantity: number) => {
+      updateQuantity: (productId: string, quantity: number, unit: ProductUnit = 'full') => {
         if (quantity <= 0) {
-          get().removeItem(productId)
+          get().removeItem(productId, unit)
           return
         }
 
         set((state) => ({
           items: state.items.map((item) =>
-            item.product.id === productId ? { ...item, quantity } : item
+            lineKey(item.product.id, item.unit) === lineKey(productId, unit)
+              ? { ...item, quantity }
+              : item
           ),
         }))
       },
@@ -91,7 +116,8 @@ export const useCartStore = create<CartState>()(
 
       getTotalPrice: () => {
         return get().items.reduce(
-          (total, item) => total + item.product.price * item.quantity,
+          (total, item) =>
+            total + (item.unitPrice ?? item.product.price) * item.quantity,
           0
         )
       },

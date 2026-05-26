@@ -30,6 +30,10 @@ export interface Product {
   descriptionEn?: string;
   price: number;
   compareAtPrice?: number;
+  /** Optional per-unit overrides; null/undefined => derive from price. */
+  halfKgPrice?: number | null;
+  quarterKgPrice?: number | null;
+  halfDozenPrice?: number | null;
   unitType: UnitType | string;
   unitValue?: number;
   stockQuantity: number;
@@ -316,6 +320,10 @@ export interface CreateProductData {
   descriptionEn?: string;
   price: number;
   compareAtPrice?: number;
+  /** Optional admin-set per-unit overrides; leave blank to derive from `price`. */
+  halfKgPrice?: number | null;
+  quarterKgPrice?: number | null;
+  halfDozenPrice?: number | null;
   stockQuantity: number;
   unitType: string;
   unitValue?: number;
