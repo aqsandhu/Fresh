@@ -56,6 +56,7 @@ export interface Product {
   inStock?: boolean;
   chickenOnly?: boolean;
   isChickenOnly?: boolean;
+  category?: string;
 }
 
 export interface Category {
@@ -294,10 +295,13 @@ export interface ProductFilters {
 
 export interface CartState {
   items: CartStoreItem[];
+  deliveryBaseCharge: number;
+  deliveryFreeThreshold: number;
   addItem: (product: Product, quantity?: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   clearCart: () => void;
+  loadDeliverySettings: () => Promise<void>;
   getTotalItems: () => number;
   getTotalPrice: () => number;
   getSubtotal: () => number;

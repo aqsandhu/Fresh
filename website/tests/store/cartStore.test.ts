@@ -273,12 +273,20 @@ describe('Cart Store', () => {
       expect(cart.getDeliveryCharge()).toBe(100);
     });
 
-    it('should apply free delivery for mixed orders above threshold', () => {
+    it('should apply free delivery for mixed orders when veg/fruit and total both qualify', () => {
       const cart = createMockCartState();
       cart.addItem(mockChickenProduct, 1); // 400
-      cart.addItem(mockProduct, 1); // 250, total 650
+      cart.addItem(mockProduct, 2); // 500 veg/fruit, total 900
 
-      expect(cart.getDeliveryCharge()).toBe(0); // Mixed, above threshold
+      expect(cart.getDeliveryCharge()).toBe(0);
+    });
+
+    it('should charge mixed orders when veg/fruit subtotal is below threshold', () => {
+      const cart = createMockCartState();
+      cart.addItem(mockChickenProduct, 1); // 400
+      cart.addItem(mockProduct, 1); // 250 veg/fruit, total 650
+
+      expect(cart.getDeliveryCharge()).toBe(100);
     });
   });
 
