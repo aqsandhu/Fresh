@@ -25,7 +25,7 @@ import {
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
-import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
+import { formatPriceShort, formatProductUnitSuffix, formatSlotTime } from '@/lib/utils'
 import { unitLabelShort } from '@/lib/unitPricing'
 import { getSlotAvailability } from '@/lib/timeSlots'
 import { addressesApi, settingsApi } from '@/lib/api'
@@ -604,13 +604,7 @@ function CheckoutPage() {
                   </p>
                 ) : (
                   timeSlots.map((slot) => {
-                    const formatTime = (time: string) => {
-                      const [h, m] = time.split(':').map(Number)
-                      const d = new Date()
-                      d.setHours(h, m || 0, 0, 0)
-                      return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
-                    }
-                    const label = `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`
+                    const label = `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`
                     const availability = getSlotAvailability(slot, selectedDay)
                     const slotDisabled =
                       slot.available_slots <= 0 || availability.unavailable

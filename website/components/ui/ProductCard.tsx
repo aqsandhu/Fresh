@@ -97,10 +97,8 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               fallback={<ImageFallback />}
             />
 
-            {/* Top-left: Fresh badge always shows when in stock; "Out of Stock"
-                takes the same slot when stock is zero. The discount % moves
-                to the opposite corner so both can coexist. */}
-            <div className="absolute top-2 left-2">
+            {/* Top-left: badges stacked vertically (Fresh on top, discount below). */}
+            <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
               {product.isFresh ? (
                 <span className="bg-green-500/90 backdrop-blur-sm text-white text-xs font-medium px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm">
                   <Leaf className="w-3 h-3" />
@@ -109,16 +107,12 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               ) : (
                 <Badge variant="danger">Out of Stock</Badge>
               )}
-            </div>
-
-            {/* Top-right: discount %, when compareAtPrice > price. */}
-            {discountPercent > 0 && (
-              <div className="absolute top-2 right-2">
+              {discountPercent > 0 && (
                 <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-lg shadow-sm">
                   -{discountPercent}% OFF
                 </span>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Hover-revealed Add to Cart — desktop only. Mobile gets the
                 same action via the always-visible button at the bottom of the

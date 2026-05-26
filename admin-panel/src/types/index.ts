@@ -21,6 +21,10 @@ export interface User {
   status: UserStatus;
   avatarUrl?: string;
   createdAt?: string;
+  permissions?: string[];
+  adminRoleId?: string | null;
+  adminRoleName?: string | null;
+  adminRoleCity?: string | null;
 }
 
 export interface Product {

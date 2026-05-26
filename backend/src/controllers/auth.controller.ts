@@ -667,7 +667,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
 
   // Find user with admin role
   const result = await query(
-    `SELECT u.id, u.phone, u.full_name, u.email, u.password_hash, u.role, u.status
+    `SELECT u.id, u.phone, u.full_name, u.email, u.password_hash, u.role, u.status, u.admin_role_id
      FROM users u
      JOIN admins a ON u.id = a.user_id
      WHERE u.phone = $1 AND u.role IN ('admin', 'super_admin')`,
@@ -723,7 +723,9 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
       [user.id]
     );
     permissions = permResult.rows[0]?.permissions || [];
-    if (permissions.length === 0) {
+    // Legacy admin without a custom role keeps full access. Custom-role admins
+    // with an empty permission set stay restricted (no accidental full access).
+    if (permissions.length === 0 && !user.admin_role_id) {
       permissions = ['*'];
     }
   }

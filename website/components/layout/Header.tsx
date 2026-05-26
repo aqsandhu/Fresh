@@ -77,6 +77,8 @@ export default function Header() {
   }, [])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<NodeJS.Timeout>()
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   const cartItemCount = hasMounted ? getTotalItems() : 0
 
@@ -105,6 +107,31 @@ export default function Header() {
   }, [items.length, cartHasHydrated, pathname])
 
   const closeCart = useCallback(() => setIsCartOpen(false), [])
+
+  // Close mobile nav when tapping outside the drawer or pressing Escape.
+  useEffect(() => {
+    if (!isMenuOpen) return
+
+    const handlePointer = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node
+      if (mobileMenuRef.current?.contains(target)) return
+      if (menuButtonRef.current?.contains(target)) return
+      setIsMenuOpen(false)
+    }
+
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMenuOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('touchstart', handlePointer)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('touchstart', handlePointer)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [isMenuOpen])
 
   // Search functionality
   useEffect(() => {
@@ -267,8 +294,11 @@ export default function Header() {
 
             {/* Mobile Menu Button */}
             <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              ref={menuButtonRef}
+              onClick={() => setIsMenuOpen((open) => !open)}
               className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={isMenuOpen}
             >
               {isMenuOpen ? (
                 <X className="w-5 h-5 text-gray-600" />
@@ -375,6 +405,7 @@ export default function Header() {
       <AnimatePresence>
         {isMenuOpen && (
           <motion.div
+            ref={mobileMenuRef}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
