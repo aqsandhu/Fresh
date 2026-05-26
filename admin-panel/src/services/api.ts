@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
+import { CITY_STORAGE_KEY } from '@/lib/cityStorage';
 
 // IMPORTANT: Set VITE_API_URL in production to point to the live backend.
 // e.g., VITE_API_URL=https://api.freshbazar.pk/api
@@ -71,8 +72,8 @@ apiClient.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
-    const cityId = localStorage.getItem('admin_selected_city_id');
-    if (cityId && config.headers) {
+    const cityId = localStorage.getItem(CITY_STORAGE_KEY);
+    if (cityId && cityId.length > 0 && config.headers) {
       config.headers['X-City-Id'] = cityId;
     }
     // Convert request body keys from camelCase to snake_case
