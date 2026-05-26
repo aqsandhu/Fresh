@@ -19,6 +19,7 @@ import {
   auditLogger,
   attachAdminPermissions,
   enforceAdminPermissions,
+  attachCityScope,
 } from '../middleware';
 
 const router = Router();
@@ -30,6 +31,7 @@ router.post('/login', authRateLimiter, validate(adminSchemas.adminLogin), authCo
 router.use(authenticate);
 router.use(requireAdmin);
 router.use(attachAdminPermissions);
+router.use(attachCityScope);
 router.use(enforceAdminPermissions);
 
 // Apply audit logging to all mutating (POST, PUT, PATCH, DELETE) admin operations
@@ -176,6 +178,7 @@ router.get('/cities', adminController.getCities);
 router.post('/cities', adminController.addCity);
 router.put('/cities/:id/toggle', adminController.toggleCity);
 router.delete('/cities/:id', adminController.deleteCity);
+router.post('/cities/import-catalog', adminController.importCityCatalog);
 
 // Delivery Zones
 router.get('/delivery-zones', adminController.getDeliveryZones);

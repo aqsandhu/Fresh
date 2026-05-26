@@ -7,6 +7,20 @@ import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse } from '../utils/response';
 
+async function resolvePublicCityId(req: Request): Promise<string | null> {
+  const cityId = typeof req.query.city_id === 'string' ? req.query.city_id : null;
+  if (cityId) return cityId;
+
+  const cityName = typeof req.query.city === 'string' ? req.query.city : null;
+  if (!cityName) return null;
+
+  const row = await query(
+    'SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1',
+    [cityName]
+  );
+  return row.rows[0]?.id || null;
+}
+
 /**
  * Get all categories
  * GET /api/categories
@@ -27,6 +41,12 @@ export const getCategories = asyncHandler(async (req: Request, res: Response) =>
 
   const params: any[] = [];
   let paramIndex = 1;
+
+  const publicCityId = await resolvePublicCityId(req);
+  if (publicCityId) {
+    sql += ` AND c.city_id = $${paramIndex++}`;
+    params.push(publicCityId);
+  }
 
   if (parent_id) {
     sql += ` AND c.parent_id = $${paramIndex++}`;

@@ -136,10 +136,6 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
     try {
       const pos = await getAccuratePosition((update) => {
         setGpsStatus(update.message)
-        if (update.lat != null && update.lng != null) {
-          setMapLocation({ lat: update.lat, lng: update.lng })
-          if (update.accuracy != null) setMapAccuracy(update.accuracy)
-        }
       })
 
       if (pos) {

@@ -71,6 +71,10 @@ apiClient.interceptors.request.use(
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    const cityId = localStorage.getItem('admin_selected_city_id');
+    if (cityId && config.headers) {
+      config.headers['X-City-Id'] = cityId;
+    }
     // Convert request body keys from camelCase to snake_case
     if (config.data && !(config.data instanceof FormData)) {
       config.data = toSnakeCase(config.data);

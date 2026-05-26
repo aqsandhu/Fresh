@@ -46,43 +46,56 @@ export const listPermissions = asyncHandler(async (_req: Request, res: Response)
 /** List all admin roles + their permissions. */
 export const listRoles = asyncHandler(async (_req: Request, res: Response) => {
   const result = await query(
-    `SELECT r.id, r.name, r.description, r.city, r.is_system,
-            r.created_at, r.updated_at,
+    `SELECT r.id, r.name, r.description, r.city, r.city_id, sc.name AS city_name,
+            r.is_system, r.created_at, r.updated_at,
             COALESCE(
               ARRAY_AGG(p.code) FILTER (WHERE p.code IS NOT NULL),
               ARRAY[]::text[]
             ) AS permissions
        FROM admin_roles r
+       LEFT JOIN service_cities sc ON sc.id = r.city_id
        LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id
        LEFT JOIN permissions p ON p.id = rp.permission_id
-      GROUP BY r.id
+      GROUP BY r.id, sc.name
       ORDER BY r.created_at ASC`
   );
   successResponse(res, result.rows, 'Roles retrieved');
 });
 
-/** Create a new admin role with permissions + optional city scope. */
+/** Create a new admin role with permissions + required city scope. */
 export const createRole = asyncHandler(async (req: Request, res: Response) => {
-  const { name, description, city, permissions } = req.body as {
+  const { name, description, city_id, permissions } = req.body as {
     name: string;
     description?: string;
-    city?: string | null;
+    city_id?: string;
     permissions: string[];
   };
 
   if (!name || typeof name !== 'string' || name.trim().length < 2) {
     return errorResponse(res, 'Role name is required (min 2 characters)', 400);
   }
+  if (!city_id) {
+    return errorResponse(res, 'City is required — select a service city', 400);
+  }
   if (!Array.isArray(permissions) || permissions.length === 0) {
     return errorResponse(res, 'At least one permission must be selected', 400);
   }
 
+  const cityRow = await query(
+    'SELECT id, name FROM service_cities WHERE id = $1',
+    [city_id]
+  );
+  if (cityRow.rows.length === 0) {
+    return errorResponse(res, 'Selected city does not exist', 400);
+  }
+  const cityName = cityRow.rows[0].name;
+
   const created = await withTransaction(async (client) => {
     const roleResult = await client.query(
-      `INSERT INTO admin_roles (name, description, city, is_system, created_by)
-       VALUES ($1, $2, $3, FALSE, $4)
+      `INSERT INTO admin_roles (name, description, city, city_id, is_system, created_by)
+       VALUES ($1, $2, $3, $4, FALSE, $5)
        RETURNING *`,
-      [name.trim(), description || null, city || null, req.user?.id || null]
+      [name.trim(), description || null, cityName, city_id, req.user?.id || null]
     );
     const role = roleResult.rows[0];
 
@@ -118,10 +131,10 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
 /** Update an existing role's name / city / permissions. */
 export const updateRole = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, description, city, permissions } = req.body as {
+  const { name, description, city_id, permissions } = req.body as {
     name?: string;
     description?: string;
-    city?: string | null;
+    city_id?: string;
     permissions?: string[];
   };
 
@@ -149,9 +162,21 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
       fields.push(`description = $${pi++}`);
       values.push(description || null);
     }
-    if (city !== undefined) {
+    if (city_id !== undefined) {
+      if (!city_id) {
+        throw new Error('City is required');
+      }
+      const cityRow = await client.query(
+        'SELECT id, name FROM service_cities WHERE id = $1',
+        [city_id]
+      );
+      if (cityRow.rows.length === 0) {
+        throw new Error('Selected city does not exist');
+      }
+      fields.push(`city_id = $${pi++}`);
+      values.push(city_id);
       fields.push(`city = $${pi++}`);
-      values.push(city || null);
+      values.push(cityRow.rows[0].name);
     }
     if (fields.length > 0) {
       values.push(id);
@@ -187,17 +212,18 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
     }
 
     const final = await client.query(
-      `SELECT r.id, r.name, r.description, r.city, r.is_system,
-              r.created_at, r.updated_at,
+      `SELECT r.id, r.name, r.description, r.city, r.city_id, sc.name AS city_name,
+              r.is_system, r.created_at, r.updated_at,
               COALESCE(
                 ARRAY_AGG(p.code) FILTER (WHERE p.code IS NOT NULL),
                 ARRAY[]::text[]
               ) AS permissions
          FROM admin_roles r
+         LEFT JOIN service_cities sc ON sc.id = r.city_id
          LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id
          LEFT JOIN permissions p ON p.id = rp.permission_id
         WHERE r.id = $1
-        GROUP BY r.id`,
+        GROUP BY r.id, sc.name`,
       [id]
     );
     return final.rows[0];

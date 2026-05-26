@@ -11,6 +11,13 @@ import { generateSlug, normalizePhoneNumber } from '../utils/validators';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import { deleteFileFromStorage } from '../config/storage';
 import logger from '../utils/logger';
+import {
+  resolveCityScope,
+  cityIdClause,
+  orderCityClause,
+  customerCityExistsClause,
+  requireCityScope,
+} from '../utils/cityScope';
 
 const SALT_ROUNDS = 12;
 
@@ -19,6 +26,17 @@ const SALT_ROUNDS = 12;
  * GET /api/admin/dashboard
  */
 export const getDashboardStats = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const orderParams: unknown[] = [];
+  let orderFilter = '';
+  if (!scope.unrestricted && scope.cityId && scope.cityName) {
+    orderParams.push(scope.cityId, scope.cityName);
+    orderFilter = ` AND (
+      city_id = $1
+      OR LOWER(COALESCE(delivery_address_snapshot->>'city', '')) = LOWER($2)
+    )`;
+  }
+
   // Today's stats
   const todayStats = await query(
     `SELECT 
@@ -31,7 +49,8 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       COUNT(CASE WHEN status = 'delivered' THEN 1 END) as delivered_orders
     FROM orders
     WHERE DATE(placed_at) = CURRENT_DATE
-    AND deleted_at IS NULL`
+    AND deleted_at IS NULL${orderFilter}`,
+    orderParams
   );
 
   // Weekly stats
@@ -41,7 +60,8 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       COALESCE(SUM(total_amount), 0) as total_sales
     FROM orders
     WHERE placed_at >= CURRENT_DATE - INTERVAL '7 days'
-    AND deleted_at IS NULL`
+    AND deleted_at IS NULL${orderFilter}`,
+    orderParams
   );
 
   // Monthly stats
@@ -51,8 +71,16 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       COALESCE(SUM(total_amount), 0) as total_sales
     FROM orders
     WHERE placed_at >= CURRENT_DATE - INTERVAL '30 days'
-    AND deleted_at IS NULL`
+    AND deleted_at IS NULL${orderFilter}`,
+    orderParams
   );
+
+  let productFilter = '';
+  const productParams: unknown[] = [];
+  if (!scope.unrestricted && scope.cityId) {
+    productParams.push(scope.cityId);
+    productFilter = ' AND city_id = $1';
+  }
 
   // Low stock products
   const lowStockProducts = await query(
@@ -60,9 +88,23 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       id, name_en, name_ur, stock_quantity, low_stock_threshold
     FROM products
     WHERE stock_quantity <= low_stock_threshold
-    AND is_active = TRUE
-    LIMIT 10`
+    AND is_active = TRUE${productFilter}
+    LIMIT 10`,
+    productParams
   );
+
+  let recentOrderJoin = '';
+  let recentOrderFilter = '';
+  const recentParams: unknown[] = [];
+  if (!scope.unrestricted && scope.cityId && scope.cityName) {
+    recentOrderJoin = ' LEFT JOIN addresses addr ON o.address_id = addr.id';
+    recentParams.push(scope.cityId, scope.cityName);
+    recentOrderFilter = ` AND (
+      o.city_id = $1
+      OR LOWER(COALESCE(addr.city, '')) = LOWER($2)
+      OR LOWER(COALESCE(o.delivery_address_snapshot->>'city', '')) = LOWER($2)
+    )`;
+  }
 
   // Recent orders
   const recentOrders = await query(
@@ -71,11 +113,19 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       u.full_name as customer_name, u.phone as customer_phone,
       o.placed_at
     FROM orders o
-    JOIN users u ON o.user_id = u.id
-    WHERE o.deleted_at IS NULL
+    JOIN users u ON o.user_id = u.id${recentOrderJoin}
+    WHERE o.deleted_at IS NULL${recentOrderFilter}
     ORDER BY o.placed_at DESC
-    LIMIT 10`
+    LIMIT 10`,
+    recentParams
   );
+
+  let riderFilter = '';
+  const riderParams: unknown[] = [];
+  if (!scope.unrestricted && scope.cityId) {
+    riderParams.push(scope.cityId);
+    riderFilter = ' AND city_id = $1';
+  }
 
   // Rider stats
   const riderStats = await query(
@@ -85,7 +135,8 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       COUNT(CASE WHEN status = 'busy' THEN 1 END) as busy_riders,
       COUNT(CASE WHEN verification_status = 'pending' THEN 1 END) as pending_verification
     FROM riders
-    WHERE deleted_at IS NULL`
+    WHERE deleted_at IS NULL${riderFilter}`,
+    riderParams
   );
 
   // Atta requests stats
@@ -114,6 +165,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
  * GET /api/admin/orders
  */
 export const getAllOrders = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
   const {
     page = 1,
     limit = 20,
@@ -161,9 +213,13 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
     paramIndex++;
   }
 
+  const cityFilter = orderCityClause(scope, 'o', 'addr', params, paramIndex);
+  whereSql += cityFilter.sql;
+  paramIndex = cityFilter.nextIndex;
+
   // Count total
   const countResult = await query(
-    `SELECT COUNT(*) FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN riders r ON o.rider_id = r.id LEFT JOIN users ru ON r.user_id = ru.id ${whereSql}`,
+    `SELECT COUNT(*) FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN riders r ON o.rider_id = r.id LEFT JOIN users ru ON r.user_id = ru.id LEFT JOIN addresses addr ON o.address_id = addr.id ${whereSql}`,
     params
   );
   const total = parseInt(countResult.rows[0].count);
@@ -527,6 +583,7 @@ export const assignRider = asyncHandler(async (req: Request, res: Response) => {
  * GET /api/admin/riders
  */
 export const getRiders = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
   const { status, verification_status, page = 1, limit = 20 } = req.query;
 
   let sql = `
@@ -547,6 +604,10 @@ export const getRiders = asyncHandler(async (req: Request, res: Response) => {
     sql += ` AND r.verification_status = $${paramIndex++}`;
     params.push(verification_status);
   }
+
+  const riderCity = cityIdClause(scope, 'r', params, paramIndex);
+  sql += riderCity.sql;
+  paramIndex = riderCity.nextIndex;
 
   // Count total
   const countResult = await query(`SELECT COUNT(*) ${sql}`, params);
@@ -587,6 +648,12 @@ export const getRiders = asyncHandler(async (req: Request, res: Response) => {
  * POST /api/admin/riders
  */
 export const createRider = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const scopeErr = requireCityScope(scope);
+  if (scopeErr) {
+    return errorResponse(res, scopeErr, 400);
+  }
+
   const {
     full_name, phone, email, password, cnic,
     vehicle_type, vehicle_number,
@@ -637,8 +704,8 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
           emergency_contact_name, emergency_contact_phone,
           bank_account_title, bank_account_number, bank_name,
           cnic_front_image, cnic_back_image,
-          verification_status, created_by
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending','pending','verified',$11)
+          verification_status, created_by, city_id
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending','pending','verified',$11,$12)
          RETURNING *`,
         [
           user.id, cnic, vehicle_type, vehicle_number,
@@ -646,6 +713,7 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
           emergency_contact_name || null, emergency_contact_phone || null,
           bank_account_title || null, bank_account_number || null, bank_name || null,
           req.user?.id,
+          scope.cityId,
         ]
       );
 
@@ -1008,6 +1076,7 @@ export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Re
  * GET /api/admin/products
  */
 export const getAdminProducts = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
   const {
     category, search, page = 1, limit = 20,
     sortBy = 'created_at', sortOrder = 'desc',
@@ -1034,6 +1103,10 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
     sql += ` AND p.is_active = $${paramIndex}`;
     params.push(active); paramIndex++;
   }
+
+  const productCity = cityIdClause(scope, 'p', params, paramIndex);
+  sql += productCity.sql;
+  paramIndex = productCity.nextIndex;
 
   const countResult = await query(`SELECT COUNT(*) ${sql}`, params);
   const total = parseInt(countResult.rows[0].count);
@@ -1080,6 +1153,12 @@ export const getAdminProductById = asyncHandler(async (req: Request, res: Respon
  * POST /api/admin/products
  */
 export const createProduct = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const scopeErr = requireCityScope(scope);
+  if (scopeErr) {
+    return errorResponse(res, scopeErr, 400);
+  }
+
   const {
     name_ur,
     name_en,
@@ -1112,8 +1191,11 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
 
   const slug = generateSlug(name_en);
 
-  // Check if slug exists
-  const existingResult = await query('SELECT id FROM products WHERE slug = $1', [slug]);
+  // Check if slug exists in this city
+  const existingResult = await query(
+    'SELECT id FROM products WHERE slug = $1 AND city_id = $2',
+    [slug, scope.cityId]
+  );
   if (existingResult.rows.length > 0) {
     return errorResponse(res, 'Product with similar name already exists', 409);
   }
@@ -1136,8 +1218,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
       half_kg_price, quarter_kg_price, half_dozen_price,
       unit_type, unit_value, stock_quantity,
       description_ur, description_en, is_featured, is_new_arrival,
-      primary_image, images
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+      primary_image, images, city_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
     RETURNING *`,
     [
       name_ur || name_en, name_en, slug, category_id, subcategory_id,
@@ -1146,6 +1228,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
       unit_type, unit_value, stock_quantity || 0,
       description_ur || null, description_en || null, is_featured || false, is_new_arrival || false,
       primaryImage, images.length > 0 ? images : null,
+      scope.cityId,
     ]
   );
 
@@ -1564,17 +1647,27 @@ export const updateAttaStatus = asyncHandler(async (req: Request, res: Response)
  * GET /api/admin/categories
  */
 export const getAdminCategories = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const params: unknown[] = [];
+  let paramIndex = 1;
+  let whereSql = 'WHERE 1=1';
+  const catCity = cityIdClause(scope, 'c', params, paramIndex);
+  whereSql += catCity.sql;
+  paramIndex = catCity.nextIndex;
+
   const result = await query(
     `SELECT 
       c.id, c.name_ur, c.name_en, c.slug, c.icon_url, c.image_url,
-      c.parent_id, c.display_order, c.is_active,
+      c.parent_id, c.display_order, c.is_active, c.city_id,
       c.qualifies_for_free_delivery, c.minimum_order_for_free_delivery,
       COUNT(p.id) FILTER (WHERE p.is_active = TRUE) as product_count,
       COUNT(p.id) as total_product_count
     FROM categories c
     LEFT JOIN products p ON c.id = p.category_id
+    ${whereSql}
     GROUP BY c.id
-    ORDER BY c.display_order ASC, c.name_en ASC`
+    ORDER BY c.display_order ASC, c.name_en ASC`,
+    params
   );
 
   successResponse(res, result.rows, 'Categories retrieved successfully');
@@ -1585,6 +1678,12 @@ export const getAdminCategories = asyncHandler(async (req: Request, res: Respons
  * POST /api/admin/categories
  */
 export const createCategory = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const scopeErr = requireCityScope(scope);
+  if (scopeErr) {
+    return errorResponse(res, scopeErr, 400);
+  }
+
   // Frontend sends camelCase field names
   const nameEn = req.body.nameEn || req.body.name_en;
   const nameUr = req.body.nameUr || req.body.name_ur;
@@ -1605,8 +1704,11 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
     slug = `category-${Date.now()}`;
   }
 
-  // Check if slug exists — append suffix on collision instead of hard failing
-  const existingResult = await query('SELECT id FROM categories WHERE slug = $1', [slug]);
+  // Check if slug exists in this city — append suffix on collision
+  const existingResult = await query(
+    'SELECT id FROM categories WHERE slug = $1 AND city_id = $2',
+    [slug, scope.cityId]
+  );
   if (existingResult.rows.length > 0) {
     slug = `${slug}-${Date.now()}`;
   }
@@ -1626,14 +1728,15 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
     `INSERT INTO categories (
       name_ur, name_en, slug, icon_url, image_url,
       parent_id, display_order, is_active,
-      created_by
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      created_by, city_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING *`,
     [
       nameUr, nameEn, slug, icon || null, imageUrl,
       parent_id || null, display_order || 0,
       is_active !== undefined ? is_active : true,
       req.user?.id,
+      scope.cityId,
     ]
   );
 
@@ -1818,6 +1921,7 @@ export const deleteCategory = asyncHandler(async (req: Request, res: Response) =
  * GET /api/admin/customers
  */
 export const getCustomers = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
   const { page = 1, limit = 20, search } = req.query;
 
   let whereSql = `WHERE u.role = 'customer' AND u.deleted_at IS NULL`;
@@ -1829,6 +1933,10 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
     params.push(`%${search}%`);
     paramIndex++;
   }
+
+  const custCity = customerCityExistsClause(scope, 'u', params, paramIndex);
+  whereSql += custCity.sql;
+  paramIndex = custCity.nextIndex;
 
   const countResult = await query(
     `SELECT COUNT(*) FROM users u ${whereSql}`,
@@ -2219,6 +2327,132 @@ export const deleteCity = asyncHandler(async (req: Request, res: Response) => {
     return notFoundResponse(res, 'City not found');
   }
   successResponse(res, null, 'City deleted');
+});
+
+/**
+ * Copy categories + products from one city to another (super-admin only).
+ * POST /api/admin/cities/import-catalog
+ */
+export const importCityCatalog = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can import catalog between cities', 403);
+  }
+
+  const sourceCityId = req.body.source_city_id || req.body.sourceCityId;
+  const targetCityId = req.body.target_city_id || req.body.targetCityId;
+
+  if (!sourceCityId || !targetCityId) {
+    return errorResponse(res, 'source_city_id and target_city_id are required', 400);
+  }
+  if (sourceCityId === targetCityId) {
+    return errorResponse(res, 'Source and target city must be different', 400);
+  }
+
+  const cities = await query(
+    `SELECT id, name FROM service_cities WHERE id = ANY($1::uuid[])`,
+    [[sourceCityId, targetCityId]]
+  );
+  if (cities.rows.length !== 2) {
+    return errorResponse(res, 'Invalid source or target city', 400);
+  }
+
+  const summary = await withTransaction(async (client) => {
+    const categories = await client.query(
+      `SELECT * FROM categories WHERE city_id = $1 ORDER BY display_order, name_en`,
+      [sourceCityId]
+    );
+
+    const categoryMap = new Map<string, string>();
+    let categoriesCopied = 0;
+    let productsCopied = 0;
+
+    for (const cat of categories.rows) {
+      let slug = cat.slug;
+      const slugCheck = await client.query(
+        'SELECT id FROM categories WHERE slug = $1 AND city_id = $2',
+        [slug, targetCityId]
+      );
+      if (slugCheck.rows.length > 0) {
+        slug = `${slug}-${Date.now()}`;
+      }
+
+      const inserted = await client.query(
+        `INSERT INTO categories (
+          name_ur, name_en, slug, icon_url, image_url,
+          parent_id, display_order, is_active,
+          qualifies_for_free_delivery, minimum_order_for_free_delivery,
+          city_id, created_by
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        RETURNING id`,
+        [
+          cat.name_ur, cat.name_en, slug, cat.icon_url, cat.image_url,
+          null, cat.display_order, cat.is_active,
+          cat.qualifies_for_free_delivery, cat.minimum_order_for_free_delivery,
+          targetCityId, req.user?.id || null,
+        ]
+      );
+      categoryMap.set(cat.id, inserted.rows[0].id);
+      categoriesCopied++;
+    }
+
+    const products = await client.query(
+      `SELECT * FROM products WHERE city_id = $1`,
+      [sourceCityId]
+    );
+
+    for (const prod of products.rows) {
+      const newCategoryId = categoryMap.get(prod.category_id);
+      if (!newCategoryId) continue;
+
+      let slug = prod.slug;
+      const slugCheck = await client.query(
+        'SELECT id FROM products WHERE slug = $1 AND city_id = $2',
+        [slug, targetCityId]
+      );
+      if (slugCheck.rows.length > 0) {
+        slug = `${slug}-${Date.now()}`;
+      }
+
+      await client.query(
+        `INSERT INTO products (
+          name_ur, name_en, slug, sku, barcode, category_id, subcategory_id,
+          price, compare_at_price, cost_price,
+          half_kg_price, quarter_kg_price, half_dozen_price,
+          unit_type, unit_value, stock_quantity, low_stock_threshold,
+          stock_status, track_inventory, primary_image, images,
+          short_description, description_ur, description_en,
+          attributes, meta_title, meta_description, tags,
+          is_active, is_featured, is_new_arrival, city_id
+        ) VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+          $22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32
+        )`,
+        [
+          prod.name_ur, prod.name_en, slug, prod.sku, prod.barcode,
+          newCategoryId, null,
+          prod.price, prod.compare_at_price, prod.cost_price,
+          prod.half_kg_price, prod.quarter_kg_price, prod.half_dozen_price,
+          prod.unit_type, prod.unit_value, prod.stock_quantity, prod.low_stock_threshold,
+          prod.stock_status, prod.track_inventory, prod.primary_image, prod.images,
+          prod.short_description, prod.description_ur, prod.description_en,
+          prod.attributes, prod.meta_title, prod.meta_description, prod.tags,
+          prod.is_active, prod.is_featured, prod.is_new_arrival, targetCityId,
+        ]
+      );
+      productsCopied++;
+    }
+
+    return { categoriesCopied, productsCopied };
+  });
+
+  logger.info('City catalog imported', {
+    sourceCityId,
+    targetCityId,
+    ...summary,
+    importedBy: req.user?.id,
+  });
+
+  successResponse(res, summary, 'Catalog imported successfully');
 });
 
 // ============================================================================

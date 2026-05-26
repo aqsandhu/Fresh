@@ -72,29 +72,64 @@ export function formatDate(date: string | Date): string {
   }).format(new Date(date))
 }
 
+function resolveHourCycle(): 'h12' | 'h23' {
+  try {
+    const cycle = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions()
+      .hourCycle
+    if (cycle === 'h11' || cycle === 'h12') return 'h12'
+  } catch {
+    /* ignore */
+  }
+  return 'h23'
+}
+
+function parseClockTime(time: string): { h: number; m: number; s: number } {
+  const trimmed = time.trim()
+  if (!trimmed) return { h: 0, m: 0, s: 0 }
+
+  // PostgreSQL TIME or ISO timestamp ("1970-01-01T10:00:00.000Z")
+  const isoMatch = trimmed.match(/T(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+  if (isoMatch) {
+    return {
+      h: parseInt(isoMatch[1], 10) || 0,
+      m: parseInt(isoMatch[2], 10) || 0,
+      s: parseInt(isoMatch[3] || '0', 10) || 0,
+    }
+  }
+
+  const parts = trimmed.split(':').map((v) => parseInt(v, 10) || 0)
+  return { h: parts[0] || 0, m: parts[1] || 0, s: parts[2] || 0 }
+}
+
+/** Format HH:MM(:SS) using the device 12h/24h preference. */
 export function formatSlotTime(time: string): string {
-  const [h, m, s] = time.split(':').map((v) => parseInt(v, 10) || 0)
+  const { h, m, s } = parseClockTime(time)
   const d = new Date()
-  d.setHours(h, m, s || 0, 0)
-  // Browser locale + user's 12h/24h preference (no forced hour12).
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  d.setHours(h, m, s, 0)
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hourCycle: resolveHourCycle(),
+  }).format(d)
 }
 
 export function formatTime(date: string | Date): string {
-  return new Date(date).toLocaleTimeString(undefined, {
+  return new Intl.DateTimeFormat(undefined, {
     hour: 'numeric',
     minute: '2-digit',
-  })
+    hourCycle: resolveHourCycle(),
+  }).format(new Date(date))
 }
 
 export function formatDateTime(date: string | Date): string {
-  return new Date(date).toLocaleString(undefined, {
+  return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  })
+    hourCycle: resolveHourCycle(),
+  }).format(new Date(date))
 }
 
 /**

@@ -70,6 +70,9 @@ export {
   enforceAdminPermissions,
 } from './adminPermissions';
 
+export { attachCityScope, resolveCityScope, requireCityScope } from '../utils/cityScope';
+export type { CityScope } from '../utils/cityScope';
+
 // File upload
 export {
   uploadSingle,

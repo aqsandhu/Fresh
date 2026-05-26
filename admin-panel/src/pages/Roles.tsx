@@ -8,20 +8,21 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { roleService, type AdminRole, type AdminUser, type Permission } from '@/services/role.service';
+import { api } from '@/services/api';
 import toast from 'react-hot-toast';
 
 interface RoleFormState {
   id?: string;
   name: string;
   description: string;
-  city: string;
+  cityId: string;
   permissions: Set<string>;
 }
 
 const empty = (): RoleFormState => ({
   name: '',
   description: '',
-  city: '',
+  cityId: '',
   permissions: new Set<string>(),
 });
 
@@ -46,6 +47,14 @@ export const Roles: React.FC = () => {
   const { data: roles = [], isLoading: loadingRoles } = useQuery<AdminRole[]>({
     queryKey: ['admin', 'roles'],
     queryFn: roleService.listRoles,
+  });
+
+  const { data: serviceCities = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['service-cities'],
+    queryFn: async () => {
+      const res: any = await api.get('/admin/cities');
+      return res?.data || [];
+    },
   });
 
   const { data: adminUsers = [], isLoading: loadingUsers } = useQuery<AdminUser[]>({
@@ -123,7 +132,7 @@ export const Roles: React.FC = () => {
       id: role.id,
       name: role.name,
       description: role.description || '',
-      city: role.city || '',
+      cityId: role.cityId || '',
       permissions: new Set(role.permissions || []),
     });
     setModalOpen(true);
@@ -161,10 +170,14 @@ export const Roles: React.FC = () => {
       toast.error('Select at least one permission');
       return;
     }
+    if (!form.cityId) {
+      toast.error('Select a city for this role');
+      return;
+    }
     const payload = {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
-      city: form.city.trim() || null,
+      cityId: form.cityId,
       permissions: Array.from(form.permissions),
     };
     if (form.id) {
@@ -426,13 +439,27 @@ export const Roles: React.FC = () => {
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="e.g., Gujrat Manager"
             />
-            <Input
-              label="City scope (optional)"
-              value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value })}
-              placeholder="Leave blank for all cities"
-              helperText="Restricts this role's actions to records in this city"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City <span className="text-red-500">*</span>
+              </label>
+              <select
+                required
+                value={form.cityId}
+                onChange={(e) => setForm({ ...form, cityId: e.target.value })}
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Select city…</option>
+                {serviceCities.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                This role can only manage data for the selected city
+              </p>
+            </div>
           </div>
           <Input
             label="Description (optional)"

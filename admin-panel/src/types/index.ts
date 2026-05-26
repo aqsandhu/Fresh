@@ -25,6 +25,7 @@ export interface User {
   adminRoleId?: string | null;
   adminRoleName?: string | null;
   adminRoleCity?: string | null;
+  adminRoleCityId?: string | null;
 }
 
 export interface Product {
