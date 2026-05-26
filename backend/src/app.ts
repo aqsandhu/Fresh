@@ -75,12 +75,25 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// CORS configuration
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean);
+// CORS configuration — comma-separated front-end URLs in CORS_ORIGIN.
+// Optional CORS_EXTRA_ORIGINS adds more without replacing the main list.
+function parseOrigins(raw: string | undefined): string[] {
+  return (raw || '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+}
+
+const allowedOrigins = [
+  ...parseOrigins(process.env.CORS_ORIGIN || 'http://localhost:3000'),
+  ...parseOrigins(process.env.CORS_EXTRA_ORIGINS),
+];
 const allowAnyOrigin = allowedOrigins.includes('*');
+
+function isOriginAllowed(origin: string): boolean {
+  const normalized = origin.trim().replace(/\/$/, '');
+  return allowedOrigins.some((o) => o === normalized || o === origin);
+}
 
 logger.info(
   `CORS: ${allowAnyOrigin ? 'allowing any origin (*)' : `allowed origins = ${allowedOrigins.join(', ')}`}`
@@ -94,16 +107,18 @@ const corsOptions = {
       return;
     }
 
-    if (allowAnyOrigin || allowedOrigins.includes(origin) || NODE_ENV === 'development') {
+    if (allowAnyOrigin || isOriginAllowed(origin) || NODE_ENV === 'development') {
       callback(null, true);
     } else {
-      logger.warn(`CORS blocked origin: ${origin}`);
+      logger.warn(`CORS blocked origin: ${origin}`, {
+        hint: 'Add this URL to CORS_ORIGIN (or CORS_EXTRA_ORIGINS) on Render',
+      });
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: process.env.CORS_CREDENTIALS === 'true',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-City-Id'],
 };
 
 app.use(cors(corsOptions));
