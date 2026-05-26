@@ -2,9 +2,12 @@
 export const DEFAULT_MAP_LAT = 32.5742
 export const DEFAULT_MAP_LNG = 74.0789
 
+export function hasGoogleMapsApiKey(): boolean {
+  return Boolean(process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim())
+}
+
 /**
- * Google Maps embed URL. When `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is set on Vercel
- * we use the official Embed API; otherwise the legacy free embed (no key).
+ * Google Maps embed URL (static preview only). Interactive picker uses Maps JS API.
  */
 export function getGoogleMapsEmbedUrl(
   lat: number,

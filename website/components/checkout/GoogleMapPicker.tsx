@@ -17,8 +17,7 @@ interface GoogleMapPickerProps {
 }
 
 /**
- * Map picker with draggable red pin. Uses Google Maps JS when
- * NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is set; otherwise OpenStreetMap + red pin.
+ * Google Maps picker with draggable red pin (Maps JavaScript API).
  */
 export default function GoogleMapPicker({
   lat,
