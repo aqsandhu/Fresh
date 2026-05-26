@@ -1,6 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from 'react'
 import { motion } from 'framer-motion'
 import { Camera, Check, Loader2, MapPin, Save, X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -49,22 +55,45 @@ interface AddressFormProps {
   submitLabel?: string
   /** Optional CSS for the outer container. */
   className?: string
+  /**
+   * Fired whenever the required fields cross the validity threshold. Lets
+   * the parent enable a "Place Order" button while keeping the form
+   * embedded — the parent can then call `ref.current.submit()` to save
+   * the address automatically before placing the order.
+   */
+  onValidityChange?: (isValid: boolean) => void
+  /** Hide the internal Save button (parent triggers save via ref instead). */
+  hideSubmitButton?: boolean
+}
+
+/** Imperative handle exposed via ref so parents can save the form too. */
+export interface AddressFormHandle {
+  submit: () => Promise<SavedAddress | null>
 }
 
 /**
  * Full address editor. Mirrors what the checkout "Add New" form has so the
  * EDIT flow shows the same fields (type, area, city, full address, landmark,
  * door picture, GPS location). Re-used for both create and edit flows.
+ *
+ * Wrapped in `forwardRef` so callers can programmatically trigger save via
+ * `ref.current.submit()` — e.g., the checkout page calls this when the user
+ * clicks "Place Order" with an unsaved new-address form open.
  */
-export default function AddressForm({
-  initial,
-  availableCities,
-  defaultOnCreate = false,
-  onSaved,
-  onCancel,
-  submitLabel,
-  className = '',
-}: AddressFormProps) {
+const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function AddressForm(
+  {
+    initial,
+    availableCities,
+    defaultOnCreate = false,
+    onSaved,
+    onCancel,
+    submitLabel,
+    className = '',
+    onValidityChange,
+    hideSubmitButton = false,
+  },
+  ref
+) {
   const editingId = initial?.id || ''
   const isEdit = Boolean(editingId)
 
@@ -110,11 +139,17 @@ export default function AddressForm({
     }
   }
 
-  const handleSubmit = async () => {
+  const isValid = writtenAddress.trim().length >= 5
+
+  useEffect(() => {
+    onValidityChange?.(isValid)
+  }, [isValid, onValidityChange])
+
+  const handleSubmit = useCallback(async (): Promise<SavedAddress | null> => {
     const trimmed = writtenAddress.trim()
     if (!trimmed || trimmed.length < 5) {
       toast.error('Full address must be at least 5 characters')
-      return
+      return null
     }
 
     setSaving(true)
@@ -160,16 +195,39 @@ export default function AddressForm({
 
       toast.success(isEdit ? 'Address updated' : 'Address saved')
       onSaved(saved)
+      return saved
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
         err?.message ||
         (isEdit ? 'Could not update address' : 'Could not save address')
       toast.error(msg)
+      return null
     } finally {
       setSaving(false)
     }
-  }
+  }, [
+    addressType,
+    areaName,
+    city,
+    defaultOnCreate,
+    doorPicture,
+    editingId,
+    isEdit,
+    landmark,
+    mapAccuracy,
+    mapLocation,
+    onSaved,
+    writtenAddress,
+  ])
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      submit: handleSubmit,
+    }),
+    [handleSubmit]
+  )
 
   return (
     <motion.div
@@ -407,21 +465,25 @@ export default function AddressForm({
         </p>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
-        {onCancel && (
-          <Button variant="outline" onClick={onCancel} disabled={saving}>
-            <X className="w-4 h-4 mr-2" /> Cancel
-          </Button>
-        )}
-        <Button onClick={handleSubmit} disabled={saving}>
-          {saving ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4 mr-2" />
+      {!hideSubmitButton && (
+        <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+          {onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={saving}>
+              <X className="w-4 h-4 mr-2" /> Cancel
+            </Button>
           )}
-          {submitLabel || (isEdit ? 'Update Address' : 'Save Address')}
-        </Button>
-      </div>
+          <Button onClick={handleSubmit} disabled={saving}>
+            {saving ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            {submitLabel || (isEdit ? 'Update Address' : 'Save Address')}
+          </Button>
+        </div>
+      )}
     </motion.div>
   )
-}
+})
+
+export default AddressForm

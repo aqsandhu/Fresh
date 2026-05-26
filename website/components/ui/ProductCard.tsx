@@ -123,7 +123,10 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               {product.name}
             </h3>
             {product.nameUrdu && (
-              <p className="text-xs text-gray-400 mb-2 font-urdu line-clamp-1" dir="rtl">
+              <p
+                className="text-base font-bold text-gray-800 mb-2 font-urdu line-clamp-1 leading-snug"
+                dir="rtl"
+              >
                 {product.nameUrdu}
               </p>
             )}

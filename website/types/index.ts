@@ -297,6 +297,9 @@ export interface CartState {
   items: CartStoreItem[];
   deliveryBaseCharge: number;
   deliveryFreeThreshold: number;
+  /** True after Zustand persist has loaded items from localStorage. */
+  hasHydrated: boolean;
+  setHasHydrated: (h: boolean) => void;
   addItem: (product: Product, quantity?: number) => void;
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;

@@ -27,7 +27,8 @@ interface Props {
 const DEFAULT_THRESHOLD = 30 * 60 * 1000 // 30 minutes
 
 export default function PinReauthGate({ thresholdMs = DEFAULT_THRESHOLD, children }: Props) {
-  const { user, isAuthenticated, pinVerifiedAt, markPinVerified } = useAuthStore()
+  const { user, isAuthenticated, pinVerifiedAt, markPinVerified, hasHydrated } =
+    useAuthStore()
   const router = useRouter()
   const pathname = usePathname() || '/checkout'
   const [pin, setPin] = useState('')
@@ -48,14 +49,24 @@ export default function PinReauthGate({ thresholdMs = DEFAULT_THRESHOLD, childre
     setStale(Date.now() - pinVerifiedAt > thresholdMs)
   }, [pinVerifiedAt, thresholdMs])
 
-  // If the user isn't logged in at all, don't pretend they need a PIN —
-  // send them straight to login with a redirect back. Prevents the
-  // confusing "Confirm it's you" screen appearing before/after login.
+  // Redirect to /login ONLY after the persisted auth store has finished
+  // hydrating from localStorage. Otherwise a hard refresh redirects an
+  // already-logged-in user back to /login because the initial state is
+  // "not authenticated" for one render before rehydration completes.
   useEffect(() => {
+    if (!hasHydrated) return
     if (!isAuthenticated || !user?.phone) {
       router.replace(`/login?redirect=${encodeURIComponent(pathname)}`)
     }
-  }, [isAuthenticated, user?.phone, pathname, router])
+  }, [hasHydrated, isAuthenticated, user?.phone, pathname, router])
+
+  if (!hasHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
 
   if (!isAuthenticated || !user?.phone) {
     return null
