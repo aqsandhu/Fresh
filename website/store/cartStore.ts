@@ -29,6 +29,8 @@ export const useCartStore = create<CartState>()(
       items: [],
       deliveryBaseCharge: DEFAULT_BASE_CHARGE,
       deliveryFreeThreshold: DEFAULT_FREE_THRESHOLD,
+      hasHydrated: false,
+      setHasHydrated: (h: boolean) => set({ hasHydrated: h }),
 
       loadDeliverySettings: async () => {
         const settings = await fetchDeliverySettings()
@@ -121,6 +123,9 @@ export const useCartStore = create<CartState>()(
     {
       name: 'freshbazar-cart',
       partialize: (state) => ({ items: state.items }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
     }
   )
 )
@@ -150,6 +155,15 @@ interface AuthState {
   lastActiveAt: number | null
   /** Epoch ms of the last successful PIN verification (login OR re-auth). */
   pinVerifiedAt: number | null
+  /**
+   * Set to `true` once Zustand's `persist` middleware has finished
+   * loading from localStorage. Pages that gate behaviour on auth state
+   * (checkout redirect, PIN gate) must wait for this before deciding,
+   * otherwise a hard refresh briefly thinks the user is logged out and
+   * bounces them to /login.
+   */
+  hasHydrated: boolean
+  setHasHydrated: (h: boolean) => void
   setAuth: (user: AuthUser, tokens: { accessToken: string; refreshToken: string }) => void
   setUser: (user: AuthUser | null) => void
   logout: () => void
@@ -168,6 +182,8 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       lastActiveAt: null,
       pinVerifiedAt: null,
+      hasHydrated: false,
+      setHasHydrated: (h) => set({ hasHydrated: h }),
       setAuth: (user, tokens) => {
         if (typeof window !== 'undefined') {
           localStorage.setItem('token', tokens.accessToken)
@@ -203,6 +219,9 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'freshbazar-auth',
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
     }
   )
 )

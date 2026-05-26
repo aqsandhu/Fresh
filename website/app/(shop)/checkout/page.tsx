@@ -6,7 +6,7 @@
 export const dynamic = 'force-dynamic'
 
 import PinReauthGate from '@/components/auth/PinReauthGate'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
@@ -26,7 +26,10 @@ import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import { addressesApi, settingsApi } from '@/lib/api'
 import api from '@/lib/api'
 import AddressActions from '@/components/checkout/AddressActions'
-import AddressForm, { type SavedAddress } from '@/components/checkout/AddressForm'
+import AddressForm, {
+  type AddressFormHandle,
+  type SavedAddress,
+} from '@/components/checkout/AddressForm'
 
 type RealAddress = SavedAddress
 
@@ -45,8 +48,15 @@ export default function CheckoutPageWrapper() {
 
 function CheckoutPage() {
   const router = useRouter()
-  const { items, getSubtotal, getDeliveryCharge, getFinalTotal, clearCart } = useCartStore()
-  const { isAuthenticated } = useAuthStore()
+  const {
+    items,
+    getSubtotal,
+    getDeliveryCharge,
+    getFinalTotal,
+    clearCart,
+    hasHydrated: cartHasHydrated,
+  } = useCartStore()
+  const { isAuthenticated, hasHydrated: authHasHydrated } = useAuthStore()
   const [addresses, setAddresses] = useState<RealAddress[]>([])
   const [selectedAddress, setSelectedAddress] = useState<string>('')
   const [showNewAddress, setShowNewAddress] = useState(false)
@@ -65,6 +75,12 @@ function CheckoutPage() {
   const [serverDeliveryCharge, setServerDeliveryCharge] = useState<number | null>(null)
   const [cartSynced, setCartSynced] = useState(false)
   const [deliveryLoading, setDeliveryLoading] = useState(false)
+
+  // Ref + validity flag for the embedded "Add New" address form. We use
+  // the ref to save the address automatically when the user presses Place
+  // Order without having clicked Save first.
+  const newAddressFormRef = useRef<AddressFormHandle>(null)
+  const [newAddressValid, setNewAddressValid] = useState(false)
 
   const localSubtotal = getSubtotal()
   const selectedSlotObj = timeSlots.find(s => s.id === selectedTimeSlot)
@@ -136,6 +152,10 @@ function CheckoutPage() {
   }
 
   useEffect(() => {
+    // Wait for persisted auth state to load from localStorage before
+    // deciding whether to redirect. Hard refresh sees `isAuthenticated`
+    // briefly false even when the user is logged in.
+    if (!authHasHydrated) return
     if (!isAuthenticated) {
       router.push('/login?redirect=/checkout')
       return
@@ -143,7 +163,7 @@ function CheckoutPage() {
     loadAddresses()
     loadCities()
     loadTimeSlots('today')
-  }, [isAuthenticated])
+  }, [authHasHydrated, isAuthenticated])
 
   // Sync the cart server-side exactly once. After that we only refetch the
   // delivery charge when the slot changes — this makes slot changes feel
@@ -206,15 +226,38 @@ function CheckoutPage() {
     }
   }
 
-  const canPlaceOrder = Boolean(selectedAddress)
+  // User can place an order if either:
+  //   1) A saved address is already selected, OR
+  //   2) The inline "Add New" form is open and has the required fields
+  //      (we'll auto-save it for them when they press Place Order).
+  const canPlaceOrder =
+    Boolean(selectedAddress) || (showNewAddress && newAddressValid)
 
   const handlePlaceOrder = async () => {
-    if (!selectedAddress) {
-      toast.error('Please select a delivery address')
-      return
-    }
     if (!selectedTimeSlot && timeSlots.length > 0) {
       toast.error('Please select a delivery time slot')
+      return
+    }
+
+    // Auto-save the inline new-address form if needed.
+    let addressIdToUse = selectedAddress
+    if (!addressIdToUse && showNewAddress) {
+      if (!newAddressFormRef.current) {
+        toast.error('Please add a delivery address')
+        return
+      }
+      setIsPlacingOrder(true)
+      const saved = await newAddressFormRef.current.submit()
+      if (!saved?.id) {
+        // submit() already surfaced the validation/network error toast.
+        setIsPlacingOrder(false)
+        return
+      }
+      addressIdToUse = saved.id
+    }
+
+    if (!addressIdToUse) {
+      toast.error('Please select a delivery address')
       return
     }
 
@@ -233,7 +276,7 @@ function CheckoutPage() {
       }
 
       const orderPayload: Record<string, string> = {
-        address_id: selectedAddress,
+        address_id: addressIdToUse,
         payment_method: 'cash_on_delivery',
         customer_notes: '',
       }
@@ -263,14 +306,21 @@ function CheckoutPage() {
     }
   }
 
-  if (items.length === 0 && !orderPlaced) {
-    // Defer the redirect until we're on the client — calling router.push
-    // during render on the server hits `location is not defined` in Next's
-    // static export pass.
+  // Don't redirect to /cart on the very first render while the cart store
+  // is still hydrating from localStorage — items[] starts empty and would
+  // bounce a refresh straight to /cart even when the user has items saved.
+  if (cartHasHydrated && items.length === 0 && !orderPlaced) {
     if (typeof window !== 'undefined') {
       router.push('/cart')
     }
     return null
+  }
+  if (!cartHasHydrated || !authHasHydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
   }
 
   return (
@@ -384,12 +434,17 @@ function CheckoutPage() {
                   </button>
 
                   {/* New Address Form — uses the same AddressForm component
-                      as Edit, so door picture + GPS map are available too. */}
+                      as Edit, so door picture + GPS map are available too.
+                      We keep the explicit Save button so users CAN save up
+                      front, but Place Order will also auto-save via the
+                      ref when the required fields are filled. */}
                   {showNewAddress && (
                     <div className="mt-4 pt-4 border-t">
                       <AddressForm
+                        ref={newAddressFormRef}
                         availableCities={availableCities}
                         defaultOnCreate={addresses.length === 0}
+                        onValidityChange={setNewAddressValid}
                         onSaved={(saved) => {
                           setAddresses((prev) => {
                             const exists = prev.some((a) => a.id === saved.id)
@@ -406,6 +461,9 @@ function CheckoutPage() {
                             : undefined
                         }
                       />
+                      <p className="mt-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                        Tip: You can press <strong>Place Order</strong> directly — we&apos;ll save this address automatically.
+                      </p>
                     </div>
                   )}
                 </>
