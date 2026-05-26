@@ -311,6 +311,7 @@ export const addressSchemas = {
     postal_code: Joi.string().max(20).allow('').empty(''),
     is_default: formBoolean.default(false),
     delivery_instructions: Joi.string().max(1000).allow('').empty(''),
+    location_accuracy: formNumber.optional(),
   }).prefs({ convert: true }),
   
   update: Joi.object({
@@ -325,6 +326,7 @@ export const addressSchemas = {
     postal_code: Joi.string().max(20),
     is_default: Joi.boolean(),
     delivery_instructions: Joi.string().max(1000),
+    location_accuracy: formNumber.optional(),
   }),
 };
 

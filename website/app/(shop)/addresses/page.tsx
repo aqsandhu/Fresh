@@ -22,6 +22,7 @@ import { useAuthStore } from '@/store/cartStore'
 import { addressesApi } from '@/lib/api'
 import api from '@/lib/api'
 import { resolveImageUrl } from '@/lib/utils'
+import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
 
 interface FullAddress {
   id: string
@@ -57,6 +58,8 @@ export default function AddressesPage() {
   const [formLandmark, setFormLandmark] = useState('')
   const [formDoorPic, setFormDoorPic] = useState<File | null>(null)
   const [mapLocation, setMapLocation] = useState<{lat: number, lng: number} | null>(null)
+  const [mapLocationAccuracy, setMapLocationAccuracy] = useState<number | null>(null)
+  const [isLocating, setIsLocating] = useState(false)
   const [showMapPicker, setShowMapPicker] = useState(false)
 
   useEffect(() => {
@@ -98,6 +101,7 @@ export default function AddressesPage() {
     setFormLandmark('')
     setFormDoorPic(null)
     setMapLocation(null)
+    setMapLocationAccuracy(null)
     setShowMapPicker(false)
     setEditingId(null)
     setShowForm(false)
@@ -138,23 +142,20 @@ export default function AddressesPage() {
       if (mapLocation) {
         formData.append('latitude', mapLocation.lat.toString())
         formData.append('longitude', mapLocation.lng.toString())
+        if (mapLocationAccuracy != null) {
+          formData.append('location_accuracy', mapLocationAccuracy.toString())
+        }
       }
       if (formDoorPic) {
         formData.append('door_picture', formDoorPic)
       }
 
       if (editingId) {
-        // Update existing
-        await api.put(`/addresses/${editingId}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
+        await api.put(`/addresses/${editingId}`, formData)
         toast.success('Address updated!')
       } else {
-        // Create new
         formData.append('is_default', addresses.length === 0 ? 'true' : 'false')
-        await api.post('/addresses', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        })
+        await api.post('/addresses', formData)
         toast.success('Address added!')
       }
 
@@ -321,9 +322,12 @@ export default function AddressesPage() {
                     <Check className="w-5 h-5 text-green-600" />
                     <span className="text-sm text-green-700 flex-1">
                       Location pinned ({mapLocation.lat.toFixed(4)}, {mapLocation.lng.toFixed(4)})
+                      {mapLocationAccuracy != null && (
+                        <span className="text-green-600"> · ±{Math.round(mapLocationAccuracy)}m</span>
+                      )}
                     </span>
-                    <button type="button" onClick={() => { setMapLocation(null); setShowMapPicker(true) }} className="text-sm text-primary-600 hover:underline">Change</button>
-                    <button type="button" onClick={() => setMapLocation(null)} className="text-sm text-red-500 hover:underline">Remove</button>
+                    <button type="button" onClick={() => { setMapLocation(null); setMapLocationAccuracy(null); setShowMapPicker(true) }} className="text-sm text-primary-600 hover:underline">Change</button>
+                    <button type="button" onClick={() => { setMapLocation(null); setMapLocationAccuracy(null) }} className="text-sm text-red-500 hover:underline">Remove</button>
                   </div>
                 )}
                 {showMapPicker && (
@@ -360,23 +364,25 @@ export default function AddressesPage() {
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (navigator.geolocation) {
-                              navigator.geolocation.getCurrentPosition(
-                                (pos) => {
-                                  setMapLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-                                  toast.success('Location detected!')
-                                },
-                                () => toast.error('Could not get your location. Please enter manually.')
-                              )
+                          disabled={isLocating}
+                          onClick={async () => {
+                            setIsLocating(true)
+                            toast.loading('Getting precise GPS location...', { id: 'gps' })
+                            const pos = await getAccuratePosition()
+                            setIsLocating(false)
+                            toast.dismiss('gps')
+                            if (pos) {
+                              setMapLocation({ lat: pos.lat, lng: pos.lng })
+                              setMapLocationAccuracy(pos.accuracy)
+                              toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
                             } else {
-                              toast.error('Geolocation not supported by your browser')
+                              toast.error(`Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`)
                             }
                           }}
-                          className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors"
+                          className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
                         >
                           <MapPin className="w-4 h-4" />
-                          Get My Current Location
+                          {isLocating ? 'Getting GPS...' : 'Get My Current Location'}
                         </button>
                         <button
                           type="button"

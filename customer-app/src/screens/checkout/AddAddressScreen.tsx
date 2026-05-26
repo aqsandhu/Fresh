@@ -18,7 +18,7 @@ import MapView, { Marker } from 'react-native-maps';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { CartStackParamList } from '@types';
-import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES } from '@utils/constants';
+import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
 import { Button, Input, LoadingOverlay } from '@components';
 import { addressService } from '@services/address.service';
 import * as Location from 'expo-location';
@@ -67,7 +67,7 @@ export const AddAddressScreen: React.FC = () => {
     setLocationAccuracy(null);
 
     try {
-      // Watch GPS until we get ≤10m accuracy or timeout after 15s
+      // Watch GPS until we get ≤5m accuracy or timeout after 15s
       const bestLocation = await new Promise<Location.LocationObject | null>((resolve) => {
         let best: Location.LocationObject | null = null;
         let done = false;
@@ -85,7 +85,7 @@ export const AddAddressScreen: React.FC = () => {
               best = loc;
               setLocationAccuracy(Math.round(acc));
             }
-            if (acc <= 10 && !done) {
+            if (acc <= REQUIRED_LOCATION_ACCURACY_M && !done) {
               done = true;
               clearTimeout(timer);
               sub.remove();
@@ -96,7 +96,14 @@ export const AddAddressScreen: React.FC = () => {
       });
 
       if (bestLocation) {
-        const acc = bestLocation.coords.accuracy ?? 0;
+        const acc = bestLocation.coords.accuracy ?? 9999;
+        if (acc > REQUIRED_LOCATION_ACCURACY_M) {
+          Alert.alert(
+            'GPS Not Accurate Enough',
+            `Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m (best: ~${Math.round(acc)}m). Move to an open area and try again.`
+          );
+          return;
+        }
         setLocationAccuracy(Math.round(acc));
         setRegion({
           latitude: bestLocation.coords.latitude,
@@ -208,6 +215,7 @@ export const AddAddressScreen: React.FC = () => {
         fullAddress: address,
         latitude: region.latitude,
         longitude: region.longitude,
+        locationAccuracy: locationAccuracy ?? undefined,
         doorImage: doorImage || undefined,
         isDefault: false,
       };

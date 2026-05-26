@@ -35,7 +35,7 @@ export const API_TIMEOUT = 30000;
 
 // Location Tracking Configuration
 export const LOCATION_TRACKING_INTERVAL = 30000; // 30 seconds
-export const LOCATION_ACCURACY = 6; // High accuracy for navigation
+export const LOCATION_ACCURACY = 5; // High accuracy for navigation (meters)
 export const LOCATION_DISTANCE_INTERVAL = 10; // Update every 10 meters
 
 // Task Type Labels (English & Urdu)

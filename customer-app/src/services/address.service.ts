@@ -23,6 +23,7 @@ export interface CreateAddressRequest {
   fullAddress: string;
   latitude: number;
   longitude: number;
+  locationAccuracy?: number;
   doorImage?: string;
   isDefault?: boolean;
 }
@@ -61,6 +62,7 @@ function toBackendAddress(data: Partial<CreateAddressRequest>): Record<string, a
   if (data.fullAddress !== undefined) body.written_address = data.fullAddress;
   if (data.latitude !== undefined) body.latitude = data.latitude;
   if (data.longitude !== undefined) body.longitude = data.longitude;
+  if (data.locationAccuracy !== undefined) body.location_accuracy = data.locationAccuracy;
   if (data.isDefault !== undefined) body.is_default = data.isDefault;
   return body;
 }

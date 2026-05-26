@@ -6,7 +6,7 @@ const LOCATION_TASK_NAME = 'background-location-task';
 
 // Accuracy thresholds (meters)
 const MAX_ACCURACY_FOR_TRACKING = 20;   // reject tracking updates worse than 20m
-const MAX_ACCURACY_FOR_PIN = 10;        // reject pin-locations worse than 10m
+const MAX_ACCURACY_FOR_PIN = 5;         // reject pin-locations worse than 5m
 const GPS_LOCK_TIMEOUT = 15000;         // max ms to wait for a good GPS fix
 
 // Define background task — filters out low-accuracy readings

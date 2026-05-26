@@ -6,7 +6,7 @@
 export const dynamic = 'force-dynamic'
 
 import PinReauthGate from '@/components/auth/PinReauthGate'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
@@ -27,6 +27,7 @@ import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import { addressesApi, settingsApi } from '@/lib/api'
 import api from '@/lib/api'
+import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
 
 interface RealAddress {
   id: string
@@ -75,13 +76,48 @@ function CheckoutPage() {
   const [doorPicture, setDoorPicture] = useState<File | null>(null)
   const [availableCities, setAvailableCities] = useState<{id: string, name: string, province: string}[]>([])
   const [mapLocation, setMapLocation] = useState<{lat: number, lng: number} | null>(null)
+  const [mapLocationAccuracy, setMapLocationAccuracy] = useState<number | null>(null)
+  const [isLocating, setIsLocating] = useState(false)
   const [showMapPicker, setShowMapPicker] = useState(false)
+  const [serverSubtotal, setServerSubtotal] = useState<number | null>(null)
+  const [serverDeliveryCharge, setServerDeliveryCharge] = useState<number | null>(null)
 
-  const subtotal = getSubtotal()
+  const localSubtotal = getSubtotal()
   const selectedSlotObj = timeSlots.find(s => s.id === selectedTimeSlot)
   const isFreeDeliverySlot = selectedSlotObj?.is_free_delivery_slot === true
-  const deliveryCharge = isFreeDeliverySlot ? 0 : getDeliveryCharge()
+  const subtotal = serverSubtotal ?? localSubtotal
+  const deliveryCharge = serverDeliveryCharge ?? (isFreeDeliverySlot ? 0 : getDeliveryCharge())
   const total = subtotal + deliveryCharge
+
+  const syncCartPricing = useCallback(async () => {
+    if (!isAuthenticated || items.length === 0) return
+    try {
+      try { await api.delete('/cart/clear') } catch { /* empty cart is fine */ }
+      for (const item of items) {
+        await api.post('/cart/add', {
+          product_id: item.product.id,
+          quantity: item.quantity,
+        })
+      }
+      const cartRes = await api.get('/cart')
+      const cart = cartRes.data?.data?.cart || cartRes.data?.cart
+      if (cart?.subtotal != null) {
+        setServerSubtotal(parseFloat(String(cart.subtotal)))
+      }
+      if (selectedTimeSlot) {
+        const delRes = await api.post('/cart/delivery-charge', { time_slot_id: selectedTimeSlot })
+        const delData = delRes.data?.data || delRes.data
+        if (delData?.delivery_charge != null) {
+          setServerDeliveryCharge(parseFloat(String(delData.delivery_charge)))
+        }
+      } else {
+        setServerDeliveryCharge(null)
+      }
+    } catch {
+      setServerSubtotal(null)
+      setServerDeliveryCharge(null)
+    }
+  }, [isAuthenticated, items, selectedTimeSlot])
 
   const getDateString = (day: 'today' | 'tomorrow') => {
     const d = new Date()
@@ -104,6 +140,10 @@ function CheckoutPage() {
     loadCities()
     loadTimeSlots('today')
   }, [isAuthenticated])
+
+  useEffect(() => {
+    syncCartPricing()
+  }, [syncCartPricing])
 
   const loadTimeSlots = async (day: 'today' | 'tomorrow') => {
     setLoadingSlots(true)
@@ -172,6 +212,9 @@ function CheckoutPage() {
     if (mapLocation) {
       payload.latitude = mapLocation.lat
       payload.longitude = mapLocation.lng
+      if (mapLocationAccuracy != null) {
+        payload.location_accuracy = mapLocationAccuracy
+      }
     }
 
     let created: RealAddress
@@ -453,10 +496,13 @@ function CheckoutPage() {
                             <Check className="w-5 h-5 text-green-600" />
                             <span className="text-sm text-green-700 flex-1">
                               Location pinned ({mapLocation.lat.toFixed(4)}, {mapLocation.lng.toFixed(4)})
+                              {mapLocationAccuracy != null && (
+                                <span className="text-green-600"> · ±{Math.round(mapLocationAccuracy)}m</span>
+                              )}
                             </span>
                             <button
                               type="button"
-                              onClick={() => { setMapLocation(null); setShowMapPicker(true) }}
+                              onClick={() => { setMapLocation(null); setMapLocationAccuracy(null); setShowMapPicker(true) }}
                               className="text-sm text-primary-600 hover:underline"
                             >
                               Change
@@ -510,23 +556,25 @@ function CheckoutPage() {
                               <div className="flex gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    if (navigator.geolocation) {
-                                      navigator.geolocation.getCurrentPosition(
-                                        (pos) => {
-                                          setMapLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-                                          toast.success('Location detected!')
-                                        },
-                                        () => toast.error('Could not get your location. Please enter manually.')
-                                      )
+                                  disabled={isLocating}
+                                  onClick={async () => {
+                                    setIsLocating(true)
+                                    toast.loading('Getting precise GPS location...', { id: 'gps' })
+                                    const pos = await getAccuratePosition()
+                                    setIsLocating(false)
+                                    toast.dismiss('gps')
+                                    if (pos) {
+                                      setMapLocation({ lat: pos.lat, lng: pos.lng })
+                                      setMapLocationAccuracy(pos.accuracy)
+                                      toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
                                     } else {
-                                      toast.error('Geolocation not supported by your browser')
+                                      toast.error(`Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`)
                                     }
                                   }}
-                                  className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors"
+                                  className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
                                 >
                                   <MapPin className="w-4 h-4" />
-                                  Get My Current Location
+                                  {isLocating ? 'Getting GPS...' : 'Get My Current Location'}
                                 </button>
                                 <button
                                   type="button"

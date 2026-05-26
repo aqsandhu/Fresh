@@ -93,12 +93,17 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
     postal_code,
     is_default = false,
     delivery_instructions,
+    location_accuracy,
   } = req.body;
 
   const parsedLat =
     latitude != null && latitude !== '' ? parseFloat(String(latitude)) : null;
   const parsedLng =
     longitude != null && longitude !== '' ? parseFloat(String(longitude)) : null;
+  const parsedAccuracy =
+    location_accuracy != null && location_accuracy !== ''
+      ? parseFloat(String(location_accuracy))
+      : null;
   const defaultFlag =
     is_default === true || is_default === 'true' || is_default === '1' || is_default === 1;
 
@@ -127,6 +132,19 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
     zone_id = zoneResult.rows.length > 0 ? zoneResult.rows[0].id : null;
   }
 
+  if (
+    hasLocation &&
+    parsedAccuracy != null &&
+    Number.isFinite(parsedAccuracy) &&
+    parsedAccuracy > 5
+  ) {
+    return errorResponse(
+      res,
+      'Location accuracy must be within 5 meters. Please try again in an open area.',
+      400
+    );
+  }
+
   await ensureAddressColumns();
   const trackLocationSource = await hasLocationAddedByColumn();
 
@@ -137,19 +155,21 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
       result = await query(
         `INSERT INTO addresses (
           user_id, address_type, written_address, landmark,
-          location, area_name, city, province, postal_code,
+          location, location_accuracy, area_name, city, province, postal_code,
           zone_id, door_picture_url, is_default, delivery_instructions,
           location_added_by
         ) VALUES (
           $1, $2, $3, $4,
           ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography,
-          $7, $8, $9, $10,
-          $11, $12, $13, $14,
+          $7,
+          $8, $9, $10, $11,
+          $12, $13, $14, $15,
           'user'
         ) RETURNING *`,
         [
           req.user.id, address_type, written_address, landmark || null,
-          parsedLng, parsedLat, area_name, city, province, postal_code || null,
+          parsedLng, parsedLat, parsedAccuracy,
+          area_name, city, province, postal_code || null,
           zone_id, door_picture_url, defaultFlag, delivery_instructions || null,
         ]
       );
@@ -157,17 +177,19 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
       result = await query(
         `INSERT INTO addresses (
           user_id, address_type, written_address, landmark,
-          location, area_name, city, province, postal_code,
+          location, location_accuracy, area_name, city, province, postal_code,
           zone_id, door_picture_url, is_default, delivery_instructions
         ) VALUES (
           $1, $2, $3, $4,
           ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography,
-          $7, $8, $9, $10,
-          $11, $12, $13, $14
+          $7,
+          $8, $9, $10, $11,
+          $12, $13, $14, $15
         ) RETURNING *`,
         [
           req.user.id, address_type, written_address, landmark || null,
-          parsedLng, parsedLat, area_name, city, province, postal_code || null,
+          parsedLng, parsedLat, parsedAccuracy,
+          area_name, city, province, postal_code || null,
           zone_id, door_picture_url, defaultFlag, delivery_instructions || null,
         ]
       );
@@ -219,7 +241,13 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
     postal_code,
     is_default,
     delivery_instructions,
+    location_accuracy,
   } = req.body;
+
+  const parsedAccuracy =
+    location_accuracy != null && location_accuracy !== ''
+      ? parseFloat(String(location_accuracy))
+      : null;
 
   // Check if address exists and belongs to user
   const existingResult = await query(
@@ -293,9 +321,25 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
 
   // Update location if lat/lng provided
   if (latitude != null && longitude != null) {
+    if (
+      parsedAccuracy != null &&
+      Number.isFinite(parsedAccuracy) &&
+      parsedAccuracy > 5
+    ) {
+      return errorResponse(
+        res,
+        'Location accuracy must be within 5 meters. Please try again in an open area.',
+        400
+      );
+    }
+
     updates.push(`location = ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)::geography`);
     values.push(longitude, latitude);
     paramIndex += 2;
+    if (parsedAccuracy != null && Number.isFinite(parsedAccuracy)) {
+      updates.push(`location_accuracy = $${paramIndex++}`);
+      values.push(parsedAccuracy);
+    }
     if (trackLocationSource) {
       updates.push(`location_added_by = $${paramIndex++}`);
       values.push('user');

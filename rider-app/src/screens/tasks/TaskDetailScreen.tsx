@@ -137,8 +137,8 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
         return;
       }
 
-      // Wait for GPS lock with ≤10m accuracy (up to 15s)
-      const location = await getAccurateLocation(10, 15000);
+      // Wait for GPS lock with ≤5m accuracy (up to 15s)
+      const location = await getAccurateLocation(5, 15000);
 
       if (!location) {
         Alert.alert(
