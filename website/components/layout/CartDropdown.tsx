@@ -243,11 +243,13 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
     </AnimatePresence>
   )
 
-  // ---------- Mobile variant: portal to body, fixed viewport center ----------
-  // Positioning wrapper (not animated) handles `-translate-x-1/2` so it can't
-  // conflict with framer-motion's transform on the inner motion.div. The
-  // motion.div itself is the flex container that lets the items list flex
-  // while keeping the footer button pinned at the bottom.
+  // ---------- Mobile variant: portal to body ----------
+  // We anchor the panel inside a wrapper that covers the gap between the
+  // sticky header (top: ~5rem) and the bottom MobileNav (~5rem). With
+  // `top-20 bottom-24` the panel can never extend past the MobileNav, so
+  // the footer "View Cart & Checkout" button is always tappable even when
+  // the user has many items. `dvh` keeps the math correct as mobile
+  // browser chrome shows/hides during scroll.
   const mobilePanel =
     mounted &&
     createPortal(
@@ -264,18 +266,15 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
               className="fixed inset-0 z-[90] bg-black/30 sm:hidden"
               onClick={onClose}
             />
-            <div
-              className="fixed z-[100] left-1/2 top-20 w-[calc(100vw-1rem)] max-w-[380px] sm:hidden"
-              style={{ transform: 'translateX(-50%)', maxHeight: 'calc(100vh - 6rem)' }}
-            >
+            <div className="fixed z-[100] top-20 bottom-24 left-0 right-0 px-2 flex items-start justify-center sm:hidden pointer-events-none">
               <motion.div
                 ref={mobileRef}
                 initial={{ opacity: 0, y: -12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -12 }}
                 transition={{ duration: 0.2 }}
-                className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col h-full"
-                style={{ maxHeight: 'calc(100vh - 6rem)' }}
+                className="pointer-events-auto w-full max-w-[380px] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col"
+                style={{ maxHeight: '100%' }}
               >
                 {panelBody}
               </motion.div>

@@ -16,29 +16,19 @@ import {
   CreditCard,
   Check,
   Plus,
-  Camera,
   Loader2,
   CalendarDays,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import { addressesApi, settingsApi } from '@/lib/api'
 import api from '@/lib/api'
-import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
 import AddressActions from '@/components/checkout/AddressActions'
+import AddressForm, { type SavedAddress } from '@/components/checkout/AddressForm'
 
-interface RealAddress {
-  id: string
-  address_type: string
-  written_address: string
-  area_name: string
-  city: string
-  is_default: boolean
-  landmark?: string
-}
+type RealAddress = SavedAddress
 
 // Public wrapper. PinReauthGate intercepts at the route level if the user
 // has been inactive for >30 min and asks for the PIN before rendering the
@@ -68,18 +58,9 @@ function CheckoutPage() {
   const [loadingSlots, setLoadingSlots] = useState(true)
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
 
-  // New address form fields
-  const [newAddressType, setNewAddressType] = useState('home')
-  const [newWrittenAddress, setNewWrittenAddress] = useState('')
-  const [newAreaName, setNewAreaName] = useState('')
-  const [newCity, setNewCity] = useState('Gujrat')
-  const [newLandmark, setNewLandmark] = useState('')
-  const [doorPicture, setDoorPicture] = useState<File | null>(null)
-  const [availableCities, setAvailableCities] = useState<{id: string, name: string, province: string}[]>([])
-  const [mapLocation, setMapLocation] = useState<{lat: number, lng: number} | null>(null)
-  const [mapLocationAccuracy, setMapLocationAccuracy] = useState<number | null>(null)
-  const [isLocating, setIsLocating] = useState(false)
-  const [showMapPicker, setShowMapPicker] = useState(false)
+  const [availableCities, setAvailableCities] = useState<
+    { id: string; name: string; province: string }[]
+  >([])
   const [serverSubtotal, setServerSubtotal] = useState<number | null>(null)
   const [serverDeliveryCharge, setServerDeliveryCharge] = useState<number | null>(null)
   const [cartSynced, setCartSynced] = useState(false)
@@ -212,81 +193,26 @@ function CheckoutPage() {
   const loadAddresses = async () => {
     try {
       const res = await addressesApi.getAll()
-      const raw = res.data || res
+      const raw = (res as any).data || res
       const list: RealAddress[] = Array.isArray(raw) ? raw : []
       setAddresses(list)
-      const def = list.find(a => a.is_default) || list[0]
+      const def = list.find((a) => a.is_default) || list[0]
       if (def) setSelectedAddress(def.id)
       if (list.length === 0) setShowNewAddress(true)
     } catch {
-      // If no addresses, show form
       setShowNewAddress(true)
     } finally {
       setLoadingAddresses(false)
     }
   }
 
-  const handleSaveAddress = async (): Promise<string> => {
-    if (!newWrittenAddress.trim()) {
-      throw new Error('Please enter your delivery address')
-    }
-    if (newWrittenAddress.trim().length < 5) {
-      throw new Error('Address must be at least 5 characters')
-    }
-
-    const payload: Record<string, string | boolean | number> = {
-      address_type: newAddressType,
-      written_address: newWrittenAddress.trim(),
-      area_name: newAreaName.trim() || 'N/A',
-      city: newCity,
-      landmark: newLandmark.trim(),
-      is_default: addresses.length === 0,
-    }
-    if (mapLocation) {
-      payload.latitude = mapLocation.lat
-      payload.longitude = mapLocation.lng
-      if (mapLocationAccuracy != null) {
-        payload.location_accuracy = mapLocationAccuracy
-      }
-    }
-
-    let created: RealAddress
-
-    if (doorPicture) {
-      const formData = new FormData()
-      Object.entries(payload).forEach(([key, value]) => {
-        formData.append(key, String(value))
-      })
-      formData.append('door_picture', doorPicture)
-      const res = await api.post('/addresses', formData)
-      created = res.data?.data || res.data
-    } else {
-      const res = await addressesApi.create(payload)
-      created = res as unknown as RealAddress
-    }
-
-    if (!created?.id) {
-      throw new Error('Address could not be saved')
-    }
-
-    setAddresses((prev) => [...prev, created])
-    setSelectedAddress(created.id)
-    setShowNewAddress(false)
-    return created.id
-  }
-
-  const resolveAddressId = async (): Promise<string> => {
-    if (showNewAddress || !selectedAddress) {
-      return handleSaveAddress()
-    }
-    return selectedAddress
-  }
-
-  const canPlaceOrder =
-    (!showNewAddress && Boolean(selectedAddress)) ||
-    (showNewAddress && newWrittenAddress.trim().length >= 5)
+  const canPlaceOrder = Boolean(selectedAddress)
 
   const handlePlaceOrder = async () => {
+    if (!selectedAddress) {
+      toast.error('Please select a delivery address')
+      return
+    }
     if (!selectedTimeSlot && timeSlots.length > 0) {
       toast.error('Please select a delivery time slot')
       return
@@ -294,10 +220,11 @@ function CheckoutPage() {
 
     setIsPlacingOrder(true)
     try {
-      const addressId = await resolveAddressId()
-
+      // Make sure the server-side cart still has our items (the user could
+      // have changed cart contents on a different tab). We do this here only
+      // — once, right before placing the order — so slot changes don't
+      // trigger this slow operation.
       try { await api.delete('/cart/clear') } catch { /* ok if empty */ }
-
       for (const item of items) {
         await api.post('/cart/add', {
           product_id: item.product.id,
@@ -306,7 +233,7 @@ function CheckoutPage() {
       }
 
       const orderPayload: Record<string, string> = {
-        address_id: addressId,
+        address_id: selectedAddress,
         payment_method: 'cash_on_delivery',
         customer_notes: '',
       }
@@ -417,16 +344,20 @@ function CheckoutPage() {
                           </label>
                           <AddressActions
                             address={address}
+                            availableCities={availableCities}
                             onUpdated={(updated) => {
                               setAddresses((prev) =>
-                                prev.map((a) => (a.id === updated.id ? { ...a, ...updated } : a))
+                                prev.map((a) =>
+                                  a.id === updated.id ? { ...a, ...updated } : a
+                                )
                               )
                             }}
                             onDeleted={(deletedId) => {
                               setAddresses((prev) => {
                                 const next = prev.filter((a) => a.id !== deletedId)
                                 if (selectedAddress === deletedId) {
-                                  const fallback = next.find((a) => a.is_default) || next[0]
+                                  const fallback =
+                                    next.find((a) => a.is_default) || next[0]
                                   setSelectedAddress(fallback?.id || '')
                                   if (next.length === 0) setShowNewAddress(true)
                                 }
@@ -452,206 +383,30 @@ function CheckoutPage() {
                     Add New Address
                   </button>
 
-                  {/* New Address Form */}
+                  {/* New Address Form — uses the same AddressForm component
+                      as Edit, so door picture + GPS map are available too. */}
                   {showNewAddress && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      className="mt-4 pt-4 border-t"
-                    >
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Address Type</label>
-                          <select
-                            value={newAddressType}
-                            onChange={(e) => setNewAddressType(e.target.value)}
-                            className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          >
-                            <option value="home">Home</option>
-                            <option value="office">Office</option>
-                            <option value="other">Other</option>
-                          </select>
-                        </div>
-                        <Input
-                          label="Area Name"
-                          placeholder="e.g., Gulberg, DHA"
-                          value={newAreaName}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewAreaName(e.target.value)}
-                        />
-                      </div>
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                        <select
-                          value={newCity}
-                          onChange={(e) => setNewCity(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        >
-                          {availableCities.map((c) => (
-                            <option key={c.id} value={c.name}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Full Address *
-                        </label>
-                        <textarea
-                          rows={3}
-                          placeholder="Enter your complete address"
-                          value={newWrittenAddress}
-                          onChange={(e) => setNewWrittenAddress(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                      </div>
-                      <div className="mt-4">
-                        <Input
-                          label="Landmark (Optional)"
-                          placeholder="Near mosque, school, etc."
-                          value={newLandmark}
-                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLandmark(e.target.value)}
-                        />
-                      </div>
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Door Picture (Optional)
-                        </label>
-                        <label className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors cursor-pointer block">
-                          <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                          <p className="text-sm text-gray-500">
-                            {doorPicture ? doorPicture.name : 'Click to upload a picture of your door'}
-                          </p>
-                          <p className="text-xs text-gray-400 mt-1">
-                            This helps our delivery partner find your location
-                          </p>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => setDoorPicture(e.target.files?.[0] || null)}
-                          />
-                        </label>
-                      </div>
-
-                      {/* Optional Map Location */}
-                      <div className="mt-4">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          📍 Pin Map Location (Optional)
-                        </label>
-                        {!showMapPicker && !mapLocation && (
-                          <button
-                            type="button"
-                            onClick={() => setShowMapPicker(true)}
-                            className="flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm border border-primary-200 rounded-lg px-4 py-2.5 hover:bg-primary-50 transition-colors"
-                          >
-                            <MapPin className="w-4 h-4" />
-                            Add Google Map Location
-                          </button>
-                          )}
-                        {mapLocation && !showMapPicker && (
-                          <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-                            <Check className="w-5 h-5 text-green-600" />
-                            <span className="text-sm text-green-700 flex-1">
-                              Location pinned ({mapLocation.lat.toFixed(4)}, {mapLocation.lng.toFixed(4)})
-                              {mapLocationAccuracy != null && (
-                                <span className="text-green-600"> · ±{Math.round(mapLocationAccuracy)}m</span>
-                              )}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => { setMapLocation(null); setMapLocationAccuracy(null); setShowMapPicker(true) }}
-                              className="text-sm text-primary-600 hover:underline"
-                            >
-                              Change
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setMapLocation(null)}
-                              className="text-sm text-red-500 hover:underline"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        )}
-                        {showMapPicker && (
-                          <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
-                            <iframe
-                              width="100%"
-                              height="300"
-                              style={{ border: 0 }}
-                              loading="lazy"
-                              src={`https://maps.google.com/maps?q=${mapLocation?.lat || 32.5742},${mapLocation?.lng || 74.0789}&z=15&output=embed`}
-                            />
-                            <div className="p-3 bg-gray-50 space-y-3">
-                              <p className="text-xs text-gray-500">
-                                Enter your exact coordinates or use the &quot;Get My Current Location&quot; button
-                              </p>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                  <label className="block text-xs text-gray-500 mb-1">Latitude</label>
-                                  <input
-                                    type="number"
-                                    step="any"
-                                    placeholder="32.5742"
-                                    value={mapLocation?.lat || ''}
-                                    onChange={(e) => setMapLocation(prev => ({ lat: parseFloat(e.target.value) || 0, lng: prev?.lng || 74.0789 }))}
-                                    className="w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="block text-xs text-gray-500 mb-1">Longitude</label>
-                                  <input
-                                    type="number"
-                                    step="any"
-                                    placeholder="74.0789"
-                                    value={mapLocation?.lng || ''}
-                                    onChange={(e) => setMapLocation(prev => ({ lat: prev?.lat || 32.5742, lng: parseFloat(e.target.value) || 0 }))}
-                                    className="w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                                  />
-                                </div>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  disabled={isLocating}
-                                  onClick={async () => {
-                                    setIsLocating(true)
-                                    toast.loading('Getting precise GPS location...', { id: 'gps' })
-                                    const pos = await getAccuratePosition()
-                                    setIsLocating(false)
-                                    toast.dismiss('gps')
-                                    if (pos) {
-                                      setMapLocation({ lat: pos.lat, lng: pos.lng })
-                                      setMapLocationAccuracy(pos.accuracy)
-                                      toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
-                                    } else {
-                                      toast.error(`Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`)
-                                    }
-                                  }}
-                                  className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
-                                >
-                                  <MapPin className="w-4 h-4" />
-                                  {isLocating ? 'Getting GPS...' : 'Get My Current Location'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setShowMapPicker(false)}
-                                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                                >
-                                  {mapLocation ? 'Done' : 'Cancel'}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        <p className="text-xs text-gray-400 mt-1">
-                          If you skip this, our rider will pin the location on first delivery
-                        </p>
-                      </div>
-
-                      <p className="mt-4 text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                        Your address will be saved automatically when you place the order.
-                      </p>
-                    </motion.div>
+                    <div className="mt-4 pt-4 border-t">
+                      <AddressForm
+                        availableCities={availableCities}
+                        defaultOnCreate={addresses.length === 0}
+                        onSaved={(saved) => {
+                          setAddresses((prev) => {
+                            const exists = prev.some((a) => a.id === saved.id)
+                            return exists
+                              ? prev.map((a) => (a.id === saved.id ? saved : a))
+                              : [...prev, saved]
+                          })
+                          setSelectedAddress(saved.id)
+                          setShowNewAddress(false)
+                        }}
+                        onCancel={
+                          addresses.length > 0
+                            ? () => setShowNewAddress(false)
+                            : undefined
+                        }
+                      />
+                    </div>
                   )}
                 </>
               )}
