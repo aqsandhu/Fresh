@@ -15,7 +15,7 @@ export function loadGoogleMapsJs(): Promise<any | null> {
   if (!googleMapsLoader) {
     googleMapsLoader = new Promise((resolve, reject) => {
       const script = document.createElement('script')
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}`
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&loading=async`
       script.async = true
       script.defer = true
       script.onload = () => resolve(w.google?.maps ?? null)
