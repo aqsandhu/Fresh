@@ -1,11 +1,8 @@
 'use client'
 
 import { MapPin } from 'lucide-react'
-import {
-  DEFAULT_MAP_LAT,
-  DEFAULT_MAP_LNG,
-  getGoogleMapsEmbedUrl,
-} from '@/lib/googleMaps'
+import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
+import DraggableMapPicker from './DraggableMapPicker'
 
 interface GoogleMapPickerProps {
   lat: number
@@ -20,8 +17,8 @@ interface GoogleMapPickerProps {
 }
 
 /**
- * Google Maps embed picker (original Fresh Bazar UX). Uses
- * NEXT_PUBLIC_GOOGLE_MAPS_API_KEY when set; otherwise the free embed URL.
+ * Map picker with draggable red pin. Uses Google Maps JS when
+ * NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is set; otherwise OpenStreetMap + red pin.
  */
 export default function GoogleMapPicker({
   lat,
@@ -34,23 +31,18 @@ export default function GoogleMapPicker({
   onCancel,
   hasLocation,
 }: GoogleMapPickerProps) {
-  const embedUrl = getGoogleMapsEmbedUrl(lat, lng, 15)
-
   return (
     <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
-      <iframe
-        title="Map location"
-        width="100%"
-        height={280}
-        style={{ border: 0 }}
-        loading="lazy"
-        referrerPolicy="no-referrer-when-downgrade"
-        src={embedUrl}
+      <DraggableMapPicker
+        lat={lat}
+        lng={lng}
+        accuracy={accuracy}
+        onChange={onLatLngChange}
       />
       <div className="p-3 bg-gray-50 space-y-3">
         <p className="text-xs text-gray-500">
-          Enter coordinates or tap &quot;Get My Location&quot;. Adjust on the map
-          using the lat/lng fields if needed.
+          Drag the red pin on the map, tap to move it, or use &quot;Get My Location&quot;.
+          Fine-tune with the lat/lng fields if needed.
         </p>
         {accuracy != null && accuracy > 0 && (
           <p className="text-xs text-green-700">GPS accuracy: ±{Math.round(accuracy)}m</p>
