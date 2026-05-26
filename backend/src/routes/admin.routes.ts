@@ -17,6 +17,8 @@ import {
   uploadMultiple,
   uploadSingle,
   auditLogger,
+  attachAdminPermissions,
+  enforceAdminPermissions,
 } from '../middleware';
 
 const router = Router();
@@ -27,6 +29,8 @@ router.post('/login', authRateLimiter, validate(adminSchemas.adminLogin), authCo
 // All admin routes require authentication and admin role
 router.use(authenticate);
 router.use(requireAdmin);
+router.use(attachAdminPermissions);
+router.use(enforceAdminPermissions);
 
 // Apply audit logging to all mutating (POST, PUT, PATCH, DELETE) admin operations
 router.use(auditLogger());

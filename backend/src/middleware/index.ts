@@ -64,6 +64,12 @@ export {
   logAdminAction,
 } from './auditLogger';
 
+// Admin permission enforcement
+export {
+  attachAdminPermissions,
+  enforceAdminPermissions,
+} from './adminPermissions';
+
 // File upload
 export {
   uploadSingle,

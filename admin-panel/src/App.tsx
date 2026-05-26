@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
+import { canAccessRoute } from '@/lib/permissions';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import {
   Login,
@@ -39,7 +40,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuthContext();
+  const { isAuthenticated, isLoading, user } = useAuthContext();
   const location = useLocation();
 
   if (isLoading) {
@@ -52,6 +53,14 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to={`/admin/login?redirect=${location.pathname}`} replace />;
+  }
+
+  if (!canAccessRoute(location.pathname, user?.permissions)) {
+    const fallback =
+      ['/admin/dashboard', '/admin/orders', '/admin/products', '/admin/settings'].find(
+        (p) => canAccessRoute(p, user?.permissions)
+      ) || '/admin/login';
+    return <Navigate to={fallback} replace />;
   }
 
   return <>{children}</>;

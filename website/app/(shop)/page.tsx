@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 import HeroSection from '@/components/sections/HeroSection'
 import CategoriesSection from '@/components/sections/CategoriesSection'
 import FeaturedProductsSection from '@/components/sections/FeaturedProductsSection'
-import HowItWorksSection from '@/components/sections/HowItWorksSection'
 import DeliveryInfoSection from '@/components/sections/DeliveryInfoSection'
 import AppDownloadSection from '@/components/sections/AppDownloadSection'
 
@@ -17,7 +16,6 @@ export default function HomePage() {
       <HeroSection />
       <CategoriesSection />
       <FeaturedProductsSection />
-      <HowItWorksSection />
       <DeliveryInfoSection />
       <AppDownloadSection />
     </div>

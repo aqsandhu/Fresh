@@ -15,8 +15,6 @@ import Button from '@/components/ui/Button'
 import api, { addressesApi } from '@/lib/api'
 import {
   getAccuratePosition,
-  REQUIRED_LOCATION_ACCURACY_M,
-  FALLBACK_LOCATION_ACCURACY_M,
 } from '@/lib/geolocation'
 import { resolveImageUrl } from '@/lib/utils'
 import DraggableMapPicker from './DraggableMapPicker'
@@ -121,52 +119,44 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
   )
   const [showMapPicker, setShowMapPicker] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
+  const [gpsStatus, setGpsStatus] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
 
   const handleGetGps = async () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      toast.error('GPS is not supported on this device')
+      setGpsStatus('GPS is not supported on this device')
       return
     }
 
-    // Always reveal the map immediately so the user sees feedback while we
-    // wait for the GPS lock — previously the map only opened after success,
-    // which felt like "nothing happened" on slow/failed locks.
     setShowMapPicker(true)
     setIsLocating(true)
-    toast.loading(`Locking GPS at ${REQUIRED_LOCATION_ACCURACY_M}m...`, { id: 'gps' })
+    setGpsStatus('Starting GPS…')
 
     try {
-      const pos = await getAccuratePosition()
-      toast.dismiss('gps')
+      const pos = await getAccuratePosition((update) => {
+        setGpsStatus(update.message)
+        if (update.lat != null && update.lng != null) {
+          setMapLocation({ lat: update.lat, lng: update.lng })
+          if (update.accuracy != null) setMapAccuracy(update.accuracy)
+        }
+      })
 
       if (pos) {
         setMapLocation({ lat: pos.lat, lng: pos.lng })
         setMapAccuracy(pos.accuracy)
-
         if (pos.tier === 'tight') {
-          toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
+          setGpsStatus(`Location locked (±${Math.round(pos.accuracy)}m)`)
         } else if (pos.tier === 'fallback') {
-          toast.success(
-            `Located at ±${Math.round(pos.accuracy)}m. Drag the marker if needed.`,
-            { duration: 5000 }
-          )
+          setGpsStatus(`Located ±${Math.round(pos.accuracy)}m — drag pin if needed`)
         } else {
-          toast.success(
-            `Approximate location (±${Math.round(pos.accuracy)}m). Drag the marker to your exact spot.`,
-            { duration: 6000 }
-          )
+          setGpsStatus(`Approximate ±${Math.round(pos.accuracy)}m — drag pin to exact spot`)
         }
       } else {
-        toast.error(
-          'Could not read GPS. Allow location permission, move to an open area, or tap the map to pin manually.',
-          { duration: 6000 }
-        )
+        setGpsStatus('GPS unavailable — tap the map to pin your location')
       }
     } catch {
-      toast.dismiss('gps')
-      toast.error('GPS failed. Tap the map to pin your location manually.')
+      setGpsStatus('GPS failed — tap the map to pin manually')
     } finally {
       setIsLocating(false)
     }
@@ -397,6 +387,12 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
               {isLocating ? 'Getting location…' : 'Get My Location'}
             </button>
           </div>
+        )}
+
+        {gpsStatus && (
+          <p className={`mt-2 text-xs ${isLocating ? 'text-primary-600' : 'text-gray-600'}`}>
+            {gpsStatus}
+          </p>
         )}
 
         {mapLocation && !showMapPicker && (

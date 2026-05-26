@@ -17,6 +17,7 @@ import {
   Store,
 } from 'lucide-react';
 import { useAuthContext } from '@/context/AuthContext';
+import { canAccessRoute } from '@/lib/permissions';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -86,7 +87,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
-          {navItems.map((item) => (
+          {navItems
+            .filter((item) => canAccessRoute(item.path, user?.permissions))
+            .map((item) => (
             <NavLink
               key={item.path}
               to={item.path}

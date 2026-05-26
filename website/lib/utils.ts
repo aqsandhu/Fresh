@@ -72,23 +72,29 @@ export function formatDate(date: string | Date): string {
   }).format(new Date(date))
 }
 
+export function formatSlotTime(time: string): string {
+  const [h, m, s] = time.split(':').map((v) => parseInt(v, 10) || 0)
+  const d = new Date()
+  d.setHours(h, m, s || 0, 0)
+  // Browser locale + user's 12h/24h preference (no forced hour12).
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+
 export function formatTime(date: string | Date): string {
-  return new Intl.DateTimeFormat('en-PK', {
-    hour: '2-digit',
+  return new Date(date).toLocaleTimeString(undefined, {
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
-  }).format(new Date(date))
+  })
 }
 
 export function formatDateTime(date: string | Date): string {
-  return new Intl.DateTimeFormat('en-PK', {
+  return new Date(date).toLocaleString(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-    hour: '2-digit',
+    hour: 'numeric',
     minute: '2-digit',
-    hour12: true,
-  }).format(new Date(date))
+  })
 }
 
 /**

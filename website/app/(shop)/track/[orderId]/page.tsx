@@ -25,7 +25,7 @@ import Badge from '@/components/ui/Badge'
 import OrderChatBox from '@/components/ui/OrderChatBox'
 import dynamic from 'next/dynamic'
 import { OrderStatus } from '@/types'
-import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
+import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl, formatSlotTime } from '@/lib/utils'
 import { unitLabelShort } from '@/lib/unitPricing'
 import { ordersApi } from '@/lib/api'
 
@@ -78,17 +78,10 @@ export default function TrackOrderPage() {
       const snapshot = raw.delivery_address_snapshot || {}
 
       // Format time slot using browser locale (respects 12h/24h setting)
-      const formatSlotTime = (time: string) => {
-        const [h, m] = time.split(':').map(Number)
-        const d = new Date()
-        d.setHours(h, m || 0, 0, 0)
-        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-      }
       let formattedSlot = 'Standard Delivery'
       if (raw.slot_start && raw.slot_end) {
         formattedSlot = `${formatSlotTime(raw.slot_start)} - ${formatSlotTime(raw.slot_end)}`
       } else if (raw.slot_name) {
-        // slot_name may be "10:00:00 - 14:00:00", try to parse and format
         const parts = raw.slot_name.split(' - ')
         if (parts.length === 2 && parts[0].includes(':')) {
           formattedSlot = `${formatSlotTime(parts[0].trim())} - ${formatSlotTime(parts[1].trim())}`
