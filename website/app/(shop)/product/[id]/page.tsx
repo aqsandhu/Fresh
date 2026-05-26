@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import SmartImage from '@/components/ui/SmartImage'
@@ -26,19 +26,34 @@ import Badge from '@/components/ui/Badge'
 import ProductCard from '@/components/ui/ProductCard'
 import { useCartStore } from '@/store/cartStore'
 import { productsApi } from '@/lib/api'
-import ProductPrice from '@/components/ui/ProductPrice'
-import { Product } from '@/types'
+import UnitSelector, { getSelectedUnitPrice } from '@/components/ui/UnitSelector'
+import { getUnitOptions, unitLabelShort } from '@/lib/unitPricing'
+import { formatPriceShort } from '@/lib/utils'
+import { Product, ProductUnit } from '@/types'
 
 export default function ProductDetailPage() {
   const params = useParams()
   const id = params.id as string
   const [quantity, setQuantity] = useState(1)
+  const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
   const { addItem, items } = useCartStore()
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', id],
     queryFn: () => productsApi.getById(id),
   })
+
+  const unitOptions = useMemo(
+    () => (product ? getUnitOptions(product) : []),
+    [product]
+  )
+  const displayPrice = product
+    ? getSelectedUnitPrice(product, selectedUnit)
+    : 0
+  const cartItem = items.find(
+    (item) =>
+      item.product.id === id && (item.unit || 'full') === selectedUnit
+  )
 
   // Fetch related products from same category
   const { data: relatedData } = useQuery({
@@ -67,11 +82,14 @@ export default function ProductDetailPage() {
     )
   }
 
-  const inCart = items.find((item) => item.product.id === product.id)
+  const inCart = Boolean(cartItem)
 
   const handleAddToCart = () => {
-    addItem(product, quantity)
-    toast.success(`${product.name} added to cart!`)
+    addItem(product, quantity, selectedUnit)
+    const suffix = unitLabelShort(selectedUnit)
+    toast.success(
+      `${product.name}${suffix ? ` (${suffix})` : ''} added to cart!`
+    )
   }
 
   const imageSrc = product?.image || product?.image_url || undefined
@@ -154,9 +172,27 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {/* Price */}
-              <div className="mb-6">
-                <ProductPrice price={product.price} unit={product.unit} size="xl" />
+              {/* Price + unit selector */}
+              <div className="mb-6 space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-3xl font-bold text-primary-600">
+                    {formatPriceShort(displayPrice)}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    /
+                    {selectedUnit === 'full'
+                      ? product.unit
+                      : unitLabelShort(selectedUnit).replace(/^\W+\s*/u, '')}
+                  </span>
+                </div>
+                {unitOptions.length > 1 && (
+                  <UnitSelector
+                    product={product}
+                    selectedUnit={selectedUnit}
+                    onChange={setSelectedUnit}
+                    size="md"
+                  />
+                )}
               </div>
 
               {/* Description */}

@@ -265,3 +265,100 @@ export const assignRoleToUser = asyncHandler(async (req: Request, res: Response)
   });
   successResponse(res, { user_id: id, role_id }, 'Role assigned');
 });
+
+/** List admin users with their assigned custom role (if any). */
+export const listAdminUsers = asyncHandler(async (_req: Request, res: Response) => {
+  const result = await query(
+    `SELECT u.id, u.phone, u.full_name, u.email, u.role, u.status,
+            u.admin_role_id,
+            r.name AS admin_role_name,
+            r.city AS admin_role_city
+       FROM users u
+       JOIN admins a ON a.user_id = u.id
+       LEFT JOIN admin_roles r ON r.id = u.admin_role_id
+      WHERE u.deleted_at IS NULL
+        AND u.role IN ('admin', 'super_admin')
+      ORDER BY u.created_at ASC`
+  );
+  successResponse(res, result.rows, 'Admin users retrieved');
+});
+
+/** Create a new admin user with phone/password and optional custom role. */
+export const createAdminUser = asyncHandler(async (req: Request, res: Response) => {
+  const bcrypt = await import('bcryptjs');
+  const { phone, password, full_name, email, role_id } = req.body as {
+    phone: string;
+    password: string;
+    full_name: string;
+    email?: string;
+    role_id?: string | null;
+  };
+
+  if (!phone || !password || !full_name) {
+    return errorResponse(res, 'Phone, password and full name are required', 400);
+  }
+  if (password.length < 6) {
+    return errorResponse(res, 'Password must be at least 6 characters', 400);
+  }
+
+  const { normalizePhoneNumber, isValidPakistaniPhone } = await import('../utils/validators');
+  if (!isValidPakistaniPhone(phone)) {
+    return errorResponse(res, 'Invalid Pakistani phone number', 400);
+  }
+  const normalizedPhone = normalizePhoneNumber(phone);
+
+  if (role_id) {
+    const roleCheck = await query(`SELECT id FROM admin_roles WHERE id = $1`, [role_id]);
+    if (roleCheck.rows.length === 0) {
+      return notFoundResponse(res, 'Role not found');
+    }
+  }
+
+  const existing = await query(
+    `SELECT id FROM users WHERE phone = $1 AND deleted_at IS NULL`,
+    [normalizedPhone]
+  );
+  if (existing.rows.length > 0) {
+    return errorResponse(res, 'A user with this phone already exists', 409);
+  }
+
+  const passwordHash = await bcrypt.hash(password, 10);
+
+  const created = await withTransaction(async (client) => {
+    const userResult = await client.query(
+      `INSERT INTO users
+         (phone, email, full_name, password_hash, role, status, is_phone_verified, admin_role_id)
+       VALUES ($1, $2, $3, $4, 'admin', 'active', TRUE, $5)
+       RETURNING id, phone, full_name, email, role, admin_role_id`,
+      [normalizedPhone, email || null, full_name.trim(), passwordHash, role_id || null]
+    );
+    const user = userResult.rows[0];
+
+    await client.query(
+      `INSERT INTO admins (user_id, permissions)
+       VALUES ($1, $2::jsonb)`,
+      [
+        user.id,
+        JSON.stringify({
+          users: { read: false, write: false, delete: false },
+          orders: { read: true, write: true, delete: false },
+          products: { read: true, write: false, delete: false },
+          riders: { read: false, write: false, delete: false },
+          reports: { read: false, write: false },
+          settings: { read: false, write: false },
+        }),
+      ]
+    );
+
+    return user;
+  });
+
+  logger.info('Admin user created', {
+    userId: created.id,
+    phone: created.phone,
+    roleId: role_id,
+    createdBy: req.user?.id,
+  });
+
+  createdResponse(res, created, 'Admin user created');
+});

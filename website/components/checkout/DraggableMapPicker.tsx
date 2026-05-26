@@ -73,6 +73,7 @@ export default function DraggableMapPicker({
   useEffect(() => {
     let cancelled = false
     let map: any
+    let resizeObserver: ResizeObserver | null = null
 
     ;(async () => {
       const L = await loadLeaflet()
@@ -104,13 +105,26 @@ export default function DraggableMapPicker({
       })
 
       mapRef.current = map
-      // Tile sizing may be wrong when the map is mounted inside a hidden /
-      // animated container — force a recalc once the layout settles.
-      setTimeout(() => map.invalidateSize(), 150)
+
+      const invalidate = () => {
+        if (map && !cancelled) {
+          map.invalidateSize()
+        }
+      }
+
+      // Tile sizing is wrong when mounted inside animated/hidden containers.
+      setTimeout(invalidate, 100)
+      setTimeout(invalidate, 350)
+
+      if (typeof ResizeObserver !== 'undefined' && containerRef.current) {
+        resizeObserver = new ResizeObserver(() => invalidate())
+        resizeObserver.observe(containerRef.current)
+      }
     })()
 
     return () => {
       cancelled = true
+      resizeObserver?.disconnect()
       if (map) {
         map.remove()
       }

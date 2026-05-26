@@ -9,14 +9,27 @@ export interface AccuratePosition {
   accuracy: number
 }
 
+export type LocationTier = 'tight' | 'fallback' | 'approximate'
+
+export interface AccuratePositionWithTier extends AccuratePosition {
+  tier: LocationTier
+}
+
+interface WatchOptions {
+  /** Accept the best fix we saw when the timer fires, even if accuracy is loose. */
+  acceptBestOnTimeout?: boolean
+}
+
 /**
- * Watch GPS until accuracy is ≤ maxAccuracyM or timeout. Returns null if the
- * best fix is still worse than the threshold.
+ * Watch GPS until accuracy is ≤ maxAccuracyM or timeout.
+ * When `acceptBestOnTimeout` is true we still return the best fix we saw
+ * instead of null — the caller can warn the user to drag the marker.
  */
 export function watchForAccuratePosition(
   maxAccuracyM = REQUIRED_LOCATION_ACCURACY_M,
-  timeoutMs = 12000
-): Promise<AccuratePosition | null> {
+  timeoutMs = 12000,
+  options: WatchOptions = {}
+): Promise<(AccuratePosition & { tier: LocationTier }) | null> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
     return Promise.resolve(null)
   }
@@ -31,7 +44,7 @@ export function watchForAccuratePosition(
       clearTimeout(timer)
     }
 
-    const finish = (result: GeolocationPosition | null) => {
+    const finish = (result: GeolocationPosition | null, timedOut = false) => {
       if (finished) return
       finished = true
       cleanup()
@@ -48,13 +61,25 @@ export function watchForAccuratePosition(
           lat: pick.coords.latitude,
           lng: pick.coords.longitude,
           accuracy,
+          tier: maxAccuracyM <= REQUIRED_LOCATION_ACCURACY_M ? 'tight' : 'fallback',
         })
-      } else {
-        resolve(null)
+        return
       }
+
+      if (options.acceptBestOnTimeout && timedOut) {
+        resolve({
+          lat: pick.coords.latitude,
+          lng: pick.coords.longitude,
+          accuracy,
+          tier: 'approximate',
+        })
+        return
+      }
+
+      resolve(null)
     }
 
-    const timer = setTimeout(() => finish(best), timeoutMs)
+    const timer = setTimeout(() => finish(best, true), timeoutMs)
 
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -66,9 +91,13 @@ export function watchForAccuratePosition(
           finish(pos)
         }
       },
-      () => finish(null),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: timeoutMs }
+      (err) => {
+        void err
+        finish(null)
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: timeoutMs + 2000 }
     )
+
   })
 }
 
@@ -83,10 +112,25 @@ export async function getAccuratePosition(
   fallbackAccuracyM: number = FALLBACK_LOCATION_ACCURACY_M,
   tightTimeoutMs: number = 12000,
   fallbackTimeoutMs: number = 8000
-): Promise<(AccuratePosition & { tier: 'tight' | 'fallback' }) | null> {
-  const tight = await watchForAccuratePosition(tightAccuracyM, tightTimeoutMs)
+): Promise<AccuratePositionWithTier | null> {
+  const tight = await watchForAccuratePosition(tightAccuracyM, tightTimeoutMs, {
+    acceptBestOnTimeout: false,
+  })
   if (tight) return { ...tight, tier: 'tight' }
-  const fallback = await watchForAccuratePosition(fallbackAccuracyM, fallbackTimeoutMs)
+
+  const fallback = await watchForAccuratePosition(fallbackAccuracyM, fallbackTimeoutMs, {
+    acceptBestOnTimeout: false,
+  })
   if (fallback) return { ...fallback, tier: 'fallback' }
+
+  // Last resort: return whatever the device gave us so the map + marker still
+  // appear and the user can drag to the correct spot.
+  const approximate = await watchForAccuratePosition(
+    Number.MAX_SAFE_INTEGER,
+    6000,
+    { acceptBestOnTimeout: true }
+  )
+  if (approximate) return { ...approximate, tier: 'approximate' }
+
   return null
 }

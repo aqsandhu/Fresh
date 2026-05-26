@@ -25,6 +25,26 @@ export interface CreateRoleData {
   permissions: string[];
 }
 
+export interface AdminUser {
+  id: string;
+  phone: string;
+  fullName: string;
+  email?: string | null;
+  role: string;
+  status: string;
+  adminRoleId?: string | null;
+  adminRoleName?: string | null;
+  adminRoleCity?: string | null;
+}
+
+export interface CreateAdminUserData {
+  phone: string;
+  password: string;
+  fullName: string;
+  email?: string;
+  roleId?: string | null;
+}
+
 export const roleService = {
   listPermissions: async (): Promise<Permission[]> => {
     const res = await api.get<{ success: boolean; data: Permission[] }>(
@@ -68,5 +88,20 @@ export const roleService = {
     roleId: string | null
   ): Promise<void> => {
     await api.put(`/admin/roles/assign/${userId}`, { role_id: roleId });
+  },
+
+  listAdminUsers: async (): Promise<AdminUser[]> => {
+    const res = await api.get<{ success: boolean; data: AdminUser[] }>(
+      '/admin/roles/users'
+    );
+    return res.data || [];
+  },
+
+  createAdminUser: async (data: CreateAdminUserData): Promise<AdminUser> => {
+    const res = await api.post<{ success: boolean; data: AdminUser }>(
+      '/admin/roles/users',
+      data
+    );
+    return res.data;
   },
 };

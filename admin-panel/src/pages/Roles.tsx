@@ -1,13 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Edit, Shield, MapPin, Save, X } from 'lucide-react';
+import { Plus, Trash2, Edit, Shield, MapPin, Save, X, UserPlus, Users } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
-import { roleService, type AdminRole, type Permission } from '@/services/role.service';
+import { roleService, type AdminRole, type AdminUser, type Permission } from '@/services/role.service';
 import toast from 'react-hot-toast';
 
 interface RoleFormState {
@@ -28,7 +28,15 @@ const empty = (): RoleFormState => ({
 export const Roles: React.FC = () => {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [userModalOpen, setUserModalOpen] = useState(false);
   const [form, setForm] = useState<RoleFormState>(empty);
+  const [userForm, setUserForm] = useState({
+    phone: '',
+    password: '',
+    fullName: '',
+    email: '',
+    roleId: '',
+  });
 
   const { data: permissions = [], isLoading: loadingPerms } = useQuery<Permission[]>({
     queryKey: ['admin', 'permissions'],
@@ -38,6 +46,11 @@ export const Roles: React.FC = () => {
   const { data: roles = [], isLoading: loadingRoles } = useQuery<AdminRole[]>({
     queryKey: ['admin', 'roles'],
     queryFn: roleService.listRoles,
+  });
+
+  const { data: adminUsers = [], isLoading: loadingUsers } = useQuery<AdminUser[]>({
+    queryKey: ['admin', 'users'],
+    queryFn: roleService.listAdminUsers,
   });
 
   const groupedPermissions = useMemo(() => {
@@ -77,6 +90,27 @@ export const Roles: React.FC = () => {
       toast.success('Role deleted');
     },
     onError: (err: any) => toast.error(err?.message || 'Failed to delete role'),
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: roleService.createAdminUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      toast.success('Admin user created — they can login with phone + password');
+      setUserModalOpen(false);
+      setUserForm({ phone: '', password: '', fullName: '', email: '', roleId: '' });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || err?.message || 'Failed to create admin user'),
+  });
+
+  const assignRoleMutation = useMutation({
+    mutationFn: ({ userId, roleId }: { userId: string; roleId: string | null }) =>
+      roleService.assignRoleToUser(userId, roleId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      toast.success('Role updated for admin user');
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to assign role'),
   });
 
   const openCreate = () => {
@@ -151,7 +185,10 @@ export const Roles: React.FC = () => {
 
   return (
     <Layout title="Admin Roles" subtitle="Create scoped admin roles with custom permissions">
-      <div className="flex justify-end mb-4">
+      <div className="flex justify-end gap-2 mb-4">
+        <Button variant="outline" onClick={() => setUserModalOpen(true)}>
+          <UserPlus className="w-4 h-4 mr-2" /> Add Admin User
+        </Button>
         <Button onClick={openCreate}>
           <Plus className="w-4 h-4 mr-2" /> New Role
         </Button>
@@ -234,6 +271,145 @@ export const Roles: React.FC = () => {
           ))}
         </div>
       )}
+
+      <Card className="p-4 mt-8">
+        <div className="flex items-center gap-2 mb-4">
+          <Users className="w-5 h-5 text-primary-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Admin Users</h3>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Create login accounts for staff. Assign a role to limit what they can see and do in the admin panel.
+        </p>
+        {loadingUsers ? (
+          <p className="text-gray-500 text-sm">Loading admin users...</p>
+        ) : adminUsers.length === 0 ? (
+          <p className="text-gray-500 text-sm">No admin users yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-gray-500">
+                  <th className="py-2 pr-4">Name</th>
+                  <th className="py-2 pr-4">Phone</th>
+                  <th className="py-2 pr-4">Role</th>
+                  <th className="py-2">Assigned permissions role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {adminUsers.map((user) => (
+                  <tr key={user.id} className="border-b last:border-0">
+                    <td className="py-3 pr-4 font-medium">{user.fullName}</td>
+                    <td className="py-3 pr-4">{user.phone}</td>
+                    <td className="py-3 pr-4 capitalize">{user.role.replace('_', ' ')}</td>
+                    <td className="py-3">
+                      <select
+                        className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                        value={user.adminRoleId || ''}
+                        onChange={(e) =>
+                          assignRoleMutation.mutate({
+                            userId: user.id,
+                            roleId: e.target.value || null,
+                          })
+                        }
+                        disabled={user.role === 'super_admin'}
+                      >
+                        <option value="">Full access (legacy)</option>
+                        {roles
+                          .filter((r) => !r.isSystem)
+                          .map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}
+                              {r.city ? ` (${r.city})` : ''}
+                            </option>
+                          ))}
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Modal
+        isOpen={userModalOpen}
+        onClose={() => setUserModalOpen(false)}
+        title="Add Admin User"
+        size="md"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Full Name"
+            required
+            value={userForm.fullName}
+            onChange={(e) => setUserForm({ ...userForm, fullName: e.target.value })}
+          />
+          <Input
+            label="Phone (login ID)"
+            required
+            value={userForm.phone}
+            onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+            placeholder="+923001234567"
+          />
+          <Input
+            label="Password"
+            type="password"
+            required
+            value={userForm.password}
+            onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+            placeholder="Min 6 characters"
+          />
+          <Input
+            label="Email (optional)"
+            value={userForm.email}
+            onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+          />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Permissions Role
+            </label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              value={userForm.roleId}
+              onChange={(e) => setUserForm({ ...userForm, roleId: e.target.value })}
+            >
+              <option value="">Full access (legacy)</option>
+              {roles
+                .filter((r) => !r.isSystem)
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                    {r.city ? ` (${r.city})` : ''}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setUserModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!userForm.fullName.trim() || !userForm.phone.trim() || !userForm.password.trim()) {
+                  toast.error('Name, phone and password are required');
+                  return;
+                }
+                createUserMutation.mutate({
+                  fullName: userForm.fullName.trim(),
+                  phone: userForm.phone.trim(),
+                  password: userForm.password,
+                  email: userForm.email.trim() || undefined,
+                  roleId: userForm.roleId || null,
+                });
+              }}
+              isLoading={createUserMutation.isPending}
+            >
+              Create Admin User
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={modalOpen}

@@ -26,6 +26,7 @@ import OrderChatBox from '@/components/ui/OrderChatBox'
 import dynamic from 'next/dynamic'
 import { OrderStatus } from '@/types'
 import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
+import { unitLabelShort } from '@/lib/unitPricing'
 import { ordersApi } from '@/lib/api'
 
 const RiderTrackingMap = dynamic(() => import('@/components/ui/RiderTrackingMap'), {
@@ -117,6 +118,7 @@ export default function TrackOrderPage() {
           },
           quantity: item.quantity || 1,
           price: parseFloat(item.unit_price) || 0,
+          unit: item.unit || 'full',
         })),
         rider: raw.rider_name ? {
           name: raw.rider_name,
@@ -332,9 +334,21 @@ export default function TrackOrderPage() {
                       />
                     </div>
                     <div className="flex-1">
-                      <p className="font-medium">{item.product.name}</p>
+                      <p className="font-medium">
+                        {item.product.name}
+                        {item.unit && item.unit !== 'full' && (
+                          <span className="ml-1 text-sm text-primary-700 font-semibold">
+                            ({unitLabelShort(item.unit)})
+                          </span>
+                        )}
+                      </p>
                       <p className="text-sm text-gray-500">
                         {item.quantity} x {formatPriceShort(item.price)}
+                        {item.unit && item.unit !== 'full' && (
+                          <span className="text-xs text-gray-400 ml-1">
+                            / {unitLabelShort(item.unit)}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <p className="font-semibold">
