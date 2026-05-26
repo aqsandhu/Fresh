@@ -15,116 +15,79 @@ export interface AccuratePositionWithTier extends AccuratePosition {
   tier: LocationTier
 }
 
-export type GpsProgressCallback = (update: {
-  message: string
-  lat?: number
-  lng?: number
-  accuracy?: number
-}) => void
+export type GpsProgressCallback = (update: { message: string }) => void
 
-const TIGHT_PHASE_MS = 8000
-const TOTAL_PHASE_MS = 14000
+const TIGHT_TIMEOUT_MS = 8000
+const FALLBACK_TIMEOUT_MS = 6000
+
+function getCurrentPositionOnce(options: PositionOptions): Promise<GeolocationPosition | null> {
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(pos),
+      () => resolve(null),
+      options
+    )
+  })
+}
+
+function pickBest(
+  a: GeolocationPosition | null,
+  b: GeolocationPosition | null
+): GeolocationPosition | null {
+  if (!a) return b
+  if (!b) return a
+  const accA = a.coords.accuracy ?? 9999
+  const accB = b.coords.accuracy ?? 9999
+  return accA <= accB ? a : b
+}
+
+function toResult(pos: GeolocationPosition, tier: LocationTier): AccuratePositionWithTier {
+  return {
+    lat: pos.coords.latitude,
+    lng: pos.coords.longitude,
+    accuracy: pos.coords.accuracy ?? 9999,
+    tier,
+  }
+}
 
 /**
- * Single GPS watch: try ±5m for 8s, then accept ±8m, then best available by 14s.
- * Calls `onProgress` as the fix improves so the map marker can move live — much
- * smoother than three sequential blocking attempts + toast spam.
+ * Two quick GPS reads (no watchPosition): ±5m first, then ±8m fallback.
+ * Status-only progress callbacks — callers should set map coords once at the end
+ * so Leaflet is not re-rendered on every GPS tick.
  */
 export async function getAccuratePosition(
   onProgress?: GpsProgressCallback
 ): Promise<AccuratePositionWithTier | null> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
-    return Promise.resolve(null)
+    return null
   }
 
-  return new Promise((resolve) => {
-    let best: GeolocationPosition | null = null
-    let finished = false
-    let watchId: number | null = null
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null
-    let totalTimer: ReturnType<typeof setTimeout> | null = null
+  onProgress?.({ message: `Finding location (±${REQUIRED_LOCATION_ACCURACY_M}m)…` })
 
-    const cleanup = () => {
-      if (watchId != null) navigator.geolocation.clearWatch(watchId)
-      if (fallbackTimer) clearTimeout(fallbackTimer)
-      if (totalTimer) clearTimeout(totalTimer)
-    }
-
-    const finishWithBest = (tier: LocationTier) => {
-      if (finished || !best) return
-      finished = true
-      cleanup()
-      resolve({
-        lat: best.coords.latitude,
-        lng: best.coords.longitude,
-        accuracy: best.coords.accuracy ?? 9999,
-        tier,
-      })
-    }
-
-    const fail = () => {
-      if (finished) return
-      finished = true
-      cleanup()
-      resolve(null)
-    }
-
-    onProgress?.({
-      message: `Finding location (±${REQUIRED_LOCATION_ACCURACY_M}m)…`,
-    })
-
-    watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const acc = pos.coords.accuracy ?? 9999
-        if (!best || acc < (best.coords.accuracy ?? 9999)) {
-          best = pos
-        }
-
-        onProgress?.({
-          message: `GPS ±${Math.round(acc)}m — ${acc <= REQUIRED_LOCATION_ACCURACY_M ? 'locked' : 'refining…'}`,
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracy: acc,
-        })
-
-        if (acc <= REQUIRED_LOCATION_ACCURACY_M) {
-          finishWithBest('tight')
-        }
-      },
-      (err) => {
-        const msg =
-          err.code === 1
-            ? 'Allow location permission in browser settings'
-            : 'GPS signal weak — drag the pin on the map'
-        onProgress?.({ message: msg })
-        if (!best) fail()
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: TOTAL_PHASE_MS + 5000 }
-    )
-
-    fallbackTimer = setTimeout(() => {
-      if (finished || !best) return
-      const acc = best.coords.accuracy ?? 9999
-      if (acc <= FALLBACK_LOCATION_ACCURACY_M) {
-        finishWithBest('fallback')
-      } else {
-        onProgress?.({
-          message: `Using ±${Math.round(acc)}m — drag pin to fine-tune`,
-          lat: best.coords.latitude,
-          lng: best.coords.longitude,
-          accuracy: acc,
-        })
-      }
-    }, TIGHT_PHASE_MS)
-
-    totalTimer = setTimeout(() => {
-      if (finished) return
-      if (!best) {
-        fail()
-        return
-      }
-      const acc = best.coords.accuracy ?? 9999
-      finishWithBest(acc <= FALLBACK_LOCATION_ACCURACY_M ? 'fallback' : 'approximate')
-    }, TOTAL_PHASE_MS)
+  const tight = await getCurrentPositionOnce({
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: TIGHT_TIMEOUT_MS,
   })
+
+  if (tight && (tight.coords.accuracy ?? 9999) <= REQUIRED_LOCATION_ACCURACY_M) {
+    return toResult(tight, 'tight')
+  }
+
+  onProgress?.({ message: `Refining (±${FALLBACK_LOCATION_ACCURACY_M}m)…` })
+
+  const fallback = await getCurrentPositionOnce({
+    enableHighAccuracy: true,
+    maximumAge: 0,
+    timeout: FALLBACK_TIMEOUT_MS,
+  })
+
+  const best = pickBest(tight, fallback)
+  if (!best) return null
+
+  const acc = best.coords.accuracy ?? 9999
+  if (acc <= FALLBACK_LOCATION_ACCURACY_M) {
+    return toResult(best, 'fallback')
+  }
+  return toResult(best, 'approximate')
 }

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
+import { CityProvider } from '@/context/CityContext';
 import { canAccessRoute } from '@/lib/permissions';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import {
@@ -222,11 +223,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <CityProvider>
         <ErrorBoundary>
           <BrowserRouter>
             <AppRoutes />
           </BrowserRouter>
         </ErrorBoundary>
+        </CityProvider>
         <Toaster
           position="top-right"
           toastOptions={{

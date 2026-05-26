@@ -12,6 +12,8 @@ export interface AdminRole {
   name: string;
   description?: string | null;
   city?: string | null;
+  cityId?: string | null;
+  cityName?: string | null;
   isSystem: boolean;
   permissions: string[];
   createdAt?: string;
@@ -21,7 +23,7 @@ export interface AdminRole {
 export interface CreateRoleData {
   name: string;
   description?: string;
-  city?: string | null;
+  cityId: string;
   permissions: string[];
 }
 
