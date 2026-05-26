@@ -23,6 +23,8 @@ import { addressesApi } from '@/lib/api'
 import api from '@/lib/api'
 import { resolveImageUrl } from '@/lib/utils'
 import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
+import GoogleMapPicker from '@/components/checkout/GoogleMapPicker'
+import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
 
 interface FullAddress {
   id: string
@@ -331,69 +333,37 @@ export default function AddressesPage() {
                   </div>
                 )}
                 {showMapPicker && (
-                  <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
-                    <iframe
-                      width="100%"
-                      height="300"
-                      style={{ border: 0 }}
-                      loading="lazy"
-                      src={`https://maps.google.com/maps?q=${mapLocation?.lat || 32.5742},${mapLocation?.lng || 74.0789}&z=15&output=embed`}
-                    />
-                    <div className="p-3 bg-gray-50 space-y-3">
-                      <p className="text-xs text-gray-500">Enter your exact coordinates or use &quot;Get My Current Location&quot;</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Latitude</label>
-                          <input
-                            type="number" step="any" placeholder="32.5742"
-                            value={mapLocation?.lat || ''}
-                            onChange={(e) => setMapLocation(prev => ({ lat: parseFloat(e.target.value) || 0, lng: prev?.lng || 74.0789 }))}
-                            className="w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-gray-500 mb-1">Longitude</label>
-                          <input
-                            type="number" step="any" placeholder="74.0789"
-                            value={mapLocation?.lng || ''}
-                            onChange={(e) => setMapLocation(prev => ({ lat: prev?.lat || 32.5742, lng: parseFloat(e.target.value) || 0 }))}
-                            className="w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          disabled={isLocating}
-                          onClick={async () => {
-                            setIsLocating(true)
-                            toast.loading('Getting precise GPS location...', { id: 'gps' })
-                            const pos = await getAccuratePosition()
-                            setIsLocating(false)
-                            toast.dismiss('gps')
-                            if (pos) {
-                              setMapLocation({ lat: pos.lat, lng: pos.lng })
-                              setMapLocationAccuracy(pos.accuracy)
-                              toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
-                            } else {
-                              toast.error(`Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`)
-                            }
-                          }}
-                          className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
-                        >
-                          <MapPin className="w-4 h-4" />
-                          {isLocating ? 'Getting GPS...' : 'Get My Current Location'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowMapPicker(false)}
-                          className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                          {mapLocation ? 'Done' : 'Cancel'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <GoogleMapPicker
+                    lat={mapLocation?.lat ?? DEFAULT_MAP_LAT}
+                    lng={mapLocation?.lng ?? DEFAULT_MAP_LNG}
+                    accuracy={mapLocationAccuracy}
+                    isLocating={isLocating}
+                    hasLocation={mapLocation != null}
+                    onLatLngChange={(lat, lng) => {
+                      setMapLocation({ lat, lng })
+                      setMapLocationAccuracy(null)
+                    }}
+                    onGetLocation={async () => {
+                      setIsLocating(true)
+                      toast.loading('Getting precise GPS location...', { id: 'gps' })
+                      const pos = await getAccuratePosition()
+                      setIsLocating(false)
+                      toast.dismiss('gps')
+                      if (pos) {
+                        setMapLocation({ lat: pos.lat, lng: pos.lng })
+                        setMapLocationAccuracy(pos.accuracy)
+                        toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
+                      } else {
+                        toast.error(`Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`)
+                      }
+                    }}
+                    onDone={() => setShowMapPicker(false)}
+                    onCancel={() => {
+                      setMapLocation(null)
+                      setMapLocationAccuracy(null)
+                      setShowMapPicker(false)
+                    }}
+                  />
                 )}
                 <p className="text-xs text-gray-400 mt-1">If you skip this, our rider will pin the location on first delivery</p>
               </div>

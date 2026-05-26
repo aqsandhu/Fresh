@@ -25,7 +25,8 @@ import Badge from '@/components/ui/Badge'
 import OrderChatBox from '@/components/ui/OrderChatBox'
 import dynamic from 'next/dynamic'
 import { OrderStatus } from '@/types'
-import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl, formatSlotTime } from '@/lib/utils'
+import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
+import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { unitLabelShort } from '@/lib/unitPricing'
 import { ordersApi } from '@/lib/api'
 
@@ -77,16 +78,20 @@ export default function TrackOrderPage() {
       const raw = response.data || response
       const snapshot = raw.delivery_address_snapshot || {}
 
-      // Format time slot using browser locale (respects 12h/24h setting)
-      let formattedSlot = 'Standard Delivery'
+      // Raw slot times — formatted on the client via SlotTimeLabel (12h/24h)
+      let slotStart = ''
+      let slotEnd = ''
+      let slotFallback = 'Standard Delivery'
       if (raw.slot_start && raw.slot_end) {
-        formattedSlot = `${formatSlotTime(raw.slot_start)} - ${formatSlotTime(raw.slot_end)}`
+        slotStart = raw.slot_start
+        slotEnd = raw.slot_end
       } else if (raw.slot_name) {
         const parts = raw.slot_name.split(' - ')
         if (parts.length === 2 && parts[0].includes(':')) {
-          formattedSlot = `${formatSlotTime(parts[0].trim())} - ${formatSlotTime(parts[1].trim())}`
+          slotStart = parts[0].trim()
+          slotEnd = parts[1].trim()
         } else {
-          formattedSlot = raw.slot_name
+          slotFallback = raw.slot_name
         }
       }
 
@@ -98,7 +103,9 @@ export default function TrackOrderPage() {
         subtotal: parseFloat(raw.subtotal) || 0,
         deliveryCharge: parseFloat(raw.delivery_charge) || 0,
         total: parseFloat(raw.total_amount) || 0,
-        timeSlot: formattedSlot,
+        slotStart,
+        slotEnd,
+        slotFallback,
         estimatedDelivery: raw.requested_delivery_date,
         address: {
           label: snapshot.area_name || snapshot.label || 'Delivery Address',
@@ -379,7 +386,13 @@ export default function TrackOrderPage() {
                   <Clock className="w-4 h-4" />
                   <span className="text-sm">Delivery Time</span>
                 </div>
-                <p className="font-medium capitalize">{order.timeSlot.replace('-', ' - ')}</p>
+                <p className="font-medium capitalize">
+                  {order.slotStart && order.slotEnd ? (
+                    <SlotTimeLabel startTime={order.slotStart} endTime={order.slotEnd} />
+                  ) : (
+                    order.slotFallback
+                  )}
+                </p>
               </div>
 
               {/* Price Breakdown */}

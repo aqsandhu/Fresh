@@ -72,15 +72,34 @@ export function formatDate(date: string | Date): string {
   }).format(new Date(date))
 }
 
-function resolveHourCycle(): 'h12' | 'h23' {
-  try {
-    const cycle = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions()
-      .hourCycle
-    if (cycle === 'h11' || cycle === 'h12') return 'h12'
-  } catch {
-    /* ignore */
+function deviceUses12HourClock(): boolean {
+  if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
+    return true
   }
-  return 'h23'
+  try {
+    const probeDate = new Date(2020, 0, 1, 15, 30)
+    const parts = new Intl.DateTimeFormat(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).formatToParts(probeDate)
+    if (parts.some((p) => p.type === 'dayPeriod')) return true
+
+    const opts = new Intl.DateTimeFormat(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).resolvedOptions()
+    if (typeof opts.hour12 === 'boolean') return opts.hour12
+    const cycle = opts.hourCycle
+    if (cycle === 'h11' || cycle === 'h12') return true
+    if (cycle === 'h23' || cycle === 'h24') return false
+  } catch {
+    /* fall through to probe */
+  }
+  if (typeof window === 'undefined') return true
+  const probe = new Date(2000, 0, 1, 15, 0, 0)
+  return /am|pm/i.test(
+    probe.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  )
 }
 
 function parseClockTime(time: string): { h: number; m: number; s: number } {
@@ -106,29 +125,36 @@ export function formatSlotTime(time: string): string {
   const { h, m, s } = parseClockTime(time)
   const d = new Date()
   d.setHours(h, m, s, 0)
+  const hour12 = deviceUses12HourClock()
   return new Intl.DateTimeFormat(undefined, {
     hour: 'numeric',
     minute: '2-digit',
-    hourCycle: resolveHourCycle(),
+    hour12,
   }).format(d)
 }
 
+export function formatSlotTimeRange(start: string, end: string): string {
+  return `${formatSlotTime(start)} - ${formatSlotTime(end)}`
+}
+
 export function formatTime(date: string | Date): string {
+  const hour12 = deviceUses12HourClock()
   return new Intl.DateTimeFormat(undefined, {
     hour: 'numeric',
     minute: '2-digit',
-    hourCycle: resolveHourCycle(),
+    hour12,
   }).format(new Date(date))
 }
 
 export function formatDateTime(date: string | Date): string {
+  const hour12 = deviceUses12HourClock()
   return new Intl.DateTimeFormat(undefined, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    hourCycle: resolveHourCycle(),
+    hour12,
   }).format(new Date(date))
 }
 

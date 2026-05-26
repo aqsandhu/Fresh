@@ -25,7 +25,8 @@ import {
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
-import { formatPriceShort, formatProductUnitSuffix, formatSlotTime } from '@/lib/utils'
+import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
+import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { unitLabelShort } from '@/lib/unitPricing'
 import { getSlotAvailability } from '@/lib/timeSlots'
 import { addressesApi, settingsApi } from '@/lib/api'
@@ -604,7 +605,6 @@ function CheckoutPage() {
                   </p>
                 ) : (
                   timeSlots.map((slot) => {
-                    const label = `${formatSlotTime(slot.start_time)} - ${formatSlotTime(slot.end_time)}`
                     const availability = getSlotAvailability(slot, selectedDay)
                     const slotDisabled =
                       slot.available_slots <= 0 || availability.unavailable
@@ -629,7 +629,9 @@ function CheckoutPage() {
                           className="sr-only"
                         />
                         <Clock className={`w-6 h-6 mb-2 ${slotDisabled ? 'text-gray-400' : 'text-primary-600'}`} />
-                        <span className="font-medium text-center text-sm">{label}</span>
+                        <span className="font-medium text-center text-sm">
+                          <SlotTimeLabel startTime={slot.start_time} endTime={slot.end_time} />
+                        </span>
                         {slot.is_free_delivery_slot && !slotDisabled && (
                           <span className="text-xs text-green-600 mt-1">FREE DELIVERY</span>
                         )}

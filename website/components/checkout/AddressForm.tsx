@@ -13,11 +13,14 @@ import toast from 'react-hot-toast'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import api, { addressesApi } from '@/lib/api'
+import { resolveImageUrl } from '@/lib/utils'
+import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
 import {
   getAccuratePosition,
+  FALLBACK_LOCATION_ACCURACY_M,
+  REQUIRED_LOCATION_ACCURACY_M,
 } from '@/lib/geolocation'
-import { resolveImageUrl } from '@/lib/utils'
-import DraggableMapPicker from './DraggableMapPicker'
+import GoogleMapPicker from './GoogleMapPicker'
 
 export type AddressFormInitial = {
   id?: string
@@ -126,33 +129,43 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
   const handleGetGps = async () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGpsStatus('GPS is not supported on this device')
+      toast.error('GPS is not supported on this device')
       return
     }
 
     setShowMapPicker(true)
     setIsLocating(true)
-    setGpsStatus('Starting GPS…')
+    setGpsStatus('Finding location…')
+    toast.loading(`Locking GPS (±${REQUIRED_LOCATION_ACCURACY_M}m)…`, { id: 'gps' })
 
     try {
-      const pos = await getAccuratePosition((update) => {
-        setGpsStatus(update.message)
-      })
+      const pos = await getAccuratePosition()
+      toast.dismiss('gps')
 
       if (pos) {
         setMapLocation({ lat: pos.lat, lng: pos.lng })
         setMapAccuracy(pos.accuracy)
         if (pos.tier === 'tight') {
           setGpsStatus(`Location locked (±${Math.round(pos.accuracy)}m)`)
+          toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
         } else if (pos.tier === 'fallback') {
-          setGpsStatus(`Located ±${Math.round(pos.accuracy)}m — drag pin if needed`)
+          setGpsStatus(`Located ±${Math.round(pos.accuracy)}m — adjust on map if needed`)
+          toast.success(`Located ±${Math.round(pos.accuracy)}m`, { duration: 5000 })
         } else {
-          setGpsStatus(`Approximate ±${Math.round(pos.accuracy)}m — drag pin to exact spot`)
+          setGpsStatus(`Approximate ±${Math.round(pos.accuracy)}m — fine-tune on map`)
+          toast.success(`Approximate location — adjust pin on map`, { duration: 6000 })
         }
       } else {
-        setGpsStatus('GPS unavailable — tap the map to pin your location')
+        setGpsStatus('GPS unavailable — enter coordinates or try again outdoors')
+        toast.error(
+          `Could not get GPS within ${FALLBACK_LOCATION_ACCURACY_M}m. Allow location permission or pin manually.`,
+          { duration: 6000 }
+        )
       }
     } catch {
-      setGpsStatus('GPS failed — tap the map to pin manually')
+      toast.dismiss('gps')
+      setGpsStatus('GPS failed — enter coordinates manually')
+      toast.error('GPS failed. Enter lat/lng or try again.')
     } finally {
       setIsLocating(false)
     }
@@ -371,7 +384,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
               className="flex items-center justify-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm border border-primary-200 rounded-lg px-4 py-2.5 hover:bg-primary-50 transition-colors"
             >
               <MapPin className="w-4 h-4" />
-              Pin on Map
+              Add Google Map Location
             </button>
             <button
               type="button"
@@ -423,77 +436,24 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
         )}
 
         {showMapPicker && (
-          <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
-            <div style={{ minHeight: 280 }}>
-              <DraggableMapPicker
-                lat={mapLocation?.lat ?? 32.5742}
-                lng={mapLocation?.lng ?? 74.0789}
-                accuracy={mapAccuracy}
-                onChange={(lat, lng) => {
-                  setMapLocation({ lat, lng })
-                  setMapAccuracy(null)
-                }}
-              />
-            </div>
-            <div className="p-3 bg-gray-50 space-y-3">
-              <p className="text-xs text-gray-500">
-                Drag the green marker or tap the map to fine-tune the location.
-                You can also use &quot;Get My Current Location&quot;.
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Latitude</label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="32.5742"
-                    value={mapLocation?.lat ?? ''}
-                    onChange={(e) =>
-                      setMapLocation((prev) => ({
-                        lat: parseFloat(e.target.value) || 0,
-                        lng: prev?.lng ?? 74.0789,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">Longitude</label>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="74.0789"
-                    value={mapLocation?.lng ?? ''}
-                    onChange={(e) =>
-                      setMapLocation((prev) => ({
-                        lat: prev?.lat ?? 32.5742,
-                        lng: parseFloat(e.target.value) || 0,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={isLocating}
-                  onClick={handleGetGps}
-                  className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
-                >
-                  <MapPin className="w-4 h-4" />
-                  {isLocating ? 'Locking GPS…' : 'Get My Current Location'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowMapPicker(false)}
-                  className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  {mapLocation ? 'Done' : 'Cancel'}
-                </button>
-              </div>
-            </div>
-          </div>
+          <GoogleMapPicker
+            lat={mapLocation?.lat ?? DEFAULT_MAP_LAT}
+            lng={mapLocation?.lng ?? DEFAULT_MAP_LNG}
+            accuracy={mapAccuracy}
+            isLocating={isLocating}
+            hasLocation={mapLocation != null}
+            onLatLngChange={(lat, lng) => {
+              setMapLocation({ lat, lng })
+              setMapAccuracy(null)
+            }}
+            onGetLocation={handleGetGps}
+            onDone={() => setShowMapPicker(false)}
+            onCancel={() => {
+              setMapLocation(null)
+              setMapAccuracy(null)
+              setShowMapPicker(false)
+            }}
+          />
         )}
 
         <p className="text-xs text-gray-400 mt-1">
