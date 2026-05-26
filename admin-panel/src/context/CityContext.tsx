@@ -13,6 +13,8 @@ import toast from 'react-hot-toast';
 import { api } from '@/services/api';
 import { useAuthContext } from '@/context/AuthContext';
 import { CITY_STORAGE_KEY } from '@/lib/cityStorage';
+
+export interface ServiceCity {
   id: string;
   name: string;
   province: string;
@@ -29,9 +31,6 @@ interface CityContextValue {
   isLoading: boolean;
   citiesError: boolean;
 }
-
-/** Shared with api.ts request interceptor — keep in sync. */
-export const CITY_STORAGE_KEY = 'admin_selected_city_id';
 
 /** Seeded catalog/orders live under Gujrat after migration 04 backfill. */
 function findDefaultCity(cities: ServiceCity[]): ServiceCity | undefined {
