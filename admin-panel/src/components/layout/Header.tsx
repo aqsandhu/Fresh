@@ -59,9 +59,13 @@ export const Header: React.FC<HeaderProps> = ({
                   onChange={(e) => setSelectedCityId(e.target.value)}
                   disabled={isCityLocked || isLoading || cities.length === 0}
                   className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 max-w-[140px] sm:max-w-[180px] bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-500"
-                  title={isCityLocked ? 'Your role is scoped to this city' : 'View data for this city'}
+                  title={
+                    isCityLocked
+                      ? 'Your role is scoped to this city'
+                      : 'Products, orders and customers for this city'
+                  }
                 >
-                  {isSuperAdmin && !selectedCityId && (
+                  {isSuperAdmin && (
                     <option value="">All cities</option>
                   )}
                   {cities.map((city) => (
