@@ -21,6 +21,7 @@ import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort, getDeliveryMessage } from '@/lib/utils'
+import { getMixedOrderDeliveryHint, getVegFruitSubtotal } from '@/lib/deliveryRules'
 import ProductPrice from '@/components/ui/ProductPrice'
 
 export default function CartPage() {
@@ -41,6 +42,7 @@ export default function CartPage() {
   const deliveryCharge = getDeliveryCharge()
   const total = getFinalTotal()
   const onlyChicken = hasOnlyChicken()
+  const deliveryHint = getMixedOrderDeliveryHint(items, 500)
 
   const handleCheckout = () => {
     if (!isAuthenticated) {
@@ -178,24 +180,19 @@ export default function CartPage() {
               </h2>
 
               {/* Delivery Info */}
-              <div className={`p-4 rounded-lg mb-6 ${onlyChicken ? 'bg-yellow-50' : subtotal >= 500 ? 'bg-green-50' : 'bg-blue-50'}`}>
+              <div className={`p-4 rounded-lg mb-6 ${deliveryCharge === 0 ? 'bg-green-50' : onlyChicken ? 'bg-yellow-50' : 'bg-blue-50'}`}>
                 <div className="flex items-start gap-3">
-                  {onlyChicken ? (
-                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  ) : subtotal >= 500 ? (
+                  {deliveryCharge === 0 ? (
                     <Gift className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                  ) : onlyChicken ? (
+                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                   ) : (
                     <Truck className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   )}
                   <div>
-                    <p className={`text-sm font-medium ${onlyChicken ? 'text-yellow-800' : subtotal >= 500 ? 'text-green-800' : 'text-blue-800'}`}>
-                      {getDeliveryMessage(subtotal, onlyChicken)}
+                    <p className={`text-sm font-medium ${deliveryCharge === 0 ? 'text-green-800' : onlyChicken ? 'text-yellow-800' : 'text-blue-800'}`}>
+                      {deliveryHint || getDeliveryMessage(subtotal, onlyChicken, getVegFruitSubtotal(items))}
                     </p>
-                    {!onlyChicken && subtotal < 500 && (
-                      <p className="text-xs text-blue-600 mt-1">
-                        Add Rs. {500 - subtotal} more for free delivery
-                      </p>
-                    )}
                   </div>
                 </div>
               </div>
