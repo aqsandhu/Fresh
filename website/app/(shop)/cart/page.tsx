@@ -69,8 +69,10 @@ export default function CartPage() {
     )
   }
 
+  // pb-44 (= 11rem ≈ 176px) reserves space for the mobile sticky cart bar
+  // (~70px) PLUS the bottom nav bar (~64px) so neither covers content.
   return (
-    <div className="min-h-screen bg-gray-50 py-6 sm:py-8 pb-32 lg:pb-8">
+    <div className="min-h-screen bg-gray-50 py-6 sm:py-8 pb-44 lg:pb-8">
       <div className="container mx-auto px-4">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 sm:mb-8">
           Shopping Cart ({items.length} {items.length === 1 ? 'item' : 'items'})
@@ -275,11 +277,15 @@ export default function CartPage() {
         </div>
       </div>
 
-      {/* Mobile sticky checkout bar — always visible at bottom on phones */}
-      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+      {/*
+        Mobile sticky checkout bar. We sit ABOVE the global MobileNav
+        (which is fixed bottom-0 with ~64px height) by using bottom-16
+        with matching z-50 so neither covers the other.
+      */}
+      <div className="lg:hidden fixed bottom-16 inset-x-0 z-50 bg-white border-t border-gray-200 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         <div className="container mx-auto flex items-center gap-3">
           <div className="flex-shrink-0">
-            <p className="text-xs text-gray-500">Total</p>
+            <p className="text-[11px] text-gray-500 leading-none">Total</p>
             <p className="text-lg font-bold text-gray-900 leading-tight">
               {formatPriceShort(total)}
             </p>
