@@ -56,7 +56,7 @@ export const getCart = asyncHandler(async (req: Request, res: Response) => {
   const itemsResult = await query(
     `SELECT 
       ci.id, ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
-      ci.special_instructions,
+      ci.special_instructions, ci.unit,
       p.name_en, p.name_ur, p.slug, p.primary_image, p.stock_quantity,
       p.unit_type, p.unit_value, p.stock_status
     FROM cart_items ci

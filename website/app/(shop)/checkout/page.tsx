@@ -27,6 +27,7 @@ import Button from '@/components/ui/Button'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import { unitLabelShort } from '@/lib/unitPricing'
+import { getSlotAvailability } from '@/lib/timeSlots'
 import { addressesApi, settingsApi } from '@/lib/api'
 import api from '@/lib/api'
 import AddressActions from '@/components/checkout/AddressActions'
@@ -196,7 +197,10 @@ function CheckoutPage() {
       const date = getDateString(day)
       const slots = await settingsApi.getTimeSlots(date)
       setTimeSlots(slots)
-      if (slots.length > 0) setSelectedTimeSlot(slots[0].id)
+      const firstAvailable = slots.find(
+        (slot) => !getSlotAvailability(slot, day).unavailable
+      )
+      if (firstAvailable) setSelectedTimeSlot(firstAvailable.id)
     } catch {
       setTimeSlots([])
     } finally {
@@ -246,6 +250,16 @@ function CheckoutPage() {
   const handlePlaceOrder = async () => {
     if (!selectedTimeSlot && timeSlots.length > 0) {
       toast.error('Please select a delivery time slot')
+      return
+    }
+
+    const selectedSlot = timeSlots.find((s) => s.id === selectedTimeSlot)
+    if (
+      selectedSlot &&
+      (selectedSlot.available_slots <= 0 ||
+        getSlotAvailability(selectedSlot, selectedDay).unavailable)
+    ) {
+      toast.error('Selected time slot is no longer available. Please pick another.')
       return
     }
 
@@ -597,14 +611,19 @@ function CheckoutPage() {
                       return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
                     }
                     const label = `${formatTime(slot.start_time)} - ${formatTime(slot.end_time)}`
+                    const availability = getSlotAvailability(slot, selectedDay)
+                    const slotDisabled =
+                      slot.available_slots <= 0 || availability.unavailable
                     return (
                       <label
                         key={slot.id}
-                        className={`flex flex-col items-center p-4 border-2 rounded-xl cursor-pointer transition-colors ${
-                          selectedTimeSlot === slot.id
-                            ? 'border-primary-500 bg-primary-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        } ${slot.available_slots <= 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex flex-col items-center p-4 border-2 rounded-xl transition-colors ${
+                          slotDisabled
+                            ? 'opacity-40 cursor-not-allowed border-gray-200 bg-gray-50'
+                            : selectedTimeSlot === slot.id
+                            ? 'border-primary-500 bg-primary-50 cursor-pointer'
+                            : 'border-gray-200 hover:border-gray-300 cursor-pointer'
+                        }`}
                       >
                         <input
                           type="radio"
@@ -612,16 +631,21 @@ function CheckoutPage() {
                           value={slot.id}
                           checked={selectedTimeSlot === slot.id}
                           onChange={(e) => setSelectedTimeSlot(e.target.value)}
-                          disabled={slot.available_slots <= 0}
+                          disabled={slotDisabled}
                           className="sr-only"
                         />
-                        <Clock className="w-6 h-6 text-primary-600 mb-2" />
+                        <Clock className={`w-6 h-6 mb-2 ${slotDisabled ? 'text-gray-400' : 'text-primary-600'}`} />
                         <span className="font-medium text-center text-sm">{label}</span>
-                        {slot.is_free_delivery_slot && (
+                        {slot.is_free_delivery_slot && !slotDisabled && (
                           <span className="text-xs text-green-600 mt-1">FREE DELIVERY</span>
                         )}
                         {slot.available_slots <= 0 && (
                           <span className="text-xs text-red-500 mt-1">FULL</span>
+                        )}
+                        {availability.unavailable && slot.available_slots > 0 && (
+                          <span className="text-xs text-gray-500 mt-1">
+                            {availability.reason === 'expired' ? 'Passed' : 'Unavailable'}
+                          </span>
                         )}
                       </label>
                     )

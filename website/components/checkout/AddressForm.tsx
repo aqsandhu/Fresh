@@ -125,30 +125,48 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
   const [saving, setSaving] = useState(false)
 
   const handleGetGps = async () => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      toast.error('GPS is not supported on this device')
+      return
+    }
+
+    // Always reveal the map immediately so the user sees feedback while we
+    // wait for the GPS lock — previously the map only opened after success,
+    // which felt like "nothing happened" on slow/failed locks.
+    setShowMapPicker(true)
     setIsLocating(true)
     toast.loading(`Locking GPS at ${REQUIRED_LOCATION_ACCURACY_M}m...`, { id: 'gps' })
+
     try {
       const pos = await getAccuratePosition()
       toast.dismiss('gps')
+
       if (pos) {
         setMapLocation({ lat: pos.lat, lng: pos.lng })
         setMapAccuracy(pos.accuracy)
-        // Open the map so the customer can drag/adjust if needed.
-        setShowMapPicker(true)
+
         if (pos.tier === 'tight') {
           toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
+        } else if (pos.tier === 'fallback') {
+          toast.success(
+            `Located at ±${Math.round(pos.accuracy)}m. Drag the marker if needed.`,
+            { duration: 5000 }
+          )
         } else {
           toast.success(
-            `Located at ±${Math.round(pos.accuracy)}m. You can drag the marker to fine-tune.`,
-            { duration: 5000 }
+            `Approximate location (±${Math.round(pos.accuracy)}m). Drag the marker to your exact spot.`,
+            { duration: 6000 }
           )
         }
       } else {
         toast.error(
-          `Could not get GPS within ${FALLBACK_LOCATION_ACCURACY_M}m. Tap the map to pin manually, or move to an open area and try again.`,
+          'Could not read GPS. Allow location permission, move to an open area, or tap the map to pin manually.',
           { duration: 6000 }
         )
       }
+    } catch {
+      toast.dismiss('gps')
+      toast.error('GPS failed. Tap the map to pin your location manually.')
     } finally {
       setIsLocating(false)
     }
@@ -360,14 +378,25 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
         </label>
 
         {!showMapPicker && !mapLocation && (
-          <button
-            type="button"
-            onClick={() => setShowMapPicker(true)}
-            className="flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm border border-primary-200 rounded-lg px-4 py-2.5 hover:bg-primary-50 transition-colors"
-          >
-            <MapPin className="w-4 h-4" />
-            Add Google Map Location
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              type="button"
+              onClick={() => setShowMapPicker(true)}
+              className="flex items-center justify-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm border border-primary-200 rounded-lg px-4 py-2.5 hover:bg-primary-50 transition-colors"
+            >
+              <MapPin className="w-4 h-4" />
+              Pin on Map
+            </button>
+            <button
+              type="button"
+              disabled={isLocating}
+              onClick={handleGetGps}
+              className="flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-4 py-2.5 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
+            >
+              <MapPin className="w-4 h-4" />
+              {isLocating ? 'Getting location…' : 'Get My Location'}
+            </button>
+          </div>
         )}
 
         {mapLocation && !showMapPicker && (
@@ -403,17 +432,17 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 
         {showMapPicker && (
           <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
-            <DraggableMapPicker
-              lat={mapLocation?.lat ?? 32.5742}
-              lng={mapLocation?.lng ?? 74.0789}
-              accuracy={mapAccuracy}
-              onChange={(lat, lng) => {
-                setMapLocation({ lat, lng })
-                // User adjusted the pin manually — accuracy no longer matches
-                // the GPS reading, clear it so the green ring goes away.
-                setMapAccuracy(null)
-              }}
-            />
+            <div style={{ minHeight: 280 }}>
+              <DraggableMapPicker
+                lat={mapLocation?.lat ?? 32.5742}
+                lng={mapLocation?.lng ?? 74.0789}
+                accuracy={mapAccuracy}
+                onChange={(lat, lng) => {
+                  setMapLocation({ lat, lng })
+                  setMapAccuracy(null)
+                }}
+              />
+            </div>
             <div className="p-3 bg-gray-50 space-y-3">
               <p className="text-xs text-gray-500">
                 Drag the green marker or tap the map to fine-tune the location.

@@ -51,6 +51,7 @@ import {
   formatPhoneNumber,
   getOrderStatusColor,
 } from '@/utils/formatters';
+import { unitLabelShort } from '@/lib/unitLabels';
 import toast from 'react-hot-toast';
 
 const ORDER_STATUSES: OrderStatus[] = [
@@ -664,7 +665,10 @@ export const Orders: React.FC = () => {
                     <table class="items-table">
                       <thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Total</th></tr></thead>
                       <tbody>
-                        ${(selectedOrder.items || []).map(item => `<tr><td>${item.productName}</td><td class="right">${item.quantity}</td><td class="right">Rs.${Number(item.unitPrice).toFixed(0)}</td><td class="right">Rs.${Number(item.totalPrice).toFixed(0)}</td></tr>`).join('')}
+                        ${(selectedOrder.items || []).map(item => {
+                          const unitSuffix = item.unit && item.unit !== 'full' ? ` (${unitLabelShort(item.unit)})` : '';
+                          return `<tr><td>${item.productName}${unitSuffix}</td><td class="right">${item.quantity}</td><td class="right">Rs.${Number(item.unitPrice).toFixed(0)}</td><td class="right">Rs.${Number(item.totalPrice).toFixed(0)}</td></tr>`;
+                        }).join('')}
                       </tbody>
                     </table>
                   </div>
@@ -948,11 +952,23 @@ export const Orders: React.FC = () => {
                   >
                     <div className="flex items-center">
                       <Package className="w-4 h-4 text-gray-400 mr-3" />
-                      <span>{item.productName}</span>
+                      <span>
+                        {item.productName}
+                        {item.unit && item.unit !== 'full' && (
+                          <span className="ml-1 text-xs text-primary-700 font-semibold">
+                            ({unitLabelShort(item.unit)})
+                          </span>
+                        )}
+                      </span>
                     </div>
                     <div className="text-right">
                       <span className="text-sm">
                         {item.quantity} x {formatCurrency(Number(item.unitPrice))}
+                        {item.unit && item.unit !== 'full' && (
+                          <span className="text-xs text-gray-500 ml-1">
+                            / {unitLabelShort(item.unit)}
+                          </span>
+                        )}
                       </span>
                       <span className="ml-4 font-medium">
                         {formatCurrency(Number(item.totalPrice))}

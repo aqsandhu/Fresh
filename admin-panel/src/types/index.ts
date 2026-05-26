@@ -116,6 +116,7 @@ export interface OrderItem {
   quantity: number;
   unitPrice: number;
   totalPrice: number;
+  unit?: string;
 }
 
 export interface Rider {

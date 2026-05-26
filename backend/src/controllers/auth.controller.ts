@@ -703,6 +703,39 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
     [user.id]
   );
 
+  // Resolve effective permissions: super_admin gets everything; custom role
+  // admins get their role's permission codes; legacy admins keep full access.
+  let permissions: string[] = [];
+  if (user.role === 'super_admin') {
+    permissions = ['*'];
+  } else {
+    const permResult = await query(
+      `SELECT COALESCE(
+         ARRAY_AGG(p.code) FILTER (WHERE p.code IS NOT NULL),
+         ARRAY[]::text[]
+       ) AS permissions
+       FROM users u
+       LEFT JOIN admin_roles r ON r.id = u.admin_role_id
+       LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id
+       LEFT JOIN permissions p ON p.id = rp.permission_id
+      WHERE u.id = $1
+      GROUP BY u.id`,
+      [user.id]
+    );
+    permissions = permResult.rows[0]?.permissions || [];
+    if (permissions.length === 0) {
+      permissions = ['*'];
+    }
+  }
+
+  const roleMeta = await query(
+    `SELECT r.id, r.name, r.city
+       FROM users u
+       LEFT JOIN admin_roles r ON r.id = u.admin_role_id
+      WHERE u.id = $1`,
+    [user.id]
+  );
+
   logger.info('Admin logged in', { userId: user.id, phone: user.phone, role: user.role });
 
   successResponse(res, {
@@ -712,6 +745,10 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
       full_name: user.full_name,
       email: user.email,
       role: user.role,
+      admin_role_id: roleMeta.rows[0]?.id || null,
+      admin_role_name: roleMeta.rows[0]?.name || null,
+      admin_role_city: roleMeta.rows[0]?.city || null,
+      permissions,
     },
     tokens,
   }, 'Admin login successful');

@@ -77,6 +77,11 @@ function resolveImageUrl(path: string | null | undefined): string | undefined {
 function mapBackendProduct(raw: any): Product {
   const price = parseFloat(raw.price) || 0
   const compareAt = parseFloat(raw.compare_at_price || raw.compareAtPrice) || 0
+  const toOptionalPrice = (v: unknown): number | null | undefined => {
+    if (v === null || v === undefined || v === '') return null
+    const n = parseFloat(String(v))
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
   return {
     id: raw.id,
     name: raw.name_en || raw.nameEn || '',
@@ -93,6 +98,9 @@ function mapBackendProduct(raw: any): Product {
     reviews: parseInt(raw.review_count || raw.reviewCount || raw.order_count || raw.orderCount) || undefined,
     tags: raw.tags || [],
     categoryId: raw.category_id || raw.categoryId || '',
+    halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),
+    quarterKgPrice: toOptionalPrice(raw.quarter_kg_price ?? raw.quarterKgPrice),
+    halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
   }
 }
 

@@ -38,7 +38,7 @@ export default function Header() {
   const [hasMounted, setHasMounted] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
-  const { getTotalItems, items } = useCartStore()
+  const { getTotalItems, items, hasHydrated: cartHasHydrated } = useCartStore()
   const { isAuthenticated, user } = useAuthStore()
 
   useEffect(() => { setHasMounted(true) }, [])
@@ -80,17 +80,29 @@ export default function Header() {
 
   const cartItemCount = hasMounted ? getTotalItems() : 0
 
-  // Auto-open cart dropdown when items are added
-  const prevItemCountRef = useRef(items.length)
+  // Auto-open cart dropdown when items are added — but NOT on hydration,
+  // cart/checkout/login pages, or when navigating away (avoids the annoying
+  // auto-open on refresh / login redirect from cart).
+  const prevItemCountRef = useRef<number | null>(null)
   useEffect(() => {
-    if (items.length > prevItemCountRef.current && pathname !== '/cart' && pathname !== '/checkout') {
-      setIsCartOpen(true)
-      const timer = setTimeout(() => setIsCartOpen(false), 4000)
-      prevItemCountRef.current = items.length
-      return () => clearTimeout(timer)
-    }
+    if (!cartHasHydrated) return
+
+    const blockedPaths = ['/cart', '/checkout', '/login']
+    const isBlockedPath = blockedPaths.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`)
+    )
+
+    const prev = prevItemCountRef.current
     prevItemCountRef.current = items.length
-  }, [items.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    if (prev == null) return
+    if (isBlockedPath) return
+    if (items.length <= prev) return
+
+    setIsCartOpen(true)
+    const timer = setTimeout(() => setIsCartOpen(false), 4000)
+    return () => clearTimeout(timer)
+  }, [items.length, cartHasHydrated, pathname])
 
   const closeCart = useCallback(() => setIsCartOpen(false), [])
 
