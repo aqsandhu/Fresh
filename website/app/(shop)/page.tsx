@@ -8,7 +8,7 @@ import AppDownloadSection from '@/components/sections/AppDownloadSection'
 
 export const metadata: Metadata = {
   title: 'Fresh Groceries Delivered | Fresh Bazar',
-  description: 'Get farm-fresh vegetables, fruits, dry fruits, and chicken delivered to your doorstep. Free delivery on orders above Rs. 500.',
+  description: 'Get farm-fresh vegetables, fruits, dry fruits, and chicken delivered to your doorstep. Free delivery on Rs. 500+ vegetables/fruits.',
 }
 
 export default function HomePage() {

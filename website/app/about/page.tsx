@@ -193,7 +193,7 @@ export default function AboutPage() {
                 {[
                   'Fresh products sourced directly from farms',
                   'Same-day delivery with flexible time slots',
-                  'Free delivery on orders above Rs. 500',
+                  'Free delivery on Rs. 500+ vegetables/fruits or free time slots',
                   'Easy returns and refunds',
                   '24/7 customer support',
                   'Secure payment options',

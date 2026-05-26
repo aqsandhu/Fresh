@@ -42,12 +42,12 @@ const features = [
   {
     icon: Truck,
     title: 'Free Delivery',
-    description: 'On orders above Rs. 500',
+    description: 'On Rs. 500+ vegetables/fruits',
   },
   {
     icon: Clock,
-    title: '10AM-2PM Free',
-    description: 'If ordered before 10AM',
+    title: 'Free Time Slots',
+    description: 'Pick a free-delivery slot',
   },
   {
     icon: ShieldCheck,

@@ -1,14 +1,18 @@
 // ============================================================================
-// SMART DELIVERY CHARGE CALCULATOR
+// DELIVERY CHARGE CALCULATOR (Backend — single source of truth)
 // ============================================================================
 //
-// Rules:
-// 1. Free-delivery time slot → always free
-// 2. Chicken-only or meat-only → always paid
-// 3. All other orders (including mixed) → free ONLY when BOTH:
-//    - vegetables + fruits subtotal ≥ free-delivery threshold
-//    - total cart subtotal ≥ free-delivery threshold
-// 4. Otherwise → standard delivery charge
+// Rule (kept deliberately simple so every surface can mirror it):
+//   1. If a free-delivery time slot is selected → FREE (regardless of amount)
+//   2. Otherwise — if (vegetables + fruits subtotal) >= free-delivery threshold
+//      → FREE
+//   3. Otherwise → standard delivery charge
+//
+// `free-delivery threshold` is configured by admin via site_settings
+// (`delivery_free_delivery_threshold`).
+//
+// NOTE: Chicken/meat/grocery/etc. NEVER trigger free delivery on their own.
+// The customer must have at least `threshold` worth of vegetables + fruits.
 
 import { query } from '../config/database';
 import { DeliveryChargeResult } from '../types';
@@ -17,6 +21,9 @@ import logger from './logger';
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
 const ENV_FREE_DELIVERY_MIN_AMOUNT = parseFloat(process.env.FREE_DELIVERY_MIN_AMOUNT || '500');
 
+// Category slugs that count toward the free-delivery threshold.
+// Keep this in sync with website/lib/deliveryRules.ts and
+// customer-app/src/utils/helpers.ts.
 const VEG_FRUIT_SLUGS = ['vegetables', 'fruits'];
 
 const getDeliverySettings = async (): Promise<{ baseCharge: number; freeThreshold: number }> => {
@@ -52,22 +59,15 @@ async function getVegFruitSubtotal(cartId: string): Promise<number> {
 export const calculateDeliveryCharge = async (
   cartId: string,
   timeSlotId?: string,
-  orderTime: Date = new Date()
+  _orderTime: Date = new Date()
 ): Promise<DeliveryChargeResult> => {
   try {
-    const cartQuery = `
-      SELECT 
-        c.subtotal,
-        ARRAY_AGG(DISTINCT cat.slug) as category_slugs
-      FROM carts c
-      JOIN cart_items ci ON c.id = ci.cart_id
-      JOIN products p ON ci.product_id = p.id
-      JOIN categories cat ON p.category_id = cat.id
-      WHERE c.id = $1
-      GROUP BY c.id, c.subtotal
-    `;
-
-    const cartResult = await query(cartQuery, [cartId]);
+    const cartResult = await query(
+      `SELECT c.subtotal
+         FROM carts c
+        WHERE c.id = $1`,
+      [cartId]
+    );
 
     if (cartResult.rows.length === 0) {
       return {
@@ -78,63 +78,53 @@ export const calculateDeliveryCharge = async (
       };
     }
 
-    const cart = cartResult.rows[0];
-    const subtotal = parseFloat(cart.subtotal);
-    const categorySlugs: string[] = cart.category_slugs || [];
+    const subtotal = parseFloat(cartResult.rows[0].subtotal || '0');
+    if (subtotal <= 0) {
+      return {
+        delivery_charge: 0,
+        rule_applied: 'EMPTY_CART',
+        rule_name: 'Empty Cart',
+        explanation: 'Cart is empty, no delivery charge applicable',
+      };
+    }
+
     const { baseCharge, freeThreshold } = await getDeliverySettings();
 
-    let timeSlot = null;
+    // Rule 1: Free-delivery time slot wins regardless of cart amount.
     if (timeSlotId) {
-      const slotResult = await query('SELECT * FROM time_slots WHERE id = $1', [timeSlotId]);
-      timeSlot = slotResult.rows[0];
+      const slotResult = await query(
+        'SELECT is_free_delivery_slot, slot_name FROM time_slots WHERE id = $1',
+        [timeSlotId]
+      );
+      const slot = slotResult.rows[0];
+      if (slot && slot.is_free_delivery_slot === true) {
+        return {
+          delivery_charge: 0,
+          rule_applied: 'FREE_DELIVERY_SLOT',
+          rule_name: 'Free Delivery - Time Slot',
+          explanation: `Free delivery for selected time slot: ${slot.slot_name}`,
+        };
+      }
     }
 
-    if (timeSlot && timeSlot.is_free_delivery_slot === true) {
-      return {
-        delivery_charge: 0,
-        rule_applied: 'FREE_DELIVERY_SLOT',
-        rule_name: 'Free Delivery - Time Slot',
-        explanation: `Free delivery for selected time slot: ${timeSlot.slot_name}`,
-      };
-    }
-
-    const hasOnlyChicken =
-      categorySlugs.length > 0 && categorySlugs.every((slug) => slug === 'chicken');
-    if (hasOnlyChicken) {
-      return {
-        delivery_charge: baseCharge,
-        rule_applied: 'PAID_CHICKEN_ONLY',
-        rule_name: 'Paid Delivery - Chicken Only Orders',
-        explanation: `Chicken-only orders always have a delivery charge of Rs. ${baseCharge}`,
-      };
-    }
-
-    const hasOnlyMeat =
-      categorySlugs.length > 0 && categorySlugs.every((slug) => slug === 'meat');
-    if (hasOnlyMeat) {
-      return {
-        delivery_charge: baseCharge,
-        rule_applied: 'PAID_MEAT_ONLY',
-        rule_name: 'Paid Delivery - Meat Only Orders',
-        explanation: `Meat-only orders always have a delivery charge of Rs. ${baseCharge}`,
-      };
-    }
-
+    // Rule 2: Vegetables + fruits subtotal meets the threshold.
     const vegFruitSubtotal = await getVegFruitSubtotal(cartId);
-    if (vegFruitSubtotal >= freeThreshold && subtotal >= freeThreshold) {
+    if (vegFruitSubtotal >= freeThreshold) {
       return {
         delivery_charge: 0,
-        rule_applied: 'FREE_MIXED_VEG_FRUIT',
-        rule_name: 'Free Delivery - Mixed Order Qualifies',
-        explanation: `Free delivery when vegetables/fruits are at least Rs. ${freeThreshold} and order total is at least Rs. ${freeThreshold}`,
+        rule_applied: 'FREE_VEG_FRUIT_MIN',
+        rule_name: 'Free Delivery - Vegetables & Fruits Above Minimum',
+        explanation: `Free delivery: Rs. ${vegFruitSubtotal.toFixed(0)} of vegetables/fruits meets the Rs. ${freeThreshold} threshold`,
       };
     }
 
+    // Rule 3: Standard delivery charge.
+    const remaining = Math.max(0, freeThreshold - vegFruitSubtotal);
     return {
       delivery_charge: baseCharge,
       rule_applied: 'STANDARD_DELIVERY',
       rule_name: 'Standard Delivery Charge',
-      explanation: `Delivery charge of Rs. ${baseCharge} applies — need Rs. ${freeThreshold}+ in vegetables/fruits AND Rs. ${freeThreshold}+ order total for free delivery`,
+      explanation: `Add Rs. ${remaining.toFixed(0)} more in vegetables/fruits for free delivery (or choose a free-delivery time slot).`,
     };
   } catch (error) {
     logger.error('Error calculating delivery charge:', error);
@@ -148,14 +138,12 @@ export const calculateDeliveryCharge = async (
 };
 
 export const getDeliveryChargeExplanation = (
-  charge: number,
+  _charge: number,
   ruleCode: string
 ): string => {
   const explanations: Record<string, string> = {
     FREE_DELIVERY_SLOT: 'Free delivery for selected time slot',
-    FREE_MIXED_VEG_FRUIT: 'Free delivery — vegetables/fruits and order total both qualify',
-    PAID_CHICKEN_ONLY: 'Chicken-only orders have a fixed delivery charge',
-    PAID_MEAT_ONLY: 'Meat-only orders have a fixed delivery charge',
+    FREE_VEG_FRUIT_MIN: 'Free delivery — vegetables/fruits subtotal meets the minimum',
     STANDARD_DELIVERY: 'Standard delivery charge applies',
     EMPTY_CART: 'No items in cart',
   };

@@ -13,7 +13,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { CartStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { formatCurrency } from '@utils/helpers';
+import {
+  formatCurrency,
+  calculateDeliveryCharge,
+  getDeliveryHint,
+  getVegFruitSubtotal,
+} from '@utils/helpers';
 import { Button, EmptyState, QuantitySelector, ProductPrice } from '@components';
 import { useCartStore } from '@store';
 import { orderService } from '@services/order.service';
@@ -21,7 +26,10 @@ import { orderService } from '@services/order.service';
 export const CartScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<CartStackParamList>>();
   const { items, updateQuantity, removeFromCart, subtotal } = useCartStore();
-  const [deliverySettings, setDeliverySettings] = useState<{ base_charge: number; free_delivery_threshold: number }>({ base_charge: 100, free_delivery_threshold: 500 });
+  const [deliverySettings, setDeliverySettings] = useState<{
+    base_charge: number;
+    free_delivery_threshold: number;
+  }>({ base_charge: 100, free_delivery_threshold: 500 });
 
   useEffect(() => {
     orderService.getDeliverySettings().then((res) => {
@@ -30,10 +38,15 @@ export const CartScreen: React.FC = () => {
   }, []);
 
   const sub = subtotal();
-  const freeDelivery = sub >= deliverySettings.free_delivery_threshold;
-  const currentDeliveryCharge = freeDelivery ? 0 : deliverySettings.base_charge;
+  const currentDeliveryCharge = calculateDeliveryCharge(
+    items,
+    deliverySettings.free_delivery_threshold,
+    deliverySettings.base_charge
+  );
   const cartTotal = sub + currentDeliveryCharge;
-  const remaining = deliverySettings.free_delivery_threshold - sub;
+  const vegFruitSub = getVegFruitSubtotal(items);
+  const remaining = Math.max(0, deliverySettings.free_delivery_threshold - vegFruitSub);
+  const deliveryHint = getDeliveryHint(items, deliverySettings.free_delivery_threshold);
 
   const handleIncrement = async (productId: string, currentQuantity: number) => {
     await updateQuantity(productId, currentQuantity + 1);
@@ -95,15 +108,15 @@ export const CartScreen: React.FC = () => {
     );
   }
 
+  const freeDelivery = currentDeliveryCharge === 0;
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Shopping Cart</Text>
         <Text style={styles.subtitle}>{items.length} items</Text>
       </View>
 
-      {/* Cart Items */}
       <FlatList
         data={items}
         renderItem={renderCartItem}
@@ -112,17 +125,22 @@ export const CartScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Free Delivery Banner */}
-      {!freeDelivery && remaining > 0 && (
-        <View style={styles.freeDeliveryBanner}>
-          <MaterialIcons name="local-shipping" size={20} color={COLORS.primary} />
-          <Text style={styles.freeDeliveryText}>
-            Add <Text style={styles.freeDeliveryAmount}>{formatCurrency(remaining)}</Text> more for FREE delivery
-          </Text>
+      {deliveryHint && (
+        <View
+          style={[
+            styles.freeDeliveryBanner,
+            freeDelivery && styles.freeDeliveryBannerActive,
+          ]}
+        >
+          <MaterialIcons
+            name={freeDelivery ? 'check-circle' : 'local-shipping'}
+            size={20}
+            color={freeDelivery ? COLORS.success : COLORS.primary}
+          />
+          <Text style={styles.freeDeliveryText}>{deliveryHint}</Text>
         </View>
       )}
 
-      {/* Summary */}
       <View style={styles.summary}>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>Subtotal</Text>
@@ -202,11 +220,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gray900,
   },
-  itemUnit: {
-    fontSize: 12,
-    color: COLORS.gray500,
-    marginTop: 2,
-  },
   removeButton: {
     padding: SPACING.xs,
   },
@@ -230,14 +243,14 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.md,
     marginBottom: SPACING.md,
   },
+  freeDeliveryBannerActive: {
+    backgroundColor: '#E8F5E9',
+  },
   freeDeliveryText: {
-    fontSize: 14,
+    flex: 1,
+    fontSize: 13,
     color: COLORS.gray700,
     marginLeft: SPACING.sm,
-  },
-  freeDeliveryAmount: {
-    fontWeight: 'bold',
-    color: COLORS.primary,
   },
   summary: {
     padding: SPACING.lg,

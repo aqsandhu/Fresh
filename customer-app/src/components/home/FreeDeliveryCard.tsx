@@ -2,17 +2,18 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS, DELIVERY } from '@utils/constants';
-import { isFreeDelivery } from '@utils/helpers';
 
 interface FreeDeliveryCardProps {
-  cartSubtotal?: number;
+  /** Vegetables + fruits subtotal (only this counts toward the threshold). */
+  vegFruitSubtotal?: number;
 }
 
 export const FreeDeliveryCard: React.FC<FreeDeliveryCardProps> = ({
-  cartSubtotal = 0,
+  vegFruitSubtotal = 0,
 }) => {
-  const freeDelivery = isFreeDelivery(cartSubtotal);
-  const remaining = DELIVERY.FREE_DELIVERY_MIN_ORDER - cartSubtotal;
+  const threshold = DELIVERY.FREE_DELIVERY_MIN_ORDER;
+  const freeDelivery = vegFruitSubtotal >= threshold;
+  const remaining = Math.max(0, threshold - vegFruitSubtotal);
 
   return (
     <View style={[styles.container, freeDelivery && styles.containerActive]}>
@@ -25,12 +26,12 @@ export const FreeDeliveryCard: React.FC<FreeDeliveryCardProps> = ({
       </View>
       <View style={styles.content}>
         <Text style={[styles.title, freeDelivery && styles.textActive]}>
-          {freeDelivery ? 'Free Delivery Applied!' : 'Free Delivery Available'}
+          {freeDelivery ? 'Free Delivery Unlocked!' : 'Free Delivery Available'}
         </Text>
         <Text style={[styles.subtitle, freeDelivery && styles.textActive]}>
           {freeDelivery
-            ? 'Your order qualifies for free delivery'
-            : `Add Rs. ${remaining} more for free delivery (${DELIVERY.FREE_DELIVERY_START_TIME} - ${DELIVERY.FREE_DELIVERY_END_TIME})`}
+            ? `Rs. ${vegFruitSubtotal} in vegetables/fruits qualifies your order.`
+            : `Add Rs. ${remaining} more in vegetables/fruits for free delivery (other items don't count).`}
         </Text>
       </View>
       {freeDelivery && (

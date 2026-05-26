@@ -79,6 +79,7 @@ function mapBackendProduct(raw: any): Product {
     images,
     categoryId: raw.category_id || '',
     categoryName: raw.category_name || '',
+    categorySlug: raw.category_slug || raw.categorySlug || '',
     inStock: (parseInt(raw.stock_quantity) || 0) > 0,
     rating: parseFloat(raw.rating_average) || 0,
     reviewCount: parseInt(raw.order_count || raw.review_count) || 0,

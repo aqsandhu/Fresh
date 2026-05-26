@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Minus, Plus, Trash2, X, ShoppingBag } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
 import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
-import { getMixedOrderDeliveryHint } from '@/lib/deliveryRules'
+import { getDeliveryHint } from '@/lib/deliveryRules'
 import Button from '@/components/ui/Button'
 
 interface CartDropdownProps {
@@ -79,7 +79,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
   const delivery = getDeliveryCharge()
   const total = getFinalTotal()
   const totalItems = getTotalItems()
-  const deliveryHint = getMixedOrderDeliveryHint(items, deliveryFreeThreshold)
+  const deliveryHint = getDeliveryHint(items, deliveryFreeThreshold)
 
   const panelBody = (
     <>

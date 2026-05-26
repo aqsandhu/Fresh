@@ -98,17 +98,18 @@ export const useCartStore = create<CartState>()(
         return get().getTotalPrice()
       },
 
-      getDeliveryCharge: () => {
+      getDeliveryCharge: (isFreeDeliverySlot = false) => {
         const { items, deliveryBaseCharge, deliveryFreeThreshold } = get()
         return calculateClientDeliveryCharge(
           items,
           deliveryBaseCharge,
-          deliveryFreeThreshold
+          deliveryFreeThreshold,
+          isFreeDeliverySlot
         )
       },
 
-      getFinalTotal: () => {
-        return get().getSubtotal() + get().getDeliveryCharge()
+      getFinalTotal: (isFreeDeliverySlot = false) => {
+        return get().getSubtotal() + get().getDeliveryCharge(isFreeDeliverySlot)
       },
 
       hasOnlyChicken: () => {

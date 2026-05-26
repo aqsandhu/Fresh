@@ -68,43 +68,88 @@ export const getRelativeTime = (date: string | Date): string => {
   return formatDate(date);
 };
 
-// Check if delivery is free
-export const isFreeDelivery = (subtotal: number): boolean => {
-  const now = new Date();
-  const currentHour = now.getHours();
-  const currentMinute = now.getMinutes();
-  const currentTime = currentHour * 60 + currentMinute;
-  
-  const [startHour, startMinute] = DELIVERY.FREE_DELIVERY_START_TIME.split(':').map(Number);
-  const [endHour, endMinute] = DELIVERY.FREE_DELIVERY_END_TIME.split(':').map(Number);
-  
-  const startTime = startHour * 60 + startMinute;
-  const endTime = endHour * 60 + endMinute;
-  
-  const isInFreeWindow = currentTime >= startTime && currentTime <= endTime;
-  const meetsMinOrder = subtotal >= DELIVERY.FREE_DELIVERY_MIN_ORDER;
-  
-  return isInFreeWindow && meetsMinOrder;
+// ---------------------------------------------------------------------------
+// DELIVERY RULES (mirror backend/src/utils/deliveryCalculator.ts)
+//   1) Free-delivery time slot selected → FREE (regardless of amount)
+//   2) Vegetables + fruits subtotal ≥ threshold → FREE
+//   3) Otherwise → flat base charge
+// ---------------------------------------------------------------------------
+
+// Category slugs that count toward the free-delivery threshold. Keep this
+// in sync with website/lib/deliveryRules.ts and backend.
+const VEG_FRUIT_CATEGORY_SLUGS = ['vegetables', 'fruits', 'sabzi', 'fruit'];
+
+const isVegOrFruit = (product: any): boolean => {
+  const slug = String(
+    product?.categorySlug || product?.category_slug || product?.category || ''
+  ).toLowerCase();
+  if (slug && VEG_FRUIT_CATEGORY_SLUGS.includes(slug)) return true;
+  // Fallback: match by readable category name.
+  const name = String(product?.categoryName || product?.category_name || '').toLowerCase();
+  return /vegetable|fruit|sabzi|phal/.test(name);
 };
 
-// Calculate delivery charge
-export const calculateDeliveryCharge = (subtotal: number): number => {
-  if (isFreeDelivery(subtotal)) return 0;
-  return DELIVERY.STANDARD_DELIVERY_CHARGE;
+export const getVegFruitSubtotal = (
+  items: { product: any; quantity: number }[]
+): number =>
+  items
+    .filter((it) => isVegOrFruit(it.product))
+    .reduce((sum, it) => sum + (Number(it.product?.price) || 0) * it.quantity, 0);
+
+export const isFreeDelivery = (
+  items: { product: any; quantity: number }[],
+  freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
+  isFreeDeliverySlot: boolean = false
+): boolean => {
+  if (isFreeDeliverySlot) return true;
+  return getVegFruitSubtotal(items) >= freeThreshold;
 };
 
-// Calculate cart totals
-export const calculateCartTotals = (items: { product: { price: number }; quantity: number }[]) => {
-  const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-  const deliveryCharge = calculateDeliveryCharge(subtotal);
+export const calculateDeliveryCharge = (
+  items: { product: any; quantity: number }[],
+  freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
+  baseCharge: number = DELIVERY.STANDARD_DELIVERY_CHARGE,
+  isFreeDeliverySlot: boolean = false
+): number => {
+  if (items.length === 0) return 0;
+  if (isFreeDelivery(items, freeThreshold, isFreeDeliverySlot)) return 0;
+  return baseCharge;
+};
+
+export const calculateCartTotals = (
+  items: { product: any; quantity: number }[],
+  freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
+  baseCharge: number = DELIVERY.STANDARD_DELIVERY_CHARGE
+) => {
+  const subtotal = items.reduce(
+    (sum, item) => sum + (Number(item.product?.price) || 0) * item.quantity,
+    0
+  );
+  const deliveryCharge = calculateDeliveryCharge(items, freeThreshold, baseCharge);
   const total = subtotal + deliveryCharge;
-  
+
   return {
     subtotal,
     deliveryCharge,
     total,
     itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
+    vegFruitSubtotal: getVegFruitSubtotal(items),
   };
+};
+
+export const getDeliveryHint = (
+  items: { product: any; quantity: number }[],
+  freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
+  isFreeDeliverySlot: boolean = false
+): string | null => {
+  if (items.length === 0) return null;
+  if (isFreeDeliverySlot) return 'You qualify for free delivery — selected slot is free.';
+  const vegFruit = getVegFruitSubtotal(items);
+  if (vegFruit >= freeThreshold) {
+    return `You qualify for free delivery (Rs. ${vegFruit} in vegetables/fruits).`;
+  }
+  const remaining = Math.max(0, freeThreshold - vegFruit);
+  return `Add Rs. ${remaining} more in vegetables/fruits for free delivery — other items don't count.`;
 };
 
 // Get status color

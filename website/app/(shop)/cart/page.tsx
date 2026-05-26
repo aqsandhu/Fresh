@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import Link from 'next/link'
 import SmartImage from '@/components/ui/SmartImage'
 import { useRouter } from 'next/navigation'
@@ -9,19 +9,18 @@ import {
   Trash2,
   Minus,
   Plus,
-  ShoppingBag,
   ShoppingCart,
   ArrowRight,
   Truck,
-  AlertCircle,
-  Gift
+  Gift,
+  LogIn,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
-import { formatPriceShort, getDeliveryMessage } from '@/lib/utils'
-import { getMixedOrderDeliveryHint, getVegFruitSubtotal } from '@/lib/deliveryRules'
+import { formatPriceShort } from '@/lib/utils'
+import { getDeliveryHint, getVegFruitSubtotal } from '@/lib/deliveryRules'
 import ProductPrice from '@/components/ui/ProductPrice'
 
 export default function CartPage() {
@@ -35,7 +34,6 @@ export default function CartPage() {
     getSubtotal,
     getDeliveryCharge,
     getFinalTotal,
-    hasOnlyChicken,
     deliveryFreeThreshold,
     loadDeliverySettings,
   } = useCartStore()
@@ -47,12 +45,11 @@ export default function CartPage() {
   const subtotal = getSubtotal()
   const deliveryCharge = getDeliveryCharge()
   const total = getFinalTotal()
-  const onlyChicken = hasOnlyChicken()
-  const deliveryHint = getMixedOrderDeliveryHint(items, deliveryFreeThreshold)
+  const vegFruitSubtotal = getVegFruitSubtotal(items)
+  const deliveryHint = getDeliveryHint(items, deliveryFreeThreshold)
 
   const handleCheckout = () => {
     if (!isAuthenticated) {
-      toast.error('Please login to proceed')
       router.push('/login?redirect=/checkout')
       return
     }
@@ -73,13 +70,13 @@ export default function CartPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-6 sm:py-8 pb-32 lg:pb-8">
       <div className="container mx-auto px-4">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">
-          Shopping Cart ({items.length} items)
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 sm:mb-8">
+          Shopping Cart ({items.length} {items.length === 1 ? 'item' : 'items'})
         </h1>
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Cart Items */}
           <div className="lg:col-span-2 space-y-4">
             <AnimatePresence mode="popLayout">
@@ -93,11 +90,10 @@ export default function CartPage() {
                   className="bg-white rounded-xl p-4 shadow-sm"
                 >
                   <div className="flex gap-4">
-                    {/* Image */}
                     <Link href={`/product/${item.product.id}`}>
-                      <div className="relative w-24 h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                      <div className="relative w-20 h-20 sm:w-24 sm:h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                         <SmartImage
-                          src={item.product?.image || item.product?.image_url}
+                          src={item.product?.image}
                           alt={item.product.name}
                           fill
                           className="object-cover"
@@ -111,7 +107,6 @@ export default function CartPage() {
                       </div>
                     </Link>
 
-                    {/* Details */}
                     <div className="flex-1 min-w-0">
                       <Link href={`/product/${item.product.id}`}>
                         <h3 className="font-semibold text-gray-900 truncate hover:text-primary-600">
@@ -123,39 +118,37 @@ export default function CartPage() {
                       </div>
 
                       <div className="flex items-center justify-between mt-3">
-                        {/* Quantity */}
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
                             className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200"
+                            aria-label="Decrease quantity"
                           >
                             <Minus className="w-4 h-4" />
                           </button>
-                          <span className="w-8 text-center font-medium">
-                            {item.quantity}
-                          </span>
+                          <span className="w-8 text-center font-medium">{item.quantity}</span>
                           <button
                             onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
                             className="w-8 h-8 flex items-center justify-center rounded-full bg-primary-100 hover:bg-primary-200"
+                            aria-label="Increase quantity"
                           >
                             <Plus className="w-4 h-4" />
                           </button>
                         </div>
 
-                        {/* Remove */}
                         <button
                           onClick={() => {
                             removeItem(item.product.id)
                             toast.success('Item removed from cart')
                           }}
                           className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          aria-label="Remove item"
                         >
                           <Trash2 className="w-5 h-5" />
                         </button>
                       </div>
                     </div>
 
-                    {/* Item Total */}
                     <div className="text-right hidden sm:block">
                       <p className="font-semibold text-gray-900">
                         {formatPriceShort(item.product.price * item.quantity)}
@@ -166,7 +159,6 @@ export default function CartPage() {
               ))}
             </AnimatePresence>
 
-            {/* Clear Cart */}
             <button
               onClick={() => {
                 clearCart()
@@ -178,32 +170,32 @@ export default function CartPage() {
             </button>
           </div>
 
-          {/* Order Summary */}
-          <div className="lg:col-span-1">
+          {/* Order Summary — desktop sidebar */}
+          <div className="hidden lg:block lg:col-span-1">
             <div className="bg-white rounded-xl p-6 shadow-sm sticky top-24">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">
-                Order Summary
-              </h2>
+              <h2 className="text-xl font-bold text-gray-900 mb-6">Order Summary</h2>
 
-              {/* Delivery Info */}
-              <div className={`p-4 rounded-lg mb-6 ${deliveryCharge === 0 ? 'bg-green-50' : onlyChicken ? 'bg-yellow-50' : 'bg-blue-50'}`}>
+              <div
+                className={`p-4 rounded-lg mb-6 ${
+                  deliveryCharge === 0 ? 'bg-green-50' : 'bg-blue-50'
+                }`}
+              >
                 <div className="flex items-start gap-3">
                   {deliveryCharge === 0 ? (
                     <Gift className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                  ) : onlyChicken ? (
-                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                   ) : (
                     <Truck className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   )}
-                  <div>
-                    <p className={`text-sm font-medium ${deliveryCharge === 0 ? 'text-green-800' : onlyChicken ? 'text-yellow-800' : 'text-blue-800'}`}>
-                      {deliveryHint || getDeliveryMessage(subtotal, onlyChicken, getVegFruitSubtotal(items))}
-                    </p>
-                  </div>
+                  <p
+                    className={`text-sm font-medium ${
+                      deliveryCharge === 0 ? 'text-green-800' : 'text-blue-800'
+                    }`}
+                  >
+                    {deliveryHint || `Vegetables/Fruits subtotal: Rs. ${vegFruitSubtotal}`}
+                  </p>
                 </div>
               </div>
 
-              {/* Price Breakdown */}
               <div className="space-y-3 mb-6">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
@@ -211,7 +203,7 @@ export default function CartPage() {
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Delivery</span>
-                  <span className={deliveryCharge === 0 ? 'text-green-600' : ''}>
+                  <span className={deliveryCharge === 0 ? 'text-green-600 font-semibold' : ''}>
                     {deliveryCharge === 0 ? 'FREE' : formatPriceShort(deliveryCharge)}
                   </span>
                 </div>
@@ -223,17 +215,14 @@ export default function CartPage() {
                 </div>
               </div>
 
-              {/* Checkout Button */}
-              <Button
-                onClick={handleCheckout}
-                fullWidth
-                size="lg"
-              >
-                Proceed to Checkout
-                <ArrowRight className="w-5 h-5 ml-2" />
+              <Button onClick={handleCheckout} fullWidth size="lg">
+                {isAuthenticated ? (
+                  <>Proceed to Checkout <ArrowRight className="w-5 h-5 ml-2" /></>
+                ) : (
+                  <>Login to Checkout <LogIn className="w-5 h-5 ml-2" /></>
+                )}
               </Button>
 
-              {/* Continue Shopping */}
               <Link
                 href="/products"
                 className="block text-center text-primary-600 mt-4 hover:underline"
@@ -242,6 +231,66 @@ export default function CartPage() {
               </Link>
             </div>
           </div>
+        </div>
+
+        {/* Order Summary — mobile inline (also acts as the source of truth) */}
+        <div className="lg:hidden mt-6 space-y-4">
+          <div
+            className={`p-4 rounded-lg ${
+              deliveryCharge === 0 ? 'bg-green-50' : 'bg-blue-50'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              {deliveryCharge === 0 ? (
+                <Gift className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+              ) : (
+                <Truck className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              )}
+              <p
+                className={`text-sm font-medium ${
+                  deliveryCharge === 0 ? 'text-green-800' : 'text-blue-800'
+                }`}
+              >
+                {deliveryHint || `Vegetables/Fruits subtotal: Rs. ${vegFruitSubtotal}`}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 shadow-sm space-y-2">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Subtotal</span>
+              <span>{formatPriceShort(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Delivery</span>
+              <span className={deliveryCharge === 0 ? 'text-green-600 font-semibold' : ''}>
+                {deliveryCharge === 0 ? 'FREE' : formatPriceShort(deliveryCharge)}
+              </span>
+            </div>
+            <div className="flex justify-between text-base font-bold text-gray-900 border-t pt-2">
+              <span>Total</span>
+              <span>{formatPriceShort(total)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Mobile sticky checkout bar — always visible at bottom on phones */}
+      <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-gray-200 px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]">
+        <div className="container mx-auto flex items-center gap-3">
+          <div className="flex-shrink-0">
+            <p className="text-xs text-gray-500">Total</p>
+            <p className="text-lg font-bold text-gray-900 leading-tight">
+              {formatPriceShort(total)}
+            </p>
+          </div>
+          <Button onClick={handleCheckout} fullWidth size="md">
+            {isAuthenticated ? (
+              <>Proceed to Checkout <ArrowRight className="w-4 h-4 ml-2" /></>
+            ) : (
+              <>Login to Checkout <LogIn className="w-4 h-4 ml-2" /></>
+            )}
+          </Button>
         </div>
       </div>
     </div>

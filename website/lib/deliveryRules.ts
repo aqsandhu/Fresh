@@ -1,9 +1,13 @@
 /**
- * Free delivery rules (website + must mirror backend deliveryCalculator):
- * - Chicken-only or meat-only → always paid delivery
- * - All other orders (including mixed) → free only when BOTH:
- *   1) vegetables + fruits subtotal ≥ free-delivery threshold
- *   2) total cart subtotal ≥ free-delivery threshold
+ * Delivery rule (must mirror backend/src/utils/deliveryCalculator.ts):
+ *
+ *   1. Free-delivery time slot selected → FREE (regardless of order amount)
+ *   2. Vegetables + fruits subtotal ≥ free-delivery threshold → FREE
+ *   3. Otherwise → standard base charge
+ *
+ * Chicken / meat / grocery items are completely ignored when deciding free
+ * delivery — even a 5000 rupee chicken-only order is paid. The user must
+ * have at least `threshold` worth of vegetables + fruits.
  */
 
 export const VEG_FRUIT_CATEGORY_SLUGS = [
@@ -20,11 +24,16 @@ export type CartLineItem = {
 
 export function isVegOrFruitCategory(category?: string): boolean {
   if (!category) return false
-  return (VEG_FRUIT_CATEGORY_SLUGS as readonly string[]).includes(category.toLowerCase())
+  return (VEG_FRUIT_CATEGORY_SLUGS as readonly string[]).includes(
+    category.toLowerCase()
+  )
 }
 
 export function getCartSubtotal(items: CartLineItem[]): number {
-  return items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+  return items.reduce(
+    (sum, item) => sum + item.product.price * item.quantity,
+    0
+  )
 }
 
 export function getVegFruitSubtotal(items: CartLineItem[]): number {
@@ -36,58 +45,40 @@ export function getVegFruitSubtotal(items: CartLineItem[]): number {
 export function calculateClientDeliveryCharge(
   items: CartLineItem[],
   baseCharge: number,
-  freeThreshold: number
+  freeThreshold: number,
+  isFreeDeliverySlot = false
 ): number {
   if (items.length === 0) return 0
-
-  const subtotal = getCartSubtotal(items)
-  const hasOnlyChicken =
-    items.length > 0 && items.every((item) => item.product.category === 'chicken')
-  const hasOnlyMeat =
-    items.length > 0 && items.every((item) => item.product.category === 'meat')
-
-  if (hasOnlyChicken || hasOnlyMeat) {
-    return baseCharge
-  }
+  if (isFreeDeliverySlot) return 0
 
   const vegFruitSubtotal = getVegFruitSubtotal(items)
-  if (vegFruitSubtotal >= freeThreshold && subtotal >= freeThreshold) {
-    return 0
-  }
+  if (vegFruitSubtotal >= freeThreshold) return 0
 
   return baseCharge
 }
 
-export function getMixedOrderDeliveryHint(
+/**
+ * Single-line hint shown next to delivery rows. Identical text everywhere so
+ * the cart / dropdown / checkout / cart screen all describe the same rule.
+ */
+export function getDeliveryHint(
   items: CartLineItem[],
-  freeThreshold: number
+  freeThreshold: number,
+  isFreeDeliverySlot = false
 ): string | null {
   if (items.length === 0) return null
-
-  const hasOnlyChicken =
-    items.every((item) => item.product.category === 'chicken')
-  const hasOnlyMeat = items.every((item) => item.product.category === 'meat')
-
-  if (hasOnlyChicken || hasOnlyMeat) {
-    return 'Delivery charges apply for chicken/meat-only orders'
+  if (isFreeDeliverySlot) {
+    return 'You qualify for free delivery — selected slot is free.'
   }
 
-  const subtotal = getCartSubtotal(items)
   const vegFruitSubtotal = getVegFruitSubtotal(items)
-
-  if (vegFruitSubtotal >= freeThreshold && subtotal >= freeThreshold) {
-    return 'You qualify for free delivery!'
+  if (vegFruitSubtotal >= freeThreshold) {
+    return `You qualify for free delivery (Rs. ${vegFruitSubtotal} in vegetables/fruits).`
   }
 
-  const parts: string[] = []
-  if (vegFruitSubtotal < freeThreshold) {
-    parts.push(`Add Rs. ${freeThreshold - vegFruitSubtotal} more vegetables/fruits`)
-  }
-  if (subtotal < freeThreshold) {
-    parts.push(`Add Rs. ${freeThreshold - subtotal} more to your order`)
-  }
-
-  return parts.length > 0
-    ? `${parts.join(' and ')} for free delivery`
-    : null
+  const remaining = Math.max(0, freeThreshold - vegFruitSubtotal)
+  return `Add Rs. ${remaining} more in vegetables/fruits for free delivery — other items don't count.`
 }
+
+// Backwards compat alias used by older code paths.
+export const getMixedOrderDeliveryHint = getDeliveryHint

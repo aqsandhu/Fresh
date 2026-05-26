@@ -10,6 +10,7 @@
 // in, the gate just confirms it's still them on the device.
 
 import { useEffect, useState } from 'react'
+import { useRouter, usePathname } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ShieldCheck, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -26,7 +27,9 @@ interface Props {
 const DEFAULT_THRESHOLD = 30 * 60 * 1000 // 30 minutes
 
 export default function PinReauthGate({ thresholdMs = DEFAULT_THRESHOLD, children }: Props) {
-  const { user, pinVerifiedAt, markPinVerified } = useAuthStore()
+  const { user, isAuthenticated, pinVerifiedAt, markPinVerified } = useAuthStore()
+  const router = useRouter()
+  const pathname = usePathname() || '/checkout'
   const [pin, setPin] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
   // We compute "stale" once at mount to avoid flicker as time passes; the
@@ -44,6 +47,19 @@ export default function PinReauthGate({ thresholdMs = DEFAULT_THRESHOLD, childre
     }
     setStale(Date.now() - pinVerifiedAt > thresholdMs)
   }, [pinVerifiedAt, thresholdMs])
+
+  // If the user isn't logged in at all, don't pretend they need a PIN —
+  // send them straight to login with a redirect back. Prevents the
+  // confusing "Confirm it's you" screen appearing before/after login.
+  useEffect(() => {
+    if (!isAuthenticated || !user?.phone) {
+      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`)
+    }
+  }, [isAuthenticated, user?.phone, pathname, router])
+
+  if (!isAuthenticated || !user?.phone) {
+    return null
+  }
 
   const handleVerify = async (entered: string) => {
     if (!user?.phone) {
