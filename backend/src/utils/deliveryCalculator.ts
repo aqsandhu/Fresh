@@ -156,6 +156,16 @@ export const calculateDeliveryCharge = async (
         explanation: `Meat-only orders always have a delivery charge of Rs. ${baseCharge}`,
       };
     }
+
+    // General free delivery above threshold (matches website cart logic)
+    if (subtotal >= freeThreshold) {
+      return {
+        delivery_charge: 0,
+        rule_applied: 'FREE_ORDER_MIN',
+        rule_name: 'Free Delivery - Order Above Minimum',
+        explanation: `Free delivery for orders above Rs. ${freeThreshold}`,
+      };
+    }
     
     // Check for mixed orders with qualifying categories above minimum
     // If cart has vegetables/fruits/dry-fruits (even mixed with chicken/meat),
@@ -202,6 +212,7 @@ export const getDeliveryChargeExplanation = (
 ): string => {
   const explanations: Record<string, string> = {
     'FREE_DELIVERY_SLOT': 'Free delivery for selected time slot',
+    'FREE_ORDER_MIN': 'Free delivery for orders above minimum value',
     'FREE_VEG_FRUIT_MIN': 'Free delivery for vegetable/fruit orders above minimum value',
     'FREE_MIXED_MIN': 'Free delivery for orders above minimum value',
     'PAID_CHICKEN_ONLY': 'Chicken-only orders have a fixed delivery charge',

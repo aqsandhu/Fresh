@@ -43,6 +43,7 @@ const getApiBaseUrl = (): string => {
 export const API_BASE_URL = getApiBaseUrl();
 export const IS_DEVELOPMENT = isDevelopment;
 export const API_TIMEOUT = 30000;
+export const REQUIRED_LOCATION_ACCURACY_M = 5;
 
 // App Configuration
 export const APP_NAME = 'Fresh Bazar';
