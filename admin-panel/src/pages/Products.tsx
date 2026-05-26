@@ -205,6 +205,9 @@ export const Products: React.FC = () => {
       descriptionEn: '',
       price: 0,
       compareAtPrice: 0,
+      halfKgPrice: null,
+      quarterKgPrice: null,
+      halfDozenPrice: null,
       stockQuantity: 0,
       unitType: 'kg',
       categoryId: '',
@@ -234,6 +237,9 @@ export const Products: React.FC = () => {
       descriptionEn: product.descriptionEn || '',
       price: product.price,
       compareAtPrice: product.compareAtPrice || 0,
+      halfKgPrice: product.halfKgPrice ?? null,
+      quarterKgPrice: product.quarterKgPrice ?? null,
+      halfDozenPrice: product.halfDozenPrice ?? null,
       stockQuantity: product.stockQuantity,
       unitType: product.unitType,
       categoryId: product.categoryId,
@@ -711,6 +717,62 @@ export const Products: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Optional fraction-of-unit pricing. Shown only for units where it
+              makes sense (kg → half/quarter kg, dozen → half dozen). Leaving
+              a field blank tells the storefront to derive the price from the
+              base "Price" above. */}
+          {(formData.unitType === 'kg' || formData.unitType === 'gram') && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Half kg price (Rs.) — optional"
+                type="number"
+                value={formData.halfKgPrice ?? ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    halfKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
+                  })
+                }
+                min={0}
+                step={0.01}
+                helperText="Leave blank to charge half of the per-kg price."
+              />
+              <Input
+                label="Quarter kg price (Rs.) — optional"
+                type="number"
+                value={formData.quarterKgPrice ?? ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    quarterKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
+                  })
+                }
+                min={0}
+                step={0.01}
+                helperText="Leave blank to charge a quarter of the per-kg price."
+              />
+            </div>
+          )}
+
+          {formData.unitType === 'dozen' && (
+            <div>
+              <Input
+                label="Half dozen price (Rs.) — optional"
+                type="number"
+                value={formData.halfDozenPrice ?? ''}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    halfDozenPrice: e.target.value === '' ? null : parseFloat(e.target.value),
+                  })
+                }
+                min={0}
+                step={0.01}
+                helperText="Leave blank to charge half of the per-dozen price."
+              />
+            </div>
+          )}
 
           <div className="flex space-x-6">
             <label className="flex items-center space-x-2 cursor-pointer">

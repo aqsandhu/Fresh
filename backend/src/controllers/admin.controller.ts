@@ -1043,7 +1043,7 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
   const sortField = allowedSortFields.includes(sortBy as string) ? sortBy : 'created_at';
   const order = allowedSortOrders.includes((sortOrder as string)?.toLowerCase()) ? (sortOrder as string).toUpperCase() : 'DESC';
 
-  const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+  const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.half_kg_price, p.quarter_kg_price, p.half_dozen_price, p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
   params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
 
   const result = await query(productsSql, params);
@@ -1060,6 +1060,7 @@ export const getAdminProductById = asyncHandler(async (req: Request, res: Respon
     `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
       p.subcategory_id, p.price, p.compare_at_price, p.cost_price,
+      p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory, p.primary_image, p.images,
       p.short_description, p.description_ur, p.description_en,
@@ -1086,6 +1087,9 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     subcategory_id,
     price,
     compare_at_price,
+    half_kg_price,
+    quarter_kg_price,
+    half_dozen_price,
     unit_type,
     unit_value,
     stock_quantity,
@@ -1094,6 +1098,17 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     is_featured,
     is_new_arrival,
   } = req.body;
+
+  // Empty-string values come through multipart forms — coerce them to null
+  // so the DB column stores NULL ("derive from price") instead of 0.
+  const normPrice = (v: any) => {
+    if (v === '' || v === null || v === undefined) return null;
+    const n = parseFloat(String(v));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const halfKg = normPrice(half_kg_price);
+  const quarterKg = normPrice(quarter_kg_price);
+  const halfDozen = normPrice(half_dozen_price);
 
   const slug = generateSlug(name_en);
 
@@ -1117,14 +1132,18 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   const result = await query(
     `INSERT INTO products (
       name_ur, name_en, slug, category_id, subcategory_id,
-      price, compare_at_price, unit_type, unit_value, stock_quantity,
+      price, compare_at_price,
+      half_kg_price, quarter_kg_price, half_dozen_price,
+      unit_type, unit_value, stock_quantity,
       description_ur, description_en, is_featured, is_new_arrival,
       primary_image, images
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
     RETURNING *`,
     [
       name_ur || name_en, name_en, slug, category_id, subcategory_id,
-      price, compare_at_price, unit_type, unit_value, stock_quantity || 0,
+      price, compare_at_price,
+      halfKg, quarterKg, halfDozen,
+      unit_type, unit_value, stock_quantity || 0,
       description_ur || null, description_en || null, is_featured || false, is_new_arrival || false,
       primaryImage, images.length > 0 ? images : null,
     ]
@@ -1146,10 +1165,16 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   // Build update query
   const allowedFields = [
     'name_ur', 'name_en', 'category_id', 'subcategory_id',
-    'price', 'compare_at_price', 'unit_type', 'unit_value',
+    'price', 'compare_at_price',
+    'half_kg_price', 'quarter_kg_price', 'half_dozen_price',
+    'unit_type', 'unit_value',
     'stock_quantity', 'description_ur', 'description_en',
     'is_active', 'is_featured', 'is_new_arrival',
   ];
+  // These columns must always serialize as NULL when the admin clears them.
+  const nullableNumberFields = new Set([
+    'compare_at_price', 'half_kg_price', 'quarter_kg_price', 'half_dozen_price',
+  ]);
 
   const setClauses: string[] = [];
   const values: any[] = [];
@@ -1157,8 +1182,17 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 
   for (const [key, value] of Object.entries(updates)) {
     if (allowedFields.includes(key)) {
+      let normalised: any = value;
+      if (nullableNumberFields.has(key)) {
+        if (value === '' || value === null || value === undefined) {
+          normalised = null;
+        } else {
+          const n = parseFloat(String(value));
+          normalised = Number.isFinite(n) && n > 0 ? n : null;
+        }
+      }
       setClauses.push(`${key} = $${paramIndex++}`);
-      values.push(value);
+      values.push(normalised);
     }
   }
 

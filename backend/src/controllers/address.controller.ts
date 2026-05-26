@@ -132,15 +132,18 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
     zone_id = zoneResult.rows.length > 0 ? zoneResult.rows[0].id : null;
   }
 
+  // Accept anything up to 8m. We prefer 5m on the client but allow the
+  // client to fall back to 8m when GPS is poor, and dragged/manual pins
+  // come in with no accuracy set at all (treated as user-confirmed).
   if (
     hasLocation &&
     parsedAccuracy != null &&
     Number.isFinite(parsedAccuracy) &&
-    parsedAccuracy > 5
+    parsedAccuracy > 8
   ) {
     return errorResponse(
       res,
-      'Location accuracy must be within 5 meters. Please try again in an open area.',
+      'Location accuracy must be within 8 meters. Please drag the marker or try again in an open area.',
       400
     );
   }
@@ -324,11 +327,11 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
     if (
       parsedAccuracy != null &&
       Number.isFinite(parsedAccuracy) &&
-      parsedAccuracy > 5
+      parsedAccuracy > 8
     ) {
       return errorResponse(
         res,
-        'Location accuracy must be within 5 meters. Please try again in an open area.',
+        'Location accuracy must be within 8 meters. Please drag the marker or try again in an open area.',
         400
       );
     }

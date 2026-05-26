@@ -57,7 +57,14 @@ export interface Product {
   chickenOnly?: boolean;
   isChickenOnly?: boolean;
   category?: string;
+  /** Optional admin-set fraction prices; null/undefined => derive from `price`. */
+  halfKgPrice?: number | null;
+  quarterKgPrice?: number | null;
+  halfDozenPrice?: number | null;
 }
+
+/** Which unit fraction of the product the customer picked. */
+export type ProductUnit = 'full' | 'half_kg' | 'quarter_kg' | 'half_dozen';
 
 export interface Category {
   id: string;
@@ -76,10 +83,15 @@ export interface Category {
   subcategories?: Category[];
 }
 
-// Cart item used by the store (has full Product object)
+// Cart item used by the store (has full Product object).
+// `unit` distinguishes e.g. "1 kg apples" from "half kg apples" so the same
+// product can appear twice in the cart at different fraction prices.
 export interface CartStoreItem {
   product: Product;
   quantity: number;
+  unit?: ProductUnit;
+  /** Price per `unit` at the time of adding. Mirrors what the server uses. */
+  unitPrice?: number;
 }
 
 // API-level cart item (flat structure with IDs)
@@ -300,9 +312,16 @@ export interface CartState {
   /** True after Zustand persist has loaded items from localStorage. */
   hasHydrated: boolean;
   setHasHydrated: (h: boolean) => void;
-  addItem: (product: Product, quantity?: number) => void;
-  removeItem: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
+  /**
+   * Add `quantity` of `product`. When `unit` is something other than 'full'
+   * the line is keyed separately and uses the product's unit-specific price
+   * (admin override or derived from `price`).
+   */
+  addItem: (product: Product, quantity?: number, unit?: ProductUnit) => void;
+  /** Remove by composite key (productId + unit). */
+  removeItem: (productId: string, unit?: ProductUnit) => void;
+  /** Update qty by composite key (productId + unit). */
+  updateQuantity: (productId: string, quantity: number, unit?: ProductUnit) => void;
   clearCart: () => void;
   loadDeliverySettings: () => Promise<void>;
   getTotalItems: () => number;

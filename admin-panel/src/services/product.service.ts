@@ -51,6 +51,9 @@ export const productService = {
       if (data.descriptionEn) formData.append('description_en', data.descriptionEn);
       formData.append('price', data.price.toString());
       if (data.compareAtPrice) formData.append('compare_at_price', data.compareAtPrice.toString());
+      if (data.halfKgPrice != null) formData.append('half_kg_price', String(data.halfKgPrice));
+      if (data.quarterKgPrice != null) formData.append('quarter_kg_price', String(data.quarterKgPrice));
+      if (data.halfDozenPrice != null) formData.append('half_dozen_price', String(data.halfDozenPrice));
       formData.append('stock_quantity', (data.stockQuantity || 0).toString());
       formData.append('unit_type', data.unitType || 'kg');
       if (data.unitValue) formData.append('unit_value', data.unitValue.toString());
@@ -81,6 +84,15 @@ export const productService = {
       if (data.descriptionEn !== undefined) formData.append('description_en', data.descriptionEn);
       if (data.price !== undefined) formData.append('price', data.price.toString());
       if (data.compareAtPrice !== undefined) formData.append('compare_at_price', data.compareAtPrice.toString());
+      if (data.halfKgPrice !== undefined) {
+        formData.append('half_kg_price', data.halfKgPrice == null ? '' : String(data.halfKgPrice));
+      }
+      if (data.quarterKgPrice !== undefined) {
+        formData.append('quarter_kg_price', data.quarterKgPrice == null ? '' : String(data.quarterKgPrice));
+      }
+      if (data.halfDozenPrice !== undefined) {
+        formData.append('half_dozen_price', data.halfDozenPrice == null ? '' : String(data.halfDozenPrice));
+      }
       if (data.stockQuantity !== undefined) formData.append('stock_quantity', data.stockQuantity.toString());
       if (data.unitType) formData.append('unit_type', data.unitType);
       if (data.categoryId) formData.append('category_id', data.categoryId);

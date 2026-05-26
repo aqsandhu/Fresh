@@ -7,8 +7,9 @@ import SmartImage from '@/components/ui/SmartImage'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Minus, Plus, Trash2, X, ShoppingBag } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
-import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
+import { formatPriceShort } from '@/lib/utils'
 import { getDeliveryHint } from '@/lib/deliveryRules'
+import { unitLabelShort } from '@/lib/unitPricing'
 import Button from '@/components/ui/Button'
 
 interface CartDropdownProps {
@@ -112,69 +113,82 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
       ) : (
         <>
           <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-gray-50">
-            {items.map((item) => (
-              <div
-                key={item.product.id}
-                className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
-              >
-                <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                  <SmartImage
-                    src={item.product.image}
-                    alt={item.product.name}
-                    fill
-                    className="object-cover"
-                    sizes="48px"
-                    fallback={
-                      <div className="w-full h-full flex items-center justify-center">
-                        <ShoppingCart className="w-5 h-5 text-gray-300" />
-                      </div>
-                    }
-                  />
-                </div>
+            {items.map((item) => {
+              const unit = item.unit || 'full'
+              const unitSuffix = unitLabelShort(unit)
+              const linePrice = item.unitPrice ?? item.product.price
+              return (
+                <div
+                  key={`${item.product.id}::${unit}`}
+                  className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                    <SmartImage
+                      src={item.product.image}
+                      alt={item.product.name}
+                      fill
+                      className="object-cover"
+                      sizes="48px"
+                      fallback={
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ShoppingCart className="w-5 h-5 text-gray-300" />
+                        </div>
+                      }
+                    />
+                  </div>
 
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {item.product.name}
-                  </p>
-                  <p className="text-xs text-gray-500 inline-flex items-baseline gap-0.5">
-                    {formatPriceShort(item.product.price)}
-                    <span className="text-[10px] text-gray-400">
-                      {formatProductUnitSuffix(item.product.unit)}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {item.product.name}
+                      {unitSuffix && (
+                        <span className="ml-1 text-[10px] text-primary-600 font-semibold">
+                          ({unitSuffix})
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-gray-500 inline-flex items-baseline gap-0.5">
+                      {formatPriceShort(linePrice)}
+                      <span className="text-[10px] text-gray-400">
+                        /
+                        {unit === 'full'
+                          ? item.product.unit
+                          : unitSuffix.replace(/^\W+\s*/u, '')}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        updateQuantity(item.product.id, item.quantity - 1, unit)
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-100 transition-colors"
+                      aria-label="Decrease quantity"
+                    >
+                      {item.quantity === 1 ? (
+                        <Trash2 className="w-3 h-3 text-red-500" />
+                      ) : (
+                        <Minus className="w-3 h-3 text-gray-600" />
+                      )}
+                    </button>
+                    <span className="w-6 text-center text-sm font-semibold text-gray-900">
+                      {item.quantity}
                     </span>
-                  </p>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault()
+                        updateQuantity(item.product.id, item.quantity + 1, unit)
+                      }}
+                      className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-100 transition-colors"
+                      aria-label="Increase quantity"
+                    >
+                      <Plus className="w-3 h-3 text-gray-600" />
+                    </button>
+                  </div>
                 </div>
-
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      updateQuantity(item.product.id, item.quantity - 1)
-                    }}
-                    className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-100 transition-colors"
-                    aria-label="Decrease quantity"
-                  >
-                    {item.quantity === 1 ? (
-                      <Trash2 className="w-3 h-3 text-red-500" />
-                    ) : (
-                      <Minus className="w-3 h-3 text-gray-600" />
-                    )}
-                  </button>
-                  <span className="w-6 text-center text-sm font-semibold text-gray-900">
-                    {item.quantity}
-                  </span>
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      updateQuantity(item.product.id, item.quantity + 1)
-                    }}
-                    className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-100 transition-colors"
-                    aria-label="Increase quantity"
-                  >
-                    <Plus className="w-3 h-3 text-gray-600" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div className="border-t border-gray-100 px-5 py-3 bg-gray-50/50">

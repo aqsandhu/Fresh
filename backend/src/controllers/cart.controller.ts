@@ -99,6 +99,13 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const { product_id, quantity, special_instructions } = req.body;
+  // `unit` selects which fraction of the product the customer is buying:
+  // 'full' | 'half_kg' | 'quarter_kg' | 'half_dozen'. Old clients omit it
+  // and fall back to 'full'.
+  const rawUnit = (req.body?.unit ?? 'full').toString();
+  const unit = ['full', 'half_kg', 'quarter_kg', 'half_dozen'].includes(rawUnit)
+    ? rawUnit
+    : 'full';
 
   await withTransaction(async (client) => {
     // Get or create cart
@@ -121,11 +128,14 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
 
     const cart = cartResult.rows[0];
 
-    // Get product details
+    // Get product details — including the unit-specific price overrides
+    // so the server is the source of truth for prices (never trust the
+    // client to send the price).
     const productResult = await client.query(
-      `SELECT id, price, stock_quantity, stock_status, unit_value
-       FROM products 
-       WHERE id = $1 AND is_active = TRUE`,
+      `SELECT id, price, half_kg_price, quarter_kg_price, half_dozen_price,
+              stock_quantity, stock_status, unit_value, unit_type
+         FROM products 
+        WHERE id = $1 AND is_active = TRUE`,
       [product_id]
     );
 
@@ -134,17 +144,30 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     }
 
     const product = productResult.rows[0];
+    const basePrice = parseFloat(product.price);
+    const unitPrice = (() => {
+      switch (unit) {
+        case 'half_kg':
+          return parseFloat(product.half_kg_price ?? basePrice * 0.5);
+        case 'quarter_kg':
+          return parseFloat(product.quarter_kg_price ?? basePrice * 0.25);
+        case 'half_dozen':
+          return parseFloat(product.half_dozen_price ?? basePrice * 0.5);
+        default:
+          return basePrice;
+      }
+    })();
 
     // Check stock
     if (product.stock_status === 'out_of_stock' || product.stock_quantity < quantity) {
       throw new Error('Insufficient stock');
     }
 
-    // Check if item already exists in cart
+    // Check if item already exists in cart (same product AND same unit).
     const existingItemResult = await client.query(
       `SELECT id, quantity FROM cart_items 
-       WHERE cart_id = $1 AND product_id = $2`,
-      [cart.id, product_id]
+        WHERE cart_id = $1 AND product_id = $2 AND COALESCE(unit, 'full') = $3`,
+      [cart.id, product_id, unit]
     );
 
     if (existingItemResult.rows.length > 0) {
@@ -159,16 +182,16 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
 
       await client.query(
         `UPDATE cart_items 
-         SET quantity = $1, unit_price = $2, updated_at = NOW()
-         WHERE id = $3`,
-        [newQuantity, product.price, existingItem.id]
+         SET quantity = $1, unit_price = $2, unit = $3, updated_at = NOW()
+         WHERE id = $4`,
+        [newQuantity, unitPrice, unit, existingItem.id]
       );
     } else {
       // Add new item
       await client.query(
-        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, special_instructions)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [cart.id, product_id, quantity, product.price, special_instructions || null]
+        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, unit, special_instructions)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [cart.id, product_id, quantity, unitPrice, unit, special_instructions || null]
       );
     }
 

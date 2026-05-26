@@ -18,11 +18,15 @@ import {
   Plus,
   Loader2,
   CalendarDays,
+  CheckCircle2,
+  ArrowRight,
+  ShoppingBag,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
+import { unitLabelShort } from '@/lib/unitPricing'
 import { addressesApi, settingsApi } from '@/lib/api'
 import api from '@/lib/api'
 import AddressActions from '@/components/checkout/AddressActions'
@@ -63,6 +67,11 @@ function CheckoutPage() {
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('')
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
   const [orderPlaced, setOrderPlaced] = useState(false)
+  const [placedOrder, setPlacedOrder] = useState<{
+    id: string
+    order_number?: string | null
+    total_amount?: number | null
+  } | null>(null)
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [timeSlots, setTimeSlots] = useState<{ id: string; slot_name: string; start_time: string; end_time: string; is_free_delivery_slot: boolean; available_slots: number }[]>([])
   const [loadingSlots, setLoadingSlots] = useState(true)
@@ -103,6 +112,7 @@ function CheckoutPage() {
         await api.post('/cart/add', {
           product_id: item.product.id,
           quantity: item.quantity,
+          unit: item.unit || 'full',
         })
       }
       const cartRes = await api.get('/cart')
@@ -272,6 +282,7 @@ function CheckoutPage() {
         await api.post('/cart/add', {
           product_id: item.product.id,
           quantity: item.quantity,
+          unit: item.unit || 'full',
         })
       }
 
@@ -292,9 +303,15 @@ function CheckoutPage() {
       const order = orderData?.order || orderData
 
       setOrderPlaced(true)
+      setPlacedOrder({
+        id: order?.id || '',
+        order_number: order?.order_number ?? null,
+        total_amount:
+          order?.total_amount != null ? parseFloat(String(order.total_amount)) : null,
+      })
       clearCart()
-      toast.success('Order placed successfully!')
-      router.push(`/track/${order?.id || 'success'}`)
+      // We deliberately DON'T router.push here — we show an inline success
+      // modal with two clear CTAs (Continue Shopping / View Order) instead.
     } catch (err: any) {
       const msg =
         err?.message ||
@@ -325,6 +342,64 @@ function CheckoutPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {/* Success modal — shown after Place Order returns. Two clear CTAs so
+          the customer can either keep shopping or jump to the order detail. */}
+      {orderPlaced && placedOrder && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center"
+          >
+            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+              <CheckCircle2 className="w-10 h-10 text-green-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Order placed successfully!
+            </h2>
+            <p className="text-sm text-gray-600 mb-1">
+              Thank you — your order has been received.
+            </p>
+            {placedOrder.order_number && (
+              <p className="text-sm text-gray-500 mb-4">
+                Order #
+                <span className="font-semibold text-gray-700">
+                  {placedOrder.order_number}
+                </span>
+                {placedOrder.total_amount != null && (
+                  <>
+                    {' '}· Total{' '}
+                    <span className="font-semibold text-gray-700">
+                      {formatPriceShort(placedOrder.total_amount)}
+                    </span>
+                  </>
+                )}
+              </p>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3 mt-6">
+              <Button
+                variant="outline"
+                fullWidth
+                onClick={() => router.push('/products')}
+              >
+                <ShoppingBag className="w-4 h-4 mr-2" />
+                Continue Shopping
+              </Button>
+              <Button
+                fullWidth
+                onClick={() =>
+                  router.push(`/track/${placedOrder.id || 'success'}`)
+                }
+              >
+                View Order
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       <div className="container mx-auto px-4">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">
           Checkout
@@ -597,30 +672,47 @@ function CheckoutPage() {
 
               {/* Items */}
               <div className="space-y-3 mb-6 max-h-48 overflow-y-auto">
-                {items.map((item) => (
-                  <div key={item.product.id} className="flex items-center gap-3">
-                    <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                      <Image
-                        src={item.product.image || item.product.image_url || '/placeholder-product.png'}
-                        alt={item.product.name}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.product.name}</p>
-                      <p className="text-xs text-gray-500 inline-flex items-baseline gap-0.5">
-                        {item.quantity} x {formatPriceShort(item.product.price)}
-                        <span className="text-[10px] text-gray-400">
-                          {formatProductUnitSuffix(item.product.unit)}
-                        </span>
+                {items.map((item) => {
+                  const unit = item.unit || 'full'
+                  const unitSuffix = unitLabelShort(unit)
+                  const linePrice = item.unitPrice ?? item.product.price
+                  return (
+                    <div
+                      key={`${item.product.id}::${unit}`}
+                      className="flex items-center gap-3"
+                    >
+                      <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                        <Image
+                          src={item.product.image || item.product.image_url || '/placeholder-product.png'}
+                          alt={item.product.name}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {item.product.name}
+                          {unitSuffix && (
+                            <span className="ml-1 text-[11px] text-primary-700 font-semibold">
+                              ({unitSuffix})
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-500 inline-flex items-baseline gap-0.5">
+                          {item.quantity} x {formatPriceShort(linePrice)}
+                          <span className="text-[10px] text-gray-400">
+                            {formatProductUnitSuffix(
+                              unit === 'full' ? item.product.unit : unitSuffix
+                            )}
+                          </span>
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium">
+                        {formatPriceShort(linePrice * item.quantity)}
                       </p>
                     </div>
-                    <p className="text-sm font-medium">
-                      {formatPriceShort(item.product.price * item.quantity)}
-                    </p>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Price Breakdown */}

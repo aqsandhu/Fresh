@@ -21,6 +21,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort } from '@/lib/utils'
 import { getDeliveryHint, getVegFruitSubtotal } from '@/lib/deliveryRules'
+import { unitLabelShort } from '@/lib/unitPricing'
 import ProductPrice from '@/components/ui/ProductPrice'
 
 export default function CartPage() {
@@ -82,83 +83,103 @@ export default function CartPage() {
           {/* Cart Items */}
           <div className="lg:col-span-2 space-y-4">
             <AnimatePresence mode="popLayout">
-              {items.map((item) => (
-                <motion.div
-                  key={item.product.id}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, x: -100 }}
-                  className="bg-white rounded-xl p-4 shadow-sm"
-                >
-                  <div className="flex gap-4">
-                    <Link href={`/product/${item.product.id}`}>
-                      <div className="relative w-20 h-20 sm:w-24 sm:h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                        <SmartImage
-                          src={item.product?.image}
-                          alt={item.product.name}
-                          fill
-                          className="object-cover"
-                          sizes="96px"
-                          fallback={
-                            <div className="w-full h-full flex items-center justify-center">
-                              <ShoppingCart className="w-8 h-8 text-gray-300" />
-                            </div>
-                          }
-                        />
-                      </div>
-                    </Link>
-
-                    <div className="flex-1 min-w-0">
+              {items.map((item) => {
+                const unit = item.unit || 'full'
+                const unitSuffix = unitLabelShort(unit)
+                const linePrice = item.unitPrice ?? item.product.price
+                return (
+                  <motion.div
+                    key={`${item.product.id}::${unit}`}
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, x: -100 }}
+                    className="bg-white rounded-xl p-4 shadow-sm"
+                  >
+                    <div className="flex gap-4">
                       <Link href={`/product/${item.product.id}`}>
-                        <h3 className="font-semibold text-gray-900 truncate hover:text-primary-600">
-                          {item.product.name}
-                        </h3>
+                        <div className="relative w-20 h-20 sm:w-24 sm:h-24 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                          <SmartImage
+                            src={item.product?.image}
+                            alt={item.product.name}
+                            fill
+                            className="object-cover"
+                            sizes="96px"
+                            fallback={
+                              <div className="w-full h-full flex items-center justify-center">
+                                <ShoppingCart className="w-8 h-8 text-gray-300" />
+                              </div>
+                            }
+                          />
+                        </div>
                       </Link>
-                      <div className="mt-1">
-                        <ProductPrice price={item.product.price} unit={item.product.unit} size="sm" />
-                      </div>
 
-                      <div className="flex items-center justify-between mt-3">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200"
-                            aria-label="Decrease quantity"
-                          >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                          <span className="w-8 text-center font-medium">{item.quantity}</span>
-                          <button
-                            onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                            className="w-8 h-8 flex items-center justify-center rounded-full bg-primary-100 hover:bg-primary-200"
-                            aria-label="Increase quantity"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </button>
+                      <div className="flex-1 min-w-0">
+                        <Link href={`/product/${item.product.id}`}>
+                          <h3 className="font-semibold text-gray-900 truncate hover:text-primary-600">
+                            {item.product.name}
+                            {unitSuffix && (
+                              <span className="ml-2 text-xs text-primary-700 font-semibold">
+                                ({unitSuffix})
+                              </span>
+                            )}
+                          </h3>
+                        </Link>
+                        <div className="mt-1">
+                          <ProductPrice
+                            price={linePrice}
+                            unit={unit === 'full' ? item.product.unit : unitSuffix}
+                            size="sm"
+                          />
                         </div>
 
-                        <button
-                          onClick={() => {
-                            removeItem(item.product.id)
-                            toast.success('Item removed from cart')
-                          }}
-                          className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          aria-label="Remove item"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() =>
+                                updateQuantity(item.product.id, item.quantity - 1, unit)
+                              }
+                              className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200"
+                              aria-label="Decrease quantity"
+                            >
+                              <Minus className="w-4 h-4" />
+                            </button>
+                            <span className="w-8 text-center font-medium">
+                              {item.quantity}
+                            </span>
+                            <button
+                              onClick={() =>
+                                updateQuantity(item.product.id, item.quantity + 1, unit)
+                              }
+                              className="w-8 h-8 flex items-center justify-center rounded-full bg-primary-100 hover:bg-primary-200"
+                              aria-label="Increase quantity"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              removeItem(item.product.id, unit)
+                              toast.success('Item removed from cart')
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            aria-label="Remove item"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-right hidden sm:block">
+                        <p className="font-semibold text-gray-900">
+                          {formatPriceShort(linePrice * item.quantity)}
+                        </p>
                       </div>
                     </div>
-
-                    <div className="text-right hidden sm:block">
-                      <p className="font-semibold text-gray-900">
-                        {formatPriceShort(item.product.price * item.quantity)}
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                )
+              })}
             </AnimatePresence>
 
             <button

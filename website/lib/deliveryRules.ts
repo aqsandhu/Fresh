@@ -20,7 +20,12 @@ export const VEG_FRUIT_CATEGORY_SLUGS = [
 export type CartLineItem = {
   product: { category?: string; price: number }
   quantity: number
+  /** Effective unit price (admin override or derived). Falls back to product.price. */
+  unitPrice?: number
 }
+
+const linePrice = (item: CartLineItem) =>
+  (item.unitPrice ?? item.product.price) * item.quantity
 
 export function isVegOrFruitCategory(category?: string): boolean {
   if (!category) return false
@@ -30,16 +35,13 @@ export function isVegOrFruitCategory(category?: string): boolean {
 }
 
 export function getCartSubtotal(items: CartLineItem[]): number {
-  return items.reduce(
-    (sum, item) => sum + item.product.price * item.quantity,
-    0
-  )
+  return items.reduce((sum, item) => sum + linePrice(item), 0)
 }
 
 export function getVegFruitSubtotal(items: CartLineItem[]): number {
   return items
     .filter((item) => isVegOrFruitCategory(item.product.category))
-    .reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+    .reduce((sum, item) => sum + linePrice(item), 0)
 }
 
 export function calculateClientDeliveryCharge(

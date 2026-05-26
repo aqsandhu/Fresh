@@ -17,6 +17,7 @@ import {
   Addresses,
   ServiceCities,
   DeliveryZones,
+  Roles,
   Settings,
 } from '@/pages';
 import './App.css';
@@ -179,6 +180,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <DeliveryZones />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/roles"
+        element={
+          <ProtectedRoute>
+            <Roles />
           </ProtectedRoute>
         }
       />

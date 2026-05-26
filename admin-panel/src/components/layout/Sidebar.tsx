@@ -12,6 +12,7 @@ import {
   MapPin,
   MapPinned,
   Settings,
+  Shield,
   LogOut,
   Store,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { path: '/admin/addresses', label: 'Addresses', icon: <MapPin className="w-5 h-5" /> },
   { path: '/admin/service-cities', label: 'Service Cities', icon: <MapPin className="w-5 h-5" /> },
   { path: '/admin/delivery-zones', label: 'Delivery Zones', icon: <MapPinned className="w-5 h-5" /> },
+  { path: '/admin/roles', label: 'Admin Roles', icon: <Shield className="w-5 h-5" /> },
   { path: '/admin/settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
 ];
 
