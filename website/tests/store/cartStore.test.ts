@@ -48,7 +48,13 @@ describe('Cart Store', () => {
       const hasOnlyChicken = this.items.every((item: any) => item.product.category === 'chicken');
       const hasOnlyMeat = this.items.every((item: any) => item.product.category === 'meat');
       if (hasOnlyChicken || hasOnlyMeat) return baseCharge;
-      if (subtotal >= freeThreshold) return 0;
+
+      const vegFruitSlugs = ['vegetables', 'fruits', 'sabzi', 'fruit'];
+      const vegFruitSubtotal = this.items
+        .filter((item: any) => vegFruitSlugs.includes(item.product.category))
+        .reduce((sum: number, item: any) => sum + item.product.price * item.quantity, 0);
+
+      if (vegFruitSubtotal >= freeThreshold && subtotal >= freeThreshold) return 0;
       return baseCharge;
     },
     getFinalTotal: function() {

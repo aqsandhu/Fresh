@@ -91,15 +91,22 @@ export function formatDateTime(date: string | Date): string {
   }).format(new Date(date))
 }
 
-export function getDeliveryMessage(subtotal: number, hasOnlyChicken: boolean): string {
+export function getDeliveryMessage(
+  subtotal: number,
+  hasOnlyChicken: boolean,
+  vegFruitSubtotal: number = 0,
+  freeThreshold: number = 500
+): string {
   if (hasOnlyChicken) {
     return 'Delivery charges apply for chicken-only orders'
   }
-  if (subtotal >= 500) {
-    return 'Free delivery on orders above Rs. 500'
+  if (vegFruitSubtotal >= freeThreshold && subtotal >= freeThreshold) {
+    return 'Free delivery — vegetables/fruits and order total both qualify'
   }
-  const remaining = 500 - subtotal
-  return `Add Rs. ${remaining} more for free delivery`
+  if (vegFruitSubtotal < freeThreshold) {
+    return `Add Rs. ${freeThreshold - vegFruitSubtotal} more vegetables/fruits for free delivery`
+  }
+  return `Add Rs. ${freeThreshold - subtotal} more to your order for free delivery`
 }
 
 export function generateOTP(): string {

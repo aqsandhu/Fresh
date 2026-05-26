@@ -3,6 +3,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { CartState, Product } from '@/types'
+import { calculateClientDeliveryCharge } from '@/lib/deliveryRules'
 
 // Defaults (overridden by backend settings when loaded)
 let DELIVERY_CHARGE = 100
@@ -97,24 +98,8 @@ export const useCartStore = create<CartState>()(
       },
 
       getDeliveryCharge: () => {
-        const subtotal = get().getSubtotal()
         const { items } = get()
-        if (items.length === 0) return 0
-
-        const hasOnlyChicken = get().hasOnlyChicken()
-        const hasOnlyMeat = items.every((item) => item.product.category === 'meat')
-
-        // Chicken-only or meat-only: always charged
-        if (hasOnlyChicken || hasOnlyMeat) {
-          return DELIVERY_CHARGE
-        }
-
-        // Mixed or other: free if above threshold
-        if (subtotal >= FREE_DELIVERY_THRESHOLD) {
-          return 0
-        }
-
-        return DELIVERY_CHARGE
+        return calculateClientDeliveryCharge(items, DELIVERY_CHARGE, FREE_DELIVERY_THRESHOLD)
       },
 
       getFinalTotal: () => {
