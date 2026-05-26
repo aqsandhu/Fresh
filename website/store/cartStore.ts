@@ -127,3 +127,81 @@ export const useCartStore = create<CartState>()(
 if (typeof window !== 'undefined') {
   useCartStore.getState().loadDeliverySettings()
 }
+
+// ============================================================================
+// AUTH STORE
+// ============================================================================
+
+interface AuthUser {
+  id: string
+  name: string
+  phone: string
+  email?: string
+  role?: string
+}
+
+interface AuthState {
+  user: AuthUser | null
+  isAuthenticated: boolean
+  accessToken: string | null
+  refreshToken: string | null
+  /** Epoch ms of the last user-initiated action. Powers checkout re-auth. */
+  lastActiveAt: number | null
+  /** Epoch ms of the last successful PIN verification (login OR re-auth). */
+  pinVerifiedAt: number | null
+  setAuth: (user: AuthUser, tokens: { accessToken: string; refreshToken: string }) => void
+  setUser: (user: AuthUser | null) => void
+  logout: () => void
+  /** Bump on any meaningful interaction so we know the session is "fresh". */
+  bumpActivity: () => void
+  /** Mark a PIN re-auth as just succeeded. */
+  markPinVerified: () => void
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      isAuthenticated: false,
+      accessToken: null,
+      refreshToken: null,
+      lastActiveAt: null,
+      pinVerifiedAt: null,
+      setAuth: (user, tokens) => {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('token', tokens.accessToken)
+          localStorage.setItem('refreshToken', tokens.refreshToken)
+        }
+        const now = Date.now()
+        set({
+          user,
+          isAuthenticated: true,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+          lastActiveAt: now,
+          pinVerifiedAt: now,
+        })
+      },
+      setUser: (user) => set({ user, isAuthenticated: !!user }),
+      logout: () => {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('token')
+          localStorage.removeItem('refreshToken')
+        }
+        set({
+          user: null,
+          isAuthenticated: false,
+          accessToken: null,
+          refreshToken: null,
+          lastActiveAt: null,
+          pinVerifiedAt: null,
+        })
+      },
+      bumpActivity: () => set({ lastActiveAt: Date.now() }),
+      markPinVerified: () => set({ pinVerifiedAt: Date.now(), lastActiveAt: Date.now() }),
+    }),
+    {
+      name: 'freshbazar-auth',
+    }
+  )
+)

@@ -16,25 +16,10 @@ interface CartDropdownProps {
   onClose: () => void
 }
 
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 639px)')
-    const update = () => setIsMobile(media.matches)
-    update()
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
-
-  return isMobile
-}
-
 export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
   const {
     items,
     updateQuantity,
-    removeItem,
     getSubtotal,
     getTotalItems,
     getDeliveryCharge,
@@ -43,9 +28,9 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
     loadDeliverySettings,
   } = useCartStore()
 
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const desktopRef = useRef<HTMLDivElement>(null)
+  const mobileRef = useRef<HTMLDivElement>(null)
   const [mounted, setMounted] = useState(false)
-  const isMobile = useIsMobile()
 
   useEffect(() => {
     setMounted(true)
@@ -57,16 +42,20 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
 
   useEffect(() => {
     if (!isOpen) return
-    const prevOverflowX = document.body.style.overflowX
-    document.body.style.overflowX = 'hidden'
+    const prev = document.body.style.overflow
+    // Prevent body horizontal scroll while panel is open on mobile.
+    document.body.style.overflow = 'hidden'
     return () => {
-      document.body.style.overflowX = prevOverflowX
+      document.body.style.overflow = prev
     }
   }, [isOpen])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      const insideDesktop = desktopRef.current?.contains(target)
+      const insideMobile = mobileRef.current?.contains(target)
+      if (!insideDesktop && !insideMobile) {
         onClose()
       }
     }
@@ -119,14 +108,14 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
         <>
           <div className="max-h-[280px] overflow-y-auto divide-y divide-gray-50">
             {items.map((item) => (
-              <div key={item.product.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
-                <div className="relative w-14 h-14 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+              <div key={item.product.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors">
+                <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                   <SmartImage
                     src={item.product.image}
                     alt={item.product.name}
                     fill
                     className="object-cover"
-                    sizes="56px"
+                    sizes="48px"
                     fallback={
                       <div className="w-full h-full flex items-center justify-center">
                         <ShoppingCart className="w-5 h-5 text-gray-300" />
@@ -145,7 +134,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 flex-shrink-0">
                   <button
                     onClick={(e) => { e.preventDefault(); updateQuantity(item.product.id, item.quantity - 1) }}
                     className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-100 transition-colors"
@@ -156,7 +145,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                       <Minus className="w-3 h-3 text-gray-600" />
                     )}
                   </button>
-                  <span className="w-7 text-center text-sm font-semibold text-gray-900">
+                  <span className="w-6 text-center text-sm font-semibold text-gray-900">
                     {item.quantity}
                   </span>
                   <button
@@ -166,23 +155,19 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                     <Plus className="w-3 h-3 text-gray-600" />
                   </button>
                 </div>
-
-                <span className="text-sm font-bold text-primary-700 w-16 text-right">
-                  {formatPriceShort(item.product.price * item.quantity)}
-                </span>
               </div>
             ))}
           </div>
 
           <div className="border-t border-gray-100 px-5 py-4 bg-gray-50/50">
             <div className="space-y-2 mb-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Subtotal</span>
-                <span className="text-sm font-semibold text-gray-900">{formatPriceShort(subtotal)}</span>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Subtotal</span>
+                <span className="font-semibold text-gray-900">{formatPriceShort(subtotal)}</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Delivery</span>
-                <span className={`text-sm font-semibold ${delivery === 0 ? 'text-green-600' : 'text-gray-900'}`}>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Delivery</span>
+                <span className={`font-semibold ${delivery === 0 ? 'text-green-600' : 'text-gray-900'}`}>
                   {delivery === 0 ? 'FREE' : formatPriceShort(delivery)}
                 </span>
               </div>
@@ -213,54 +198,68 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
     </>
   )
 
-  if (!mounted) return null
-
-  if (isMobile) {
-    if (!isOpen) return null
-    return createPortal(
-      <AnimatePresence>
-        <div className="fixed inset-0 z-[200] sm:hidden">
-          <motion.button
-            type="button"
-            aria-label="Close cart"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black/20"
-            onClick={onClose}
-          />
-          <div className="absolute inset-x-0 top-24 flex justify-center px-2 pointer-events-none">
-            <motion.div
-              ref={dropdownRef}
-              initial={{ opacity: 0, y: -12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.2 }}
-              className="pointer-events-auto w-full max-w-[380px] max-h-[min(480px,calc(100vh-6.5rem))] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden"
-            >
-              {panelBody}
-            </motion.div>
-          </div>
-        </div>
-      </AnimatePresence>,
-      document.body
-    )
-  }
-
-  return (
+  // ---------- Desktop variant: rendered inline, hidden on mobile ----------
+  const desktopPanel = (
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          ref={dropdownRef}
+          ref={desktopRef}
           initial={{ opacity: 0, y: -10, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -10, scale: 0.95 }}
           transition={{ duration: 0.2 }}
-          className="absolute right-0 top-full mt-2 w-[380px] max-h-[480px] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
+          className="hidden sm:block absolute right-0 top-full mt-2 w-[380px] max-h-[480px] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden"
         >
           {panelBody}
         </motion.div>
       )}
     </AnimatePresence>
+  )
+
+  // ---------- Mobile variant: portal to body, fixed viewport center ----------
+  // Positioning wrapper (not animated) handles `-translate-x-1/2` so it can't
+  // conflict with framer-motion's transform on the inner motion.div.
+  const mobilePanel =
+    mounted &&
+    createPortal(
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <motion.button
+              type="button"
+              aria-label="Close cart"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-[90] bg-black/30 sm:hidden"
+              onClick={onClose}
+            />
+            <div
+              className="fixed z-[100] left-1/2 top-20 w-[calc(100vw-1rem)] max-w-[380px] sm:hidden"
+              style={{ transform: 'translateX(-50%)' }}
+            >
+              <motion.div
+                ref={mobileRef}
+                initial={{ opacity: 0, y: -12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -12 }}
+                transition={{ duration: 0.2 }}
+                className="bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden max-h-[min(540px,calc(100vh-6rem))]"
+              >
+                {panelBody}
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>,
+      document.body
+    )
+
+  return (
+    <>
+      {desktopPanel}
+      {mobilePanel}
+    </>
   )
 }

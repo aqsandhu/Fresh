@@ -31,6 +31,7 @@ export default function CartPage() {
     items,
     updateQuantity,
     removeItem,
+    clearCart,
     getSubtotal,
     getDeliveryCharge,
     getFinalTotal,
