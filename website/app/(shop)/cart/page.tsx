@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import SmartImage from '@/components/ui/SmartImage'
 import { useRouter } from 'next/navigation'
@@ -27,22 +27,27 @@ import ProductPrice from '@/components/ui/ProductPrice'
 export default function CartPage() {
   const router = useRouter()
   const { isAuthenticated } = useAuthStore()
-  const { 
-    items, 
-    updateQuantity, 
-    removeItem, 
-    getSubtotal, 
-    getDeliveryCharge, 
+  const {
+    items,
+    updateQuantity,
+    removeItem,
+    getSubtotal,
+    getDeliveryCharge,
     getFinalTotal,
     hasOnlyChicken,
-    clearCart
+    deliveryFreeThreshold,
+    loadDeliverySettings,
   } = useCartStore()
+
+  useEffect(() => {
+    loadDeliverySettings()
+  }, [loadDeliverySettings])
 
   const subtotal = getSubtotal()
   const deliveryCharge = getDeliveryCharge()
   const total = getFinalTotal()
   const onlyChicken = hasOnlyChicken()
-  const deliveryHint = getMixedOrderDeliveryHint(items, 500)
+  const deliveryHint = getMixedOrderDeliveryHint(items, deliveryFreeThreshold)
 
   const handleCheckout = () => {
     if (!isAuthenticated) {
