@@ -21,10 +21,19 @@ import logger from './logger';
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
 const ENV_FREE_DELIVERY_MIN_AMOUNT = parseFloat(process.env.FREE_DELIVERY_MIN_AMOUNT || '500');
 
-// Category slugs that count toward the free-delivery threshold.
-// Keep this in sync with website/lib/deliveryRules.ts and
+// Slugs that count toward the free-delivery threshold. Kept permissive on
+// purpose so legacy categories ("sabzi", "fruit", "fresh-vegetables", etc.)
+// in production still qualify; mirrored in website/lib/deliveryRules.ts and
 // customer-app/src/utils/helpers.ts.
-const VEG_FRUIT_SLUGS = ['vegetables', 'fruits'];
+const VEG_FRUIT_SLUGS = [
+  'vegetables',
+  'fruits',
+  'sabzi',
+  'fruit',
+  'vegetable',
+  'fresh-vegetables',
+  'fresh-fruits',
+];
 
 const getDeliverySettings = async (): Promise<{ baseCharge: number; freeThreshold: number }> => {
   try {
@@ -43,6 +52,14 @@ const getDeliverySettings = async (): Promise<{ baseCharge: number; freeThreshol
   }
 };
 
+/**
+ * Sum of cart items whose category counts as "vegetables/fruits".
+ *
+ * We deliberately match BOTH on the slug allowlist AND on a relaxed
+ * category-name pattern (LOWER(name_en) starts with "vegetable" or
+ * "fruit", or equals "sabzi"). This handles production stores that
+ * named their categories slightly differently from the seed data.
+ */
 async function getVegFruitSubtotal(cartId: string): Promise<number> {
   const result = await query(
     `SELECT COALESCE(SUM(ci.total_price), 0) AS veg_fruit_total
@@ -50,7 +67,13 @@ async function getVegFruitSubtotal(cartId: string): Promise<number> {
        JOIN products p ON ci.product_id = p.id
        JOIN categories cat ON p.category_id = cat.id
       WHERE ci.cart_id = $1
-        AND cat.slug = ANY($2::text[])`,
+        AND (
+          LOWER(cat.slug) = ANY($2::text[])
+          OR LOWER(cat.name_en) LIKE 'vegetable%'
+          OR LOWER(cat.name_en) LIKE 'fruit%'
+          OR LOWER(cat.name_en) = 'sabzi'
+          OR LOWER(cat.name_en) = 'phal'
+        )`,
     [cartId, VEG_FRUIT_SLUGS]
   );
   return parseFloat(result.rows[0]?.veg_fruit_total || '0');
