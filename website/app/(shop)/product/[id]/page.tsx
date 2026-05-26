@@ -166,7 +166,7 @@ export default function ProductDetailPage() {
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Truck className="w-4 h-4 text-primary-600" />
-                  <span>Free delivery above Rs. 500</span>
+                  <span>Free delivery on Rs. 500+ vegetables/fruits</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <Shield className="w-4 h-4 text-primary-600" />

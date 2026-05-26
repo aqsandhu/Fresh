@@ -35,7 +35,7 @@ export const HomeScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { subtotal } = useCartStore();
+  const { items } = useCartStore();
 
   const loadData = useCallback(async () => {
     try {
@@ -170,8 +170,20 @@ export const HomeScreen: React.FC = () => {
           />
         )}
 
-        {/* Free Delivery Card */}
-        <FreeDeliveryCard cartSubtotal={subtotal()} />
+        {/* Free Delivery Card — counts only vegetables + fruits toward the threshold */}
+        <FreeDeliveryCard
+          vegFruitSubtotal={items
+            .filter((it) => {
+              const slug = String(
+                (it.product as any)?.categorySlug ||
+                  (it.product as any)?.category_slug ||
+                  (it.product as any)?.category ||
+                  ''
+              ).toLowerCase();
+              return ['vegetables', 'fruits', 'sabzi', 'fruit'].includes(slug);
+            })
+            .reduce((s, it) => s + it.product.price * it.quantity, 0)}
+        />
 
         {/* Featured Products */}
         <SectionHeader

@@ -226,6 +226,8 @@ export interface Product {
   sku?: string;
   barcode?: string;
   categoryId: string;
+  categorySlug?: string;
+  categoryName?: string;
   subcategoryId?: string;
   price: number;
   compareAtPrice?: number;

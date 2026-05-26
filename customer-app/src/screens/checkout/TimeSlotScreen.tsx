@@ -14,7 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { CartStackParamList, DeliverySlot } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES } from '@utils/constants';
-import { formatCurrency } from '@utils/helpers';
+import { formatCurrency, getVegFruitSubtotal, calculateDeliveryCharge as calcDelivery } from '@utils/helpers';
 import { Button, ErrorView, LoadingOverlay } from '@components';
 import { orderService } from '@services/order.service';
 import { cartService } from '@services/cart.service';
@@ -105,14 +105,14 @@ export const TimeSlotScreen: React.FC = () => {
     }
   };
 
-  // Calculate delivery charge based on selected slot and settings
-  const getDeliveryCharge = (): number => {
-    if (selectedSlot?.isFreeDelivery) return 0;
-    if (subtotal() >= deliverySettings.free_delivery_threshold) return 0;
-    return deliverySettings.base_charge;
-  };
-
-  const deliveryCharge = getDeliveryCharge();
+  // Mirrors backend rule: free slot OR (vegetables + fruits >= threshold)
+  const deliveryCharge = calcDelivery(
+    items,
+    deliverySettings.free_delivery_threshold,
+    deliverySettings.base_charge,
+    Boolean(selectedSlot?.isFreeDelivery)
+  );
+  const vegFruitSubtotal = getVegFruitSubtotal(items);
   const orderTotal = subtotal() + deliveryCharge;
 
   const handlePlaceOrder = async () => {
@@ -358,8 +358,17 @@ export const TimeSlotScreen: React.FC = () => {
           {deliveryCharge === 0 && selectedSlot?.isFreeDelivery && (
             <Text style={styles.freeNote}>Free delivery on this time slot!</Text>
           )}
-          {deliveryCharge === 0 && !selectedSlot?.isFreeDelivery && subtotal() >= deliverySettings.free_delivery_threshold && (
-            <Text style={styles.freeNote}>Free delivery on orders above {formatCurrency(deliverySettings.free_delivery_threshold)}</Text>
+          {deliveryCharge === 0 && !selectedSlot?.isFreeDelivery && (
+            <Text style={styles.freeNote}>
+              Free delivery — Rs. {vegFruitSubtotal} in vegetables/fruits qualifies.
+            </Text>
+          )}
+          {deliveryCharge > 0 && (
+            <Text style={styles.freeNote}>
+              Add Rs.{' '}
+              {Math.max(0, deliverySettings.free_delivery_threshold - vegFruitSubtotal)}{' '}
+              more in vegetables/fruits for free delivery (or pick a free slot).
+            </Text>
           )}
           <View style={[styles.summaryRow, styles.totalRow]}>
             <Text style={styles.totalLabel}>Total</Text>

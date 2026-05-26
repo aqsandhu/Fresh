@@ -40,7 +40,7 @@ const faqCategories = [
     faqs: [
       {
         question: 'What are the delivery charges?',
-        answer: 'Delivery is FREE for orders above Rs. 500. For orders below Rs. 500, a delivery charge of Rs. 100 applies.',
+        answer: 'Delivery is FREE when your vegetables + fruits subtotal is Rs. 500 or more, or when you choose a free-delivery time slot at checkout. Otherwise a flat Rs. 100 delivery charge applies.',
       },
       {
         question: 'What are the delivery time slots?',

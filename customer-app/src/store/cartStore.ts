@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CartItem, Product } from '@types';
 import { cartService } from '@services/cart.service';
-import { calculateCartTotals } from '@utils/helpers';
+import { calculateDeliveryCharge as calcDeliveryCharge } from '@utils/helpers';
 
 interface CartStore {
   items: CartItem[];
@@ -194,10 +194,12 @@ export const useCartStore = create<CartStore>()(
       },
 
       deliveryCharge: () => {
-        // NOTE: This is a local estimate only. For accurate charges,
-        // screens should fetch from GET /api/site-settings/delivery.
-        // CartScreen and TimeSlotScreen already do this correctly.
-        return 0;
+        // Local fallback only — screens that know the admin-configured
+        // threshold (CartScreen / TimeSlotScreen) override this with the
+        // server value once it loads.
+        const items = get().items;
+        if (items.length === 0) return 0;
+        return calcDeliveryCharge(items);
       },
 
       total: () => {

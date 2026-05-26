@@ -26,7 +26,7 @@ const deliveryInfo = [
   {
     icon: CreditCard,
     title: 'Delivery Charges',
-    description: 'FREE delivery on orders above Rs. 500. For orders below Rs. 500, a flat delivery charge of Rs. 100 applies.',
+    description: 'FREE delivery when your vegetables + fruits subtotal is Rs. 500+ or when you pick a free-delivery time slot. Otherwise a flat Rs. 100 delivery charge applies.',
   },
   {
     icon: Package,
@@ -46,15 +46,15 @@ const timeSlots = [
   {
     slot: '2PM - 6PM',
     label: 'Afternoon',
-    charge: 'Rs. 50',
-    condition: 'Or FREE for orders above Rs. 500',
+    charge: 'Rs. 100',
+    condition: 'Free with Rs. 500+ vegetables/fruits',
     color: 'blue',
   },
   {
     slot: '6PM - 9PM',
     label: 'Evening',
-    charge: 'Rs. 50',
-    condition: 'Or FREE for orders above Rs. 500',
+    charge: 'Rs. 100',
+    condition: 'Free with Rs. 500+ vegetables/fruits',
     color: 'purple',
   },
 ]

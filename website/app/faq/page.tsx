@@ -18,7 +18,7 @@ const faqCategories = [
       },
       {
         question: 'What is the minimum order value?',
-        answer: 'There is no minimum order value. However, we offer free delivery on orders above Rs. 500.',
+        answer: 'There is no minimum order value. However, we offer free delivery once your vegetables + fruits subtotal crosses Rs. 500 (or when you pick a free-delivery time slot).',
       },
     ],
   },
@@ -31,7 +31,7 @@ const faqCategories = [
       },
       {
         question: 'How much is the delivery charge?',
-        answer: 'Delivery is FREE for orders above Rs. 500. For orders below Rs. 500, a delivery charge of Rs. 100 applies. Note: Chicken-only orders always have a delivery charge.',
+        answer: 'Delivery is FREE when your vegetables + fruits subtotal is Rs. 500 or more, or when you select a free-delivery time slot at checkout. Otherwise a flat delivery charge of Rs. 100 applies — chicken/meat/grocery alone never qualify for free delivery.',
       },
       {
         question: 'Do you deliver to my area?',

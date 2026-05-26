@@ -7,8 +7,8 @@ import { ArrowRight, Truck, Clock, Shield, Phone } from 'lucide-react'
 import Button from '@/components/ui/Button'
 
 const features = [
-  { icon: Truck, text: 'Free Delivery above Rs. 500' },
-  { icon: Clock, text: '10AM-2PM Free Slot' },
+  { icon: Truck, text: 'Free Delivery on Rs. 500+ Vegetables/Fruits' },
+  { icon: Clock, text: 'Free Delivery Time Slots Available' },
   { icon: Shield, text: 'Freshness Guaranteed' },
   { icon: Phone, text: '0300-1234567' },
 ]
@@ -67,9 +67,9 @@ export default function HeroSection() {
               transition={{ delay: 0.5 }}
               className="text-gray-600 mb-8 max-w-lg mx-auto lg:mx-0"
             >
-              Get farm-fresh vegetables, fruits, dry fruits, and chicken delivered 
-              to your home. Free delivery on orders above Rs. 500. Order before 10AM 
-              for free 10AM-2PM delivery slot.
+              Get farm-fresh vegetables, fruits, dry fruits, and chicken delivered
+              to your home. Get free delivery when your vegetables + fruits cross
+              Rs. 500, or pick a free-delivery time slot.
             </motion.p>
 
             <motion.div

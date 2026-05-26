@@ -305,8 +305,8 @@ export interface CartState {
   getTotalItems: () => number;
   getTotalPrice: () => number;
   getSubtotal: () => number;
-  getDeliveryCharge: () => number;
-  getFinalTotal: () => number;
+  getDeliveryCharge: (isFreeDeliverySlot?: boolean) => number;
+  getFinalTotal: (isFreeDeliverySlot?: boolean) => number;
   hasOnlyChicken: () => boolean;
 }
 

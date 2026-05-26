@@ -86,7 +86,10 @@ function CheckoutPage() {
   const selectedSlotObj = timeSlots.find(s => s.id === selectedTimeSlot)
   const isFreeDeliverySlot = selectedSlotObj?.is_free_delivery_slot === true
   const subtotal = serverSubtotal ?? localSubtotal
-  const deliveryCharge = serverDeliveryCharge ?? (isFreeDeliverySlot ? 0 : getDeliveryCharge())
+  // Local fallback always uses the same rule as the backend (veg/fruit OR
+  // free-delivery slot). Server value (computed on /cart/delivery-charge)
+  // overrides if it was successfully fetched.
+  const deliveryCharge = serverDeliveryCharge ?? getDeliveryCharge(isFreeDeliverySlot)
   const total = subtotal + deliveryCharge
 
   const syncCartPricing = useCallback(async () => {

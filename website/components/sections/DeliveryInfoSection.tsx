@@ -7,14 +7,14 @@ const deliveryInfo = [
   {
     icon: Gift,
     title: 'Free Delivery',
-    description: 'On all orders above Rs. 500',
-    highlight: 'Rs. 500+',
+    description: 'When vegetables + fruits cross Rs. 500',
+    highlight: 'Veg/Fruit 500+',
   },
   {
     icon: Clock,
-    title: '10AM-2PM Free Slot',
-    description: 'Free delivery if ordered before 10AM',
-    highlight: 'Order before 10AM',
+    title: 'Free Time Slots',
+    description: 'Pick a free-delivery time slot at checkout',
+    highlight: 'Special Slots',
   },
   {
     icon: Truck,
@@ -24,8 +24,8 @@ const deliveryInfo = [
   },
   {
     icon: AlertCircle,
-    title: 'Chicken Orders',
-    description: 'Delivery charges apply for chicken-only orders',
+    title: 'Other Items',
+    description: 'Chicken/meat/grocery alone don\u2019t qualify for free delivery',
     highlight: 'Note',
   },
 ]

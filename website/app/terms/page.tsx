@@ -20,7 +20,7 @@ const sections = [
     content: [
       'We deliver within Gujrat city limits.',
       'Delivery times are estimates and may vary based on conditions.',
-      'Free delivery on orders above Rs. 500.',
+      'Free delivery when your vegetables + fruits subtotal is Rs. 500 or more, or when you choose a free-delivery time slot.',
       'You must be available to receive the order at the specified address.',
     ],
   },

@@ -91,22 +91,23 @@ export function formatDateTime(date: string | Date): string {
   }).format(new Date(date))
 }
 
+/**
+ * Same rule everywhere: free delivery only when veg/fruit subtotal meets
+ * the threshold (or the selected time slot is a free-delivery slot).
+ */
 export function getDeliveryMessage(
-  subtotal: number,
-  hasOnlyChicken: boolean,
-  vegFruitSubtotal: number = 0,
-  freeThreshold: number = 500
+  vegFruitSubtotal: number,
+  freeThreshold: number = 500,
+  isFreeDeliverySlot: boolean = false
 ): string {
-  if (hasOnlyChicken) {
-    return 'Delivery charges apply for chicken-only orders'
+  if (isFreeDeliverySlot) {
+    return 'Free delivery — selected time slot qualifies'
   }
-  if (vegFruitSubtotal >= freeThreshold && subtotal >= freeThreshold) {
-    return 'Free delivery — vegetables/fruits and order total both qualify'
+  if (vegFruitSubtotal >= freeThreshold) {
+    return `Free delivery — Rs. ${vegFruitSubtotal} in vegetables/fruits qualifies`
   }
-  if (vegFruitSubtotal < freeThreshold) {
-    return `Add Rs. ${freeThreshold - vegFruitSubtotal} more vegetables/fruits for free delivery`
-  }
-  return `Add Rs. ${freeThreshold - subtotal} more to your order for free delivery`
+  const remaining = Math.max(0, freeThreshold - vegFruitSubtotal)
+  return `Add Rs. ${remaining} more vegetables/fruits for free delivery`
 }
 
 export function generateOTP(): string {

@@ -42,19 +42,18 @@ describe('Cart Store', () => {
     getSubtotal: function() {
       return this.getTotalPrice();
     },
-    getDeliveryCharge: function(baseCharge: number = 100, freeThreshold: number = 500) {
+    getDeliveryCharge: function(
+      baseCharge: number = 100,
+      freeThreshold: number = 500,
+      isFreeDeliverySlot: boolean = false
+    ) {
       if (this.items.length === 0) return 0;
-      const subtotal = this.getSubtotal();
-      const hasOnlyChicken = this.items.every((item: any) => item.product.category === 'chicken');
-      const hasOnlyMeat = this.items.every((item: any) => item.product.category === 'meat');
-      if (hasOnlyChicken || hasOnlyMeat) return baseCharge;
-
+      if (isFreeDeliverySlot) return 0;
       const vegFruitSlugs = ['vegetables', 'fruits', 'sabzi', 'fruit'];
       const vegFruitSubtotal = this.items
         .filter((item: any) => vegFruitSlugs.includes(item.product.category))
         .reduce((sum: number, item: any) => sum + item.product.price * item.quantity, 0);
-
-      if (vegFruitSubtotal >= freeThreshold && subtotal >= freeThreshold) return 0;
+      if (vegFruitSubtotal >= freeThreshold) return 0;
       return baseCharge;
     },
     getFinalTotal: function() {
@@ -250,43 +249,42 @@ describe('Cart Store', () => {
       expect(cart.getDeliveryCharge()).toBe(0);
     });
 
-    it('should apply free delivery for orders above threshold', () => {
+    it('should apply free delivery when vegetables/fruits >= threshold', () => {
       const cart = createMockCartState();
-      // Add items totaling 600 (above 500 threshold)
-      cart.addItem(mockProduct, 2); // 500
-      cart.addItem(mockProduct2, 1); // 150, total 650
-
+      cart.addItem(mockProduct, 2); // 2 * 250 = 500 of fruit
       expect(cart.getDeliveryCharge()).toBe(0);
     });
 
-    it('should apply delivery charge for orders below threshold', () => {
+    it('should charge delivery when veg/fruit subtotal is below threshold', () => {
       const cart = createMockCartState();
-      cart.addItem(mockProduct2, 1); // 150
-
+      cart.addItem(mockProduct2, 1); // 150 of fruit
       expect(cart.getDeliveryCharge()).toBe(100);
     });
 
-    it('should always charge for chicken-only orders', () => {
+    it('should always charge for chicken-only orders no matter how large', () => {
       const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 5); // 5 * 400 = 2000 (above threshold but chicken)
-
+      cart.addItem(mockChickenProduct, 5); // 2000 of chicken, zero veg/fruit
       expect(cart.getDeliveryCharge()).toBe(100);
     });
 
-    it('should apply free delivery for mixed orders when veg/fruit and total both qualify', () => {
+    it('should charge mixed orders when veg/fruit subtotal is below threshold even if total is high', () => {
       const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 1); // 400
-      cart.addItem(mockProduct, 2); // 500 veg/fruit, total 900
+      cart.addItem(mockChickenProduct, 2); // 800 of chicken
+      cart.addItem(mockProduct, 1); // 250 of fruit
+      expect(cart.getDeliveryCharge()).toBe(100); // veg/fruit < 500
+    });
 
+    it('should free-deliver mixed orders when veg/fruit alone meets threshold', () => {
+      const cart = createMockCartState();
+      cart.addItem(mockChickenProduct, 1); // 400 chicken
+      cart.addItem(mockProduct, 2); // 500 fruit
       expect(cart.getDeliveryCharge()).toBe(0);
     });
 
-    it('should charge mixed orders when veg/fruit subtotal is below threshold', () => {
+    it('should free-deliver when a free-delivery time slot is selected', () => {
       const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 1); // 400
-      cart.addItem(mockProduct, 1); // 250 veg/fruit, total 650
-
-      expect(cart.getDeliveryCharge()).toBe(100);
+      cart.addItem(mockChickenProduct, 1); // 400 chicken, no veg/fruit
+      expect(cart.getDeliveryCharge(100, 500, true)).toBe(0);
     });
   });
 
@@ -294,7 +292,7 @@ describe('Cart Store', () => {
   describe('getFinalTotal', () => {
     it('should calculate final total with delivery charge', () => {
       const cart = createMockCartState();
-      cart.addItem(mockProduct2, 1); // 150
+      cart.addItem(mockProduct2, 1); // 150 fruit
 
       const subtotal = cart.getSubtotal();
       const delivery = cart.getDeliveryCharge();
@@ -305,9 +303,8 @@ describe('Cart Store', () => {
 
     it('should calculate final total with free delivery', () => {
       const cart = createMockCartState();
-      cart.addItem(mockProduct, 3); // 3 * 250 = 750
-
-      expect(cart.getFinalTotal()).toBe(750); // Free delivery
+      cart.addItem(mockProduct, 3); // 750 fruit — qualifies
+      expect(cart.getFinalTotal()).toBe(750);
     });
   });
 
