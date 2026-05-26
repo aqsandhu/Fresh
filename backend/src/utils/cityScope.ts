@@ -12,6 +12,25 @@ export interface CityScope {
   cityName: string | null;
   /** When true, list endpoints return all cities (legacy admin or super-admin without filter). */
   unrestricted: boolean;
+  /** false until migration 04 is applied — city_id filters are skipped so data still loads. */
+  dbReady: boolean;
+}
+
+let cachedCityColumns: boolean | null = null;
+
+async function hasCityScopeColumns(): Promise<boolean> {
+  if (cachedCityColumns !== null) return cachedCityColumns;
+  try {
+    const r = await query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'products' AND column_name = 'city_id'
+       LIMIT 1`
+    );
+    cachedCityColumns = r.rows.length > 0;
+  } catch {
+    cachedCityColumns = false;
+  }
+  return cachedCityColumns;
 }
 
 declare global {
@@ -24,8 +43,10 @@ declare global {
 
 export async function resolveCityScope(req: Request): Promise<CityScope> {
   const user = req.user;
+  const dbReady = await hasCityScopeColumns();
+
   if (!user) {
-    return { cityId: null, cityName: null, unrestricted: true };
+    return { cityId: null, cityName: null, unrestricted: true, dbReady };
   }
 
   if (user.role === 'super_admin') {
@@ -34,7 +55,7 @@ export async function resolveCityScope(req: Request): Promise<CityScope> {
       typeof req.query.city_id === 'string' ? req.query.city_id.trim() : null;
     const cityId = headerId || queryId || null;
     if (!cityId) {
-      return { cityId: null, cityName: null, unrestricted: true };
+      return { cityId: null, cityName: null, unrestricted: true, dbReady };
     }
 
     const row = await query(
@@ -42,12 +63,13 @@ export async function resolveCityScope(req: Request): Promise<CityScope> {
       [cityId]
     );
     if (!row.rows[0]) {
-      return { cityId: null, cityName: null, unrestricted: true };
+      return { cityId: null, cityName: null, unrestricted: true, dbReady };
     }
     return {
       cityId: row.rows[0].id,
       cityName: row.rows[0].name,
       unrestricted: false,
+      dbReady,
     };
   }
 
@@ -69,10 +91,11 @@ export async function resolveCityScope(req: Request): Promise<CityScope> {
       cityId: row.id,
       cityName: row.name,
       unrestricted: false,
+      dbReady,
     };
   }
 
-  return { cityId: null, cityName: null, unrestricted: true };
+  return { cityId: null, cityName: null, unrestricted: true, dbReady };
 }
 
 /** Append `AND alias.city_id = $n` when the request is city-scoped. */
@@ -82,7 +105,7 @@ export function cityIdClause(
   params: unknown[],
   paramIndex: number
 ): { sql: string; nextIndex: number } {
-  if (scope.unrestricted || !scope.cityId) {
+  if (scope.unrestricted || !scope.cityId || !scope.dbReady) {
     return { sql: '', nextIndex: paramIndex };
   }
   params.push(scope.cityId);
@@ -100,7 +123,7 @@ export function orderCityClause(
   params: unknown[],
   paramIndex: number
 ): { sql: string; nextIndex: number } {
-  if (scope.unrestricted || !scope.cityId) {
+  if (scope.unrestricted || !scope.cityId || !scope.dbReady) {
     return { sql: '', nextIndex: paramIndex };
   }
   params.push(scope.cityId);
@@ -124,7 +147,7 @@ export function customerCityExistsClause(
   params: unknown[],
   paramIndex: number
 ): { sql: string; nextIndex: number } {
-  if (scope.unrestricted || !scope.cityId || !scope.cityName) {
+  if (scope.unrestricted || !scope.cityId || !scope.cityName || !scope.dbReady) {
     return { sql: '', nextIndex: paramIndex };
   }
   params.push(scope.cityName);

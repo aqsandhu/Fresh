@@ -30,6 +30,15 @@ interface CityContextValue {
 
 const STORAGE_KEY = 'admin_selected_city_id';
 
+/** Seeded catalog/orders live under Gujrat after migration 04 backfill. */
+function findDefaultCity(cities: ServiceCity[]): ServiceCity | undefined {
+  return (
+    cities.find((c) => c.name.toLowerCase() === 'gujrat') ||
+    cities.find((c) => c.isActive) ||
+    cities[0]
+  );
+}
+
 const CityContext = createContext<CityContextValue | undefined>(undefined);
 
 export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -57,7 +66,11 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     (id: string) => {
       if (lockedCityId) return;
       setSelectedCityIdState(id);
-      localStorage.setItem(STORAGE_KEY, id);
+      if (id) {
+        localStorage.setItem(STORAGE_KEY, id);
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
       queryClient.invalidateQueries();
     },
     [lockedCityId, queryClient]
@@ -68,18 +81,24 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSelectedCityIdState(lockedCityId);
       return;
     }
-    if (!selectedCityId && cities.length > 0) {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const validStored = stored && cities.some((c) => c.id === stored);
-      setSelectedCityIdState(validStored ? stored : cities[0].id);
-    }
-  }, [lockedCityId, cities, selectedCityId]);
+    if (cities.length === 0) return;
 
-  useEffect(() => {
-    if (selectedCityId && !lockedCityId) {
-      localStorage.setItem(STORAGE_KEY, selectedCityId);
+    const stored = localStorage.getItem(STORAGE_KEY);
+
+    // Super admin: empty selection = all cities (no X-City-Id header).
+    if (isSuperAdmin && stored === null && !selectedCityId) {
+      const gujrat = findDefaultCity(cities);
+      if (gujrat) {
+        setSelectedCityIdState(gujrat.id);
+        localStorage.setItem(STORAGE_KEY, gujrat.id);
+      }
+      return;
     }
-  }, [selectedCityId, lockedCityId]);
+
+    if (stored && cities.some((c) => c.id === stored)) {
+      if (selectedCityId !== stored) setSelectedCityIdState(stored);
+    }
+  }, [lockedCityId, cities, isSuperAdmin, selectedCityId]);
 
   const selectedCity = useMemo(
     () => cities.find((c) => c.id === selectedCityId) || null,
