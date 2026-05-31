@@ -8,7 +8,13 @@ let socket: Socket | null = null;
  * Connect to Socket.IO server with admin authentication
  */
 export const connectSocket = (token: string): Socket => {
-  if (socket?.connected) return socket;
+  if (socket) {
+    socket.auth = { token };
+    if (!socket.connected) {
+      socket.connect();
+    }
+    return socket;
+  }
 
   socket = io(SOCKET_URL, {
     auth: { token },
@@ -31,6 +37,21 @@ export const connectSocket = (token: string): Socket => {
   });
 
   return socket;
+};
+
+/**
+ * Update auth token and reconnect the socket
+ */
+export const reconnectSocket = (token: string): Socket => {
+  if (socket) {
+    socket.auth = { token };
+    if (socket.connected) {
+      socket.disconnect();
+    }
+    socket.connect();
+    return socket;
+  }
+  return connectSocket(token);
 };
 
 /**

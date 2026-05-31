@@ -158,4 +158,21 @@ export const orderService = {
       throw new Error(error?.response?.data?.message || 'Failed to mark payment received');
     }
   },
+
+  bulkUpdateOrderStatus: async (
+    orderIds: string[],
+    status: OrderStatus,
+    reason?: string
+  ): Promise<{ updated: number; orders: Order[] }> => {
+    try {
+      const response = await api.put<ApiResponse<{ updated: number; orders: Order[] }>>(
+        '/admin/orders/bulk-status',
+        { orderIds, status, reason }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Error bulk updating order status:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to update orders');
+    }
+  },
 };

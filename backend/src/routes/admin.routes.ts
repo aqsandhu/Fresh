@@ -50,6 +50,11 @@ router.get('/customers/:id/addresses', adminController.getCustomerAddresses);
 
 // Orders
 router.get('/orders', adminController.getAllOrders);
+router.put(
+  '/orders/bulk-status',
+  validate(adminSchemas.bulkUpdateOrderStatus),
+  adminController.bulkUpdateOrderStatus
+);
 router.get('/orders/:id', adminController.getOrderDetails);
 router.put(
   '/orders/:id/status',
@@ -174,6 +179,7 @@ router.post(
 );
 
 // Addresses
+router.get('/addresses', adminController.getAdminAddresses);
 router.put(
   '/addresses/:id/house-number',
   validate(adminSchemas.assignHouseNumber),

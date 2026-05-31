@@ -436,6 +436,15 @@ export const adminSchemas = {
   assignHouseNumber: Joi.object({
     house_number: Joi.string().max(50).required(),
   }),
+
+  bulkUpdateOrderStatus: Joi.object({
+    order_ids: Joi.array().items(Joi.string().uuid()).min(1).max(100).required(),
+    status: Joi.string().valid(
+      'pending', 'confirmed', 'preparing', 'ready_for_pickup',
+      'out_for_delivery', 'delivered', 'cancelled'
+    ).required(),
+    reason: Joi.string().max(500).allow('', null),
+  }),
   
   updateOrderStatus: orderSchemas.updateStatus,
   assignRider: orderSchemas.assignRider,

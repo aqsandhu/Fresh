@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { useAuthStore } from '@/store/cartStore';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -24,11 +25,13 @@ export function tokenNeedsRefresh(
   return Date.now() >= expMs - bufferMs;
 }
 
-/** Refresh admin access token using the stored refresh token. */
-export async function refreshAdminAccessToken(): Promise<string | null> {
+/** Refresh website access token using the stored refresh token. */
+export async function refreshWebsiteAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
 
-  const stored = localStorage.getItem('admin_refresh_token');
+  const stored =
+    (typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null) ||
+    useAuthStore.getState().refreshToken;
   if (!stored) return null;
 
   refreshPromise = (async () => {
@@ -43,10 +46,19 @@ export async function refreshAdminAccessToken(): Promise<string | null> {
       const refreshToken = tokens?.refreshToken || tokens?.refresh_token;
       if (!accessToken) return null;
 
-      localStorage.setItem('admin_token', accessToken);
-      if (refreshToken) {
-        localStorage.setItem('admin_refresh_token', refreshToken);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('token', accessToken);
+        if (refreshToken) {
+          localStorage.setItem('refreshToken', refreshToken);
+        }
       }
+
+      useAuthStore.setState({
+        accessToken,
+        refreshToken: refreshToken || stored,
+        isAuthenticated: true,
+      });
+
       return accessToken;
     } catch {
       return null;
@@ -61,8 +73,10 @@ export async function refreshAdminAccessToken(): Promise<string | null> {
 }
 
 /** Return a valid access token, refreshing proactively when near expiry. */
-export async function getValidAdminAccessToken(): Promise<string | null> {
-  const current = localStorage.getItem('admin_token');
+export async function getValidAccessToken(): Promise<string | null> {
+  const current =
+    useAuthStore.getState().accessToken ||
+    (typeof window !== 'undefined' ? localStorage.getItem('token') : null);
   if (!tokenNeedsRefresh(current)) return current;
-  return refreshAdminAccessToken();
+  return refreshWebsiteAccessToken();
 }
