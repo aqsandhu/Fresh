@@ -7,6 +7,7 @@ import {
   useImperativeHandle,
   useState,
 } from 'react'
+import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Camera, Check, Loader2, MapPin, Save, X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -109,6 +110,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
   const [city, setCity] = useState(initial?.city || availableCities[0]?.name || 'Gujrat')
   const [writtenAddress, setWrittenAddress] = useState(initial?.written_address || '')
   const [landmark, setLandmark] = useState(initial?.landmark || '')
+  const [cityChangeHint, setCityChangeHint] = useState(false)
 
   useEffect(() => {
     if (availableCities.length === 1) {
@@ -301,8 +303,22 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
       <div className="mt-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
         {isCityLocked ? (
-          <div className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-800">
-            {city}
+          <div>
+            <button
+              type="button"
+              onClick={() => setCityChangeHint(true)}
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-800 text-left hover:bg-gray-100 transition-colors"
+            >
+              {city}
+            </button>
+            {cityChangeHint && (
+              <p className="mt-2 text-sm text-amber-800">
+                To change City please go to{' '}
+                <Link href="/" className="text-primary-600 underline font-medium">
+                  HomePage
+                </Link>
+              </p>
+            )}
           </div>
         ) : (
           <select

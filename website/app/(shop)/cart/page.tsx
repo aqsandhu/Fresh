@@ -21,7 +21,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort } from '@/lib/utils'
 import { getDeliveryHint, getVegFruitSubtotal } from '@/lib/deliveryRules'
-import { unitLabelShort } from '@/lib/unitPricing'
+import { resolveLineUnitPrice, unitPriceSuffix, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
 import ProductPrice from '@/components/ui/ProductPrice'
 
 export default function CartPage() {
@@ -86,7 +86,12 @@ export default function CartPage() {
               {items.map((item) => {
                 const unit = item.unit || 'full'
                 const unitSuffix = unitLabelShort(unit)
-                const linePrice = item.unitPrice ?? item.product.price
+                const linePrice = resolveLineUnitPrice(item)
+                const priceUnit =
+                  unit === 'full'
+                    ? item.product.unit
+                    : unitPriceSuffix(item.product, unit).replace(/^\//, '')
+                const caption = unitPriceCaption(unit)
                 return (
                   <motion.div
                     key={`${item.product.id}::${unit}`}
@@ -128,9 +133,14 @@ export default function CartPage() {
                         <div className="mt-1">
                           <ProductPrice
                             price={linePrice}
-                            unit={unit === 'full' ? item.product.unit : unitSuffix}
+                            unit={priceUnit}
                             size="sm"
                           />
+                          {caption && (
+                            <span className="text-[10px] text-primary-700 font-medium ml-1">
+                              {caption}
+                            </span>
+                          )}
                         </div>
 
                         <div className="flex items-center justify-between mt-3">

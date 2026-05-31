@@ -7,6 +7,7 @@ import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
+import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
 import logger from '../utils/logger';
 
 /**
@@ -144,22 +145,11 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     }
 
     const product = productResult.rows[0];
-    const basePrice = parseFloat(product.price);
-    const unitPrice = (() => {
-      switch (unit) {
-        case 'half_kg':
-          return parseFloat(product.half_kg_price ?? basePrice * 0.5);
-        case 'quarter_kg':
-          return parseFloat(product.quarter_kg_price ?? basePrice * 0.25);
-        case 'half_dozen':
-          return parseFloat(product.half_dozen_price ?? basePrice * 0.5);
-        default:
-          return basePrice;
-      }
-    })();
+    const unitPrice = resolveUnitPrice(product, unit);
+    const stockNeeded = stockUnitsNeeded(quantity, unit);
 
-    // Check stock
-    if (product.stock_status === 'out_of_stock' || product.stock_quantity < quantity) {
+    // Check stock (kg/dozen units, not cart line count)
+    if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
       throw new Error('Insufficient stock');
     }
 
@@ -174,9 +164,9 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
       // Update existing item
       const existingItem = existingItemResult.rows[0];
       const newQuantity = existingItem.quantity + quantity;
+      const totalStockNeeded = stockUnitsNeeded(newQuantity, unit);
 
-      // Check stock for new quantity
-      if (product.stock_quantity < newQuantity) {
+      if (product.stock_quantity < totalStockNeeded) {
         throw new Error('Insufficient stock for requested quantity');
       }
 
@@ -290,8 +280,9 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     }
 
     const product = productResult.rows[0];
+    const stockNeeded = stockUnitsNeeded(quantity, item.unit);
 
-    if (product.stock_status === 'out_of_stock' || product.stock_quantity < quantity) {
+    if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
       throw new Error('Insufficient stock');
     }
 

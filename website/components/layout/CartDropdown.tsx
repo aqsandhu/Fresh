@@ -9,7 +9,7 @@ import { ShoppingCart, Minus, Plus, Trash2, X, ShoppingBag } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
 import { formatPriceShort } from '@/lib/utils'
 import { getDeliveryHint } from '@/lib/deliveryRules'
-import { unitLabelShort } from '@/lib/unitPricing'
+import { resolveLineUnitPrice, unitLabelShort } from '@/lib/unitPricing'
 import Button from '@/components/ui/Button'
 
 interface CartDropdownProps {
@@ -116,7 +116,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
             {items.map((item) => {
               const unit = item.unit || 'full'
               const unitSuffix = unitLabelShort(unit)
-              const linePrice = item.unitPrice ?? item.product.price
+              const linePrice = resolveLineUnitPrice(item)
               return (
                 <div
                   key={`${item.product.id}::${unit}`}

@@ -21,6 +21,7 @@ import Badge from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
 import { OrderStatus } from '@/types'
 import { formatPriceShort, formatDate, getOrderStatusColor, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
+import { unitLabelShort, unitPriceCaption } from '@/lib/unitPricing'
 import { ordersApi } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
 
@@ -49,7 +50,7 @@ interface MappedOrder {
   status: OrderStatus
   total: number
   createdAt: string
-  items: { name: string; image: string; quantity: number; price: number }[]
+  items: { name: string; image: string; quantity: number; price: number; unit?: string }[]
   rider?: { name: string; phone: string }
 }
 
@@ -94,6 +95,7 @@ export default function OrdersPage() {
           image: resolveImg(item.product_image),
           quantity: item.quantity || 1,
           price: parseFloat(item.unit_price) || parseFloat(item.total_price) / (item.quantity || 1) || 0,
+          unit: item.unit || 'full',
         })),
         rider: o.rider_name ? { name: o.rider_name, phone: o.rider_phone || '' } : undefined,
       }))
@@ -231,7 +233,12 @@ export default function OrdersPage() {
                         <div className="flex-1">
                           <p className="font-medium text-gray-900">{item.name}</p>
                           <p className="text-sm text-gray-500">
-                            {item.quantity} x {formatPriceShort(item.price)}
+                            {item.quantity} × {formatPriceShort(item.price)}
+                            {item.unit && item.unit !== 'full' && (
+                              <span className="text-primary-700 font-medium ml-1">
+                                ({unitPriceCaption(item.unit as any)})
+                              </span>
+                            )}
                           </p>
                         </div>
                         <p className="font-medium">

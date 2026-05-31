@@ -5,18 +5,12 @@ import { persist } from 'zustand/middleware'
 import { CartState, Product, ProductUnit } from '@/types'
 import { calculateClientDeliveryCharge } from '@/lib/deliveryRules'
 import { getSelectedCityId } from '@/lib/cityStorage'
-import { getUnitOptions } from '@/lib/unitPricing'
+import { priceForUnit, resolveLineUnitPrice } from '@/lib/unitPricing'
 
 // A cart line is uniquely identified by (productId, unit) — the same product
 // can appear twice (e.g., 1 kg + half kg).
 const lineKey = (productId: string, unit: ProductUnit = 'full') =>
   `${productId}::${unit}`
-
-function priceForUnit(product: Product, unit: ProductUnit = 'full'): number {
-  const opts = getUnitOptions(product)
-  const found = opts.find((o) => o.unit === unit)
-  return found?.price ?? product.price
-}
 
 const DEFAULT_BASE_CHARGE = 100
 const DEFAULT_FREE_THRESHOLD = 500
@@ -140,7 +134,7 @@ export const useCartStore = create<CartState>()(
       getTotalPrice: () => {
         return get().items.reduce(
           (total, item) =>
-            total + (item.unitPrice ?? item.product.price) * item.quantity,
+            total + resolveLineUnitPrice(item) * item.quantity,
           0
         )
       },

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import {
@@ -73,6 +74,7 @@ export default function AddressesPage() {
   const [mapLocationAccuracy, setMapLocationAccuracy] = useState<number | null>(null)
   const [isLocating, setIsLocating] = useState(false)
   const [showMapPicker, setShowMapPicker] = useState(false)
+  const [cityChangeHint, setCityChangeHint] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -259,8 +261,22 @@ export default function AddressesPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
                 {selectedCity ? (
-                  <div className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-800">
-                    {selectedCity.name}
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setCityChangeHint(true)}
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-800 text-left hover:bg-gray-100 transition-colors"
+                    >
+                      {selectedCity.name}
+                    </button>
+                    {cityChangeHint && (
+                      <p className="mt-2 text-sm text-amber-800">
+                        To change City please go to{' '}
+                        <Link href="/" className="text-primary-600 underline font-medium">
+                          HomePage
+                        </Link>
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <Input

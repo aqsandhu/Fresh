@@ -7,6 +7,7 @@ import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
+import { stockUnitsNeeded } from '../utils/unitPricing';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
@@ -358,10 +359,10 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       }
       
       const product = productResult.rows[0];
-      
-      // CRITICAL FIX: Check stock availability before creating order
-      if (product.stock_status === 'out_of_stock' || product.stock_quantity < item.quantity) {
-        throw new Error(`Insufficient stock for product: ${product.name_en}. Available: ${product.stock_quantity}, Requested: ${item.quantity}`);
+      const stockDeduction = stockUnitsNeeded(item.quantity, item.unit);
+
+      if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockDeduction) {
+        throw new Error(`Insufficient stock for product: ${product.name_en}. Available: ${product.stock_quantity}, Requested: ${stockDeduction}`);
       }
 
       await client.query(
@@ -386,7 +387,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
              END,
              updated_at = NOW()
          WHERE id = $2`,
-        [item.quantity, item.product_id]
+        [stockDeduction, item.product_id]
       );
 
       // Update product order count
@@ -513,11 +514,12 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
 
     // CRITICAL FIX: Restore stock quantities for cancelled order items
     const orderItemsResult = await client.query(
-      'SELECT product_id, quantity FROM order_items WHERE order_id = $1',
+      'SELECT product_id, quantity, unit FROM order_items WHERE order_id = $1',
       [id]
     );
 
     for (const item of orderItemsResult.rows) {
+      const restoreAmount = stockUnitsNeeded(item.quantity, item.unit);
       await client.query(
         `UPDATE products 
          SET stock_quantity = stock_quantity + $1,
@@ -527,7 +529,7 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
              END,
              updated_at = NOW()
          WHERE id = $2`,
-        [item.quantity, item.product_id]
+        [restoreAmount, item.product_id]
       );
     }
 
