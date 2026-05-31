@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { Product, Category, Order, Address, User, AttaChakkiRequest } from '@/types'
 import { getSelectedCityId } from '@/lib/cityStorage'
+import { useAuthStore } from '@/store/cartStore'
 
 function withCityParams<T extends Record<string, unknown>>(params?: T): T & { city_id?: string } {
   const cityId = getSelectedCityId()
@@ -41,9 +42,11 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('token')
+        useAuthStore.getState().logout()
         const currentPath = window.location.pathname
-        window.location.href = currentPath && currentPath !== '/login' ? `/login?redirect=${currentPath}` : '/login'
+        if (currentPath !== '/login' && !currentPath.startsWith('/register')) {
+          window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+        }
       }
     }
     return Promise.reject(error)

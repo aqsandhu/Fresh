@@ -87,21 +87,45 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
   }
   if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
   if (p.startsWith('/cities')) {
-    if (m === 'GET') return null; // any admin needs city list for the header switcher
-    return ['settings.update'];
+    if (m === 'GET') return null; // any admin needs city list for header switcher
+    return ['settings.cities.manage', 'settings.update'];
   }
   if (p.startsWith('/delivery-zones')) {
-    return m === 'GET' ? ['settings.view', 'settings.update'] : ['settings.update'];
+    return m === 'GET'
+      ? ['settings.delivery_zones.view', 'settings.view', 'settings.update']
+      : ['settings.delivery_zones.manage', 'settings.update'];
   }
-  // Time slots are operational data (rider charges, order assignment), not only Settings UI.
-  if (p === '/settings/time-slots' && m === 'GET') {
-    return [
-      'settings.view',
-      'riders.view',
-      'riders.manage',
-      'orders.view',
-      'orders.assign_rider',
-    ];
+  if (p === '/settings' && m === 'GET') {
+    return ['settings.delivery.view', 'settings.view', 'settings.update'];
+  }
+  if (p === '/settings/delivery') {
+    return m === 'GET'
+      ? ['settings.delivery.view', 'settings.view', 'settings.update']
+      : ['settings.delivery.update', 'settings.update'];
+  }
+  if (p.startsWith('/settings/time-slots')) {
+    if (m === 'GET') {
+      return [
+        'settings.timeslots.view',
+        'settings.view',
+        'settings.update',
+        'riders.view',
+        'riders.manage',
+        'orders.view',
+        'orders.assign_rider',
+      ];
+    }
+    return ['settings.timeslots.manage', 'settings.update'];
+  }
+  if (p.startsWith('/settings/business-hours')) {
+    return m === 'GET'
+      ? ['settings.business_hours.view', 'settings.view', 'settings.update']
+      : ['settings.business_hours.update', 'settings.update'];
+  }
+  if (p.startsWith('/site-settings/banner')) {
+    return m === 'GET'
+      ? ['settings.banner.view', 'settings.view', 'settings.update']
+      : ['settings.banner.update', 'settings.update'];
   }
   if (p.startsWith('/settings') || p.startsWith('/site-settings')) {
     return m === 'GET'

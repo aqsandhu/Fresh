@@ -32,7 +32,6 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: '/admin/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-  { path: '/admin/settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
   { path: '/admin/orders', label: 'Orders', icon: <ShoppingCart className="w-5 h-5" /> },
   { path: '/admin/products', label: 'Products', icon: <Package className="w-5 h-5" /> },
   { path: '/admin/categories', label: 'Categories', icon: <Grid3X3 className="w-5 h-5" /> },
@@ -44,6 +43,7 @@ const navItems: NavItem[] = [
   { path: '/admin/service-cities', label: 'Service Cities', icon: <MapPin className="w-5 h-5" /> },
   { path: '/admin/delivery-zones', label: 'Delivery Zones', icon: <MapPinned className="w-5 h-5" /> },
   { path: '/admin/roles', label: 'Admin Roles', icon: <Shield className="w-5 h-5" /> },
+  { path: '/admin/settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {

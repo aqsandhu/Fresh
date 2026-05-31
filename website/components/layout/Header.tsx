@@ -27,6 +27,7 @@ import CartDropdown from './CartDropdown'
 import { productsApi, categoriesApi, bannerApi } from '@/lib/api'
 import { useCityContext } from '@/context/CityContext'
 import { Product, Category } from '@/types'
+import { phoneToTelHref } from '@/lib/phoneStorage'
 
 export default function Header() {
   const pathname = usePathname()
@@ -203,7 +204,16 @@ export default function Header() {
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <Phone className="w-3 h-3" />
-              {banner.leftText}
+              {(() => {
+                const tel = phoneToTelHref(banner.leftText)
+                return tel ? (
+                  <a href={tel} className="hover:underline active:opacity-80">
+                    {banner.leftText}
+                  </a>
+                ) : (
+                  banner.leftText
+                )
+              })()}
             </span>
             <span className="hidden sm:flex items-center gap-1">
               <MapPin className="w-3 h-3" />
