@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { query } from '../config/database';
-import { generateTokenPair, verifyRefreshToken } from '../config/jwt';
+import { generateTokenPair, generateAdminTokenPair, verifyRefreshToken } from '../config/jwt';
 import { asyncHandler } from '../middleware';
 import {
   successResponse,
@@ -689,8 +689,8 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
-  // Generate tokens
-  const tokens = generateTokenPair(user.id, user.phone, user.role);
+  // Generate tokens (8h access for admin panel — see ADMIN_JWT_EXPIRES_IN)
+  const tokens = generateAdminTokenPair(user.id, user.phone, user.role);
 
   // Update last login
   await query(

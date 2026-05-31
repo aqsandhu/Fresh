@@ -68,6 +68,9 @@ const { secret: jwtSecret, refreshSecret: jwtRefreshSecret } = validateSecrets()
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+/** Admin panel sessions — longer-lived access token (env override supported). */
+const ADMIN_JWT_EXPIRES_IN = process.env.ADMIN_JWT_EXPIRES_IN || '8h';
+const ADMIN_JWT_REFRESH_EXPIRES_IN = process.env.ADMIN_JWT_REFRESH_EXPIRES_IN || '30d';
 
 // Generate access token
 export const generateAccessToken = (
@@ -119,6 +122,31 @@ export const generateTokenPair = (
     refreshToken,
     expiresIn: JWT_EXPIRES_IN,
     refreshExpiresIn: JWT_REFRESH_EXPIRES_IN,
+  };
+};
+
+/** Longer-lived tokens for admin panel login only. */
+export const generateAdminTokenPair = (
+  userId: string,
+  phone: string,
+  role: UserRole
+) => {
+  const accessToken = jwt.sign(
+    { userId, phone, role },
+    jwtSecret,
+    { expiresIn: ADMIN_JWT_EXPIRES_IN } as SignOptions
+  );
+  const refreshToken = jwt.sign(
+    { userId, phone, role, type: 'refresh' },
+    jwtRefreshSecret,
+    { expiresIn: ADMIN_JWT_REFRESH_EXPIRES_IN } as SignOptions
+  );
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn: ADMIN_JWT_EXPIRES_IN,
+    refreshExpiresIn: ADMIN_JWT_REFRESH_EXPIRES_IN,
   };
 };
 

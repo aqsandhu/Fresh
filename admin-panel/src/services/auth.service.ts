@@ -1,5 +1,6 @@
 import { api } from './api';
 import { clearCitySelection, setCitySelection } from '@/lib/cityStorage';
+import { refreshAdminAccessToken } from '@/lib/adminTokenRefresh';
 import type { 
   LoginCredentials, 
   AuthResponse, 
@@ -90,33 +91,15 @@ export const authService = {
   },
 
   refreshToken: async (): Promise<boolean> => {
-    try {
-      const refreshToken = localStorage.getItem('admin_refresh_token');
-      if (!refreshToken) return false;
-
-      // Backend exposes the refresh endpoint at /api/auth/refresh — there
-      // is no /admin/refresh-token route. Wrong path was silently 404'ing
-      // before, which is why sessions felt like they "just expired".
-      const response = await api.post<ApiResponse<{ tokens: { accessToken: string; refreshToken: string } }>>(
-        '/auth/refresh',
-        { refreshToken }
-      );
-
-      if (response.success && response.data?.tokens) {
-        localStorage.setItem('admin_token', response.data.tokens.accessToken);
-        localStorage.setItem('admin_refresh_token', response.data.tokens.refreshToken);
-        return true;
-      }
-      return false;
-    } catch (error: any) {
-      console.error('Token refresh error:', error);
-      // Clear tokens on refresh failure
+    const accessToken = await refreshAdminAccessToken();
+    if (!accessToken) {
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_refresh_token');
       localStorage.removeItem('admin_user');
       clearCitySelection();
       return false;
     }
+    return true;
   },
 
   changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
