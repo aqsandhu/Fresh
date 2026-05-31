@@ -36,6 +36,7 @@ import AddressForm, {
   type AddressFormHandle,
   type SavedAddress,
 } from '@/components/checkout/AddressForm'
+import { getSelectedCityId } from '@/lib/cityStorage'
 
 type RealAddress = SavedAddress
 
@@ -305,6 +306,10 @@ function CheckoutPage() {
         address_id: addressIdToUse,
         payment_method: 'cash_on_delivery',
         customer_notes: '',
+      }
+      const serviceCityId = getSelectedCityId()
+      if (serviceCityId) {
+        orderPayload.city_id = serviceCityId
       }
       if (selectedDay === 'tomorrow') {
         orderPayload.requested_delivery_date = getDateString('tomorrow')

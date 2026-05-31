@@ -25,9 +25,14 @@ import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { cn, formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import CartDropdown from './CartDropdown'
 import { productsApi, categoriesApi, bannerApi } from '@/lib/api'
+import { useCityContext } from '@/context/CityContext'
 import { Product, Category } from '@/types'
 
 export default function Header() {
+  const pathname = usePathname()
+  if (pathname.startsWith('/select-city')) {
+    return null
+  }
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isCartOpen, setIsCartOpen] = useState(false)
@@ -36,18 +41,23 @@ export default function Header() {
   const [isSearching, setIsSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
-  const pathname = usePathname()
   const router = useRouter()
   const { getTotalItems, items, hasHydrated: cartHasHydrated } = useCartStore()
   const { isAuthenticated, user } = useAuthStore()
 
   useEffect(() => { setHasMounted(true) }, [])
 
-  // Dynamic categories for navbar
+  const { selectedCityId } = useCityContext()
+
+  // Dynamic categories for navbar (scoped to selected service city)
   const [categories, setCategories] = useState<Category[]>([])
   useEffect(() => {
+    if (!selectedCityId) {
+      setCategories([])
+      return
+    }
     categoriesApi.getAll().then(setCategories).catch(() => {})
-  }, [])
+  }, [selectedCityId])
 
   const navLinks = [
     { href: '/', label: 'Home', icon: Home },

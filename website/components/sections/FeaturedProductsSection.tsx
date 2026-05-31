@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { useCityContext } from '@/context/CityContext'
 import ProductCard from '@/components/ui/ProductCard'
 import { productsApi } from '@/lib/api'
 
@@ -29,11 +30,11 @@ const itemVariants = {
 }
 
 export default function FeaturedProductsSection() {
+  const { selectedCityId } = useCityContext()
   const { data: featuredProducts, isLoading } = useQuery({
-    queryKey: ['featured-products'],
-    // No frontend cap — the backend returns every featured product. Render
-    // them all; the responsive grid handles arbitrary counts.
+    queryKey: ['featured-products', selectedCityId],
     queryFn: () => productsApi.getFeatured(500),
+    enabled: !!selectedCityId,
   })
 
   return (

@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { CartState, Product, ProductUnit } from '@/types'
 import { calculateClientDeliveryCharge } from '@/lib/deliveryRules'
+import { getSelectedCityId } from '@/lib/cityStorage'
 import { getUnitOptions } from '@/lib/unitPricing'
 
 // A cart line is uniquely identified by (productId, unit) — the same product
@@ -39,6 +40,8 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       items: [],
+      cartsByCity: {} as Record<string, CartState['items']>,
+      activeCityId: null as string | null,
       deliveryBaseCharge: DEFAULT_BASE_CHARGE,
       deliveryFreeThreshold: DEFAULT_FREE_THRESHOLD,
       hasHydrated: false,
@@ -107,7 +110,27 @@ export const useCartStore = create<CartState>()(
       },
 
       clearCart: () => {
-        set({ items: [] })
+        set((state) => {
+          const cityId = state.activeCityId
+          const nextByCity = cityId
+            ? { ...state.cartsByCity, [cityId]: [] }
+            : state.cartsByCity
+          return { items: [], cartsByCity: nextByCity }
+        })
+      },
+
+      switchCity: (cityId: string) => {
+        set((state) => {
+          const nextByCity = { ...state.cartsByCity }
+          if (state.activeCityId) {
+            nextByCity[state.activeCityId] = state.items
+          }
+          return {
+            activeCityId: cityId,
+            cartsByCity: nextByCity,
+            items: nextByCity[cityId] || [],
+          }
+        })
       },
 
       getTotalItems: () => {
@@ -147,10 +170,44 @@ export const useCartStore = create<CartState>()(
       },
     }),
     {
-      name: 'freshbazar-cart',
-      partialize: (state) => ({ items: state.items }),
+      name: 'freshbazar-cart-v2',
+      partialize: (state) => ({
+        cartsByCity: state.cartsByCity,
+        activeCityId: state.activeCityId,
+      }),
       onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true)
+        if (!state) return
+
+        if (typeof window !== 'undefined') {
+          try {
+            const legacyRaw = localStorage.getItem('freshbazar-cart')
+            if (legacyRaw) {
+              const legacyParsed = JSON.parse(legacyRaw)
+              const legacyItems =
+                legacyParsed?.state?.items || legacyParsed?.items
+              if (
+                Array.isArray(legacyItems) &&
+                legacyItems.length > 0 &&
+                Object.keys(state.cartsByCity || {}).length === 0
+              ) {
+                const cityId = getSelectedCityId() || '_legacy'
+                state.cartsByCity = { [cityId]: legacyItems }
+                state.activeCityId = cityId
+                state.items = legacyItems
+              }
+              localStorage.removeItem('freshbazar-cart')
+            }
+          } catch {
+            /* ignore legacy parse errors */
+          }
+        }
+
+        const cityId = state.activeCityId || getSelectedCityId()
+        if (cityId) {
+          state.activeCityId = cityId
+          state.items = state.cartsByCity[cityId] || []
+        }
+        state.setHasHydrated(true)
       },
     }
   )

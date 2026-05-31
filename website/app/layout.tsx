@@ -5,7 +5,7 @@ import Header from '@/components/layout/Header'
 import Footer from '@/components/layout/Footer'
 import MobileNav from '@/components/layout/MobileNav'
 import { Toaster } from 'react-hot-toast'
-import QueryProvider from '@/components/providers/QueryProvider'
+import AppProviders from '@/components/providers/AppProviders'
 import ErrorBoundary from '@/components/providers/ErrorBoundary'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -59,7 +59,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <ErrorBoundary>
-          <QueryProvider>
+          <AppProviders>
             <div className="min-h-screen flex flex-col">
               <Header />
               <main className="flex-1">{children}</main>
@@ -90,7 +90,7 @@ export default function RootLayout({
                 },
               }}
             />
-          </QueryProvider>
+          </AppProviders>
         </ErrorBoundary>
       </body>
     </html>

@@ -154,9 +154,10 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getProductById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const publicCityId = await resolvePublicCityId(req);
 
-  const result = await query(
-    `SELECT 
+  let sql = `
+    SELECT 
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.name_ur as category_name_ur,
       c.slug as category_slug, c.qualifies_for_free_delivery,
@@ -175,9 +176,14 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
     FROM products p
     JOIN categories c ON p.category_id = c.id
     LEFT JOIN categories sc ON p.subcategory_id = sc.id
-    WHERE p.id = $1 AND p.is_active = TRUE`,
-    [id]
-  );
+    WHERE p.id = $1 AND p.is_active = TRUE`;
+  const params: any[] = [id];
+  if (publicCityId) {
+    sql += ` AND p.city_id = $2`;
+    params.push(publicCityId);
+  }
+
+  const result = await query(sql, params);
 
   if (result.rows.length === 0) {
     return notFoundResponse(res, 'Product not found');
@@ -198,9 +204,10 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
  */
 export const getProductBySlug = asyncHandler(async (req: Request, res: Response) => {
   const { slug } = req.params;
+  const publicCityId = await resolvePublicCityId(req);
 
-  const result = await query(
-    `SELECT 
+  let sql = `
+    SELECT 
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.name_ur as category_name_ur,
       c.slug as category_slug, c.qualifies_for_free_delivery,
@@ -219,9 +226,14 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
     FROM products p
     JOIN categories c ON p.category_id = c.id
     LEFT JOIN categories sc ON p.subcategory_id = sc.id
-    WHERE p.slug = $1 AND p.is_active = TRUE`,
-    [slug]
-  );
+    WHERE p.slug = $1 AND p.is_active = TRUE`;
+  const params: any[] = [slug];
+  if (publicCityId) {
+    sql += ` AND p.city_id = $2`;
+    params.push(publicCityId);
+  }
+
+  const result = await query(sql, params);
 
   if (result.rows.length === 0) {
     return notFoundResponse(res, 'Product not found');
@@ -241,24 +253,27 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
  * GET /api/products/featured/list
  */
 export const getFeaturedProducts = asyncHandler(async (req: Request, res: Response) => {
-  // Cap the limit at 500 to avoid arbitrarily huge queries even if the client
-  // asks for "all"; the original 10 was too small (frontend wants every
-  // featured product on the homepage).
   const requested = parseInt((req.query.limit as string) || '500', 10);
   const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 500) : 500;
+  const publicCityId = await resolvePublicCityId(req);
 
-  const result = await query(
-    `SELECT
+  let sql = `
+    SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE AND p.is_featured = TRUE
-    ORDER BY p.order_count DESC, p.created_at DESC
-    LIMIT $1`,
-    [limit]
-  );
+    WHERE p.is_active = TRUE AND p.is_featured = TRUE`;
+  const params: any[] = [];
+  if (publicCityId) {
+    sql += ` AND p.city_id = $1`;
+    params.push(publicCityId);
+  }
+  sql += ` ORDER BY p.order_count DESC, p.created_at DESC LIMIT $${params.length + 1}`;
+  params.push(limit);
+
+  const result = await query(sql, params);
 
   successResponse(res, result.rows, 'Featured products retrieved successfully');
 });
@@ -269,19 +284,25 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
  */
 export const getNewArrivals = asyncHandler(async (req: Request, res: Response) => {
   const { limit = 10 } = req.query;
+  const publicCityId = await resolvePublicCityId(req);
 
-  const result = await query(
-    `SELECT 
+  let sql = `
+    SELECT 
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE AND p.is_new_arrival = TRUE
-    ORDER BY p.created_at DESC
-    LIMIT $1`,
-    [limit]
-  );
+    WHERE p.is_active = TRUE AND p.is_new_arrival = TRUE`;
+  const params: any[] = [];
+  if (publicCityId) {
+    sql += ` AND p.city_id = $1`;
+    params.push(publicCityId);
+  }
+  sql += ` ORDER BY p.created_at DESC LIMIT $${params.length + 1}`;
+  params.push(limit);
+
+  const result = await query(sql, params);
 
   successResponse(res, result.rows, 'New arrivals retrieved successfully');
 });
@@ -293,8 +314,8 @@ export const getNewArrivals = asyncHandler(async (req: Request, res: Response) =
 export const getRelatedProducts = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { limit = 8 } = req.query;
+  const publicCityId = await resolvePublicCityId(req);
 
-  // Get product's category
   const productResult = await query(
     'SELECT category_id FROM products WHERE id = $1',
     [id]
@@ -306,8 +327,8 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
 
   const categoryId = productResult.rows[0].category_id;
 
-  const result = await query(
-    `SELECT 
+  let sql = `
+    SELECT 
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name
@@ -315,11 +336,16 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
     JOIN categories c ON p.category_id = c.id
     WHERE p.category_id = $1 
       AND p.id != $2 
-      AND p.is_active = TRUE
-    ORDER BY p.order_count DESC, p.created_at DESC
-    LIMIT $3`,
-    [categoryId, id, limit]
-  );
+      AND p.is_active = TRUE`;
+  const params: any[] = [categoryId, id];
+  if (publicCityId) {
+    sql += ` AND p.city_id = $3`;
+    params.push(publicCityId);
+  }
+  sql += ` ORDER BY p.order_count DESC, p.created_at DESC LIMIT $${params.length + 1}`;
+  params.push(limit);
+
+  const result = await query(sql, params);
 
   successResponse(res, result.rows, 'Related products retrieved successfully');
 });
@@ -335,13 +361,21 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
     return successResponse(res, [], 'Search query is empty');
   }
 
-  // SECURITY FIX: Sanitize search term to prevent SQL injection
   const searchTerm = q
-    .replace(/[%_\\]/g, '\\$&') // Escape SQL wildcards
+    .replace(/[%_\\]/g, '\\$&')
     .trim()
-    .substring(0, 100); // Limit search length
+    .substring(0, 100);
 
-  // Use full-text search
+  const publicCityId = await resolvePublicCityId(req);
+  let cityClause = '';
+  const params: any[] = [searchTerm, `%${searchTerm}%`];
+  if (publicCityId) {
+    cityClause = ` AND p.city_id = $${params.length + 1}`;
+    params.push(publicCityId);
+  }
+
+  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+
   const result = await query(
     `SELECT 
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
@@ -359,10 +393,10 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
         @@ plainto_tsquery('english', $1)
         OR p.name_ur ILIKE $2
         OR p.name_en ILIKE $2
-      )
+      )${cityClause}
     ORDER BY rank DESC, p.order_count DESC
-    LIMIT $3 OFFSET $4`,
-    [searchTerm, `%${searchTerm}%`, limit, (parseInt(page as string) - 1) * parseInt(limit as string)]
+    LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   );
 
   successResponse(res, result.rows, 'Search results retrieved successfully');
