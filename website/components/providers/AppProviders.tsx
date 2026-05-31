@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { CityProvider } from '@/context/CityContext'
 import CityGate from '@/components/city/CityGate'
 import FloatingCityButton from '@/components/city/FloatingCityButton'
+import NotificationProvider from '@/components/providers/NotificationProvider'
 
 export default function AppProviders({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -25,8 +26,10 @@ export default function AppProviders({ children }: { children: React.ReactNode }
   return (
     <QueryClientProvider client={queryClient}>
       <CityProvider>
-        <CityGate>{children}</CityGate>
-        <FloatingCityButton />
+        <NotificationProvider>
+          <CityGate>{children}</CityGate>
+          <FloatingCityButton />
+        </NotificationProvider>
       </CityProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>

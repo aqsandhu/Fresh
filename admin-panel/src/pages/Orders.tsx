@@ -34,15 +34,7 @@ import { Table } from '@/components/ui/Table';
 import { orderService } from '@/services/order.service';
 import { riderService } from '@/services/rider.service';
 import { addressService } from '@/services/address.service';
-import {
-  connectSocket,
-  disconnectSocket,
-  onNewOrder,
-  onOrderStatusUpdated,
-  onOrderCancelled,
-  offSocketEvent,
-  playNotificationSound,
-} from '@/services/socket';
+import { useNotifications } from '@/context/NotificationContext';
 import type { Order, OrderStatus } from '@/types';
 import {
   formatCurrency,
@@ -76,9 +68,12 @@ export const Orders: React.FC = () => {
   const [page, setPage] = useState(1);
   const [editingHouseNumber, setEditingHouseNumber] = useState(false);
   const [houseNumberValue, setHouseNumberValue] = useState('');
-  const [isSocketConnected, setIsSocketConnected] = useState(false);
-  const [flashingOrders, setFlashingOrders] = useState<Set<string>>(new Set());
-  const [newOrderCount, setNewOrderCount] = useState(0);
+  const {
+    isSocketConnected,
+    flashingOrderIds: flashingOrders,
+    newOrderCount,
+    clearNewOrderAlerts: clearNewOrderCount,
+  } = useNotifications();
   const prevOrdersRef = useRef<string[]>([]);
 
   const { data: ordersData, isLoading } = useQuery({
@@ -104,97 +99,10 @@ export const Orders: React.FC = () => {
   const [riderLocation, setRiderLocation] = useState<{ latitude: number | null; longitude: number | null; locationUpdatedAt: string | null } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
 
-  // Setup Socket.IO for real-time admin notifications
-  useEffect(() => {
-    const token = localStorage.getItem('admin_token');
-    if (!token) return;
-
-    const socket = connectSocket(token);
-
-    // Track connection status
-    const connectionInterval = setInterval(() => {
-      setIsSocketConnected(socket.connected);
-    }, 3000);
-
-    // Listen for new orders
-    const handleNewOrder = (data: any) => {
-      console.log('[Admin] New order received:', data);
-      playNotificationSound();
-      toast.success(`New order #${data.orderNumber} received!`, {
-        icon: <Bell className="w-4 h-4 text-green-500" />,
-        duration: 5000,
-      });
-      // Flash the new order
-      if (data.orderId) {
-        setFlashingOrders((prev) => new Set(prev).add(data.orderId));
-        setNewOrderCount((prev) => prev + 1);
-        setTimeout(() => {
-          setFlashingOrders((prev) => {
-            const next = new Set(prev);
-            next.delete(data.orderId);
-            return next;
-          });
-        }, 5000);
-      }
-      // Refresh orders list
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-    };
-    onNewOrder(handleNewOrder);
-
-    // Listen for order status updates
-    const handleStatusUpdated = (data: any) => {
-      console.log('[Admin] Order status updated:', data);
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      // Flash the updated order
-      if (data.orderId) {
-        setFlashingOrders((prev) => new Set(prev).add(data.orderId));
-        setTimeout(() => {
-          setFlashingOrders((prev) => {
-            const next = new Set(prev);
-            next.delete(data.orderId);
-            return next;
-          });
-        }, 3000);
-      }
-    };
-    onOrderStatusUpdated(handleStatusUpdated);
-
-    // Listen for cancelled orders
-    const handleOrderCancelled = (data: any) => {
-      console.log('[Admin] Order cancelled:', data);
-      toast.error(`Order #${data.orderNumber} was cancelled`, {
-        duration: 5000,
-      });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-    };
-    onOrderCancelled(handleOrderCancelled);
-
-    return () => {
-      clearInterval(connectionInterval);
-      offSocketEvent('order:new', handleNewOrder);
-      offSocketEvent('order:status_updated', handleStatusUpdated);
-      offSocketEvent('order:cancelled', handleOrderCancelled);
-      disconnectSocket();
-    };
-  }, [queryClient]);
-
-  // Detect new orders for visual feedback
+  // Track order ids for list diff (reserved for future row highlights)
   useEffect(() => {
     if (!ordersData?.orders) return;
-    const currentOrderIds = ordersData.orders.map((o: Order) => o.id);
-    if (prevOrdersRef.current.length > 0) {
-      const newIds = currentOrderIds.filter(
-        (id: string) => !prevOrdersRef.current.includes(id)
-      );
-      if (newIds.length > 0) {
-        setFlashingOrders((prev) => {
-          const next = new Set(prev);
-          newIds.forEach((id: string) => next.add(id));
-          return next;
-        });
-      }
-    }
-    prevOrdersRef.current = currentOrderIds;
+    prevOrdersRef.current = ordersData.orders.map((o: Order) => o.id);
   }, [ordersData]);
 
   const updateStatusMutation = useMutation({
@@ -314,9 +222,6 @@ export const Orders: React.FC = () => {
       });
     }
   };
-
-  // Clear new order notification badge
-  const clearNewOrderCount = () => setNewOrderCount(0);
 
   const columns = [
     {

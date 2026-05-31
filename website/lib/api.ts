@@ -282,6 +282,37 @@ export const authApi = {
   },
 }
 
+// Notifications API
+export const notificationsApi = {
+  getAll: async (): Promise<{ notifications: Array<{
+    id: string
+    type: string
+    title: string
+    message: string
+    orderId?: string
+    isRead: boolean
+    createdAt: string
+    actionUrl?: string
+  }>; unreadCount: number }> => {
+    const response = await api.get('/notifications')
+    const data = response.data?.data || response.data
+    return {
+      notifications: data?.notifications || [],
+      unreadCount: data?.unreadCount ?? 0,
+    }
+  },
+
+  markAsRead: async (id: string) => {
+    const response = await api.patch(`/notifications/${id}/read`)
+    return response.data
+  },
+
+  markAllAsRead: async () => {
+    const response = await api.patch('/notifications/read-all')
+    return response.data
+  },
+}
+
 // Orders API
 export const ordersApi = {
   getAll: async (): Promise<Order[]> => {
