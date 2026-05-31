@@ -64,7 +64,7 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
   const p = path.split('?')[0];
 
   if (p === '/dashboard') {
-    return ['orders.view', 'products.view', 'customers.view', 'settings.view'];
+    return ['orders.view', 'products.view', 'customers.view', 'settings.view', 'settings.update'];
   }
   if (p.startsWith('/orders')) {
     return m === 'GET' ? ['orders.view'] : ['orders.update', 'orders.cancel', 'orders.assign_rider'];
@@ -89,7 +89,7 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
     return ['settings.update'];
   }
   if (p.startsWith('/delivery-zones')) {
-    return m === 'GET' ? ['settings.view'] : ['settings.update'];
+    return m === 'GET' ? ['settings.view', 'settings.update'] : ['settings.update'];
   }
   // Time slots are operational data (rider charges, order assignment), not only Settings UI.
   if (p === '/settings/time-slots' && m === 'GET') {
@@ -102,7 +102,9 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
     ];
   }
   if (p.startsWith('/settings') || p.startsWith('/site-settings')) {
-    return m === 'GET' ? ['settings.view'] : ['settings.update'];
+    return m === 'GET'
+      ? ['settings.view', 'settings.update']
+      : ['settings.update'];
   }
   if (p.startsWith('/reports')) return ['orders.view'];
 

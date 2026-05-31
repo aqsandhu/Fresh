@@ -60,7 +60,8 @@ export const productService = {
       formData.append('category_id', data.categoryId);
       formData.append('is_active', (data.isActive !== false).toString());
       formData.append('is_featured', (data.isFeatured === true).toString());
-      
+      formData.append('tags', JSON.stringify(data.tags || []));
+
       if (data.images && data.images.length > 0) {
         data.images.forEach((image) => {
           formData.append('images', image);
@@ -98,6 +99,7 @@ export const productService = {
       if (data.categoryId) formData.append('category_id', data.categoryId);
       if (data.isActive !== undefined) formData.append('is_active', data.isActive.toString());
       if (data.isFeatured !== undefined) formData.append('is_featured', data.isFeatured.toString());
+      if (data.tags !== undefined) formData.append('tags', JSON.stringify(data.tags));
       
       if (data.images && data.images.length > 0) {
         data.images.forEach((image) => {

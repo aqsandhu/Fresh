@@ -18,6 +18,8 @@ import {
   customerCityExistsClause,
   requireCityScope,
 } from '../utils/cityScope';
+import { parseTagsInput, tagSearchSql } from '../utils/productTags';
+import { fetchBannerSettings, upsertBannerSettings, upsertGlobalSiteSetting } from '../utils/siteSettings';
 
 const SALT_ROUNDS = 12;
 
@@ -1093,7 +1095,11 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
   if (search && typeof search === 'string') {
     const sanitizedSearch = search.replace(/[%_\\]/g, '\\$&').trim().substring(0, 100);
     if (sanitizedSearch.length > 0) {
-      sql += ` AND (p.name_en ILIKE $${paramIndex} OR p.name_ur ILIKE $${paramIndex})`;
+      sql += ` AND (
+        p.name_en ILIKE $${paramIndex}
+        OR p.name_ur ILIKE $${paramIndex}
+        OR ${tagSearchSql(paramIndex)}
+      )`;
       params.push(`%${sanitizedSearch}%`); paramIndex++;
     }
   }
@@ -1176,6 +1182,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     description_en,
     is_featured,
     is_new_arrival,
+    tags,
   } = req.body;
 
   // Empty-string values come through multipart forms — coerce them to null
@@ -1188,6 +1195,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   const halfKg = normPrice(half_kg_price);
   const quarterKg = normPrice(quarter_kg_price);
   const halfDozen = normPrice(half_dozen_price);
+  const productTags = parseTagsInput(tags);
 
   const slug = generateSlug(name_en);
 
@@ -1218,8 +1226,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
       half_kg_price, quarter_kg_price, half_dozen_price,
       unit_type, unit_value, stock_quantity,
       description_ur, description_en, is_featured, is_new_arrival,
-      primary_image, images, city_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      primary_image, images, city_id, tags
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
     RETURNING *`,
     [
       name_ur || name_en, name_en, slug, category_id, subcategory_id,
@@ -1229,6 +1237,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
       description_ur || null, description_en || null, is_featured || false, is_new_arrival || false,
       primaryImage, images.length > 0 ? images : null,
       scope.cityId,
+      productTags.length > 0 ? productTags : null,
     ]
   );
 
@@ -1252,7 +1261,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     'half_kg_price', 'quarter_kg_price', 'half_dozen_price',
     'unit_type', 'unit_value',
     'stock_quantity', 'description_ur', 'description_en',
-    'is_active', 'is_featured', 'is_new_arrival',
+    'is_active', 'is_featured', 'is_new_arrival', 'tags',
   ];
   // These columns must always serialize as NULL when the admin clears them.
   const nullableNumberFields = new Set([
@@ -1266,7 +1275,10 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   for (const [key, value] of Object.entries(updates)) {
     if (allowedFields.includes(key)) {
       let normalised: any = value;
-      if (nullableNumberFields.has(key)) {
+      if (key === 'tags') {
+        normalised = parseTagsInput(value);
+        normalised = normalised.length > 0 ? normalised : null;
+      } else if (nullableNumberFields.has(key)) {
         if (value === '' || value === null || value === undefined) {
           normalised = null;
         } else {
@@ -2009,15 +2021,8 @@ export const getCustomerAddresses = asyncHandler(async (req: Request, res: Respo
  * GET /api/admin/site-settings/banner
  */
 export const getBannerSettings = asyncHandler(async (req: Request, res: Response) => {
-  const result = await query(
-    `SELECT key, value FROM site_settings WHERE key LIKE 'banner_%'`
-  );
-
-  const banner: Record<string, string> = {};
-  for (const row of result.rows) {
-    banner[row.key] = row.value;
-  }
-
+  const scope = await resolveCityScope(req);
+  const banner = await fetchBannerSettings(scope.cityId);
   successResponse(res, banner, 'Banner settings retrieved');
 });
 
@@ -2026,6 +2031,11 @@ export const getBannerSettings = asyncHandler(async (req: Request, res: Response
  * PUT /api/admin/site-settings/banner
  */
 export const updateBannerSettings = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  if (!scope.cityId) {
+    return errorResponse(res, 'Select a city before updating banner settings', 400);
+  }
+
   const userId = req.user?.id;
   const {
     banner_left_text,
@@ -2034,32 +2044,21 @@ export const updateBannerSettings = asyncHandler(async (req: Request, res: Respo
     banner_right_text_ur,
   } = req.body;
 
-  const updates: { key: string; value: string }[] = [];
-
-  if (banner_left_text !== undefined) updates.push({ key: 'banner_left_text', value: banner_left_text });
-  if (banner_middle_text !== undefined) updates.push({ key: 'banner_middle_text', value: banner_middle_text });
-  if (banner_right_text_en !== undefined) updates.push({ key: 'banner_right_text_en', value: banner_right_text_en });
-  if (banner_right_text_ur !== undefined) updates.push({ key: 'banner_right_text_ur', value: banner_right_text_ur });
-
-  for (const { key, value } of updates) {
-    await query(
-      `INSERT INTO site_settings (key, value, updated_at, updated_by)
-       VALUES ($1, $2, NOW(), $3)
-       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW(), updated_by = $3`,
-      [key, value, userId]
-    );
-  }
-
-  // Return updated settings
-  const result = await query(
-    `SELECT key, value FROM site_settings WHERE key LIKE 'banner_%'`
+  const banner = await upsertBannerSettings(
+    {
+      banner_left_text,
+      banner_middle_text,
+      banner_right_text_en,
+      banner_right_text_ur,
+    },
+    scope.cityId,
+    userId
   );
-  const banner: Record<string, string> = {};
-  for (const row of result.rows) {
-    banner[row.key] = row.value;
-  }
 
-  logger.info('Banner settings updated', { updatedBy: userId, fields: updates.map(u => u.key) });
+  logger.info('Banner settings updated', {
+    updatedBy: userId,
+    cityId: scope.cityId,
+  });
 
   successResponse(res, banner, 'Banner settings updated successfully');
 });
@@ -2105,12 +2104,7 @@ export const updateDeliverySettings = asyncHandler(async (req: Request, res: Res
   ];
 
   for (const { key, value } of updates) {
-    await query(
-      `INSERT INTO site_settings (key, value, updated_at, updated_by)
-       VALUES ($1, $2, NOW(), $3)
-       ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = NOW(), updated_by = $3`,
-      [key, value, userId]
-    );
+    await upsertGlobalSiteSetting(key, value, userId);
   }
 
   successResponse(res, {
@@ -2250,12 +2244,7 @@ export const updateBusinessHours = asyncHandler(async (req: Request, res: Respon
   const userId = req.user?.id;
   const { hours } = req.body;
 
-  await query(
-    `INSERT INTO site_settings (key, value, updated_at, updated_by)
-     VALUES ('business_hours_data', $1, NOW(), $2)
-     ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW(), updated_by = $2`,
-    [JSON.stringify(hours), userId]
-  );
+  await upsertGlobalSiteSetting('business_hours_data', JSON.stringify(hours), userId);
 
   successResponse(res, hours, 'Business hours updated');
 });

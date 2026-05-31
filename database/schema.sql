@@ -1114,12 +1114,16 @@ CREATE TABLE order_messages (
 -- ============================================================================
 CREATE TABLE site_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    key VARCHAR(255) UNIQUE NOT NULL,
+    key VARCHAR(255) NOT NULL,
     value TEXT,
+    city_id UUID REFERENCES service_cities(id) ON DELETE CASCADE,
     updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX idx_site_settings_key_global ON site_settings (key) WHERE city_id IS NULL;
+CREATE UNIQUE INDEX idx_site_settings_key_city ON site_settings (key, city_id) WHERE city_id IS NOT NULL;
 
 -- ============================================================================
 -- 24. SYSTEM SETTINGS (typed config — superset of site_settings)

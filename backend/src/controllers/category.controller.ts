@@ -6,20 +6,7 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse } from '../utils/response';
-
-async function resolvePublicCityId(req: Request): Promise<string | null> {
-  const cityId = typeof req.query.city_id === 'string' ? req.query.city_id : null;
-  if (cityId) return cityId;
-
-  const cityName = typeof req.query.city === 'string' ? req.query.city : null;
-  if (!cityName) return null;
-
-  const row = await query(
-    'SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1',
-    [cityName]
-  );
-  return row.rows[0]?.id || null;
-}
+import { resolvePublicCityId } from '../utils/cityScope';
 
 /**
  * Get all categories

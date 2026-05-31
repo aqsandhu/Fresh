@@ -2,7 +2,7 @@ import { normalizePermissions } from './adminUser';
 
 /** Permission required to see each sidebar route (any listed code grants access). */
 export const ROUTE_PERMISSIONS: Record<string, string[]> = {
-  '/admin/dashboard': ['orders.view', 'products.view', 'customers.view', 'settings.view'],
+  '/admin/dashboard': ['orders.view', 'products.view', 'customers.view', 'settings.view', 'settings.update'],
   '/admin/orders': ['orders.view'],
   '/admin/products': ['products.view'],
   '/admin/categories': ['categories.manage'],
@@ -11,10 +11,10 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/atta-requests': ['orders.view'],
   '/admin/whatsapp-orders': ['orders.view'],
   '/admin/addresses': ['addresses.view'],
-  '/admin/service-cities': ['settings.view'],
-  '/admin/delivery-zones': ['settings.view'],
+  '/admin/service-cities': ['settings.view', 'settings.update'],
+  '/admin/delivery-zones': ['settings.view', 'settings.update'],
   '/admin/roles': ['roles.manage'],
-  '/admin/settings': ['settings.view'],
+  '/admin/settings': ['settings.view', 'settings.update'],
 };
 
 /** Routes tried in order when redirecting after login or on permission denial. */

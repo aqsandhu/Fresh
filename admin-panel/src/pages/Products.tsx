@@ -22,6 +22,7 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { Badge } from '@/components/ui/Badge';
+import TagInput from '@/components/ui/TagInput';
 import { productService } from '@/services/product.service';
 import { categoryService } from '@/services/category.service';
 import type { Product, CreateProductData } from '@/types';
@@ -88,6 +89,7 @@ export const Products: React.FC = () => {
     categoryId: '',
     isActive: true,
     isFeatured: false,
+    tags: [],
   });
 
   const { data: productsData, isLoading } = useQuery({
@@ -213,14 +215,22 @@ export const Products: React.FC = () => {
       categoryId: '',
       isActive: true,
       isFeatured: false,
+      tags: [],
     });
     setIsModalOpen(true);
   };
 
-  const openEditModal = (product: Product) => {
+  const openEditModal = async (product: Product) => {
     setEditingProduct(product);
     setSelectedImages([]);
     setFormErrors({});
+    let tags: string[] = product.tags || [];
+    try {
+      const full = await productService.getProductById(product.id);
+      tags = full.tags || [];
+    } catch {
+      // Keep list tags if detail fetch fails
+    }
     // Show existing images as previews
     const imgUrl = getProductImageUrl(product);
     if (imgUrl) {
@@ -245,6 +255,7 @@ export const Products: React.FC = () => {
       categoryId: product.categoryId,
       isActive: product.isActive,
       isFeatured: product.isFeatured,
+      tags,
     });
     setIsModalOpen(true);
   };
@@ -651,6 +662,11 @@ export const Products: React.FC = () => {
               rows={3}
             />
           </div>
+
+          <TagInput
+            value={formData.tags || []}
+            onChange={(tags) => setFormData({ ...formData, tags })}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input

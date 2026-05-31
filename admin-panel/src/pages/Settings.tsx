@@ -30,6 +30,7 @@ import { settingsService } from '@/services/settings.service';
 import { bannerService } from '@/services/banner.service';
 import type { DeliverySettings, TimeSlot, BusinessHours } from '@/types';
 import toast from 'react-hot-toast';
+import { useCityContext } from '@/context/CityContext';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -47,6 +48,7 @@ interface FormErrors {
 
 export const Settings: React.FC = () => {
   const queryClient = useQueryClient();
+  const { selectedCity, selectedCityId } = useCityContext();
   const [activeTab, setActiveTab] = useState<'delivery' | 'timeslots' | 'business' | 'banner'>('delivery');
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
@@ -99,8 +101,9 @@ export const Settings: React.FC = () => {
 
   // Fetch Banner Settings
   const { data: bannerSettings } = useQuery({
-    queryKey: ['bannerSettings'],
+    queryKey: ['bannerSettings', selectedCityId],
     queryFn: () => bannerService.getBannerSettings(),
+    enabled: !!selectedCityId,
   });
 
   // Update local state when data is fetched
@@ -199,7 +202,7 @@ export const Settings: React.FC = () => {
   const updateBannerMutation = useMutation({
     mutationFn: (data: typeof bannerForm) => bannerService.updateBannerSettings(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bannerSettings'] });
+      queryClient.invalidateQueries({ queryKey: ['bannerSettings', selectedCityId] });
       toast.success('Banner settings updated successfully');
     },
     onError: (error: Error) => {
@@ -549,6 +552,24 @@ export const Settings: React.FC = () => {
 
   const renderBanner = () => (
     <div className="max-w-4xl space-y-6">
+      {!selectedCityId && (
+        <Card>
+          <div className="p-4 flex items-start gap-3 text-amber-800 bg-amber-50 rounded-lg">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <p className="text-sm">
+              Select a city from the header before editing the website banner. Each city can have its own green top bar text.
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {selectedCity && (
+        <p className="text-sm text-gray-600">
+          Editing banner for <span className="font-semibold text-gray-900">{selectedCity.name}</span>.
+          Empty fields fall back to global defaults on the website.
+        </p>
+      )}
+
       {/* Live Preview */}
       <Card>
         <div className="p-4">
@@ -590,7 +611,9 @@ export const Settings: React.FC = () => {
             </div>
             <div>
               <h3 className="text-lg font-medium text-gray-900">Website Banner</h3>
-              <p className="text-sm text-gray-500">Edit the text shown in the top banner strip of the website</p>
+              <p className="text-sm text-gray-500">
+                Edit the green top bar on the website for the selected city
+              </p>
             </div>
           </div>
 
@@ -663,6 +686,7 @@ export const Settings: React.FC = () => {
               type="submit"
               isLoading={updateBannerMutation.isPending}
               leftIcon={<Save className="w-4 h-4" />}
+              disabled={!selectedCityId}
             >
               Save Banner Settings
             </Button>

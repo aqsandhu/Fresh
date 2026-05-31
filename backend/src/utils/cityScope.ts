@@ -192,3 +192,18 @@ export function requireCityScope(scope: CityScope): string | null {
   }
   return null;
 }
+
+/** Public catalog + banner: resolve city from query string. */
+export async function resolvePublicCityId(req: Request): Promise<string | null> {
+  const cityId = typeof req.query.city_id === 'string' ? req.query.city_id.trim() : null;
+  if (cityId) return cityId;
+
+  const cityName = typeof req.query.city === 'string' ? req.query.city.trim() : null;
+  if (!cityName) return null;
+
+  const row = await query(
+    'SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1',
+    [cityName]
+  );
+  return row.rows[0]?.id || null;
+}
