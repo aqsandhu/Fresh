@@ -22,6 +22,8 @@ interface PinInputProps {
   autoFocus?: boolean
   /** Hide the digits as the user types (for shoulder-surfing protection). */
   mask?: boolean
+  /** Smaller boxes for tight mobile layouts (e.g. dual PIN entry). */
+  size?: 'default' | 'compact'
 }
 
 const LENGTH = 4
@@ -33,6 +35,7 @@ export default function PinInput({
   disabled,
   autoFocus = true,
   mask = true,
+  size = 'default',
 }: PinInputProps) {
   const refs = useRef<Array<HTMLInputElement | null>>([])
 
@@ -81,8 +84,16 @@ export default function PinInput({
     if (e.key === 'ArrowRight' && i < LENGTH - 1) refs.current[i + 1]?.focus()
   }
 
+  const boxClass =
+    size === 'compact'
+      ? 'w-10 h-11 sm:w-11 sm:h-12 text-lg sm:text-xl rounded-lg'
+      : 'w-11 h-12 sm:w-14 sm:h-16 text-xl sm:text-2xl rounded-xl'
+
   return (
-    <div className="flex justify-center gap-3" dir="ltr">
+    <div
+      className={`flex justify-center ${size === 'compact' ? 'gap-2 sm:gap-2.5' : 'gap-2.5 sm:gap-3'}`}
+      dir="ltr"
+    >
       {cells.map((c, i) => (
         <input
           key={i}
@@ -96,7 +107,7 @@ export default function PinInput({
           onKeyDown={(e) => handleKey(i, e)}
           onFocus={(e) => e.target.select()}
           disabled={disabled}
-          className="w-14 h-16 text-center text-2xl font-bold border-2 border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all disabled:opacity-50"
+          className={`${boxClass} text-center font-bold border-2 border-gray-200 bg-gray-50 focus:bg-white focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all disabled:opacity-50`}
         />
       ))}
     </div>

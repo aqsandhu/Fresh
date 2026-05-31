@@ -40,7 +40,6 @@ export default function Header() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Product[]>([])
   const [isSearching, setIsSearching] = useState(false)
-  const [showResults, setShowResults] = useState(false)
   const [hasMounted, setHasMounted] = useState(false)
   const router = useRouter()
   const { getTotalItems, items, hasHydrated: cartHasHydrated } = useCartStore()
@@ -149,12 +148,11 @@ export default function Header() {
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
       setSearchResults([])
-      setShowResults(false)
+      setIsSearching(false)
       return
     }
 
     setIsSearching(true)
-    setShowResults(true)
 
     // Debounce search
     if (searchDebounceRef.current) {
@@ -180,19 +178,19 @@ export default function Header() {
     }
   }, [searchQuery])
 
+  const showSearchDropdown = isSearchOpen && searchQuery.trim().length >= 2
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (searchQuery.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`)
       setIsSearchOpen(false)
-      setShowResults(false)
       setSearchQuery('')
     }
   }
 
   const handleResultClick = () => {
     setIsSearchOpen(false)
-    setShowResults(false)
     setSearchQuery('')
   }
 
@@ -360,14 +358,19 @@ export default function Header() {
 
                 {/* Search Results Dropdown */}
                 <AnimatePresence>
-                  {showResults && (searchResults.length > 0 || searchQuery.length >= 2) && (
+                  {showSearchDropdown && (
                     <motion.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
-                      className="absolute left-0 right-0 top-full mt-2 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-50"
+                      className="absolute left-0 right-0 top-full mt-2 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden z-50 min-h-[3.5rem]"
                     >
-                      {searchResults.length > 0 ? (
+                      {isSearching ? (
+                        <div className="flex items-center justify-center gap-2 px-4 py-4 text-sm text-gray-500">
+                          <Loader2 className="w-4 h-4 animate-spin text-primary-500" />
+                          Searching products...
+                        </div>
+                      ) : searchResults.length > 0 ? (
                         <>
                           <div className="max-h-80 overflow-y-auto">
                             {searchResults.map((product) => (
@@ -407,12 +410,12 @@ export default function Header() {
                             </button>
                           </div>
                         </>
-                      ) : searchQuery.length >= 2 && !isSearching ? (
+                      ) : (
                         <div className="p-6 text-center">
                           <p className="text-gray-500">No products found</p>
                           <p className="text-sm text-gray-400 mt-1">Try a different search term</p>
                         </div>
-                      ) : null}
+                      )}
                     </motion.div>
                   )}
                 </AnimatePresence>

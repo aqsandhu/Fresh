@@ -477,29 +477,39 @@ export default function LoginPage() {
 
   if (bootstrapping) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center">
+      <div className="min-h-[100dvh] bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
       </div>
     )
   }
 
+  const isCompactStep = step === 'otp' || step === 'newPin'
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center py-12 px-4">
+    <div className="min-h-[100dvh] bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-start sm:items-center justify-center py-4 sm:py-8 px-3 sm:px-4 overflow-y-auto">
       {/* Invisible reCAPTCHA container required by Firebase */}
       <div id="recaptcha-container" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md my-auto"
       >
-        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
+        <div
+          className={`bg-white rounded-xl sm:rounded-2xl shadow-xl border border-gray-100 ${
+            isCompactStep ? 'p-4 sm:p-6' : 'p-5 sm:p-8'
+          }`}
+        >
           {/* Logo */}
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-200">
-              <span className="text-white font-bold text-2xl">S</span>
+          <div className={`text-center ${isCompactStep ? 'mb-4' : 'mb-6 sm:mb-8'}`}>
+            <div
+              className={`bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-primary-200 ${
+                isCompactStep ? 'w-11 h-11 mb-2' : 'w-14 h-14 sm:w-16 sm:h-16 mb-3 sm:mb-4'
+              }`}
+            >
+              <span className={`text-white font-bold ${isCompactStep ? 'text-lg' : 'text-xl sm:text-2xl'}`}>S</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className={`font-bold text-gray-900 ${isCompactStep ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'}`}>
               {step === 'otp'
                 ? 'Verify OTP'
                 : step === 'newPin'
@@ -508,7 +518,7 @@ export default function LoginPage() {
                     ? `Welcome${userName ? `, ${userName}` : ' back'}`
                     : 'Welcome Back'}
             </h1>
-            <p className="text-gray-500 mt-1 text-sm">
+            <p className="text-gray-500 mt-1 text-xs sm:text-sm px-1">
               {step === 'otp' ? (
                 isOtpBypassEnabled() ? (
                   <span className="text-amber-600">{otpBypassHint()}</span>
@@ -595,23 +605,25 @@ export default function LoginPage() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 20 }}
               >
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-5">
                   <div>
-                    <p className="text-sm font-medium text-gray-700 mb-3 text-center">New PIN</p>
+                    <p className="text-xs sm:text-sm font-medium text-gray-700 mb-2 text-center">New PIN</p>
                     <PinInput
                       value={newPin}
                       onChange={setNewPin}
                       disabled={isLoading}
                       autoFocus
+                      size="compact"
                     />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-700 mb-3 text-center">Confirm PIN</p>
+                    <p className="text-xs sm:text-sm font-medium text-gray-700 mb-2 text-center">Confirm PIN</p>
                     <PinInput
                       value={newPinConfirm}
                       onChange={setNewPinConfirm}
                       disabled={isLoading}
                       autoFocus={false}
+                      size="compact"
                     />
                   </div>
                   <Button
@@ -620,6 +632,7 @@ export default function LoginPage() {
                     onClick={handleNewPinSubmit}
                     isLoading={isLoading}
                     disabled={newPin.length !== 4 || newPinConfirm.length !== 4}
+                    className="!py-2.5 sm:!py-3"
                   >
                     Save PIN & Continue
                   </Button>
@@ -627,9 +640,9 @@ export default function LoginPage() {
               </motion.div>
             ) : (
               <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-5">
                   {/* OTP Inputs */}
-                  <div className="flex justify-center gap-2.5">
+                  <div className="flex justify-center gap-1.5 sm:gap-2.5 max-w-full">
                     {otp.map((digit, index) => (
                       <input
                         key={index}
@@ -642,7 +655,7 @@ export default function LoginPage() {
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
                         onFocus={(e) => e.target.select()}
                         autoFocus={index === 0}
-                        className="w-12 h-14 text-center text-xl font-bold border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white"
+                        className="w-9 h-11 sm:w-11 sm:h-14 md:w-12 text-center text-lg sm:text-xl font-bold border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white disabled:opacity-50 flex-1 max-w-[2.75rem] sm:max-w-none sm:flex-none"
                         disabled={isLoading}
                       />
                     ))}
@@ -650,8 +663,8 @@ export default function LoginPage() {
 
                   {isLoading && (
                     <div className="flex items-center justify-center gap-2 text-primary-600">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="text-sm font-medium">Verifying...</span>
+                      <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                      <span className="text-xs sm:text-sm font-medium">Verifying...</span>
                     </div>
                   )}
 
@@ -661,6 +674,7 @@ export default function LoginPage() {
                     isLoading={isLoading}
                     disabled={otp.some((d) => !d)}
                     size="lg"
+                    className="!py-2.5 sm:!py-3"
                   >
                     {otpPurpose === 'resetPin' ? 'Verify OTP' : 'Verify & Login'}
                   </Button>
@@ -699,6 +713,8 @@ export default function LoginPage() {
             )}
           </AnimatePresence>
 
+          {!isCompactStep && (
+            <>
           {/* Divider */}
           <div className="relative my-6">
             <div className="absolute inset-0 flex items-center">
@@ -722,6 +738,8 @@ export default function LoginPage() {
             <Shield className="w-3.5 h-3.5" />
             <span>OTP verification keeps your account secure</span>
           </div>
+            </>
+          )}
         </div>
       </motion.div>
     </div>
