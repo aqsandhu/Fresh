@@ -27,7 +27,7 @@ import dynamic from 'next/dynamic'
 import { OrderStatus } from '@/types'
 import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
-import { unitLabelShort } from '@/lib/unitPricing'
+import { unitLabelShort, unitPriceCaption } from '@/lib/unitPricing'
 import { ordersApi } from '@/lib/api'
 
 const RiderTrackingMap = dynamic(() => import('@/components/ui/RiderTrackingMap'), {
@@ -343,11 +343,16 @@ export default function TrackOrderPage() {
                         )}
                       </p>
                       <p className="text-sm text-gray-500">
-                        {item.quantity} x {formatPriceShort(item.price)}
+                        {item.quantity} × {formatPriceShort(item.price)}
                         {item.unit && item.unit !== 'full' && (
-                          <span className="text-xs text-gray-400 ml-1">
-                            / {unitLabelShort(item.unit)}
-                          </span>
+                          <>
+                            <span className="text-xs text-gray-400 ml-1">
+                              / {unitLabelShort(item.unit)}
+                            </span>
+                            <span className="text-xs text-primary-700 font-medium ml-1">
+                              ({unitPriceCaption(item.unit)})
+                            </span>
+                          </>
                         )}
                       </p>
                     </div>

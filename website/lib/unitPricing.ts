@@ -16,9 +16,8 @@ const toNumber = (v: unknown): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
-/**
- * Returns the unit options to show in the storefront for a product.
- * Mirrors the server's pricing logic in backend/src/controllers/cart.controller.ts.
+/** Returns the unit options to show in the storefront for a product.
+ * Mirrors the server's pricing logic in backend/src/utils/unitPricing.ts.
  */
 export function getUnitOptions(product: Product): UnitOption[] {
   const base = toNumber(product.price) ?? 0
@@ -62,6 +61,53 @@ export function getUnitOptions(product: Product): UnitOption[] {
 
   // No fraction units for piece / liter / pack — single option.
   return [{ unit: 'full', label: `Per ${unit || 'unit'}`, price: base, derived: false }]
+}
+
+/** Price for one cart/order line of the given unit. */
+export function priceForUnit(product: Product, unit: ProductUnit = 'full'): number {
+  const opts = getUnitOptions(product)
+  const found = opts.find((o) => o.unit === unit)
+  return found?.price ?? product.price
+}
+
+/** Prefer stored line price; fall back to product unit pricing. */
+export function resolveLineUnitPrice(item: {
+  product: Product
+  unit?: ProductUnit
+  unitPrice?: number
+}): number {
+  const unit = item.unit || 'full'
+  if (item.unitPrice != null && item.unitPrice > 0) return item.unitPrice
+  return priceForUnit(item.product, unit)
+}
+
+/** Suffix for ProductPrice, e.g. "/kg", "/half kg", "/½ kg". */
+export function unitPriceSuffix(product: Product, unit: ProductUnit = 'full'): string {
+  if (unit === 'full') {
+    const u = (product.unit || 'unit').trim()
+    return u ? `/${u}` : ''
+  }
+  const opt = getUnitOptions(product).find((o) => o.unit === unit)
+  if (opt) {
+    const label = opt.label.replace(/^Per /i, '').split('(')[0].trim()
+    return label ? `/${label}` : ''
+  }
+  const short = unitLabelShort(unit)
+  return short ? `/${short}` : ''
+}
+
+/** Caption beside unit price on cart/order lines. */
+export function unitPriceCaption(unit: ProductUnit | undefined): string {
+  switch (unit) {
+    case 'half_kg':
+      return 'per ½ kg'
+    case 'quarter_kg':
+      return 'per ¼ kg'
+    case 'half_dozen':
+      return 'per ½ dozen'
+    default:
+      return ''
+  }
 }
 
 /** Short label used in cart line items ("\u00BD kg", "\u00BC kg", etc.). */

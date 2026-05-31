@@ -260,6 +260,7 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
   let sql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
+      p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug
     FROM products p
@@ -289,6 +290,7 @@ export const getNewArrivals = asyncHandler(async (req: Request, res: Response) =
   let sql = `
     SELECT 
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
+      p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug
     FROM products p
@@ -330,8 +332,9 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
   let sql = `
     SELECT 
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
+      p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
-      c.name_en as category_name
+      c.name_en as category_name, c.slug as category_slug
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.category_id = $1 
@@ -379,6 +382,7 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
   const result = await query(
     `SELECT 
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
+      p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug,
       ts_rank(
