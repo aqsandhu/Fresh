@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { authService } from '@/services/auth.service';
+import { refreshAdminAccessToken, tokenNeedsRefresh } from '@/lib/adminTokenRefresh';
 import type { User, LoginCredentials } from '@/types';
 
 interface AuthContextType {
@@ -21,19 +22,53 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const initAuth = () => {
+    const initAuth = async () => {
       const token = authService.getToken();
       const storedUser = authService.getCurrentUser();
-      if (storedUser && token) {
-        setUser(storedUser);
-      } else {
-        // Clear stale data if token is missing
+      const refreshToken = authService.getRefreshToken();
+
+      if (!storedUser || !refreshToken) {
         authService.logout();
+        setIsLoading(false);
+        return;
       }
+
+      if (tokenNeedsRefresh(token)) {
+        const newToken = await refreshAdminAccessToken();
+        if (!newToken) {
+          authService.logout();
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      setUser(storedUser);
       setIsLoading(false);
     };
+
     initAuth();
   }, []);
+
+  // Refresh access token in the background before it expires.
+  useEffect(() => {
+    if (!user) return;
+
+    const tick = () => {
+      if (tokenNeedsRefresh(authService.getToken())) {
+        refreshAdminAccessToken().catch(() => {});
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 5 * 60 * 1000);
+    const onFocus = () => tick();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [user]);
 
   const login = async (credentials: LoginCredentials): Promise<void> => {
     const response = await authService.login(credentials);

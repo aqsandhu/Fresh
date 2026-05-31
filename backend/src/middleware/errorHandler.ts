@@ -126,19 +126,31 @@ export const errorHandler = (
   // Clear Sentry user context after request
   clearSentryUser();
 
-  // Log error. Include validation field details when present so we can see
-  // *which* field failed without having to ship a separate logger statement
-  // from every controller — a generic "Validation failed" line wasn't enough
-  // to debug the verify-register 422s in prod.
-  logger.error('Error occurred', {
-    message: err.message,
-    statusCode,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-    ...(errorDetails ? { validationErrors: errorDetails } : {}),
-    stack: err.stack,
-  });
+  // Log error — skip noisy stack traces for expected auth failures.
+  const isExpectedAuthFailure =
+    statusCode === 401 &&
+    (message === 'Token expired' ||
+      message === 'Invalid token' ||
+      message === 'Access token required');
+
+  if (isExpectedAuthFailure) {
+    logger.warn('Auth failure', {
+      message,
+      statusCode,
+      path: req.path,
+      method: req.method,
+    });
+  } else {
+    logger.error('Error occurred', {
+      message: err.message,
+      statusCode,
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+      ...(errorDetails ? { validationErrors: errorDetails } : {}),
+      stack: err.stack,
+    });
+  }
 
   // Build response
   const response: ErrorResponse = {
