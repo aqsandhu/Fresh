@@ -146,9 +146,9 @@ export function customerCityExistsClause(
   userAlias: string,
   params: unknown[],
   paramIndex: number
-): { sql: string; nextIndex: number } {
+): { sql: string; nextIndex: number; cityIdParam: number | null; cityNameParam: number | null } {
   if (scope.unrestricted || !scope.cityId || !scope.cityName || !scope.dbReady) {
-    return { sql: '', nextIndex: paramIndex };
+    return { sql: '', nextIndex: paramIndex, cityIdParam: null, cityNameParam: null };
   }
   params.push(scope.cityName);
   const nameParam = paramIndex++;
@@ -164,12 +164,60 @@ export function customerCityExistsClause(
       )
       OR EXISTS (
         SELECT 1 FROM orders o
+         LEFT JOIN addresses oaddr ON o.address_id = oaddr.id
          WHERE o.user_id = ${userAlias}.id
            AND o.deleted_at IS NULL
-           AND o.city_id = $${idParam}
+           AND (
+             o.city_id = $${idParam}
+             OR LOWER(COALESCE(oaddr.city, '')) = LOWER($${nameParam})
+             OR LOWER(COALESCE(o.delivery_address_snapshot->>'city', '')) = LOWER($${nameParam})
+           )
       )
     )`,
     nextIndex: paramIndex,
+    cityIdParam: idParam,
+    cityNameParam: nameParam,
+  };
+}
+
+/** Reusable order filter for correlated subqueries when city params are already bound. */
+export function orderCityMatchSql(
+  cityIdParam: number | null,
+  cityNameParam: number | null,
+  orderAlias: string,
+  addressAlias: string
+): string {
+  if (!cityIdParam || !cityNameParam) return '';
+  return ` AND (
+    ${orderAlias}.city_id = $${cityIdParam}
+    OR LOWER(COALESCE(${addressAlias}.city, '')) = LOWER($${cityNameParam})
+    OR LOWER(COALESCE(${orderAlias}.delivery_address_snapshot->>'city', '')) = LOWER($${cityNameParam})
+  )`;
+}
+
+/** Reusable address filter for correlated subqueries when city name param is already bound. */
+export function addressCityMatchSql(
+  cityNameParam: number | null,
+  addressAlias: string
+): string {
+  if (!cityNameParam) return '';
+  return ` AND LOWER(${addressAlias}.city) = LOWER($${cityNameParam})`;
+}
+
+/** Standalone WHERE fragment for listing addresses in the scoped city. */
+export function addressCityWhereClause(
+  scope: CityScope,
+  addressAlias: string,
+  params: unknown[],
+  paramIndex: number
+): { sql: string; nextIndex: number } {
+  if (scope.unrestricted || !scope.cityName || !scope.dbReady) {
+    return { sql: '', nextIndex: paramIndex };
+  }
+  params.push(scope.cityName);
+  return {
+    sql: ` AND LOWER(${addressAlias}.city) = LOWER($${paramIndex})`,
+    nextIndex: paramIndex + 1,
   };
 }
 
