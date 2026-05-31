@@ -21,12 +21,15 @@ export default function FloatingCityButton() {
     )
   }, [cities, query])
 
-  if (
+  const hideOnPaths =
     pathname.startsWith('/select-city') ||
+    pathname === '/login' ||
+    pathname === '/register' ||
+    pathname.startsWith('/settings/pin') ||
     pathname === '/cart' ||
-    pathname === '/checkout' ||
-    !selectedCity
-  ) {
+    pathname === '/checkout'
+
+  if (hideOnPaths || !selectedCity) {
     return null
   }
 

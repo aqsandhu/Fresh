@@ -3,27 +3,23 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'
-import { 
-  Search, 
-  Loader2, 
-  Filter,
+import {
+  Search,
+  Loader2,
   SlidersHorizontal,
-  X
+  X,
 } from 'lucide-react'
-import Image from 'next/image'
 import Link from 'next/link'
 import { productsApi } from '@/lib/api'
 import { Product } from '@/types'
-import ProductPrice from '@/components/ui/ProductPrice'
+import ProductCard from '@/components/ui/ProductCard'
 import Button from '@/components/ui/Button'
-import { useCartStore } from '@/store/cartStore'
 import toast from 'react-hot-toast'
 
 export default function SearchPage() {
   const searchParams = useSearchParams()
   const query = searchParams.get('q') || ''
-  const { addItem } = useCartStore()
-  
+
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
@@ -41,7 +37,7 @@ export default function SearchPage() {
   const performSearch = async () => {
     setLoading(true)
     try {
-      const response = await productsApi.getAll({ 
+      const response = await productsApi.getAll({
         search: query,
         limit: 50,
       })
@@ -52,11 +48,6 @@ export default function SearchPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleAddToCart = (product: Product) => {
-    addItem(product, 1)
-    toast.success(`${product.name} added to cart`)
   }
 
   const sortedProducts = [...products].sort((a, b) => {
@@ -79,7 +70,7 @@ export default function SearchPage() {
   )
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-50 py-8 pb-20 lg:pb-8">
       <div className="container mx-auto px-4">
         {/* Search Header */}
         <motion.div
@@ -193,67 +184,27 @@ export default function SearchPage() {
               We couldn&apos;t find any products matching &quot;{query}&quot;. Try a different search term or browse our categories.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link href="/category/sabzi">
-                <Button variant="outline">Browse Vegetables</Button>
-              </Link>
-              <Link href="/category/fruit">
-                <Button variant="outline">Browse Fruits</Button>
+              <Link href="/products">
+                <Button>View All Products</Button>
               </Link>
               <Link href="/">
-                <Button>Go Home</Button>
+                <Button variant="outline">Go Home</Button>
               </Link>
             </div>
           </motion.div>
         )}
 
-        {/* Product Grid */}
+        {/* Product Grid — same cards as homepage featured section */}
         {!loading && filteredProducts.length > 0 && (
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
             {filteredProducts.map((product, index) => (
               <motion.div
                 key={product.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="bg-white rounded-xl shadow-sm overflow-hidden group"
               >
-                <Link href={`/product/${product.id}`}>
-                  <div className="relative aspect-square bg-gray-100">
-                    <Image
-                      src={product.image || product.image_url || '/placeholder-product.png'}
-                      alt={product.name}
-                      fill
-                      className="object-cover group-hover:scale-105 transition-transform"
-                    />
-                    {product.isFresh && (
-                      <span className="absolute top-3 left-3 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                        Fresh
-                      </span>
-                    )}
-                  </div>
-                </Link>
-                <div className="p-4">
-                  <Link href={`/product/${product.id}`}>
-                    <h3 className="font-semibold text-gray-900 mb-1 group-hover:text-primary-600 transition-colors">
-                      {product.name}
-                    </h3>
-                  </Link>
-                  <div className="flex items-center justify-between mt-3">
-                    <ProductPrice
-                      price={product.price}
-                      unit={product.unit}
-                      size="lg"
-                      compareAtPrice={product.compareAtPrice}
-                    />
-                    <Button
-                      size="sm"
-                      onClick={() => handleAddToCart(product)}
-                      disabled={product.stock === 0}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                </div>
+                <ProductCard product={product} />
               </motion.div>
             ))}
           </div>
