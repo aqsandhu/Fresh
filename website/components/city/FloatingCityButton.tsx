@@ -21,7 +21,12 @@ export default function FloatingCityButton() {
     )
   }, [cities, query])
 
-  if (pathname.startsWith('/select-city') || !selectedCity) {
+  if (
+    pathname.startsWith('/select-city') ||
+    pathname === '/cart' ||
+    pathname === '/checkout' ||
+    !selectedCity
+  ) {
     return null
   }
 

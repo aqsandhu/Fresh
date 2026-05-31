@@ -102,12 +102,19 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 ) {
   const editingId = initial?.id || ''
   const isEdit = Boolean(editingId)
+  const isCityLocked = availableCities.length <= 1
 
   const [addressType, setAddressType] = useState(initial?.address_type || 'home')
   const [areaName, setAreaName] = useState(initial?.area_name || '')
-  const [city, setCity] = useState(initial?.city || 'Gujrat')
+  const [city, setCity] = useState(initial?.city || availableCities[0]?.name || 'Gujrat')
   const [writtenAddress, setWrittenAddress] = useState(initial?.written_address || '')
   const [landmark, setLandmark] = useState(initial?.landmark || '')
+
+  useEffect(() => {
+    if (availableCities.length === 1) {
+      setCity(availableCities[0].name)
+    }
+  }, [availableCities])
 
   const [doorPicture, setDoorPicture] = useState<File | null>(null)
   const existingDoorUrl = initial?.door_picture_url || null
@@ -293,18 +300,24 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 
       <div className="mt-4">
         <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-        <select
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-        >
-          {availableCities.length === 0 && <option value={city}>{city}</option>}
-          {availableCities.map((c) => (
-            <option key={c.id} value={c.name}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+        {isCityLocked ? (
+          <div className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-800">
+            {city}
+          </div>
+        ) : (
+          <select
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            {availableCities.length === 0 && <option value={city}>{city}</option>}
+            {availableCities.map((c) => (
+              <option key={c.id} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div className="mt-4">

@@ -41,3 +41,13 @@ export function clearSelectedCity(): void {
 export function hasSelectedCity(): boolean {
   return Boolean(getSelectedCityId());
 }
+
+/** Match saved address city name to the customer's selected service city. */
+export function addressMatchesSelectedCity(
+  addressCity: string | null | undefined,
+  selectedCityName: string | null | undefined
+): boolean {
+  if (!selectedCityName) return true;
+  if (!addressCity) return false;
+  return addressCity.trim().toLowerCase() === selectedCityName.trim().toLowerCase();
+}

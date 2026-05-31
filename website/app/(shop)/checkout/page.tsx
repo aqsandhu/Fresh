@@ -36,7 +36,8 @@ import AddressForm, {
   type AddressFormHandle,
   type SavedAddress,
 } from '@/components/checkout/AddressForm'
-import { getSelectedCityId } from '@/lib/cityStorage'
+import { getSelectedCityId, addressMatchesSelectedCity } from '@/lib/cityStorage'
+import { useCityContext } from '@/context/CityContext'
 
 type RealAddress = SavedAddress
 
@@ -55,6 +56,7 @@ export default function CheckoutPageWrapper() {
 
 function CheckoutPage() {
   const router = useRouter()
+  const { selectedCity } = useCityContext()
   const {
     items,
     getSubtotal,
@@ -80,9 +82,9 @@ function CheckoutPage() {
   const [loadingSlots, setLoadingSlots] = useState(true)
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
 
-  const [availableCities, setAvailableCities] = useState<
-    { id: string; name: string; province: string }[]
-  >([])
+  const serviceCities = selectedCity
+    ? [{ id: selectedCity.id, name: selectedCity.name, province: selectedCity.province || '' }]
+    : []
   const [serverSubtotal, setServerSubtotal] = useState<number | null>(null)
   const [serverDeliveryCharge, setServerDeliveryCharge] = useState<number | null>(null)
   const [cartSynced, setCartSynced] = useState(false)
@@ -174,9 +176,8 @@ function CheckoutPage() {
       return
     }
     loadAddresses()
-    loadCities()
     loadTimeSlots('today')
-  }, [authHasHydrated, isAuthenticated])
+  }, [authHasHydrated, isAuthenticated, selectedCity?.id])
 
   // Sync the cart server-side exactly once. After that we only refetch the
   // delivery charge when the slot changes — this makes slot changes feel
@@ -215,26 +216,18 @@ function CheckoutPage() {
     loadTimeSlots(day)
   }
 
-  const loadCities = async () => {
-    try {
-      const res = await api.get('/site-settings/cities')
-      const data = res.data?.data || res.data || []
-      setAvailableCities(Array.isArray(data) ? data : [])
-    } catch {
-      // fallback
-      setAvailableCities([{ id: 'default', name: 'Gujrat', province: 'Punjab' }])
-    }
-  }
-
   const loadAddresses = async () => {
     try {
       const res = await addressesApi.getAll()
       const raw = (res as any).data || res
       const list: RealAddress[] = Array.isArray(raw) ? raw : []
-      setAddresses(list)
-      const def = list.find((a) => a.is_default) || list[0]
+      const filtered = selectedCity?.name
+        ? list.filter((a) => addressMatchesSelectedCity(a.city, selectedCity.name))
+        : list
+      setAddresses(filtered)
+      const def = filtered.find((a) => a.is_default) || filtered[0]
       if (def) setSelectedAddress(def.id)
-      if (list.length === 0) setShowNewAddress(true)
+      if (filtered.length === 0) setShowNewAddress(true)
     } catch {
       setShowNewAddress(true)
     } finally {
@@ -489,7 +482,7 @@ function CheckoutPage() {
                           </label>
                           <AddressActions
                             address={address}
-                            availableCities={availableCities}
+                            availableCities={serviceCities}
                             onUpdated={(updated) => {
                               setAddresses((prev) =>
                                 prev.map((a) =>
@@ -537,7 +530,7 @@ function CheckoutPage() {
                     <div className="mt-4 pt-4 border-t">
                       <AddressForm
                         ref={newAddressFormRef}
-                        availableCities={availableCities}
+                        availableCities={serviceCities}
                         defaultOnCreate={addresses.length === 0}
                         onValidityChange={setNewAddressValid}
                         onSaved={(saved) => {
