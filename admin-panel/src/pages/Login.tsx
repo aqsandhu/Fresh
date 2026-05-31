@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Store, Eye, EyeOff } from 'lucide-react';
 import { useAuthContext } from '@/context/AuthContext';
+import { authService } from '@/services/auth.service';
+import { canAccessRoute, firstAccessibleRoute } from '@/lib/permissions';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
@@ -44,10 +46,17 @@ export const Login: React.FC = () => {
     try {
       await login({ phone, password });
       toast.success('Login successful!');
-      const redirectTo = searchParams.get('redirect') || '/admin/dashboard';
-      navigate(redirectTo);
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      const user = authService.getCurrentUser();
+      const redirectParam = searchParams.get('redirect');
+      const dest =
+        redirectParam && canAccessRoute(redirectParam, user?.permissions)
+          ? redirectParam
+          : firstAccessibleRoute(user?.permissions) || '/admin/no-access';
+      navigate(dest);
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : 'Login failed';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }

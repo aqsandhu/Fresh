@@ -2269,6 +2269,19 @@ export const updateBusinessHours = asyncHandler(async (req: Request, res: Respon
  * GET /api/admin/cities
  */
 export const getCities = asyncHandler(async (req: Request, res: Response) => {
+  const scope = req.cityScope;
+
+  if (scope && !scope.unrestricted && scope.cityId) {
+    const result = await query(
+      `SELECT id, name, province, is_active, created_at
+         FROM service_cities
+        WHERE id = $1
+        ORDER BY name`,
+      [scope.cityId]
+    );
+    return successResponse(res, result.rows, 'Cities retrieved');
+  }
+
   const result = await query(
     `SELECT id, name, province, is_active, created_at FROM service_cities ORDER BY name`
   );

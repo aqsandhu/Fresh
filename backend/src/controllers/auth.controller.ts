@@ -731,7 +731,9 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const roleMeta = await query(
-    `SELECT r.id, r.name, r.city, r.city_id, sc.name AS city_name
+    `SELECT r.id, r.name, r.city, r.city_id,
+            sc.id AS resolved_city_id,
+            sc.name AS city_name
        FROM users u
        LEFT JOIN admin_roles r ON r.id = u.admin_role_id
        LEFT JOIN service_cities sc ON sc.id = COALESCE(
@@ -754,7 +756,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
       admin_role_id: roleMeta.rows[0]?.id || null,
       admin_role_name: roleMeta.rows[0]?.name || null,
       admin_role_city: roleMeta.rows[0]?.city_name || roleMeta.rows[0]?.city || null,
-      admin_role_city_id: roleMeta.rows[0]?.city_id || null,
+      admin_role_city_id: roleMeta.rows[0]?.resolved_city_id || null,
       permissions,
     },
     tokens,

@@ -54,36 +54,38 @@ export const Header: React.FC<HeaderProps> = ({
               <div className="flex flex-col items-end gap-0.5">
                 <div className="flex items-center gap-1.5">
                   <MapPin className="w-4 h-4 text-primary-600 hidden sm:block shrink-0" />
-                  <select
-                    value={selectedCityId}
-                    onChange={(e) => setSelectedCityId(e.target.value)}
-                    disabled={isCityLocked}
-                    className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 min-w-[120px] max-w-[160px] sm:max-w-[200px] bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100 disabled:cursor-not-allowed cursor-pointer"
-                    title={
-                      isCityLocked
-                        ? 'Your role is locked to this city'
-                        : 'Switch city to filter products, orders, customers'
-                    }
-                  >
-                    {canSwitchCity && (
-                      <option value="">All cities</option>
-                    )}
-                    {isLoading && cities.length === 0 && (
-                      <option value={selectedCityId} disabled>
-                        Loading cities…
-                      </option>
-                    )}
-                    {cities.map((city) => (
-                      <option key={city.id} value={city.id}>
-                        {city.name}
-                      </option>
-                    ))}
-                    {!isLoading && cities.length === 0 && (
-                      <option value="" disabled>
-                        No cities in database
-                      </option>
-                    )}
-                  </select>
+                  {isCityLocked ? (
+                    <span
+                      className="text-sm font-medium text-gray-800 border border-gray-200 rounded-lg px-2 py-1.5 min-w-[120px] max-w-[200px] truncate bg-gray-50"
+                      title="Your role is locked to this city"
+                    >
+                      {selectedCity?.name || 'Your city'}
+                    </span>
+                  ) : (
+                    <select
+                      value={selectedCityId}
+                      onChange={(e) => setSelectedCityId(e.target.value)}
+                      className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 min-w-[120px] max-w-[160px] sm:max-w-[200px] bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 cursor-pointer"
+                      title="Switch city to filter products, orders, customers"
+                    >
+                      {canSwitchCity && <option value="">All cities</option>}
+                      {isLoading && cities.length === 0 && (
+                        <option value={selectedCityId} disabled>
+                          Loading cities…
+                        </option>
+                      )}
+                      {cities.map((city) => (
+                        <option key={city.id} value={city.id}>
+                          {city.name}
+                        </option>
+                      ))}
+                      {!isLoading && cities.length === 0 && (
+                        <option value="" disabled>
+                          No cities in database
+                        </option>
+                      )}
+                    </select>
+                  )}
                 </div>
                 {citiesError && (
                   <span className="text-[10px] text-amber-600">Could not load cities</span>
