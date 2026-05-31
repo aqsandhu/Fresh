@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
 import { CityProvider } from '@/context/CityContext';
+import { NotificationProvider } from '@/context/NotificationContext';
 import { canAccessRoute, firstAccessibleRoute } from '@/lib/permissions';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import {
@@ -271,6 +272,7 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <NotificationProvider>
         <CityProvider>
         <ErrorBoundary>
           <BrowserRouter>
@@ -278,6 +280,7 @@ function App() {
           </BrowserRouter>
         </ErrorBoundary>
         </CityProvider>
+        </NotificationProvider>
         <Toaster
           position="top-right"
           toastOptions={{

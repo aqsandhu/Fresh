@@ -1,7 +1,8 @@
 import React from 'react';
-import { Bell, Search, Menu, MapPin } from 'lucide-react';
+import { Search, Menu, MapPin } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { useCityContext } from '@/context/CityContext';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 interface HeaderProps {
   title: string;
@@ -104,10 +105,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
-            <button className="relative p-2 text-gray-500 hover:text-gray-700 transition-colors">
-              <Bell className="w-6 h-6" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-            </button>
+            <NotificationBell />
           </div>
         </div>
 

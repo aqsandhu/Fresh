@@ -19,7 +19,7 @@ import {
   PhoneCall,
   Wheat,
   Loader2,
-  ArrowRight
+  ArrowRight,
 } from 'lucide-react'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { cn, formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
@@ -28,6 +28,7 @@ import { productsApi, categoriesApi, bannerApi } from '@/lib/api'
 import { useCityContext } from '@/context/CityContext'
 import { Product, Category } from '@/types'
 import { phoneToTelHref } from '@/lib/phoneStorage'
+import NotificationBell from '@/components/notifications/NotificationBell'
 
 export default function Header() {
   const pathname = usePathname()
@@ -271,6 +272,9 @@ export default function Header() {
             >
               <Search className="w-5 h-5 text-gray-600" />
             </button>
+
+            {/* Notifications */}
+            {hasMounted && isAuthenticated && <NotificationBell />}
 
             {/* Orders */}
             {hasMounted && isAuthenticated && (

@@ -16,6 +16,7 @@ import riderRoutes from './rider.routes';
 import webhookRoutes from './webhook.routes';
 import settingsRoutes from './settings.routes';
 import chatRoutes from './chat.routes';
+import notificationRoutes from './notification.routes';
 
 const router = Router();
 
@@ -33,5 +34,6 @@ router.use('/rider', riderRoutes);
 router.use('/webhooks', webhookRoutes);
 router.use('/site-settings', settingsRoutes);
 router.use('/chat', chatRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;
