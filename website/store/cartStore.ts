@@ -13,6 +13,22 @@ import { priceForUnit, resolveLineUnitPrice } from '@/lib/unitPricing'
 const lineKey = (productId: string, unit: ProductUnit = 'full') =>
   `${productId}::${unit}`
 
+/** Keep persisted cartsByCity in sync whenever the active cart items change. */
+const persistActiveCityItems = (
+  state: Pick<CartState, 'items' | 'cartsByCity' | 'activeCityId'>,
+  items: CartState['items']
+): Pick<CartState, 'items' | 'cartsByCity' | 'activeCityId'> => {
+  const cityId = state.activeCityId || getSelectedCityId()
+  if (!cityId) {
+    return { items }
+  }
+  return {
+    items,
+    activeCityId: cityId,
+    cartsByCity: { ...state.cartsByCity, [cityId]: items },
+  }
+}
+
 const DEFAULT_BASE_CHARGE = 100
 const DEFAULT_FREE_THRESHOLD = 500
 
@@ -57,18 +73,15 @@ export const useCartStore = create<CartState>()(
             (item) => lineKey(item.product.id, item.unit) === targetKey
           )
 
+          let nextItems: CartState['items']
           if (existingItem) {
-            return {
-              items: state.items.map((item) =>
-                lineKey(item.product.id, item.unit) === targetKey
-                  ? { ...item, quantity: item.quantity + quantity }
-                  : item
-              ),
-            }
-          }
-
-          return {
-            items: [
+            nextItems = state.items.map((item) =>
+              lineKey(item.product.id, item.unit) === targetKey
+                ? { ...item, quantity: item.quantity + quantity }
+                : item
+            )
+          } else {
+            nextItems = [
               ...state.items,
               {
                 product,
@@ -76,17 +89,20 @@ export const useCartStore = create<CartState>()(
                 unit,
                 unitPrice: priceForUnit(product, unit),
               },
-            ],
+            ]
           }
+
+          return persistActiveCityItems(state, nextItems)
         })
       },
 
       removeItem: (productId: string, unit: ProductUnit = 'full') => {
-        set((state) => ({
-          items: state.items.filter(
+        set((state) => {
+          const nextItems = state.items.filter(
             (item) => lineKey(item.product.id, item.unit) !== lineKey(productId, unit)
-          ),
-        }))
+          )
+          return persistActiveCityItems(state, nextItems)
+        })
       },
 
       updateQuantity: (productId: string, quantity: number, unit: ProductUnit = 'full') => {
@@ -95,23 +111,18 @@ export const useCartStore = create<CartState>()(
           return
         }
 
-        set((state) => ({
-          items: state.items.map((item) =>
+        set((state) => {
+          const nextItems = state.items.map((item) =>
             lineKey(item.product.id, item.unit) === lineKey(productId, unit)
               ? { ...item, quantity }
               : item
-          ),
-        }))
+          )
+          return persistActiveCityItems(state, nextItems)
+        })
       },
 
       clearCart: () => {
-        set((state) => {
-          const cityId = state.activeCityId
-          const nextByCity = cityId
-            ? { ...state.cartsByCity, [cityId]: [] }
-            : state.cartsByCity
-          return { items: [], cartsByCity: nextByCity }
-        })
+        set((state) => persistActiveCityItems(state, []))
       },
 
       switchCity: (cityId: string) => {

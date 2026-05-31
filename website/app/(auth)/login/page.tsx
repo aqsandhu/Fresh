@@ -58,7 +58,6 @@ export default function LoginPage() {
   const [pin, setPin] = useState('')
   const [bootstrapping, setBootstrapping] = useState(true)
   const [otpPurpose, setOtpPurpose] = useState<'login' | 'resetPin'>('login')
-  const [pinStage, setPinStage] = useState<'create' | 'confirm'>('create')
   const [newPin, setNewPin] = useState('')
   const [newPinConfirm, setNewPinConfirm] = useState('')
 
@@ -289,28 +288,40 @@ export default function LoginPage() {
     await sendOtp(phone)
   }
 
-  const handleNewPinFirstEntry = (entered: string) => {
-    setNewPin(entered)
-    setNewPinConfirm('')
-    setPinStage('confirm')
-  }
-
-  const handleNewPinConfirm = async (confirmed: string) => {
-    if (confirmed !== newPin) {
+  const handleNewPinSubmit = async () => {
+    if (newPin.length !== 4 || newPinConfirm.length !== 4) {
+      toast.error('Please enter and confirm your 4-digit PIN.')
+      return
+    }
+    if (newPin !== newPinConfirm) {
       toast.error('PINs do not match. Please try again.')
       setNewPin('')
       setNewPinConfirm('')
-      setPinStage('create')
       return
     }
 
     setIsLoading(true)
     try {
       if (isOtpBypassEnabled()) {
-        await authApi.resetPinWithCode(
-          normalizedPhone || phone,
-          resetOtpCodeRef.current || '',
-          confirmed
+        const code = resetOtpCodeRef.current
+        if (!code) {
+          toast.error('Verification expired. Please request OTP again.')
+          setStep('pin')
+          return
+        }
+        await authApi.resetPinWithCode(normalizedPhone || phone, code, newPin)
+        const res = await authApi.verifyLoginWithCode(normalizedPhone || phone, code)
+        const { user, tokens } = res.data
+        setLastPhone(user.phone)
+        setAuth(
+          {
+            id: user.id,
+            name: user.full_name,
+            phone: user.phone,
+            email: user.email,
+            role: user.role,
+          },
+          tokens
         )
       } else {
         if (!resetIdTokenRef.current) {
@@ -318,24 +329,35 @@ export default function LoginPage() {
           setStep('pin')
           return
         }
-        await authApi.resetPin(resetIdTokenRef.current, confirmed)
+        await authApi.resetPin(resetIdTokenRef.current, newPin)
+        const res = await authApi.verifyLogin(resetIdTokenRef.current)
+        const { user, tokens } = res.data
+        setLastPhone(user.phone)
+        setAuth(
+          {
+            id: user.id,
+            name: user.full_name,
+            phone: user.phone,
+            email: user.email,
+            role: user.role,
+          },
+          tokens
+        )
       }
 
-      toast.success('PIN reset successfully! Enter your new PIN to login.')
+      toast.success('PIN updated. You are now logged in.')
       setOtpPurpose('login')
       resetIdTokenRef.current = null
       resetOtpCodeRef.current = null
       setNewPin('')
       setNewPinConfirm('')
-      setPinStage('create')
-      setPin('')
-      setStep('pin')
+      const redirectTo = searchParams.get('redirect') || '/'
+      router.push(redirectTo)
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to reset PIN. Please try again.'
       toast.error(msg)
       setNewPin('')
       setNewPinConfirm('')
-      setPinStage('create')
     } finally {
       setIsLoading(false)
     }
@@ -356,9 +378,8 @@ export default function LoginPage() {
         }
         setNewPin('')
         setNewPinConfirm('')
-        setPinStage('create')
         setStep('newPin')
-        toast.success('OTP verified. Set your new PIN.')
+        toast.success('OTP verified. Set your new PIN below.')
         return
       }
 
@@ -499,9 +520,7 @@ export default function LoginPage() {
                   </>
                 )
               ) : step === 'newPin' ? (
-                pinStage === 'create'
-                  ? 'Choose a new 4-digit PIN for your account'
-                  : 'Enter the same PIN again to confirm'
+                'Enter and confirm your new 4-digit PIN'
               ) : step === 'pin' ? (
                 <>Enter your 4-digit PIN for <span className="font-semibold text-gray-800">{maskPhone(normalizedPhone || phone)}</span></>
               ) : (
@@ -577,32 +596,33 @@ export default function LoginPage() {
                 exit={{ opacity: 0, x: 20 }}
               >
                 <div className="space-y-6">
-                  <PinInput
-                    key={pinStage}
-                    value={pinStage === 'create' ? newPin : newPinConfirm}
-                    onChange={pinStage === 'create' ? setNewPin : setNewPinConfirm}
-                    onComplete={pinStage === 'create' ? handleNewPinFirstEntry : handleNewPinConfirm}
-                    disabled={isLoading}
-                  />
-                  {isLoading && (
-                    <div className="flex items-center justify-center gap-2 text-primary-600">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="text-sm font-medium">Saving new PIN…</span>
-                    </div>
-                  )}
-                  {pinStage === 'confirm' && !isLoading && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewPin('')
-                        setNewPinConfirm('')
-                        setPinStage('create')
-                      }}
-                      className="block mx-auto text-sm text-gray-500 hover:text-gray-700"
-                    >
-                      Start over
-                    </button>
-                  )}
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-3 text-center">New PIN</p>
+                    <PinInput
+                      value={newPin}
+                      onChange={setNewPin}
+                      disabled={isLoading}
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-3 text-center">Confirm PIN</p>
+                    <PinInput
+                      value={newPinConfirm}
+                      onChange={setNewPinConfirm}
+                      disabled={isLoading}
+                      autoFocus={false}
+                    />
+                  </div>
+                  <Button
+                    fullWidth
+                    size="lg"
+                    onClick={handleNewPinSubmit}
+                    isLoading={isLoading}
+                    disabled={newPin.length !== 4 || newPinConfirm.length !== 4}
+                  >
+                    Save PIN & Continue
+                  </Button>
                 </div>
               </motion.div>
             ) : (
