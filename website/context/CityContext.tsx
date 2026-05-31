@@ -40,14 +40,18 @@ interface CityContextValue {
 const CityContext = createContext<CityContextValue | undefined>(undefined)
 
 async function fetchCities(): Promise<ServiceCity[]> {
-  const res: any = await api.get('/site-settings/cities')
-  const list = res?.data ?? res
-  if (!Array.isArray(list)) return []
-  return list.map((c: ServiceCity) => ({
-    id: c.id,
-    name: c.name,
-    province: c.province || '',
-  }))
+  try {
+    const res = await api.get('/site-settings/cities')
+    const data = res.data?.data || res.data || []
+    if (!Array.isArray(data)) return []
+    return data.map((c: ServiceCity) => ({
+      id: c.id,
+      name: c.name,
+      province: c.province || '',
+    }))
+  } catch {
+    return []
+  }
 }
 
 export function CityProvider({ children }: { children: ReactNode }) {
