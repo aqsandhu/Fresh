@@ -12,7 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { api } from '@/services/api';
 import { useAuthContext } from '@/context/AuthContext';
-import { CITY_STORAGE_KEY } from '@/lib/cityStorage';
+import { CITY_STORAGE_KEY, setCitySelection } from '@/lib/cityStorage';
 
 export interface ServiceCity {
   id: string;
@@ -74,10 +74,11 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const initDone = useRef(false);
 
   const isSuperAdmin = user?.role === 'super_admin';
-  const isLegacyAdmin = user?.role === 'admin';
+  const isScopedAdmin = user?.role === 'admin' && Boolean(user?.adminRoleId);
+  const isLegacyAdmin = user?.role === 'admin' && !user?.adminRoleId;
   const canSwitchCity = isSuperAdmin || isLegacyAdmin;
-  const lockedCityId =
-    !canSwitchCity && user?.adminRoleCityId ? user.adminRoleCityId : '';
+  const lockedCityId = isScopedAdmin ? (user?.adminRoleCityId ?? '') : '';
+  const isCityLocked = isScopedAdmin && Boolean(lockedCityId || user?.adminRoleCity);
 
   const [selectedCityId, setSelectedCityIdState] = useState<string>(() => {
     if (lockedCityId) return lockedCityId;
@@ -85,23 +86,45 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   });
 
   const {
-    data: cities = [],
+    data: allCities = [],
     isLoading,
     isError: citiesError,
   } = useQuery<ServiceCity[]>({
-    queryKey: ['service-cities'],
+    queryKey: ['service-cities', user?.id, lockedCityId],
     queryFn: fetchServiceCities,
     enabled: !!user,
     staleTime: 10 * 60 * 1000,
     retry: 1,
   });
 
+  const cities = useMemo(() => {
+    if (!isScopedAdmin) return allCities;
+
+    if (lockedCityId) {
+      const match = allCities.filter((c) => c.id === lockedCityId);
+      if (match.length > 0) return match;
+    }
+
+    if (user?.adminRoleCity) {
+      return [
+        {
+          id: lockedCityId || 'role-city',
+          name: user.adminRoleCity,
+          province: '',
+          isActive: true,
+        },
+      ];
+    }
+
+    return [];
+  }, [allCities, isScopedAdmin, lockedCityId, user?.adminRoleCity]);
+
   const setSelectedCityId = useCallback(
     (id: string) => {
-      if (lockedCityId) return;
+      if (isCityLocked) return;
 
       setSelectedCityIdState(id);
-      localStorage.setItem(CITY_STORAGE_KEY, id);
+      setCitySelection(id);
 
       const label =
         id === ''
@@ -111,16 +134,24 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       queryClient.invalidateQueries();
     },
-    [lockedCityId, queryClient, cities]
+    [isCityLocked, queryClient, cities]
   );
 
-  // One-time init after cities load — never override user picks afterward.
   useEffect(() => {
-    if (lockedCityId) {
-      setSelectedCityIdState(lockedCityId);
+    initDone.current = false;
+  }, [user?.id, lockedCityId]);
+
+  useEffect(() => {
+    if (isScopedAdmin) {
+      const id = lockedCityId || cities[0]?.id || '';
+      if (id) {
+        setSelectedCityIdState(id);
+        setCitySelection(id);
+      }
       return;
     }
-    if (cities.length === 0 || initDone.current) return;
+
+    if (allCities.length === 0 || initDone.current) return;
 
     initDone.current = true;
     const stored = localStorage.getItem(CITY_STORAGE_KEY);
@@ -129,31 +160,31 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSelectedCityIdState('');
       return;
     }
-    if (stored && cities.some((c) => c.id === stored)) {
+    if (stored && allCities.some((c) => c.id === stored)) {
       setSelectedCityIdState(stored);
       return;
     }
 
-    const gujrat = findDefaultCity(cities);
+    const gujrat = findDefaultCity(allCities);
     if (gujrat) {
       setSelectedCityIdState(gujrat.id);
-      localStorage.setItem(CITY_STORAGE_KEY, gujrat.id);
+      setCitySelection(gujrat.id);
     }
-  }, [lockedCityId, cities]);
+  }, [isScopedAdmin, lockedCityId, allCities, cities]);
 
   const selectedCity = useMemo(
-    () => cities.find((c) => c.id === selectedCityId) || null,
+    () => cities.find((c) => c.id === selectedCityId) || cities[0] || null,
     [cities, selectedCityId]
   );
 
   const value = useMemo(
     () => ({
       cities,
-      selectedCityId,
+      selectedCityId: selectedCity?.id ?? selectedCityId,
       selectedCity,
       setSelectedCityId,
       canSwitchCity,
-      isCityLocked: Boolean(lockedCityId),
+      isCityLocked,
       isLoading,
       citiesError,
     }),
@@ -163,7 +194,7 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       selectedCity,
       setSelectedCityId,
       canSwitchCity,
-      lockedCityId,
+      isCityLocked,
       isLoading,
       citiesError,
     ]

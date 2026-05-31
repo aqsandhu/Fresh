@@ -1,4 +1,5 @@
 import { api } from './api';
+import { clearCitySelection, setCitySelection } from '@/lib/cityStorage';
 import type { 
   LoginCredentials, 
   AuthResponse, 
@@ -22,6 +23,11 @@ export const authService = {
         localStorage.setItem('admin_token', response.data.tokens.accessToken);
         localStorage.setItem('admin_refresh_token', response.data.tokens.refreshToken);
         localStorage.setItem('admin_user', JSON.stringify(response.data.user));
+
+        const u = response.data.user;
+        if (u.adminRoleId && u.adminRoleCityId) {
+          setCitySelection(u.adminRoleCityId);
+        }
       }
       return response.data;
     } catch (error: any) {
@@ -45,6 +51,7 @@ export const authService = {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_refresh_token');
     localStorage.removeItem('admin_user');
+    clearCitySelection();
   },
 
   getCurrentUser: (): User | null => {
@@ -107,6 +114,7 @@ export const authService = {
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_refresh_token');
       localStorage.removeItem('admin_user');
+      clearCitySelection();
       return false;
     }
   },

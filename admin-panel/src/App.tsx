@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
 import { CityProvider } from '@/context/CityContext';
-import { canAccessRoute } from '@/lib/permissions';
+import { canAccessRoute, firstAccessibleRoute } from '@/lib/permissions';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import {
   Login,
@@ -57,11 +57,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   }
 
   if (!canAccessRoute(location.pathname, user?.permissions)) {
-    const fallback =
-      ['/admin/dashboard', '/admin/orders', '/admin/products', '/admin/settings'].find(
-        (p) => canAccessRoute(p, user?.permissions)
-      ) || '/admin/login';
-    return <Navigate to={fallback} replace />;
+    const fallback = firstAccessibleRoute(user?.permissions);
+    return <Navigate to={fallback || '/admin/no-access'} replace />;
   }
 
   return <>{children}</>;
@@ -73,7 +70,7 @@ interface PublicRouteProps {
 }
 
 const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuthContext();
+  const { isAuthenticated, isLoading, user } = useAuthContext();
 
   if (isLoading) {
     return (
@@ -84,9 +81,48 @@ const PublicRoute: React.FC<PublicRouteProps> = ({ children }) => {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/admin/dashboard" replace />;
+    const dest = firstAccessibleRoute(user?.permissions) || '/admin/no-access';
+    return <Navigate to={dest} replace />;
   }
 
+  return <>{children}</>;
+};
+
+const NoAccessPage: React.FC = () => {
+  const { user, logout } = useAuthContext();
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+      <div className="max-w-md w-full bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+        <h1 className="text-xl font-bold text-gray-900 mb-2">No access assigned</h1>
+        <p className="text-gray-600 text-sm mb-6">
+          {user?.adminRoleName
+            ? `Your role "${user.adminRoleName}" has no permissions yet. Ask a super admin to assign permissions for ${user.adminRoleCity || 'your city'}.`
+            : 'Your account has no permissions assigned. Contact a super admin.'}
+        </p>
+        <button
+          type="button"
+          onClick={logout}
+          className="px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const AuthenticatedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuthContext();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
+      </div>
+    );
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/admin/login" replace />;
+  }
   return <>{children}</>;
 };
 
@@ -101,6 +137,15 @@ const AppRoutes: React.FC = () => {
           <PublicRoute>
             <Login />
           </PublicRoute>
+        }
+      />
+
+      <Route
+        path="/admin/no-access"
+        element={
+          <AuthenticatedRoute>
+            <NoAccessPage />
+          </AuthenticatedRoute>
         }
       />
 

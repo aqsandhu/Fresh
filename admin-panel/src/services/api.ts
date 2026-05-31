@@ -1,6 +1,6 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
-import { CITY_STORAGE_KEY } from '@/lib/cityStorage';
+import { CITY_STORAGE_KEY, clearCitySelection } from '@/lib/cityStorage';
 
 // IMPORTANT: Set VITE_API_URL in production to point to the live backend.
 // e.g., VITE_API_URL=https://api.freshbazar.pk/api
@@ -147,6 +147,7 @@ function redirectToLogin() {
   localStorage.removeItem('admin_token');
   localStorage.removeItem('admin_refresh_token');
   localStorage.removeItem('admin_user');
+  clearCitySelection();
   const currentPath = window.location.pathname;
   window.location.href = currentPath && currentPath !== '/admin/login'
     ? `/admin/login?redirect=${currentPath}`
