@@ -16,6 +16,9 @@ import {
   cityIdClause,
   orderCityClause,
   customerCityExistsClause,
+  orderCityMatchSql,
+  addressCityMatchSql,
+  addressCityWhereClause,
   requireCityScope,
 } from '../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../utils/productTags';
@@ -2230,6 +2233,9 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
   whereSql += custCity.sql;
   paramIndex = custCity.nextIndex;
 
+  const orderScopeSql = orderCityMatchSql(custCity.cityIdParam, custCity.cityNameParam, 'o', 'oaddr');
+  const addressScopeSql = addressCityMatchSql(custCity.cityNameParam, 'a');
+
   const countResult = await query(
     `SELECT COUNT(*) FROM users u ${whereSql}`,
     params
@@ -2241,9 +2247,14 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
       u.id, u.full_name, u.phone, u.email, u.role,
       u.preferred_language, u.notification_enabled,
       u.status, u.is_phone_verified, u.created_at, u.last_login_at,
-      (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id AND o.deleted_at IS NULL) as total_orders,
-      (SELECT COALESCE(SUM(o.total_amount), 0) FROM orders o WHERE o.user_id = u.id AND o.status = 'delivered' AND o.deleted_at IS NULL) as total_spent,
-      (SELECT COUNT(*) FROM addresses a WHERE a.user_id = u.id AND a.deleted_at IS NULL) as total_addresses
+      (SELECT COUNT(*) FROM orders o
+         LEFT JOIN addresses oaddr ON o.address_id = oaddr.id
+         WHERE o.user_id = u.id AND o.deleted_at IS NULL${orderScopeSql}) as total_orders,
+      (SELECT COALESCE(SUM(o.total_amount), 0) FROM orders o
+         LEFT JOIN addresses oaddr ON o.address_id = oaddr.id
+         WHERE o.user_id = u.id AND o.status = 'delivered' AND o.deleted_at IS NULL${orderScopeSql}) as total_spent,
+      (SELECT COUNT(*) FROM addresses a
+         WHERE a.user_id = u.id AND a.deleted_at IS NULL${addressScopeSql}) as total_addresses
     FROM users u
     ${whereSql}
     ORDER BY u.created_at DESC
@@ -2342,6 +2353,12 @@ export const deleteCustomer = asyncHandler(async (req: Request, res: Response) =
  */
 export const getCustomerAddresses = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const scope = await resolveCityScope(req);
+
+  const params: unknown[] = [id];
+  let whereSql = 'WHERE a.user_id = $1 AND a.deleted_at IS NULL';
+  const cityFilter = addressCityWhereClause(scope, 'a', params, 2);
+  whereSql += cityFilter.sql;
 
   const result = await query(
     `SELECT 
@@ -2355,9 +2372,9 @@ export const getCustomerAddresses = asyncHandler(async (req: Request, res: Respo
       dz.name as zone_name
     FROM addresses a
     LEFT JOIN delivery_zones dz ON a.zone_id = dz.id
-    WHERE a.user_id = $1 AND a.deleted_at IS NULL
+    ${whereSql}
     ORDER BY a.is_default DESC, a.created_at DESC`,
-    [id]
+    params
   );
 
   successResponse(res, result.rows, 'Customer addresses retrieved successfully');
