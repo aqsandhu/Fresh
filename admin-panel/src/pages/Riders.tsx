@@ -110,10 +110,11 @@ export const Riders: React.FC = () => {
     queryFn: () => riderService.getRiders(statusFilter || undefined),
   });
 
-  // Fetch time slots for delivery charges
+  // Fetch time slots only when viewing rider stats (delivery charges editor)
   const { data: timeSlots } = useQuery({
     queryKey: ['timeSlots'],
     queryFn: () => settingsService.getTimeSlots(),
+    enabled: !!viewStatsRider,
   });
 
   // Filter riders based on search and verification status
