@@ -63,7 +63,7 @@ export default function CartPage() {
         <div className="container mx-auto px-4">
           <EmptyState
             type="cart"
-            onAction={() => router.push('/category/sabzi')}
+            onAction={() => router.push('/products')}
           />
         </div>
       </div>

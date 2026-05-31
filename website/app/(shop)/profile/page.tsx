@@ -156,15 +156,15 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4">
+    <div className="min-h-screen bg-gray-50 py-6 sm:py-8 pb-20 lg:pb-8 overflow-x-hidden">
+      <div className="container mx-auto px-4 max-w-5xl">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">
           My Profile
         </h1>
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Left Column - Profile Info */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 min-w-0">
             {/* Profile Card */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -264,12 +264,12 @@ export default function ProfilePage() {
                   {addresses.map((address) => (
                     <div
                       key={address.id}
-                      className="flex items-start gap-4 p-4 border border-gray-200 rounded-lg"
+                      className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4 p-4 border border-gray-200 rounded-lg min-w-0"
                     >
                       <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <MapPin className="w-5 h-5 text-primary-600" />
                       </div>
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-medium capitalize">{address.label}</span>
                           {address.isDefault && (
@@ -278,24 +278,26 @@ export default function ProfilePage() {
                             </span>
                           )}
                         </div>
-                        <p className="text-gray-600 text-sm mt-1">
+                        <p className="text-gray-600 text-sm mt-1 break-words">
                           {address.fullAddress}
                         </p>
                       </div>
-                      <Link
-                        href="/addresses"
-                        className="text-gray-400 hover:text-primary-600 p-1"
-                        title="Edit"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </Link>
-                      <button
-                        onClick={() => handleDeleteAddress(address.id)}
-                        className="text-gray-400 hover:text-red-600 p-1"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1 sm:flex-col sm:items-end flex-shrink-0">
+                        <Link
+                          href="/addresses"
+                          className="text-gray-400 hover:text-primary-600 p-1"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Link>
+                        <button
+                          onClick={() => handleDeleteAddress(address.id)}
+                          className="text-gray-400 hover:text-red-600 p-1"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -304,12 +306,12 @@ export default function ProfilePage() {
           </div>
 
           {/* Right Column - Quick Links */}
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 min-w-0">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="bg-white rounded-xl p-6 shadow-sm sticky top-24"
+              className="bg-white rounded-xl p-6 shadow-sm lg:sticky lg:top-24"
             >
               <h2 className="text-xl font-semibold mb-6">Quick Links</h2>
               
