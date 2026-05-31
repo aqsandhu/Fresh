@@ -43,7 +43,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
       }
 
-      setUser(storedUser);
+      const freshUser = await authService.fetchSession();
+      setUser(freshUser || storedUser);
       setIsLoading(false);
     };
 

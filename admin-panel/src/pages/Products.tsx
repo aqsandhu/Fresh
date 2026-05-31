@@ -620,7 +620,7 @@ export const Products: React.FC = () => {
         isOpen={isModalOpen}
         onClose={closeModal}
         title={editingProduct ? 'Edit Product' : 'Add Product'}
-        size="lg"
+        size="xl"
         footer={
           <div className="flex justify-end space-x-3">
             <Button variant="outline" onClick={closeModal}>
@@ -663,10 +663,19 @@ export const Products: React.FC = () => {
             />
           </div>
 
-          <TagInput
-            value={formData.tags || []}
-            onChange={(tags) => setFormData({ ...formData, tags })}
-          />
+          <div className="rounded-xl border-2 border-primary-200 bg-primary-50/50 p-4 space-y-2">
+            <p className="text-sm font-semibold text-primary-900">Search keywords</p>
+            <p className="text-xs text-primary-700">
+              Add words customers might search (e.g. tamatar, tomato, sabzi). Unlimited tags.
+            </p>
+            <TagInput
+              label=""
+              value={formData.tags || []}
+              onChange={(tags) => setFormData({ ...formData, tags })}
+              placeholder="Type keyword and press Enter"
+              hint=""
+            />
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input

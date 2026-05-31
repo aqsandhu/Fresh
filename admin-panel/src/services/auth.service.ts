@@ -112,6 +112,23 @@ export const authService = {
     return true;
   },
 
+  /** Load current admin user + fresh permissions from the server. */
+  fetchSession: async (): Promise<User | null> => {
+    try {
+      const response = await api.get<ApiResponse<{ user: unknown }>>('/admin/me');
+      const user = normalizeAdminUser(response.data?.user);
+      if (!user) return null;
+      localStorage.setItem('admin_user', JSON.stringify(user));
+      if (user.adminRoleId && user.adminRoleCityId) {
+        setCitySelection(user.adminRoleCityId);
+      }
+      return user;
+    } catch (error) {
+      console.error('Session refresh error:', error);
+      return null;
+    }
+  },
+
   changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
     try {
       // Validate passwords
