@@ -284,8 +284,8 @@ CREATE TABLE products (
     unit_value DECIMAL(10,3) DEFAULT 1.000,  -- e.g., 1 kg, 500 gram
     
     -- Inventory
-    stock_quantity INTEGER DEFAULT 0,
-    low_stock_threshold INTEGER DEFAULT 10,
+    stock_quantity DECIMAL(10,3) DEFAULT 0,
+    low_stock_threshold DECIMAL(10,3) DEFAULT 10,
     stock_status product_status DEFAULT 'active',
     track_inventory BOOLEAN DEFAULT TRUE,
     
