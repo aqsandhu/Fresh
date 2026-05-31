@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { ArrowRight, Truck, Clock, Shield, Phone } from 'lucide-react'
 import Button from '@/components/ui/Button'
+import { useCityContext } from '@/context/CityContext'
 
 const features = [
   { icon: Truck, text: 'Free Delivery on Rs. 500+ Vegetables/Fruits' },
@@ -14,6 +15,9 @@ const features = [
 ]
 
 export default function HeroSection() {
+  const { selectedCity } = useCityContext()
+  const cityName = selectedCity?.name || 'Gujrat'
+
   return (
     <section className="relative bg-gradient-to-br from-primary-50 via-white to-primary-100 overflow-hidden">
       {/* Background Pattern */}
@@ -22,7 +26,7 @@ export default function HeroSection() {
         <div className="absolute bottom-10 right-10 w-48 h-48 bg-secondary-500 rounded-full blur-3xl" />
       </div>
 
-      <div className="container mx-auto px-4 py-12 md:py-20 lg:py-24 relative">
+      <div className="container mx-auto px-4 pt-2.5 pb-12 md:pt-4 md:pb-20 lg:pt-5 lg:pb-24 relative">
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
           {/* Content */}
           <motion.div
@@ -35,10 +39,10 @@ export default function HeroSection() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="inline-flex items-center gap-2 bg-primary-100 text-primary-700 px-4 py-2 rounded-full text-sm font-medium mb-6"
+              className="inline-flex items-center gap-2 bg-primary-100 text-primary-700 px-4 py-2 rounded-full text-sm font-medium mb-2.5"
             >
               <span className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
-              Now Delivering in Gujrat
+              Now Delivering in {cityName}
             </motion.div>
 
             <motion.h1
