@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import {
@@ -25,6 +25,8 @@ import { resolveImageUrl } from '@/lib/utils'
 import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
 import GoogleMapPicker from '@/components/checkout/GoogleMapPicker'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
+import { useCityContext } from '@/context/CityContext'
+import { addressMatchesSelectedCity } from '@/lib/cityStorage'
 
 interface FullAddress {
   id: string
@@ -45,12 +47,20 @@ interface FullAddress {
 export default function AddressesPage() {
   const router = useRouter()
   const { isAuthenticated } = useAuthStore()
+  const { selectedCity } = useCityContext()
   const [addresses, setAddresses] = useState<FullAddress[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [availableCities, setAvailableCities] = useState<{id: string, name: string, province: string}[]>([])
+
+  const cityAddresses = useMemo(
+    () =>
+      selectedCity?.name
+        ? addresses.filter((a) => addressMatchesSelectedCity(a.city, selectedCity.name))
+        : addresses,
+    [addresses, selectedCity?.name]
+  )
 
   // Form fields
   const [formType, setFormType] = useState('home')
@@ -70,18 +80,7 @@ export default function AddressesPage() {
       return
     }
     loadAddresses()
-    loadCities()
-  }, [isAuthenticated])
-
-  const loadCities = async () => {
-    try {
-      const res = await api.get('/site-settings/cities')
-      const data = res.data?.data || res.data || []
-      setAvailableCities(Array.isArray(data) ? data : [])
-    } catch {
-      setAvailableCities([{ id: 'default', name: 'Gujrat', province: 'Punjab' }])
-    }
-  }
+  }, [isAuthenticated, selectedCity?.id])
 
   const loadAddresses = async () => {
     try {
@@ -99,7 +98,7 @@ export default function AddressesPage() {
     setFormType('home')
     setFormAddress('')
     setFormArea('')
-    setFormCity('Gujrat')
+    setFormCity(selectedCity?.name || 'Gujrat')
     setFormLandmark('')
     setFormDoorPic(null)
     setMapLocation(null)
@@ -139,7 +138,7 @@ export default function AddressesPage() {
       formData.append('address_type', formType)
       formData.append('written_address', formAddress)
       formData.append('area_name', formArea || 'N/A')
-      formData.append('city', formCity)
+      formData.append('city', selectedCity?.name || formCity)
       formData.append('landmark', formLandmark)
       if (mapLocation) {
         formData.append('latitude', mapLocation.lat.toString())
@@ -156,7 +155,7 @@ export default function AddressesPage() {
         await api.put(`/addresses/${editingId}`, formData)
         toast.success('Address updated!')
       } else {
-        formData.append('is_default', addresses.length === 0 ? 'true' : 'false')
+        formData.append('is_default', cityAddresses.length === 0 ? 'true' : 'false')
         await api.post('/addresses', formData)
         toast.success('Address added!')
       }
@@ -259,15 +258,18 @@ export default function AddressesPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                <select
-                  value={formCity}
-                  onChange={(e) => setFormCity(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
-                  {availableCities.map((c) => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
+                {selectedCity ? (
+                  <div className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-800">
+                    {selectedCity.name}
+                  </div>
+                ) : (
+                  <Input
+                    label=""
+                    placeholder="City"
+                    value={formCity}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormCity(e.target.value)}
+                  />
+                )}
               </div>
 
               <div>
@@ -380,7 +382,7 @@ export default function AddressesPage() {
         )}
 
         {/* Address List */}
-        {addresses.length === 0 && !showForm ? (
+        {cityAddresses.length === 0 && !showForm ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -396,7 +398,7 @@ export default function AddressesPage() {
           </motion.div>
         ) : (
           <div className="space-y-4">
-            {addresses.map((addr, index) => (
+            {cityAddresses.map((addr, index) => (
               <motion.div
                 key={addr.id}
                 initial={{ opacity: 0, y: 10 }}
