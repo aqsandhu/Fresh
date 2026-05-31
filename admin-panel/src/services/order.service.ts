@@ -175,4 +175,13 @@ export const orderService = {
       throw new Error(error?.response?.data?.message || 'Failed to update orders');
     }
   },
+
+  deleteOrder: async (id: string): Promise<void> => {
+    try {
+      await api.delete<ApiResponse<void>>(`/admin/orders/${id}`);
+    } catch (error: any) {
+      console.error('Error deleting order:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to delete order');
+    }
+  },
 };

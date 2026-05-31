@@ -16,6 +16,7 @@ import {
   Loader2,
   Building,
   Filter,
+  Image,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -23,11 +24,15 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { addressService } from '@/services/address.service';
 import { customerService } from '@/services/customer.service';
+import { useAuthContext } from '@/context/AuthContext';
+import { resolveImageUrl } from '@/utils/formatters';
 import type { Address, Customer } from '@/types';
 import toast from 'react-hot-toast';
 
 export const Addresses: React.FC = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [addressSearch, setAddressSearch] = useState('');
@@ -107,7 +112,7 @@ export const Addresses: React.FC = () => {
     },
   });
 
-  // Delete address mutation
+  // Delete address mutation (super admin only)
   const deleteMutation = useMutation({
     mutationFn: (id: string) => addressService.deleteAddress(id),
     onSuccess: () => {
@@ -115,8 +120,26 @@ export const Addresses: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['addresses'] });
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.message || 'Failed to delete address');
+      toast.error(err?.message || 'Failed to delete address');
     },
+  });
+
+  const clearDoorPictureMutation = useMutation({
+    mutationFn: (id: string) => addressService.clearDoorPicture(id),
+    onSuccess: () => {
+      toast.success('Door picture removed');
+      queryClient.invalidateQueries({ queryKey: ['addresses'] });
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to remove door picture'),
+  });
+
+  const clearLocationMutation = useMutation({
+    mutationFn: (id: string) => addressService.clearLocation(id),
+    onSuccess: () => {
+      toast.success('Location removed');
+      queryClient.invalidateQueries({ queryKey: ['addresses'] });
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to remove location'),
   });
 
   const handleAssignHouseNumber = (addressId: string) => {
@@ -349,7 +372,10 @@ export const Addresses: React.FC = () => {
                     Address
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Location
+                    GPS / Map
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Door Picture
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     House Number
@@ -360,9 +386,11 @@ export const Addresses: React.FC = () => {
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Created
                   </th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  {isSuperAdmin && (
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -388,25 +416,79 @@ export const Addresses: React.FC = () => {
                               {address.deliveryInstructions}
                             </p>
                           )}
+                          <p className="text-xs text-gray-500 mt-1">
+                            {[address.areaName, address.city, address.province].filter(Boolean).join(', ')}
+                          </p>
                         </div>
                       </div>
                     </td>
 
-                    {/* Location Column */}
+                    {/* GPS / Map */}
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5 text-sm text-gray-700">
-                        <Navigation className="w-3.5 h-3.5 text-gray-400" />
-                        <span>{address.areaName || 'N/A'}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
-                        <Building className="w-3.5 h-3.5" />
-                        <span>{address.city || 'N/A'}</span>
-                        {address.province && <span>, {address.province}</span>}
-                      </div>
-                      {(address.latitude || address.longitude) && (
-                        <div className="text-xs text-gray-400 mt-1">
-                          {address.latitude?.toFixed(4)}, {address.longitude?.toFixed(4)}
+                      {(address.hasLocation || (address.latitude && address.longitude)) ? (
+                        <div className="space-y-1">
+                          <a
+                            href={`https://www.google.com/maps?q=${address.latitude},${address.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-green-600 hover:underline"
+                          >
+                            <MapPin className="w-3 h-3" /> View on Map
+                          </a>
+                          <div className="text-xs text-gray-400">
+                            {address.latitude?.toFixed(5)}, {address.longitude?.toFixed(5)}
+                          </div>
+                          {isSuperAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm('Remove GPS location from this address?')) {
+                                  clearLocationMutation.mutate(address.id);
+                                }
+                              }}
+                              className="block text-xs text-red-600 hover:underline"
+                            >
+                              Remove location
+                            </button>
+                          )}
                         </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Not added</span>
+                      )}
+                    </td>
+
+                    {/* Door Picture */}
+                    <td className="py-3 px-4">
+                      {address.doorPictureUrl ? (
+                        <div className="space-y-1">
+                          <a
+                            href={resolveImageUrl(address.doorPictureUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <img
+                              src={resolveImageUrl(address.doorPictureUrl)}
+                              alt="Door"
+                              className="w-16 h-12 object-cover rounded border"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          </a>
+                          {isSuperAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm('Remove door picture from this address?')) {
+                                  clearDoorPictureMutation.mutate(address.id);
+                                }
+                              }}
+                              className="block text-xs text-red-600 hover:underline"
+                            >
+                              Remove picture
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Not added</span>
                       )}
                     </td>
 
@@ -499,13 +581,15 @@ export const Addresses: React.FC = () => {
 
                     {/* Actions */}
                     <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() => handleDeleteAddress(address.id)}
-                        className="text-gray-400 hover:text-red-600 transition-colors p-1"
-                        title="Delete address"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {isSuperAdmin && (
+                        <button
+                          onClick={() => handleDeleteAddress(address.id)}
+                          className="text-gray-400 hover:text-red-600 transition-colors p-1"
+                          title="Delete address"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

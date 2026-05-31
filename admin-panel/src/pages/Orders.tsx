@@ -23,6 +23,8 @@ import {
   Bell,
   Wifi,
   WifiOff,
+  Trash2,
+  Image,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -35,6 +37,7 @@ import { orderService } from '@/services/order.service';
 import { riderService } from '@/services/rider.service';
 import { addressService } from '@/services/address.service';
 import { useNotifications } from '@/context/NotificationContext';
+import { useAuthContext } from '@/context/AuthContext';
 import type { Order, OrderStatus } from '@/types';
 import {
   formatCurrency,
@@ -42,6 +45,7 @@ import {
   formatOrderStatus,
   formatPhoneNumber,
   getOrderStatusColor,
+  resolveImageUrl,
 } from '@/utils/formatters';
 import { unitLabelShort } from '@/lib/unitLabels';
 import toast from 'react-hot-toast';
@@ -156,6 +160,8 @@ function printOrderSlips(orders: Order[]) {
 
 export const Orders: React.FC = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -289,6 +295,53 @@ export const Orders: React.FC = () => {
     },
   });
 
+  const deleteOrderMutation = useMutation({
+    mutationFn: (orderId: string) => orderService.deleteOrder(orderId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.success('Order deleted successfully');
+      setIsDetailModalOpen(false);
+      setSelectedOrder(null);
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || 'Failed to delete order');
+    },
+  });
+
+  const clearDoorPictureMutation = useMutation({
+    mutationFn: (addressId: string) => addressService.clearDoorPicture(addressId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      setSelectedOrder((prev) => (prev ? { ...prev, addressDoorPictureUrl: undefined } : null));
+      toast.success('Door picture removed');
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to remove door picture'),
+  });
+
+  const clearLocationMutation = useMutation({
+    mutationFn: (addressId: string) => addressService.clearLocation(addressId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      setSelectedOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              addressLatitude: undefined,
+              addressLongitude: undefined,
+              deliveryAddressSnapshot: prev.deliveryAddressSnapshot
+                ? {
+                    ...prev.deliveryAddressSnapshot,
+                    location: undefined,
+                  }
+                : prev.deliveryAddressSnapshot,
+            }
+          : null
+      );
+      toast.success('Location removed');
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to remove location'),
+  });
+
   // Rider location tracking
   const openRiderTracking = async (riderId: string, riderName: string) => {
     setTrackingRiderId(riderId);
@@ -406,7 +459,9 @@ export const Orders: React.FC = () => {
         const lat = order.addressLatitude || snap.location?.latitude;
         const lng = order.addressLongitude || snap.location?.longitude;
         const hasLoc = lat && lng;
-        const doorPic = order.addressDoorPictureUrl;
+        const doorPic = order.addressDoorPictureUrl
+          ? resolveImageUrl(order.addressDoorPictureUrl)
+          : '';
         return (
           <div className="max-w-[220px]">
             <p className="text-xs text-gray-900 truncate" title={snap.writtenAddress}>
@@ -418,7 +473,7 @@ export const Orders: React.FC = () => {
             {snap.houseNumber && (
               <p className="text-xs text-blue-600">H# {snap.houseNumber}</p>
             )}
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               {hasLoc ? (
                 <a
                   href={`https://www.google.com/maps?q=${lat},${lng}`}
@@ -430,10 +485,8 @@ export const Orders: React.FC = () => {
                 >
                   <Navigation className="w-3 h-3" /> Map
                 </a>
-              ) : (
-                <span className="text-xs text-gray-400">No location</span>
-              )}
-              {doorPic && (
+              ) : null}
+              {doorPic ? (
                 <a
                   href={doorPic}
                   target="_blank"
@@ -444,8 +497,20 @@ export const Orders: React.FC = () => {
                 >
                   <Home className="w-3 h-3" /> Door
                 </a>
+              ) : null}
+              {!hasLoc && !doorPic && (
+                <span className="text-xs text-gray-400">No location / door pic</span>
               )}
             </div>
+            {doorPic && (
+              <img
+                src={doorPic}
+                alt="Door"
+                className="mt-1 w-14 h-10 object-cover rounded border"
+                onClick={(e) => e.stopPropagation()}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            )}
           </div>
         );
       },
@@ -702,7 +767,25 @@ export const Orders: React.FC = () => {
         title={`Order ${selectedOrder?.orderNumber}`}
         size="xl"
         footer={
-          <div className="flex justify-end space-x-3">
+          <div className="flex justify-between w-full">
+            <div>
+              {isSuperAdmin && selectedOrder && (
+                <Button
+                  variant="outline"
+                  className="text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => {
+                    if (confirm(`Permanently delete order ${selectedOrder.orderNumber}? This cannot be undone.`)) {
+                      deleteOrderMutation.mutate(selectedOrder.id);
+                    }
+                  }}
+                  isLoading={deleteOrderMutation.isPending}
+                  leftIcon={<Trash2 className="w-4 h-4" />}
+                >
+                  Delete Order
+                </Button>
+              )}
+            </div>
+            <div className="flex space-x-3">
             <Button
               variant="outline"
               onClick={() => selectedOrder && printOrderSlips([selectedOrder])}
@@ -713,6 +796,7 @@ export const Orders: React.FC = () => {
             <Button variant="outline" onClick={() => setIsDetailModalOpen(false)}>
               Close
             </Button>
+            </div>
           </div>
         }
       >
@@ -875,7 +959,7 @@ export const Orders: React.FC = () => {
                         if (!lat || !lng) return null;
                         return (
                           <div className="ml-6 pt-2 border-t border-gray-200">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <Navigation className="w-4 h-4 text-green-600 flex-shrink-0" />
                               <a
                                 href={`https://www.google.com/maps?q=${lat},${lng}`}
@@ -886,27 +970,57 @@ export const Orders: React.FC = () => {
                                 View on Google Maps
                               </a>
                               <Badge variant="success" size="sm">Location Available</Badge>
+                              {isSuperAdmin && selectedOrder.addressId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm('Remove GPS location from this address?')) {
+                                      clearLocationMutation.mutate(selectedOrder.addressId!);
+                                    }
+                                  }}
+                                  className="text-xs text-red-600 hover:underline"
+                                >
+                                  Remove location
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
                       })()}
 
-                      {/* Door Picture */}
-                      {selectedOrder.addressDoorPictureUrl && (
+                      {selectedOrder.addressDoorPictureUrl && (() => {
+                        const doorUrl = resolveImageUrl(selectedOrder.addressDoorPictureUrl);
+                        return (
                         <div className="ml-6 pt-2 border-t border-gray-200">
                           <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                            <Home className="w-3.5 h-3.5" /> Door Picture
+                            <Image className="w-3.5 h-3.5" /> Door Picture
                           </p>
-                          <a href={selectedOrder.addressDoorPictureUrl} target="_blank" rel="noopener noreferrer">
-                            <img
-                              src={selectedOrder.addressDoorPictureUrl}
-                              alt="Door"
-                              className="w-28 h-20 object-cover rounded-lg border hover:opacity-80 transition-opacity cursor-pointer"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                            />
-                          </a>
+                          <div className="flex items-start gap-3">
+                            <a href={doorUrl} target="_blank" rel="noopener noreferrer">
+                              <img
+                                src={doorUrl}
+                                alt="Door"
+                                className="w-28 h-20 object-cover rounded-lg border hover:opacity-80 transition-opacity cursor-pointer"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            </a>
+                            {isSuperAdmin && selectedOrder.addressId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (confirm('Remove door picture from this address?')) {
+                                    clearDoorPictureMutation.mutate(selectedOrder.addressId!);
+                                  }
+                                }}
+                                className="text-xs text-red-600 hover:underline"
+                              >
+                                Remove picture
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      )}
+                        );
+                      })()}
                     </>
                   ) : (
                     <p className="text-gray-400">No address snapshot available</p>

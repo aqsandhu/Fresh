@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { roleService, type AdminRole, type AdminUser, type Permission } from '@/services/role.service';
 import { api } from '@/services/api';
+import { useAuthContext } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
 
 interface RoleFormState {
@@ -28,6 +29,8 @@ const empty = (): RoleFormState => ({
 
 export const Roles: React.FC = () => {
   const queryClient = useQueryClient();
+  const { user, isLoading: authLoading } = useAuthContext();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [modalOpen, setModalOpen] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [form, setForm] = useState<RoleFormState>(empty);
@@ -195,6 +198,24 @@ export const Roles: React.FC = () => {
     if (!window.confirm(`Delete role "${role.name}"?`)) return;
     deleteMutation.mutate(role.id);
   };
+
+  if (authLoading) {
+    return (
+      <Layout title="Admin Roles" subtitle="Loading...">
+        <Card className="p-6 text-center text-gray-500">Loading...</Card>
+      </Layout>
+    );
+  }
+
+  if (!isSuperAdmin) {
+    return (
+      <Layout title="Admin Roles" subtitle="Access restricted">
+        <Card className="p-6 text-center text-gray-600">
+          Only super admins can create, update, or delete admin roles and admin users.
+        </Card>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Admin Roles" subtitle="Create scoped admin roles with custom permissions">

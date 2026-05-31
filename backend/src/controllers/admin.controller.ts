@@ -1681,6 +1681,119 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
 });
 
 /**
+ * Permanently delete an order (soft delete) — super admin only
+ * DELETE /api/admin/orders/:id
+ */
+export const deleteOrder = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admins can delete orders', 403);
+  }
+
+  const { id } = req.params;
+
+  const result = await query(
+    `UPDATE orders SET deleted_at = NOW(), updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING id, order_number`,
+    [id]
+  );
+
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Order not found');
+  }
+
+  logger.info('Order deleted', {
+    orderId: id,
+    orderNumber: result.rows[0].order_number,
+    deletedBy: req.user?.id,
+  });
+
+  successResponse(res, { id }, 'Order deleted successfully');
+});
+
+/**
+ * Delete a customer address (soft delete) — super admin only
+ * DELETE /api/admin/addresses/:id
+ */
+export const deleteAdminAddress = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admins can delete addresses', 403);
+  }
+
+  const { id } = req.params;
+
+  const result = await query(
+    `UPDATE addresses SET deleted_at = NOW(), updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING id`,
+    [id]
+  );
+
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Address not found');
+  }
+
+  logger.info('Address deleted by super admin', { addressId: id, deletedBy: req.user?.id });
+
+  successResponse(res, { id }, 'Address deleted successfully');
+});
+
+/**
+ * Remove door picture from address — super admin only
+ * DELETE /api/admin/addresses/:id/door-picture
+ */
+export const clearAddressDoorPicture = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admins can remove door pictures', 403);
+  }
+
+  const { id } = req.params;
+
+  const result = await query(
+    `UPDATE addresses SET door_picture_url = NULL, updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING *`,
+    [id]
+  );
+
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Address not found');
+  }
+
+  logger.info('Address door picture removed', { addressId: id, removedBy: req.user?.id });
+
+  successResponse(res, result.rows[0], 'Door picture removed successfully');
+});
+
+/**
+ * Remove GPS location from address — super admin only
+ * DELETE /api/admin/addresses/:id/location
+ */
+export const clearAddressLocation = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admins can remove address locations', 403);
+  }
+
+  const { id } = req.params;
+
+  const result = await query(
+    `UPDATE addresses
+     SET location = NULL, location_accuracy = NULL, google_place_id = NULL, updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING *`,
+    [id]
+  );
+
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Address not found');
+  }
+
+  logger.info('Address location removed', { addressId: id, removedBy: req.user?.id });
+
+  successResponse(res, result.rows[0], 'Location removed successfully');
+});
+
+/**
  * Assign house number to address
  * PUT /api/admin/addresses/:id/house-number
  */
