@@ -20,8 +20,21 @@ import {
 } from '../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../utils/productTags';
 import { fetchBannerSettings, upsertBannerSettings, upsertGlobalSiteSetting } from '../utils/siteSettings';
+import { loadAdminSession } from '../utils/adminSession';
 
 const SALT_ROUNDS = 12;
+
+/**
+ * Current admin session (fresh permissions from DB)
+ * GET /api/admin/me
+ */
+export const getAdminMe = asyncHandler(async (req: Request, res: Response) => {
+  const session = await loadAdminSession(req.user!.id);
+  if (!session) {
+    return notFoundResponse(res, 'Admin user not found');
+  }
+  successResponse(res, { user: session }, 'Admin session retrieved');
+});
 
 /**
  * Get dashboard statistics

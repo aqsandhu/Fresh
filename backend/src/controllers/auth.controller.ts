@@ -20,6 +20,7 @@ import { verifyPhoneFromRequest } from '../services/otp.service';
 import { isOtpBypassEnabled } from '../config/otpBypass';
 import { getPinStatusForPhone, ensurePinColumns, hasPinColumns } from '../config/pinAuth';
 import logger from '../utils/logger';
+import { loadAdminSession } from '../utils/adminSession';
 
 const SALT_ROUNDS = 12;
 
@@ -703,46 +704,18 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
     [user.id]
   );
 
-  // Resolve effective permissions: super_admin gets everything; custom role
-  // admins get their role's permission codes; legacy admins keep full access.
-  let permissions: string[] = [];
-  if (user.role === 'super_admin') {
-    permissions = ['*'];
-  } else {
-    const permResult = await query(
-      `SELECT COALESCE(
-         ARRAY_AGG(p.code) FILTER (WHERE p.code IS NOT NULL),
-         ARRAY[]::text[]
-       ) AS permissions
-       FROM users u
-       LEFT JOIN admin_roles r ON r.id = u.admin_role_id
-       LEFT JOIN admin_role_permissions rp ON rp.role_id = r.id
-       LEFT JOIN permissions p ON p.id = rp.permission_id
-      WHERE u.id = $1
-      GROUP BY u.id`,
-      [user.id]
-    );
-    permissions = permResult.rows[0]?.permissions || [];
-    // Legacy admin without a custom role keeps full access. Custom-role admins
-    // with an empty permission set stay restricted (no accidental full access).
-    if (permissions.length === 0 && !user.admin_role_id) {
-      permissions = ['*'];
-    }
-  }
-
-  const roleMeta = await query(
-    `SELECT r.id, r.name, r.city, r.city_id,
-            sc.id AS resolved_city_id,
-            sc.name AS city_name
-       FROM users u
-       LEFT JOIN admin_roles r ON r.id = u.admin_role_id
-       LEFT JOIN service_cities sc ON sc.id = COALESCE(
-         r.city_id,
-         (SELECT id FROM service_cities WHERE LOWER(name) = LOWER(r.city) LIMIT 1)
-       )
-      WHERE u.id = $1`,
-    [user.id]
-  );
+  // Resolve effective permissions from role assignment
+  const session = await loadAdminSession(user.id);
+  const permissions = session?.permissions ?? ['*'];
+  const roleMeta = session
+    ? {
+        id: session.admin_role_id,
+        name: session.admin_role_name,
+        city_name: session.admin_role_city,
+        resolved_city_id: session.admin_role_city_id,
+        city: session.admin_role_city,
+      }
+    : null;
 
   logger.info('Admin logged in', { userId: user.id, phone: user.phone, role: user.role });
 
@@ -753,10 +726,10 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
       full_name: user.full_name,
       email: user.email,
       role: user.role,
-      admin_role_id: roleMeta.rows[0]?.id || null,
-      admin_role_name: roleMeta.rows[0]?.name || null,
-      admin_role_city: roleMeta.rows[0]?.city_name || roleMeta.rows[0]?.city || null,
-      admin_role_city_id: roleMeta.rows[0]?.resolved_city_id || null,
+      admin_role_id: roleMeta?.id || null,
+      admin_role_name: roleMeta?.name || null,
+      admin_role_city: roleMeta?.city_name || roleMeta?.city || null,
+      admin_role_city_id: roleMeta?.resolved_city_id || null,
       permissions,
     },
     tokens,

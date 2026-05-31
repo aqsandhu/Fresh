@@ -38,6 +38,9 @@ router.use(enforceAdminPermissions);
 // Apply audit logging to all mutating (POST, PUT, PATCH, DELETE) admin operations
 router.use(auditLogger());
 
+// Session — refresh permissions from DB (any authenticated admin)
+router.get('/me', adminController.getAdminMe);
+
 // Dashboard
 router.get('/dashboard', adminController.getDashboardStats);
 

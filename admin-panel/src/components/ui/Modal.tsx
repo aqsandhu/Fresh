@@ -74,7 +74,7 @@ export const Modal: React.FC<ModalProps> = ({
               </button>
             </div>
           )}
-          <div className="px-6 py-4">{children}</div>
+          <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">{children}</div>
           {footer && <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">{footer}</div>}
         </div>
       </div>

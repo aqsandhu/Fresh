@@ -23,7 +23,7 @@ async function loadPermissions(userId: string, role: string): Promise<string[]> 
   const result = await query(
     `SELECT u.admin_role_id,
             COALESCE(
-              ARRAY_AGG(p.code) FILTER (WHERE p.code IS NOT NULL),
+              ARRAY_AGG(DISTINCT p.code) FILTER (WHERE p.code IS NOT NULL),
               ARRAY[]::text[]
             ) AS permissions
        FROM users u
@@ -62,6 +62,8 @@ function hasAny(perms: string[], codes: string[]): boolean {
 function resolveRequiredPermissions(method: string, path: string): string[] | null {
   const m = method.toUpperCase();
   const p = path.split('?')[0];
+
+  if (p === '/me') return null;
 
   if (p === '/dashboard') {
     return ['orders.view', 'products.view', 'customers.view', 'settings.view', 'settings.update'];
