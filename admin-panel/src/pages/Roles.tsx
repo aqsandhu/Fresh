@@ -215,7 +215,9 @@ export const Roles: React.FC = () => {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
-          {roles.map((role) => (
+          {roles.map((role) => {
+            const rolePermissions = role.permissions ?? [];
+            return (
             <Card key={role.id} className="p-4">
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -241,8 +243,8 @@ export const Roles: React.FC = () => {
                       <Badge className="bg-green-50 text-green-700">All cities</Badge>
                     )}
                     <span className="text-xs text-gray-500">
-                      {role.permissions.length} permission
-                      {role.permissions.length === 1 ? '' : 's'}
+                      {rolePermissions.length} permission
+                      {rolePermissions.length === 1 ? '' : 's'}
                     </span>
                   </div>
                 </div>
@@ -266,7 +268,7 @@ export const Roles: React.FC = () => {
                 </div>
               </div>
               <div className="flex flex-wrap gap-1">
-                {role.permissions.slice(0, 8).map((p) => (
+                {rolePermissions.slice(0, 8).map((p) => (
                   <span
                     key={p}
                     className="text-[11px] bg-gray-50 border border-gray-200 text-gray-600 px-2 py-0.5 rounded"
@@ -274,14 +276,15 @@ export const Roles: React.FC = () => {
                     {p}
                   </span>
                 ))}
-                {role.permissions.length > 8 && (
+                {rolePermissions.length > 8 && (
                   <span className="text-[11px] text-gray-500 px-2 py-0.5">
-                    +{role.permissions.length - 8} more
+                    +{rolePermissions.length - 8} more
                   </span>
                 )}
               </div>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 

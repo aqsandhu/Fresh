@@ -105,7 +105,8 @@ export const getRiderStatusColor = (status: string): { bg: string; text: string 
   return colors[status] || { bg: 'bg-gray-100', text: 'text-gray-800' };
 };
 
-export const formatOrderStatus = (status: string): string => {
+export const formatOrderStatus = (status: string | null | undefined): string => {
+  if (!status) return 'Unknown';
   return status
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))

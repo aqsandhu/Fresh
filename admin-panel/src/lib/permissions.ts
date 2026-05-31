@@ -1,3 +1,5 @@
+import { normalizePermissions } from './adminUser';
+
 /** Permission required to see each sidebar route (any listed code grants access). */
 export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/dashboard': ['orders.view', 'products.view', 'customers.view', 'settings.view'],
@@ -35,10 +37,11 @@ export function hasPermission(
   permissions: string[] | undefined,
   required: string | string[]
 ): boolean {
-  if (!permissions || permissions.length === 0) return false;
-  if (permissions.includes('*')) return true;
+  const perms = normalizePermissions(permissions);
+  if (perms.length === 0) return false;
+  if (perms.includes('*')) return true;
   const codes = Array.isArray(required) ? required : [required];
-  return codes.some((c) => permissions.includes(c));
+  return codes.some((c) => perms.includes(c));
 }
 
 export function canAccessRoute(
@@ -48,12 +51,13 @@ export function canAccessRoute(
   if (path === '/admin/no-access') return true;
   const required = ROUTE_PERMISSIONS[path];
   if (!required) return true;
-  return hasPermission(permissions, required);
+  return hasPermission(normalizePermissions(permissions), required);
 }
 
 export function firstAccessibleRoute(
   permissions: string[] | undefined
 ): string | null {
-  if (!permissions || permissions.length === 0) return null;
-  return ADMIN_ROUTE_FALLBACKS.find((p) => canAccessRoute(p, permissions)) ?? null;
+  const perms = normalizePermissions(permissions);
+  if (perms.length === 0) return null;
+  return ADMIN_ROUTE_FALLBACKS.find((p) => canAccessRoute(p, perms)) ?? null;
 }

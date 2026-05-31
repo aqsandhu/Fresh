@@ -1,6 +1,7 @@
 import { api } from './api';
 import { clearCitySelection, setCitySelection } from '@/lib/cityStorage';
 import { refreshAdminAccessToken } from '@/lib/adminTokenRefresh';
+import { normalizeAdminUser } from '@/lib/adminUser';
 import type { 
   LoginCredentials, 
   AuthResponse, 
@@ -20,17 +21,25 @@ export const authService = {
       }
 
       const response = await api.post<ApiResponse<AuthResponse>>('/admin/login', credentials);
+      if (!response.success || !response.data?.user) {
+        throw new Error(response.message || 'Login failed');
+      }
+
+      const user = normalizeAdminUser(response.data.user);
+      if (!user) {
+        throw new Error('Invalid login response from server');
+      }
+
       if (response.success && response.data) {
         localStorage.setItem('admin_token', response.data.tokens.accessToken);
         localStorage.setItem('admin_refresh_token', response.data.tokens.refreshToken);
-        localStorage.setItem('admin_user', JSON.stringify(response.data.user));
+        localStorage.setItem('admin_user', JSON.stringify(user));
 
-        const u = response.data.user;
-        if (u.adminRoleId && u.adminRoleCityId) {
-          setCitySelection(u.adminRoleCityId);
+        if (user.adminRoleId && user.adminRoleCityId) {
+          setCitySelection(user.adminRoleCityId);
         }
       }
-      return response.data;
+      return { ...response.data, user };
     } catch (error: any) {
       console.error('Login error:', error);
       
@@ -58,7 +67,8 @@ export const authService = {
   getCurrentUser: (): User | null => {
     try {
       const userStr = localStorage.getItem('admin_user');
-      return userStr ? JSON.parse(userStr) : null;
+      if (!userStr) return null;
+      return normalizeAdminUser(JSON.parse(userStr));
     } catch (error) {
       console.error('Error parsing user data:', error);
       return null;
