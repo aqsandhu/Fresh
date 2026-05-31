@@ -74,17 +74,18 @@ export default function Header() {
   })
 
   useEffect(() => {
-    bannerApi.getSettings().then(data => {
+    if (!selectedCityId) return
+    bannerApi.getSettings().then((data) => {
       setBanner({
-        leftText: data.banner_left_text || banner.leftText,
-        middleText: data.banner_middle_text || banner.middleText,
-        rightTextEn: data.banner_right_text_en || banner.rightTextEn,
-        rightTextUr: data.banner_right_text_ur || banner.rightTextUr,
+        leftText: data.banner_left_text || '0300-1234567',
+        middleText: data.banner_middle_text || 'Free Delivery 10AM-2PM',
+        rightTextEn: data.banner_right_text_en || 'Fresh Sabzi at Your Doorstep',
+        rightTextUr: data.banner_right_text_ur || 'تازہ سبزیاں آپ کے دروازے پر',
       })
     }).catch(() => {
       // Keep default values on error
     })
-  }, [])
+  }, [selectedCityId])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<NodeJS.Timeout>()
   const mobileMenuRef = useRef<HTMLDivElement>(null)

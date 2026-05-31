@@ -48,6 +48,7 @@ export interface Product {
   categoryName?: string;
   isFeatured: boolean;
   isActive: boolean;
+  tags?: string[];
 }
 
 export interface Category {
@@ -337,6 +338,7 @@ export interface CreateProductData {
   images?: File[];
   isActive?: boolean;
   isFeatured?: boolean;
+  tags?: string[];
 }
 
 export interface CreateCategoryData {

@@ -257,6 +257,7 @@ export const productSchemas = {
     is_active: Joi.boolean().default(true),
     is_featured: Joi.boolean().default(false),
     is_new_arrival: Joi.boolean().default(false),
+    tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
   }),
   
   update: Joi.object({
@@ -277,6 +278,7 @@ export const productSchemas = {
     is_active: Joi.boolean(),
     is_featured: Joi.boolean(),
     is_new_arrival: Joi.boolean(),
+    tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
   }),
 };
 

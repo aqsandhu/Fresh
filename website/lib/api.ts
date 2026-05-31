@@ -417,7 +417,7 @@ export const uploadApi = {
 // Banner API (public, no auth needed)
 export const bannerApi = {
   getSettings: async (): Promise<Record<string, string>> => {
-    const response = await api.get('/site-settings/banner')
+    const response = await api.get('/site-settings/banner', { params: withCityParams() })
     return response.data.data
   },
 }

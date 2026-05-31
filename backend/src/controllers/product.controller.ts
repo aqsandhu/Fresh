@@ -6,20 +6,8 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, paginatedResponse } from '../utils/response';
-
-async function resolvePublicCityId(req: Request): Promise<string | null> {
-  const cityId = typeof req.query.city_id === 'string' ? req.query.city_id : null;
-  if (cityId) return cityId;
-
-  const cityName = typeof req.query.city === 'string' ? req.query.city : null;
-  if (!cityName) return null;
-
-  const row = await query(
-    'SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1',
-    [cityName]
-  );
-  return row.rows[0]?.id || null;
-}
+import { resolvePublicCityId } from '../utils/cityScope';
+import { tagSearchSql } from '../utils/productTags';
 
 /**
  * Get all products with filters
@@ -76,7 +64,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
         p.name_en ILIKE $${paramIndex} 
         OR p.name_ur ILIKE $${paramIndex}
         OR p.description_en ILIKE $${paramIndex}
-        OR p.tags @> ARRAY[$${paramIndex}]
+        OR ${tagSearchSql(paramIndex)}
       )`;
       params.push(`%${sanitizedSearch}%`);
       paramIndex++;
@@ -386,17 +374,18 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug,
       ts_rank(
-        to_tsvector('english', COALESCE(p.name_en, '') || ' ' || COALESCE(p.description_en, '')),
+        to_tsvector('english', COALESCE(p.name_en, '') || ' ' || COALESCE(p.description_en, '') || ' ' || array_to_string(COALESCE(p.tags, ARRAY[]::text[]), ' ')),
         plainto_tsquery('english', $1)
       ) as rank
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE
       AND (
-        to_tsvector('english', COALESCE(p.name_en, '') || ' ' || COALESCE(p.description_en, ''))
+        to_tsvector('english', COALESCE(p.name_en, '') || ' ' || COALESCE(p.description_en, '') || ' ' || array_to_string(COALESCE(p.tags, ARRAY[]::text[]), ' '))
         @@ plainto_tsquery('english', $1)
         OR p.name_ur ILIKE $2
         OR p.name_en ILIKE $2
+        OR ${tagSearchSql(2)}
       )${cityClause}
     ORDER BY rank DESC, p.order_count DESC
     LIMIT $${params.length - 1} OFFSET $${params.length}`,

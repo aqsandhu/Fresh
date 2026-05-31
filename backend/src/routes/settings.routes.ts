@@ -1,21 +1,16 @@
 import { Router } from 'express';
-import { query } from '../config/database';
-import { successResponse } from '../utils/response';
 import { asyncHandler } from '../middleware/errorHandler';
+import { successResponse } from '../utils/response';
+import { resolvePublicCityId } from '../utils/cityScope';
+import { fetchBannerSettings } from '../utils/siteSettings';
+import { query } from '../config/database';
 
 const router = Router();
 
 // Public: Get banner settings (no auth required)
 router.get('/banner', asyncHandler(async (req, res) => {
-  const result = await query(
-    `SELECT key, value FROM site_settings WHERE key LIKE 'banner_%'`
-  );
-
-  const banner: Record<string, string> = {};
-  for (const row of result.rows) {
-    banner[row.key] = row.value;
-  }
-
+  const cityId = await resolvePublicCityId(req);
+  const banner = await fetchBannerSettings(cityId);
   successResponse(res, banner, 'Banner settings retrieved');
 }));
 
