@@ -20,7 +20,9 @@ import {
   onOrderStatusUpdated,
   offSocketEvent,
   playNotificationSound,
+  reconnectSocket,
 } from '@/services/socket';
+import { getValidAdminAccessToken, refreshAdminAccessToken } from '@/lib/adminTokenRefresh';
 
 export interface AdminNotification {
   id: string;
@@ -154,13 +156,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const token = localStorage.getItem('admin_token');
-    if (!token) return;
-
-    const socket = connectSocket(token);
-    const connectionInterval = setInterval(() => {
-      setIsSocketConnected(socket.connected);
-    }, 3000);
+    let cancelled = false;
+    let connectionInterval: ReturnType<typeof setInterval> | undefined;
+    let cleanupConnectError: (() => void) | undefined;
 
     const handleNewOrder = (data: Record<string, unknown>) => {
       const item = buildNotification(
@@ -204,12 +202,40 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     };
 
-    onNewOrder(handleNewOrder);
-    onOrderStatusUpdated(handleStatusUpdated);
-    onOrderCancelled(handleOrderCancelled);
+    const setup = async () => {
+      const token = await getValidAdminAccessToken();
+      if (cancelled || !token) return;
+
+      const socket = connectSocket(token);
+
+      const handleConnectError = async (err: Error) => {
+        if (!err.message.toLowerCase().includes('jwt') && !err.message.toLowerCase().includes('expired')) {
+          return;
+        }
+        const fresh = await refreshAdminAccessToken();
+        if (fresh) {
+          reconnectSocket(fresh);
+        }
+      };
+
+      socket.on('connect_error', handleConnectError);
+      cleanupConnectError = () => socket.off('connect_error', handleConnectError);
+
+      onNewOrder(handleNewOrder);
+      onOrderStatusUpdated(handleStatusUpdated);
+      onOrderCancelled(handleOrderCancelled);
+
+      connectionInterval = setInterval(() => {
+        setIsSocketConnected(socket.connected);
+      }, 3000);
+    };
+
+    setup();
 
     return () => {
-      clearInterval(connectionInterval);
+      cancelled = true;
+      cleanupConnectError?.();
+      if (connectionInterval) clearInterval(connectionInterval);
       offSocketEvent('order:new', handleNewOrder);
       offSocketEvent('order:status_updated', handleStatusUpdated);
       offSocketEvent('order:cancelled', handleOrderCancelled);

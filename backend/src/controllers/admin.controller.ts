@@ -1527,6 +1527,160 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
 });
 
 /**
+ * List customer addresses (admin)
+ * GET /api/admin/addresses
+ */
+export const getAdminAddresses = asyncHandler(async (req: Request, res: Response) => {
+  const { page = 1, limit = 100, search, city, area } = req.query;
+  const scope = await resolveCityScope(req);
+
+  let whereSql = 'WHERE a.deleted_at IS NULL';
+  const params: unknown[] = [];
+  let paramIndex = 1;
+
+  if (search) {
+    whereSql += ` AND (
+      a.written_address ILIKE $${paramIndex}
+      OR a.landmark ILIKE $${paramIndex}
+      OR a.house_number ILIKE $${paramIndex}
+      OR a.area_name ILIKE $${paramIndex}
+      OR u.full_name ILIKE $${paramIndex}
+      OR u.phone ILIKE $${paramIndex}
+    )`;
+    params.push(`%${search}%`);
+    paramIndex++;
+  }
+
+  if (city) {
+    whereSql += ` AND LOWER(a.city) = LOWER($${paramIndex++})`;
+    params.push(city);
+  }
+
+  if (area) {
+    whereSql += ` AND LOWER(a.area_name) = LOWER($${paramIndex++})`;
+    params.push(area);
+  }
+
+  if (!scope.unrestricted && scope.cityName && scope.dbReady) {
+    whereSql += ` AND LOWER(a.city) = LOWER($${paramIndex++})`;
+    params.push(scope.cityName);
+  }
+
+  const countResult = await query(
+    `SELECT COUNT(*) FROM addresses a JOIN users u ON a.user_id = u.id ${whereSql}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].count);
+
+  const limitNum = parseInt(limit as string);
+  const pageNum = parseInt(page as string);
+  const offset = (pageNum - 1) * limitNum;
+
+  const result = await query(
+    `SELECT 
+      a.id, a.user_id, a.address_type, a.house_number, a.written_address,
+      a.landmark, a.area_name, a.city, a.province, a.postal_code,
+      a.is_default, a.door_picture_url, a.location_added_by,
+      a.delivery_instructions, a.created_at, a.updated_at,
+      ST_X(a.location::geometry) as longitude,
+      ST_Y(a.location::geometry) as latitude,
+      CASE WHEN a.location IS NOT NULL THEN true ELSE false END as has_location,
+      dz.name as zone_name,
+      u.full_name as customer_name, u.phone as customer_phone
+    FROM addresses a
+    JOIN users u ON a.user_id = u.id
+    LEFT JOIN delivery_zones dz ON a.zone_id = dz.id
+    ${whereSql}
+    ORDER BY a.created_at DESC
+    LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
+    [...params, limitNum, offset]
+  );
+
+  successResponse(res, {
+    addresses: result.rows,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum) || 0,
+    },
+  }, 'Addresses retrieved successfully');
+});
+
+/**
+ * Bulk update order status
+ * PUT /api/admin/orders/bulk-status
+ */
+export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Response) => {
+  const { order_ids, status, reason } = req.body as {
+    order_ids: string[];
+    status: string;
+    reason?: string;
+  };
+
+  if (!Array.isArray(order_ids) || order_ids.length === 0) {
+    return errorResponse(res, 'At least one order ID is required', 400);
+  }
+
+  const statusTimestamps: Record<string, string> = {
+    confirmed: 'confirmed_at',
+    preparing: 'preparing_at',
+    ready_for_pickup: 'ready_at',
+    out_for_delivery: 'out_for_delivery_at',
+    delivered: 'delivered_at',
+    cancelled: 'cancelled_at',
+  };
+
+  const timestampColumn = statusTimestamps[status];
+  const timestampValue = timestampColumn ? `, ${timestampColumn} = NOW()` : '';
+
+  const result = await query(
+    `UPDATE orders 
+     SET status = $1${timestampValue}, 
+         cancellation_reason = COALESCE($2, cancellation_reason),
+         updated_at = NOW()
+     WHERE id = ANY($3::uuid[]) AND deleted_at IS NULL
+     RETURNING *`,
+    [status, reason || null, order_ids]
+  );
+
+  for (const order of result.rows) {
+    emitOrderUpdate(order.id, {
+      orderId: order.id,
+      status,
+      reason,
+      updatedBy: req.user?.id,
+      updatedAt: new Date().toISOString(),
+    });
+
+    emitToUser(order.user_id, 'order:status_changed', {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status,
+      message: `Your order #${order.order_number} is now ${status}`,
+    });
+
+    emitToAdmins('order:status_updated', {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      status,
+      updatedBy: req.user?.id,
+    });
+  }
+
+  logger.info('Bulk order status updated', {
+    count: result.rows.length,
+    status,
+    updatedBy: req.user?.id,
+  });
+
+  successResponse(res, {
+    updated: result.rows.length,
+    orders: result.rows,
+  }, `${result.rows.length} order(s) updated successfully`);
+});
+
+/**
  * Assign house number to address
  * PUT /api/admin/addresses/:id/house-number
  */

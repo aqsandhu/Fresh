@@ -9,7 +9,9 @@ import {
   connectSocket,
   disconnectSocket,
   getSocket,
+  reconnectSocket,
 } from '@/lib/socket'
+import { getValidAccessToken, refreshWebsiteAccessToken } from '@/lib/tokenRefresh'
 
 function socketNotificationId(type: string, orderId?: string) {
   return `socket-${type}-${orderId || 'general'}-${Date.now()}`
@@ -34,7 +36,7 @@ function fromSocketPayload(
 }
 
 export default function NotificationProvider({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, accessToken, hasHydrated } = useAuthStore()
+  const { isAuthenticated, hasHydrated } = useAuthStore()
   const { setNotifications, addNotification, reset, setLoading } = useNotificationStore()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -70,11 +72,10 @@ export default function NotificationProvider({ children }: { children: React.Rea
   }, [hasHydrated, isAuthenticated, loadNotifications, reset])
 
   useEffect(() => {
-    if (!hasHydrated || !isAuthenticated || !accessToken) return
+    if (!hasHydrated || !isAuthenticated) return
 
-    connectSocket(accessToken)
-    const socket = getSocket()
-    if (!socket) return
+    let cancelled = false
+    let cleanupConnectError: (() => void) | undefined
 
     const handlers: Array<{ event: string; fn: (data: Record<string, unknown>) => void }> = [
       {
@@ -133,13 +134,40 @@ export default function NotificationProvider({ children }: { children: React.Rea
       },
     ]
 
-    handlers.forEach(({ event, fn }) => socket.on(event, fn))
+    const setup = async () => {
+      const token = await getValidAccessToken()
+      if (cancelled || !token) return
+
+      const socket = connectSocket(token)
+
+      const handleConnectError = async (err: Error) => {
+        if (!err.message.toLowerCase().includes('jwt') && !err.message.toLowerCase().includes('expired')) {
+          return
+        }
+        const fresh = await refreshWebsiteAccessToken()
+        if (fresh) {
+          reconnectSocket(fresh)
+        }
+      }
+
+      socket.on('connect_error', handleConnectError)
+      cleanupConnectError = () => socket.off('connect_error', handleConnectError)
+
+      handlers.forEach(({ event, fn }) => socket.on(event, fn))
+    }
+
+    setup()
 
     return () => {
-      handlers.forEach(({ event, fn }) => socket.off(event, fn))
+      cancelled = true
+      cleanupConnectError?.()
+      const socket = getSocket()
+      if (socket) {
+        handlers.forEach(({ event, fn }) => socket.off(event, fn))
+      }
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     }
-  }, [hasHydrated, isAuthenticated, accessToken, addNotification, scheduleRefresh])
+  }, [hasHydrated, isAuthenticated, addNotification, scheduleRefresh])
 
   return <>{children}</>
 }

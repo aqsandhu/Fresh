@@ -2,6 +2,15 @@ import axios from 'axios'
 import { Product, Category, Order, Address, User, AttaChakkiRequest } from '@/types'
 import { getSelectedCityId } from '@/lib/cityStorage'
 import { useAuthStore } from '@/store/cartStore'
+import { refreshWebsiteAccessToken } from '@/lib/tokenRefresh'
+
+function redirectToLogin() {
+  useAuthStore.getState().logout()
+  const currentPath = window.location.pathname
+  if (currentPath !== '/login' && !currentPath.startsWith('/register')) {
+    window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+  }
+}
 
 function withCityParams<T extends Record<string, unknown>>(params?: T): T & { city_id?: string } {
   const cityId = getSelectedCityId()
@@ -39,16 +48,31 @@ api.interceptors.request.use((config) => {
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        useAuthStore.getState().logout()
-        const currentPath = window.location.pathname
-        if (currentPath !== '/login' && !currentPath.startsWith('/register')) {
-          window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
+  async (error) => {
+    const original = error.config as (typeof error.config & { _retried?: boolean }) | undefined
+
+    if (error.response?.status === 401 && original && !original._retried) {
+      const isRefreshCall = original.url?.includes('/auth/refresh')
+      if (isRefreshCall) {
+        if (typeof window !== 'undefined') {
+          redirectToLogin()
         }
+        return Promise.reject(error)
+      }
+
+      original._retried = true
+      const newToken = await refreshWebsiteAccessToken()
+      if (newToken) {
+        original.headers = original.headers || {}
+        original.headers.Authorization = `Bearer ${newToken}`
+        return api.request(original)
+      }
+
+      if (typeof window !== 'undefined') {
+        redirectToLogin()
       }
     }
+
     return Promise.reject(error)
   }
 )

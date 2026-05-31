@@ -592,7 +592,7 @@ CREATE TABLE orders (
     -- Privacy toggle. When FALSE the rider's task view hides the customer's
     -- name + phone (call still works via the in-app proxy). Defaults to
     -- TRUE so existing flows behave unchanged.
-    show_customer_phone BOOLEAN DEFAULT TRUE,
+    show_customer_phone BOOLEAN DEFAULT FALSE,
     
     -- Timestamps
     placed_at TIMESTAMPTZ DEFAULT NOW(),

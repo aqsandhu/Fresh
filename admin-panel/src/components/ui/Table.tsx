@@ -22,6 +22,9 @@ interface TableProps<T> {
     onPageChange: (page: number) => void;
   };
   onRowClick?: (item: T) => void;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (ids: Set<string>) => void;
 }
 
 export function Table<T>({
@@ -33,14 +36,44 @@ export function Table<T>({
   rowClassName,
   pagination,
   onRowClick,
+  selectable = false,
+  selectedIds,
+  onSelectionChange,
 }: TableProps<T>) {
+  const allSelected =
+    selectable &&
+    selectedIds &&
+    data.length > 0 &&
+    data.every((item) => selectedIds.has(keyExtractor(item)));
+
+  const toggleAll = () => {
+    if (!onSelectionChange || !selectedIds) return;
+    if (allSelected) {
+      onSelectionChange(new Set());
+    } else {
+      onSelectionChange(new Set(data.map((item) => keyExtractor(item))));
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    if (!onSelectionChange || !selectedIds) return;
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    onSelectionChange(next);
+  };
+
   if (isLoading) {
+    const colCount = columns.length + (selectable ? 1 : 0);
     return (
       <div className="w-full">
         <div className="animate-pulse">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="flex space-x-4 p-4 border-b border-gray-200">
-              {[...Array(columns.length)].map((_, j) => (
+              {[...Array(colCount)].map((_, j) => (
                 <div key={j} className="flex-1 h-4 bg-gray-200 rounded" />
               ))}
             </div>
@@ -64,6 +97,17 @@ export function Table<T>({
         <table className="w-full">
           <thead className="bg-gray-50">
             <tr>
+              {selectable && (
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    aria-label="Select all rows"
+                  />
+                </th>
+              )}
               {columns.map((column) => (
                 <th
                   key={column.key}
@@ -76,21 +120,38 @@ export function Table<T>({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {data.map((item) => (
-              <tr
-                key={keyExtractor(item)}
-                className={`${onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''} ${rowClassName ? rowClassName(item) : ''}`}
-                onClick={() => onRowClick?.(item)}
-              >
-                {columns.map((column) => (
-                  <td key={column.key} className="px-6 py-4 whitespace-nowrap">
-                    {column.render
-                      ? column.render(item)
-                      : (item as Record<string, any>)[column.key]}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {data.map((item) => {
+              const rowId = keyExtractor(item);
+              return (
+                <tr
+                  key={rowId}
+                  className={`${onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''} ${rowClassName ? rowClassName(item) : ''}`}
+                  onClick={() => onRowClick?.(item)}
+                >
+                  {selectable && selectedIds && (
+                    <td
+                      className="px-4 py-4 whitespace-nowrap"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(rowId)}
+                        onChange={() => toggleOne(rowId)}
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        aria-label={`Select row ${rowId}`}
+                      />
+                    </td>
+                  )}
+                  {columns.map((column) => (
+                    <td key={column.key} className="px-6 py-4 whitespace-nowrap">
+                      {column.render
+                        ? column.render(item)
+                        : (item as Record<string, any>)[column.key]}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
