@@ -448,4 +448,9 @@ export const adminSchemas = {
   
   updateOrderStatus: orderSchemas.updateStatus,
   assignRider: orderSchemas.assignRider,
+
+  deleteCustomer: Joi.object({
+    delete_orders: Joi.boolean().default(false),
+    delete_addresses: Joi.boolean().default(false),
+  }),
 };

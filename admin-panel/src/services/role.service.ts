@@ -47,6 +47,13 @@ export interface CreateAdminUserData {
   roleId?: string | null;
 }
 
+export interface UpdateAdminUserData {
+  fullName?: string;
+  email?: string | null;
+  password?: string;
+  roleId?: string | null;
+}
+
 export const roleService = {
   listPermissions: async (): Promise<Permission[]> => {
     const res = await api.get<{ success: boolean; data: Permission[] }>(
@@ -108,5 +115,17 @@ export const roleService = {
       data
     );
     return res.data;
+  },
+
+  updateAdminUser: async (id: string, data: UpdateAdminUserData): Promise<AdminUser> => {
+    const res = await api.put<{ success: boolean; data: AdminUser }>(
+      `/admin/roles/users/${id}`,
+      data
+    );
+    return res.data;
+  },
+
+  deleteAdminUser: async (id: string): Promise<void> => {
+    await api.delete(`/admin/roles/users/${id}`);
   },
 };

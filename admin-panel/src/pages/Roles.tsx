@@ -35,6 +35,7 @@ export const Roles: React.FC = () => {
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [form, setForm] = useState<RoleFormState>(empty);
   const [userForm, setUserForm] = useState({
+    id: '',
     phone: '',
     password: '',
     fullName: '',
@@ -109,10 +110,29 @@ export const Roles: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       toast.success('Admin user created — they can login with phone + password');
-      setUserModalOpen(false);
-      setUserForm({ phone: '', password: '', fullName: '', email: '', roleId: '' });
+      closeUserModal();
     },
     onError: (err: any) => toast.error(err?.response?.data?.message || err?.message || 'Failed to create admin user'),
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof roleService.updateAdminUser>[1] }) =>
+      roleService.updateAdminUser(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      toast.success('Admin user updated');
+      closeUserModal();
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to update admin user'),
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: roleService.deleteAdminUser,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      toast.success('Admin user deleted');
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to delete admin user'),
   });
 
   const assignRoleMutation = useMutation({
@@ -144,6 +164,37 @@ export const Roles: React.FC = () => {
   const closeModal = () => {
     setModalOpen(false);
     setForm(empty());
+  };
+
+  const closeUserModal = () => {
+    setUserModalOpen(false);
+    setUserForm({ id: '', phone: '', password: '', fullName: '', email: '', roleId: '' });
+  };
+
+  const openCreateUser = () => {
+    setUserForm({ id: '', phone: '', password: '', fullName: '', email: '', roleId: '' });
+    setUserModalOpen(true);
+  };
+
+  const openEditUser = (adminUser: AdminUser) => {
+    setUserForm({
+      id: adminUser.id,
+      phone: adminUser.phone,
+      password: '',
+      fullName: adminUser.fullName,
+      email: adminUser.email || '',
+      roleId: adminUser.adminRoleId || '',
+    });
+    setUserModalOpen(true);
+  };
+
+  const handleDeleteAdminUser = (adminUser: AdminUser) => {
+    if (adminUser.role === 'super_admin') {
+      toast.error('Super admin accounts cannot be deleted');
+      return;
+    }
+    if (!window.confirm(`Delete admin user "${adminUser.fullName}" (${adminUser.phone})?`)) return;
+    deleteUserMutation.mutate(adminUser.id);
   };
 
   const togglePerm = (code: string) => {
@@ -220,7 +271,7 @@ export const Roles: React.FC = () => {
   return (
     <Layout title="Admin Roles" subtitle="Create scoped admin roles with custom permissions">
       <div className="flex justify-end gap-2 mb-4">
-        <Button variant="outline" onClick={() => setUserModalOpen(true)}>
+        <Button variant="outline" onClick={openCreateUser}>
           <UserPlus className="w-4 h-4 mr-2" /> Add Admin User
         </Button>
         <Button onClick={openCreate}>
@@ -329,7 +380,8 @@ export const Roles: React.FC = () => {
                   <th className="py-2 pr-4">Name</th>
                   <th className="py-2 pr-4">Phone</th>
                   <th className="py-2 pr-4">Role</th>
-                  <th className="py-2">Assigned permissions role</th>
+                  <th className="py-2 pr-4">Assigned permissions role</th>
+                  <th className="py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -338,7 +390,7 @@ export const Roles: React.FC = () => {
                     <td className="py-3 pr-4 font-medium">{user.fullName}</td>
                     <td className="py-3 pr-4">{user.phone}</td>
                     <td className="py-3 pr-4 capitalize">{user.role.replace('_', ' ')}</td>
-                    <td className="py-3">
+                    <td className="py-3 pr-4">
                       <select
                         className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                         value={user.adminRoleId || ''}
@@ -361,6 +413,29 @@ export const Roles: React.FC = () => {
                           ))}
                       </select>
                     </td>
+                    <td className="py-3 text-right">
+                      {user.role !== 'super_admin' && (
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openEditUser(user)}
+                            title="Edit admin user"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteAdminUser(user)}
+                            disabled={deleteUserMutation.isPending}
+                            title="Delete admin user"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -371,8 +446,8 @@ export const Roles: React.FC = () => {
 
       <Modal
         isOpen={userModalOpen}
-        onClose={() => setUserModalOpen(false)}
-        title="Add Admin User"
+        onClose={closeUserModal}
+        title={userForm.id ? 'Edit Admin User' : 'Add Admin User'}
         size="md"
       >
         <div className="space-y-4">
@@ -388,14 +463,15 @@ export const Roles: React.FC = () => {
             value={userForm.phone}
             onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
             placeholder="+923001234567"
+            disabled={!!userForm.id}
           />
           <Input
-            label="Password"
+            label={userForm.id ? 'New Password (optional)' : 'Password'}
             type="password"
-            required
+            required={!userForm.id}
             value={userForm.password}
             onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-            placeholder="Min 6 characters"
+            placeholder={userForm.id ? 'Leave blank to keep current password' : 'Min 6 characters'}
           />
           <Input
             label="Email (optional)"
@@ -423,12 +499,32 @@ export const Roles: React.FC = () => {
             </select>
           </div>
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={() => setUserModalOpen(false)}>
+            <Button variant="outline" onClick={closeUserModal}>
               Cancel
             </Button>
             <Button
               onClick={() => {
-                if (!userForm.fullName.trim() || !userForm.phone.trim() || !userForm.password.trim()) {
+                if (!userForm.fullName.trim()) {
+                  toast.error('Full name is required');
+                  return;
+                }
+                if (userForm.id) {
+                  if (userForm.password.trim() && userForm.password.trim().length < 6) {
+                    toast.error('Password must be at least 6 characters');
+                    return;
+                  }
+                  updateUserMutation.mutate({
+                    id: userForm.id,
+                    data: {
+                      fullName: userForm.fullName.trim(),
+                      email: userForm.email.trim() || null,
+                      password: userForm.password.trim() || undefined,
+                      roleId: userForm.roleId || null,
+                    },
+                  });
+                  return;
+                }
+                if (!userForm.phone.trim() || !userForm.password.trim()) {
                   toast.error('Name, phone and password are required');
                   return;
                 }
@@ -440,9 +536,9 @@ export const Roles: React.FC = () => {
                   roleId: userForm.roleId || null,
                 });
               }}
-              isLoading={createUserMutation.isPending}
+              isLoading={createUserMutation.isPending || updateUserMutation.isPending}
             >
-              Create Admin User
+              {userForm.id ? 'Save Changes' : 'Create Admin User'}
             </Button>
           </div>
         </div>

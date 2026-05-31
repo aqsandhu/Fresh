@@ -2266,6 +2266,77 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
 });
 
 /**
+ * Delete a customer (super admin only).
+ * Optionally soft-delete related orders and/or addresses via request body flags.
+ * DELETE /api/admin/customers/:id
+ */
+export const deleteCustomer = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admins can delete customers', 403);
+  }
+
+  const { id } = req.params;
+  const { delete_orders = false, delete_addresses = false } = req.body as {
+    delete_orders?: boolean;
+    delete_addresses?: boolean;
+  };
+
+  const userCheck = await query(
+    `SELECT id, full_name, phone FROM users
+     WHERE id = $1 AND role = 'customer' AND deleted_at IS NULL`,
+    [id]
+  );
+  if (userCheck.rows.length === 0) {
+    return notFoundResponse(res, 'Customer not found');
+  }
+
+  let deletedOrders = 0;
+  let deletedAddresses = 0;
+
+  await withTransaction(async (client) => {
+    if (delete_orders) {
+      const orderResult = await client.query(
+        `UPDATE orders SET deleted_at = NOW(), updated_at = NOW()
+         WHERE user_id = $1 AND deleted_at IS NULL
+         RETURNING id`,
+        [id]
+      );
+      deletedOrders = orderResult.rowCount || 0;
+    }
+
+    if (delete_addresses) {
+      const addressResult = await client.query(
+        `UPDATE addresses SET deleted_at = NOW(), updated_at = NOW()
+         WHERE user_id = $1 AND deleted_at IS NULL
+         RETURNING id`,
+        [id]
+      );
+      deletedAddresses = addressResult.rowCount || 0;
+    }
+
+    await client.query(
+      `UPDATE users
+          SET deleted_at = NOW(), deleted_by = $2, status = 'inactive', updated_at = NOW()
+        WHERE id = $1`,
+      [id, req.user?.id]
+    );
+  });
+
+  logger.info('Customer deleted', {
+    customerId: id,
+    deletedBy: req.user?.id,
+    deletedOrders,
+    deletedAddresses,
+  });
+
+  successResponse(res, {
+    id,
+    deletedOrders,
+    deletedAddresses,
+  }, 'Customer deleted successfully');
+});
+
+/**
  * Get customer addresses with location and door pictures
  * GET /api/admin/customers/:id/addresses
  */

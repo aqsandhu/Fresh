@@ -388,3 +388,118 @@ export const createAdminUser = asyncHandler(async (req: Request, res: Response) 
 
   createdResponse(res, created, 'Admin user created');
 });
+
+/** Update an existing admin user (super admin only). */
+export const updateAdminUser = asyncHandler(async (req: Request, res: Response) => {
+  const bcrypt = await import('bcryptjs');
+  const { id } = req.params;
+  const { full_name, email, password, role_id } = req.body as {
+    full_name?: string;
+    email?: string | null;
+    password?: string;
+    role_id?: string | null;
+  };
+
+  const existing = await query(
+    `SELECT u.id, u.role FROM users u
+       JOIN admins a ON a.user_id = u.id
+      WHERE u.id = $1 AND u.deleted_at IS NULL`,
+    [id]
+  );
+  if (existing.rows.length === 0) {
+    return notFoundResponse(res, 'Admin user not found');
+  }
+  if (existing.rows[0].role === 'super_admin') {
+    return errorResponse(res, 'Super admin accounts cannot be edited here', 403);
+  }
+
+  if (role_id) {
+    const roleCheck = await query(`SELECT id FROM admin_roles WHERE id = $1`, [role_id]);
+    if (roleCheck.rows.length === 0) {
+      return notFoundResponse(res, 'Role not found');
+    }
+  }
+
+  if (password && password.length < 6) {
+    return errorResponse(res, 'Password must be at least 6 characters', 400);
+  }
+
+  const updates: string[] = [];
+  const params: unknown[] = [];
+  let paramIndex = 1;
+
+  if (full_name?.trim()) {
+    updates.push(`full_name = $${paramIndex++}`);
+    params.push(full_name.trim());
+  }
+  if (email !== undefined) {
+    updates.push(`email = $${paramIndex++}`);
+    params.push(email || null);
+  }
+  if (password) {
+    const passwordHash = await bcrypt.hash(password, 10);
+    updates.push(`password_hash = $${paramIndex++}`);
+    params.push(passwordHash);
+  }
+  if (role_id !== undefined) {
+    updates.push(`admin_role_id = $${paramIndex++}`);
+    params.push(role_id || null);
+  }
+
+  if (updates.length === 0) {
+    return errorResponse(res, 'No fields to update', 400);
+  }
+
+  updates.push('updated_at = NOW()');
+  params.push(id);
+
+  const result = await query(
+    `UPDATE users SET ${updates.join(', ')}
+      WHERE id = $${paramIndex} AND deleted_at IS NULL
+      RETURNING id, phone, full_name, email, role, admin_role_id, status`,
+    params
+  );
+
+  logger.info('Admin user updated', { userId: id, updatedBy: req.user?.id });
+
+  successResponse(res, result.rows[0], 'Admin user updated successfully');
+});
+
+/** Soft-delete an admin user (super admin only). */
+export const deleteAdminUser = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  if (req.user?.id === id) {
+    return errorResponse(res, 'You cannot delete your own account', 400);
+  }
+
+  const existing = await query(
+    `SELECT u.id, u.role FROM users u
+       JOIN admins a ON a.user_id = u.id
+      WHERE u.id = $1 AND u.deleted_at IS NULL`,
+    [id]
+  );
+  if (existing.rows.length === 0) {
+    return notFoundResponse(res, 'Admin user not found');
+  }
+  if (existing.rows[0].role === 'super_admin') {
+    return errorResponse(res, 'Super admin accounts cannot be deleted', 403);
+  }
+
+  await withTransaction(async (client) => {
+    await client.query(
+      `UPDATE admins SET is_active = FALSE, updated_at = NOW() WHERE user_id = $1`,
+      [id]
+    );
+    await client.query(
+      `UPDATE users
+          SET deleted_at = NOW(), deleted_by = $2, status = 'inactive', updated_at = NOW()
+        WHERE id = $1`,
+      [id, req.user?.id]
+    );
+  });
+
+  logger.info('Admin user deleted', { userId: id, deletedBy: req.user?.id });
+
+  successResponse(res, { id }, 'Admin user deleted successfully');
+});

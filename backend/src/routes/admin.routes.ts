@@ -47,6 +47,11 @@ router.get('/dashboard', adminController.getDashboardStats);
 // Customers
 router.get('/customers', adminController.getCustomers);
 router.get('/customers/:id/addresses', adminController.getCustomerAddresses);
+router.delete(
+  '/customers/:id',
+  validate(adminSchemas.deleteCustomer),
+  adminController.deleteCustomer
+);
 
 // Orders
 router.get('/orders', adminController.getAllOrders);
