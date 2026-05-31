@@ -31,6 +31,13 @@ import { bannerService } from '@/services/banner.service';
 import type { DeliverySettings, TimeSlot, BusinessHours } from '@/types';
 import toast from 'react-hot-toast';
 import { useCityContext } from '@/context/CityContext';
+import { useAuthContext } from '@/context/AuthContext';
+import {
+  canUpdateSettingsTab,
+  canViewSettingsTab,
+  visibleSettingsTabs,
+  type SettingsTabId,
+} from '@/lib/settingsPermissions';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -49,8 +56,20 @@ interface FormErrors {
 export const Settings: React.FC = () => {
   const queryClient = useQueryClient();
   const { selectedCity, selectedCityId } = useCityContext();
-  const [activeTab, setActiveTab] = useState<'delivery' | 'timeslots' | 'business' | 'banner'>('delivery');
+  const { user } = useAuthContext();
+  const permissions = user?.permissions;
+  const allowedTabs = visibleSettingsTabs(permissions);
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('delivery');
   const [formErrors, setFormErrors] = useState<FormErrors>({});
+
+  useEffect(() => {
+    if (allowedTabs.length === 0) return;
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0]);
+    }
+  }, [allowedTabs, activeTab]);
+
+  const canUpdate = (tab: SettingsTabId) => canUpdateSettingsTab(permissions, tab);
 
   // Delivery Settings State
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
@@ -377,6 +396,7 @@ export const Settings: React.FC = () => {
             type="submit"
             isLoading={updateDeliveryMutation.isPending}
             leftIcon={<Save className="w-4 h-4" />}
+            disabled={!canUpdate('delivery')}
           >
             Save Delivery Settings
           </Button>
@@ -398,7 +418,11 @@ export const Settings: React.FC = () => {
               <p className="text-sm text-gray-500">Manage available delivery time slots</p>
             </div>
           </div>
-          <Button onClick={openAddTimeSlotModal} leftIcon={<Plus className="w-4 h-4" />}>
+          <Button
+            onClick={openAddTimeSlotModal}
+            leftIcon={<Plus className="w-4 h-4" />}
+            disabled={!canUpdate('timeslots')}
+          >
             Add Time Slot
           </Button>
         </div>
@@ -479,6 +503,7 @@ export const Settings: React.FC = () => {
           onClick={handleSaveBusinessHours}
           isLoading={updateBusinessHoursMutation.isPending}
           leftIcon={<Save className="w-4 h-4" />}
+          disabled={!canUpdate('business')}
         >
           Save Business Hours
         </Button>
@@ -686,7 +711,7 @@ export const Settings: React.FC = () => {
               type="submit"
               isLoading={updateBannerMutation.isPending}
               leftIcon={<Save className="w-4 h-4" />}
-              disabled={!selectedCityId}
+              disabled={!selectedCityId || !canUpdate('banner')}
             >
               Save Banner Settings
             </Button>
@@ -698,8 +723,18 @@ export const Settings: React.FC = () => {
 
   return (
     <Layout title="Settings" subtitle="Manage application settings and configuration">
+      {allowedTabs.length === 0 ? (
+        <Card>
+          <div className="p-8 text-center text-gray-600 text-sm">
+            You do not have permission to view any settings sections. Ask a super admin to assign
+            settings permissions to your role.
+          </div>
+        </Card>
+      ) : (
+      <>
       {/* Tabs */}
-      <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg mb-6">
+      <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg mb-6">
+        {canViewSettingsTab(permissions, 'delivery') && (
         <button
           onClick={() => setActiveTab('delivery')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -711,6 +746,8 @@ export const Settings: React.FC = () => {
           <Truck className="w-4 h-4" />
           <span>Delivery</span>
         </button>
+        )}
+        {canViewSettingsTab(permissions, 'timeslots') && (
         <button
           onClick={() => setActiveTab('timeslots')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -722,6 +759,8 @@ export const Settings: React.FC = () => {
           <Clock className="w-4 h-4" />
           <span>Time Slots</span>
         </button>
+        )}
+        {canViewSettingsTab(permissions, 'business') && (
         <button
           onClick={() => setActiveTab('business')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -733,6 +772,8 @@ export const Settings: React.FC = () => {
           <Calendar className="w-4 h-4" />
           <span>Business Hours</span>
         </button>
+        )}
+        {canViewSettingsTab(permissions, 'banner') && (
         <button
           onClick={() => setActiveTab('banner')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -744,6 +785,7 @@ export const Settings: React.FC = () => {
           <Monitor className="w-4 h-4" />
           <span>Website Banner</span>
         </button>
+        )}
       </div>
 
       {/* Tab Content */}
@@ -821,6 +863,8 @@ export const Settings: React.FC = () => {
           </label>
         </form>
       </Modal>
+      </>
+      )}
     </Layout>
   );
 };

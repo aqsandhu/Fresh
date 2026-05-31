@@ -23,6 +23,12 @@ import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, otpBypassHint } from '@/lib/otpBypass'
 import PinInput from '@/components/auth/PinInput'
+import {
+  clearLastPhone,
+  getLastPhone,
+  maskPhone,
+  setLastPhone,
+} from '@/lib/phoneStorage'
 
 // ── Schemas ─────────────────────────────────────────────────────────────
 const phoneSchema = z.object({
@@ -50,6 +56,7 @@ export default function LoginPage() {
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [resendTimer, setResendTimer] = useState(0)
   const [pin, setPin] = useState('')
+  const [bootstrapping, setBootstrapping] = useState(true)
 
   const confirmationResultRef = useRef<ConfirmationResult | null>(null)
   const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null)
@@ -82,6 +89,52 @@ export default function LoginPage() {
       setValue('phone', phoneParam)
     }
   }, [searchParams, setValue])
+
+  // Returning users: skip phone entry when we have a saved number with PIN set.
+  useEffect(() => {
+    let cancelled = false
+
+    async function bootstrapPinLogin() {
+      if (searchParams.get('another') === '1') {
+        clearLastPhone()
+        setStep('phone')
+        setBootstrapping(false)
+        return
+      }
+
+      if (searchParams.get('phone')) {
+        setBootstrapping(false)
+        return
+      }
+
+      const saved = getLastPhone()
+      if (!saved) {
+        setBootstrapping(false)
+        return
+      }
+
+      try {
+        const status = await authApi.pinStatus(saved)
+        if (cancelled) return
+        if (status.exists && status.hasPin) {
+          setPhone(saved)
+          setNormalizedPhone(saved)
+          setUserName(status.fullName || null)
+          setPin('')
+          setStep('pin')
+        }
+      } catch {
+        /* fall through to phone step */
+      } finally {
+        if (!cancelled) setBootstrapping(false)
+      }
+    }
+
+    bootstrapPinLogin()
+    return () => {
+      cancelled = true
+    }
+  }, [searchParams])
 
   // ── Initialize reCAPTCHA ──────────────────────────────────────────────
   const initRecaptcha = () => {
@@ -189,6 +242,7 @@ export default function LoginPage() {
     try {
       const res = await authApi.verifyPin(normalizedPhone || phone, entered)
       const { user, tokens } = res.data
+      setLastPhone(user.phone)
       setAuth(
         {
           id: user.id,
@@ -211,6 +265,15 @@ export default function LoginPage() {
     }
   }, [normalizedPhone, phone, setAuth, router, searchParams])
 
+  const handleUseAnotherNumber = () => {
+    clearLastPhone()
+    setStep('phone')
+    setPhone('')
+    setNormalizedPhone('')
+    setPin('')
+    setUserName(null)
+  }
+
   // Forgot PIN — fall back to OTP, then user can reset PIN after.
   const handleForgotPin = async () => {
     if (!phone) return
@@ -226,6 +289,7 @@ export default function LoginPage() {
       if (isOtpBypassEnabled()) {
         const res = await authApi.verifyLoginWithCode(normalizedPhone || phone, code)
         const { user, tokens } = res.data
+        setLastPhone(user.phone)
         setAuth(
           {
             id: user.id,
@@ -249,6 +313,7 @@ export default function LoginPage() {
       // Step 2: Send Firebase ID token to backend
       const res = await authApi.verifyLogin(idToken)
       const { user, tokens } = res.data
+      setLastPhone(user.phone)
 
       setAuth(
         {
@@ -313,6 +378,14 @@ export default function LoginPage() {
 
   // ── Channel Buttons ───────────────────────────────────────────────────
 
+  if (bootstrapping) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center py-12 px-4">
       {/* Invisible reCAPTCHA container required by Firebase */}
@@ -344,7 +417,7 @@ export default function LoginPage() {
                   <>OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS</>
                 )
               ) : step === 'pin' ? (
-                <>Enter your 4-digit PIN to continue</>
+                <>Enter your 4-digit PIN for <span className="font-semibold text-gray-800">{maskPhone(normalizedPhone || phone)}</span></>
               ) : (
                 'Login to your Fresh Bazar account'
               )}
@@ -400,10 +473,11 @@ export default function LoginPage() {
                     </button>
                     <div>
                       <button
-                        onClick={() => { setStep('phone'); setPin('') }}
+                        type="button"
+                        onClick={handleUseAnotherNumber}
                         className="text-gray-500 hover:text-gray-700 text-xs"
                       >
-                        Change number
+                        Login with another number
                       </button>
                     </div>
                   </div>
