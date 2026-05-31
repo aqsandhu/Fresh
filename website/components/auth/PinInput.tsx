@@ -47,9 +47,11 @@ export default function PinInput({
   }, [autoFocus])
 
   const setCharAt = (index: number, char: string) => {
-    const arr = (value + '____').slice(0, LENGTH).split('').map((c) => (c === '_' ? '' : c))
-    arr[index] = char
-    const next = arr.join('').replace(/_/g, '')
+    if (!char) {
+      onChange(value.slice(0, index))
+      return
+    }
+    const next = (value.slice(0, index) + char).slice(0, LENGTH)
     onChange(next)
     if (next.length === LENGTH) onComplete?.(next)
   }
@@ -63,9 +65,7 @@ export default function PinInput({
     }
     // Pasting / autofill: spread digits across cells starting at i
     if (digits.length > 1) {
-      const arr = (value + '____').slice(0, LENGTH).split('').map((c) => (c === '_' ? '' : c))
-      for (let k = 0; k < digits.length && i + k < LENGTH; k++) arr[i + k] = digits[k]
-      const next = arr.join('').replace(/_/g, '')
+      const next = (value.slice(0, i) + digits).slice(0, LENGTH)
       onChange(next)
       const nextIdx = Math.min(i + digits.length, LENGTH - 1)
       refs.current[nextIdx]?.focus()
@@ -77,8 +77,18 @@ export default function PinInput({
   }
 
   const handleKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !cells[i] && i > 0) {
-      refs.current[i - 1]?.focus()
+    if (e.key === 'Backspace') {
+      e.preventDefault()
+      if (value.length === 0) return
+
+      if (i < value.length) {
+        onChange(value.slice(0, i))
+        refs.current[Math.max(0, i - 1)]?.focus()
+      } else {
+        onChange(value.slice(0, -1))
+        refs.current[Math.max(0, value.length - 2)]?.focus()
+      }
+      return
     }
     if (e.key === 'ArrowLeft' && i > 0) refs.current[i - 1]?.focus()
     if (e.key === 'ArrowRight' && i < LENGTH - 1) refs.current[i + 1]?.focus()
