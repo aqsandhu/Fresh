@@ -21,7 +21,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort } from '@/lib/utils'
 import { getDeliveryHint, getVegFruitSubtotal } from '@/lib/deliveryRules'
-import { resolveLineUnitPrice, unitPriceSuffix, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
+import { resolveLineUnitPrice, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
 import ProductPrice from '@/components/ui/ProductPrice'
 
 export default function CartPage() {
@@ -87,10 +87,6 @@ export default function CartPage() {
                 const unit = item.unit || 'full'
                 const unitSuffix = unitLabelShort(unit)
                 const linePrice = resolveLineUnitPrice(item)
-                const priceUnit =
-                  unit === 'full'
-                    ? item.product.unit
-                    : unitPriceSuffix(item.product, unit).replace(/^\//, '')
                 const caption = unitPriceCaption(unit)
                 return (
                   <motion.div
@@ -131,14 +127,20 @@ export default function CartPage() {
                           </h3>
                         </Link>
                         <div className="mt-1">
-                          <ProductPrice
-                            price={linePrice}
-                            unit={priceUnit}
-                            size="sm"
-                          />
-                          {caption && (
-                            <span className="text-[10px] text-primary-700 font-medium ml-1">
-                              {caption}
+                          {unit === 'full' ? (
+                            <ProductPrice
+                              price={linePrice}
+                              unit={item.product.unit}
+                              size="sm"
+                            />
+                          ) : (
+                            <span className="inline-flex items-baseline gap-1">
+                              <ProductPrice price={linePrice} size="sm" />
+                              {caption && (
+                                <span className="text-[10px] text-primary-700 font-medium">
+                                  {caption}
+                                </span>
+                              )}
                             </span>
                           )}
                         </div>

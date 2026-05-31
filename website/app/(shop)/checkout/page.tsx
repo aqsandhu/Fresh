@@ -27,7 +27,7 @@ import Button from '@/components/ui/Button'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
-import { resolveLineUnitPrice, unitPriceSuffix, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
+import { resolveLineUnitPrice, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
 import { getSlotAvailability } from '@/lib/timeSlots'
 import { addressesApi, settingsApi } from '@/lib/api'
 import api from '@/lib/api'
@@ -694,10 +694,6 @@ function CheckoutPage() {
                   const unit = item.unit || 'full'
                   const unitSuffix = unitLabelShort(unit)
                   const linePrice = resolveLineUnitPrice(item)
-                  const priceUnit =
-                    unit === 'full'
-                      ? item.product.unit
-                      : unitPriceSuffix(item.product, unit).replace(/^\//, '')
                   const caption = unitPriceCaption(unit)
                   return (
                     <div
@@ -723,13 +719,16 @@ function CheckoutPage() {
                         </p>
                         <p className="text-xs text-gray-500 inline-flex items-baseline gap-1 flex-wrap">
                           {item.quantity} x {formatPriceShort(linePrice)}
-                          <span className="text-[10px] text-gray-400">
-                            {formatProductUnitSuffix(priceUnit)}
-                          </span>
-                          {caption && (
-                            <span className="text-[10px] text-primary-700 font-medium">
-                              {caption}
+                          {unit === 'full' ? (
+                            <span className="text-[10px] text-gray-400">
+                              {formatProductUnitSuffix(item.product.unit)}
                             </span>
+                          ) : (
+                            caption && (
+                              <span className="text-[10px] text-primary-700 font-medium">
+                                {caption}
+                              </span>
+                            )
                           )}
                         </p>
                       </div>
