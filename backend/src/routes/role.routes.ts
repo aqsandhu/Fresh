@@ -27,5 +27,7 @@ router.delete('/:id', roleController.deleteRole);
 router.put('/assign/:id', roleController.assignRoleToUser);
 router.get('/users', roleController.listAdminUsers);
 router.post('/users', roleController.createAdminUser);
+router.put('/users/:id', roleController.updateAdminUser);
+router.delete('/users/:id', roleController.deleteAdminUser);
 
 export default router;

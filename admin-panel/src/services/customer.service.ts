@@ -102,4 +102,22 @@ export const customerService = {
       throw new Error(error?.response?.data?.message || 'Failed to search customers');
     }
   },
+
+  deleteCustomer: async (
+    id: string,
+    options: { deleteOrders?: boolean; deleteAddresses?: boolean } = {}
+  ): Promise<{ deletedOrders: number; deletedAddresses: number }> => {
+    try {
+      const response = await api.delete<
+        ApiResponse<{ deletedOrders: number; deletedAddresses: number }>
+      >(`/admin/customers/${id}`, {
+        deleteOrders: options.deleteOrders ?? false,
+        deleteAddresses: options.deleteAddresses ?? false,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error deleting customer:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to delete customer');
+    }
+  },
 };

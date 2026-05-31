@@ -179,8 +179,8 @@ export const api = {
   patch: <T>(url: string, data?: object) => 
     apiClient.patch<T>(url, data).then(res => res.data),
   
-  delete: <T>(url: string) => 
-    apiClient.delete<T>(url).then(res => res.data),
+  delete: <T>(url: string, data?: object) =>
+    apiClient.delete<T>(url, data ? { data: toSnakeCase(data) } : undefined).then(res => res.data),
   
   postForm: <T>(url: string, data: FormData) => 
     apiClient.post<T>(url, data).then(res => res.data),

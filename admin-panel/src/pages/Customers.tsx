@@ -1,18 +1,28 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Users, Search, MapPin, X, Home, Briefcase, Building, Navigation, Image, Star } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Users, Search, MapPin, X, Home, Briefcase, Building, Navigation, Image, Star, Trash2 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import { Table } from '@/components/ui/Table';
 import { customerService } from '@/services/customer.service';
+import { useAuthContext } from '@/context/AuthContext';
 import { formatCurrency, resolveImageUrl } from '@/utils/formatters';
 import type { Customer, Address } from '@/types';
+import toast from 'react-hot-toast';
 
 export const Customers: React.FC = () => {
+  const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
+  const [deleteOrders, setDeleteOrders] = useState(false);
+  const [deleteAddresses, setDeleteAddresses] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['customers', page, search],
@@ -25,8 +35,35 @@ export const Customers: React.FC = () => {
     enabled: !!selectedCustomer,
   });
 
+  const deleteCustomerMutation = useMutation({
+    mutationFn: ({ id, deleteOrders, deleteAddresses }: {
+      id: string;
+      deleteOrders: boolean;
+      deleteAddresses: boolean;
+    }) => customerService.deleteCustomer(id, { deleteOrders, deleteAddresses }),
+    onSuccess: (result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success(
+        `Customer deleted${result.deletedOrders ? `, ${result.deletedOrders} order(s) removed` : ''}${result.deletedAddresses ? `, ${result.deletedAddresses} address(es) removed` : ''}`
+      );
+      setDeleteTarget(null);
+      setDeleteOrders(false);
+      setDeleteAddresses(false);
+      if (selectedCustomer?.id === variables.id) {
+        setSelectedCustomer(null);
+      }
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to delete customer'),
+  });
+
   const customers = data?.customers || [];
   const pagination = data?.pagination;
+
+  const openDeleteModal = (customer: Customer) => {
+    setDeleteTarget(customer);
+    setDeleteOrders(false);
+    setDeleteAddresses(false);
+  };
 
   const getAddressIcon = (type?: string) => {
     switch (type) {
@@ -100,6 +137,23 @@ export const Customers: React.FC = () => {
         </span>
       ),
     },
+    ...(isSuperAdmin
+      ? [{
+          key: 'actions',
+          title: 'Actions',
+          render: (c: Customer) => (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-red-600 border-red-200 hover:bg-red-50"
+              onClick={() => openDeleteModal(c)}
+              leftIcon={<Trash2 className="w-4 h-4" />}
+            >
+              Delete
+            </Button>
+          ),
+        }]
+      : []),
   ];
 
   return (
@@ -163,6 +217,86 @@ export const Customers: React.FC = () => {
           </>
         )}
       </Card>
+
+      {/* Delete Customer Modal */}
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => {
+          setDeleteTarget(null);
+          setDeleteOrders(false);
+          setDeleteAddresses(false);
+        }}
+        title="Delete Customer"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteTarget(null);
+                setDeleteOrders(false);
+                setDeleteAddresses(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => {
+                if (!deleteTarget) return;
+                deleteCustomerMutation.mutate({
+                  id: deleteTarget.id,
+                  deleteOrders,
+                  deleteAddresses,
+                });
+              }}
+              isLoading={deleteCustomerMutation.isPending}
+            >
+              Delete Customer
+            </Button>
+          </div>
+        }
+      >
+        {deleteTarget && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-700">
+              You are about to delete customer{' '}
+              <strong>{deleteTarget.fullName || deleteTarget.phone}</strong>.
+              This will remove their login account from the system.
+            </p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+              <p className="text-sm font-medium text-amber-900">
+                Also delete related data? (optional)
+              </p>
+              <p className="text-sm text-amber-800">
+                If you leave these unchecked, only the customer account will be deleted.
+                Their orders and addresses will remain in the system.
+              </p>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={deleteOrders}
+                  onChange={(e) => setDeleteOrders(e.target.checked)}
+                  className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm text-gray-800">
+                  Delete orders ({deleteTarget.totalOrders || 0})
+                </span>
+              </label>
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={deleteAddresses}
+                  onChange={(e) => setDeleteAddresses(e.target.checked)}
+                  className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm text-gray-800">
+                  Delete addresses ({deleteTarget.totalAddresses || 0})
+                </span>
+              </label>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Addresses Modal */}
       {selectedCustomer && (
