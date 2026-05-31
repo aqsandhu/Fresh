@@ -3,6 +3,7 @@
 import { motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
+import { useCityContext } from '@/context/CityContext'
 import CategoryCard from '@/components/ui/CategoryCard'
 import { categoriesApi } from '@/lib/api'
 
@@ -28,9 +29,11 @@ const itemVariants = {
 }
 
 export default function CategoriesSection() {
+  const { selectedCityId } = useCityContext()
   const { data: categories, isLoading } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', selectedCityId],
     queryFn: () => categoriesApi.getAll(),
+    enabled: !!selectedCityId,
   })
 
   return (

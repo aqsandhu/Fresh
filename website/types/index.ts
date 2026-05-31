@@ -307,6 +307,8 @@ export interface ProductFilters {
 
 export interface CartState {
   items: CartStoreItem[];
+  cartsByCity: Record<string, CartStoreItem[]>;
+  activeCityId: string | null;
   deliveryBaseCharge: number;
   deliveryFreeThreshold: number;
   /** True after Zustand persist has loaded items from localStorage. */
@@ -323,6 +325,8 @@ export interface CartState {
   /** Update qty by composite key (productId + unit). */
   updateQuantity: (productId: string, quantity: number, unit?: ProductUnit) => void;
   clearCart: () => void;
+  /** Swap to another city's saved cart (persists current cart first). */
+  switchCity: (cityId: string) => void;
   loadDeliverySettings: () => Promise<void>;
   getTotalItems: () => number;
   getTotalPrice: () => number;

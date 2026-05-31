@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import {
   Phone,
   Mail,
@@ -62,6 +63,10 @@ const features = [
 ]
 
 export default function Footer() {
+  const pathname = usePathname()
+  if (pathname.startsWith('/select-city')) {
+    return null
+  }
   return (
     <footer className="bg-gray-900 text-white">
       {/* Features Bar */}

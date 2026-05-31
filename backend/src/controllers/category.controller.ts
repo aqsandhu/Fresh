@@ -71,18 +71,23 @@ export const getCategories = asyncHandler(async (req: Request, res: Response) =>
  */
 export const getCategoryBySlug = asyncHandler(async (req: Request, res: Response) => {
   const { slug } = req.params;
+  const publicCityId = await resolvePublicCityId(req);
 
-  // Get main category
-  const categoryResult = await query(
-    `SELECT 
+  let categorySql = `
+    SELECT 
       c.id, c.name_ur, c.name_en, c.slug, c.icon_url, c.image_url,
       c.parent_id, c.display_order, c.is_active,
       c.qualifies_for_free_delivery, c.minimum_order_for_free_delivery,
       c.meta_title, c.meta_description
     FROM categories c
-    WHERE c.slug = $1 AND c.is_active = TRUE`,
-    [slug]
-  );
+    WHERE c.slug = $1 AND c.is_active = TRUE`;
+  const categoryParams: any[] = [slug];
+  if (publicCityId) {
+    categorySql += ` AND c.city_id = $2`;
+    categoryParams.push(publicCityId);
+  }
+
+  const categoryResult = await query(categorySql, categoryParams);
 
   if (categoryResult.rows.length === 0) {
     return notFoundResponse(res, 'Category not found');
@@ -90,19 +95,24 @@ export const getCategoryBySlug = asyncHandler(async (req: Request, res: Response
 
   const category = categoryResult.rows[0];
 
-  // Get subcategories
-  const subcategoriesResult = await query(
-    `SELECT 
+  let subSql = `
+    SELECT 
       c.id, c.name_ur, c.name_en, c.slug, c.icon_url, c.image_url,
       c.display_order,
       COUNT(p.id) as product_count
     FROM categories c
     LEFT JOIN products p ON c.id = p.category_id AND p.is_active = TRUE
-    WHERE c.parent_id = $1 AND c.is_active = TRUE
+    WHERE c.parent_id = $1 AND c.is_active = TRUE`;
+  const subParams: any[] = [category.id];
+  if (publicCityId) {
+    subSql += ` AND c.city_id = $2`;
+    subParams.push(publicCityId);
+  }
+  subSql += `
     GROUP BY c.id
-    ORDER BY c.display_order ASC, c.name_en ASC`,
-    [category.id]
-  );
+    ORDER BY c.display_order ASC, c.name_en ASC`;
+
+  const subcategoriesResult = await query(subSql, subParams);
 
   category.subcategories = subcategoriesResult.rows;
 
@@ -114,14 +124,21 @@ export const getCategoryBySlug = asyncHandler(async (req: Request, res: Response
  * GET /api/categories/tree
  */
 export const getCategoryTree = asyncHandler(async (req: Request, res: Response) => {
-  const result = await query(
-    `SELECT 
+  const publicCityId = await resolvePublicCityId(req);
+  let sql = `
+    SELECT 
       c.id, c.name_ur, c.name_en, c.slug, c.icon_url, c.image_url,
       c.parent_id, c.display_order
     FROM categories c
-    WHERE c.is_active = TRUE
-    ORDER BY c.display_order ASC, c.name_en ASC`
-  );
+    WHERE c.is_active = TRUE`;
+  const params: any[] = [];
+  if (publicCityId) {
+    sql += ` AND c.city_id = $1`;
+    params.push(publicCityId);
+  }
+  sql += ` ORDER BY c.display_order ASC, c.name_en ASC`;
+
+  const result = await query(sql, params);
 
   // Build tree structure
   const categories = result.rows;

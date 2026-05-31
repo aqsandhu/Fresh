@@ -17,6 +17,9 @@ const navItems = [
 
 export default function MobileNav() {
   const pathname = usePathname()
+  if (pathname.startsWith('/select-city')) {
+    return null
+  }
   const { getTotalItems } = useCartStore()
   const [hasMounted, setHasMounted] = useState(false)
   useEffect(() => { setHasMounted(true) }, [])

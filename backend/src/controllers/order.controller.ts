@@ -220,6 +220,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     requested_delivery_date,
     payment_method = 'cash_on_delivery',
     customer_notes,
+    city_id: bodyCityId,
   } = req.body;
 
   const order = await withTransaction(async (client) => {
@@ -263,6 +264,28 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
     const address = addressResult.rows[0];
 
+    // Resolve service city for admin routing (explicit body > address name > cart product).
+    let orderCityId: string | null =
+      typeof bodyCityId === 'string' && bodyCityId.length > 0 ? bodyCityId : null;
+
+    if (!orderCityId && address.city) {
+      const cityRow = await client.query(
+        `SELECT id FROM service_cities
+         WHERE LOWER(name) = LOWER($1) AND is_active = TRUE
+         LIMIT 1`,
+        [address.city]
+      );
+      orderCityId = cityRow.rows[0]?.id || null;
+    }
+
+    if (!orderCityId && cartItemsResult.rows.length > 0) {
+      const productCity = await client.query(
+        'SELECT city_id FROM products WHERE id = $1',
+        [cartItemsResult.rows[0].product_id]
+      );
+      orderCityId = productCity.rows[0]?.city_id || null;
+    }
+
     // Calculate delivery charge
     const deliveryChargeResult = await calculateDeliveryCharge(cart.id, time_slot_id);
     const deliveryCharge = deliveryChargeResult.delivery_charge;
@@ -288,14 +311,14 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         subtotal, discount_amount, delivery_charge, tax_amount, total_amount,
         delivery_charge_rule_id,
         payment_method, payment_status,
-        status, source, customer_notes
+        status, source, customer_notes, city_id
       ) VALUES (
         $1, $2, $3,
         $4, $5,
         $6, $7, $8, $9, $10,
         $11,
         $12, 'pending',
-        'pending', 'app', $13
+        'pending', 'website', $13, $14
       ) RETURNING *`,
       [
         req.user!.id, address_id,
@@ -316,6 +339,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         subtotal, discountAmount, deliveryCharge, 0, totalAmount,
         deliveryChargeRuleId,
         payment_method, customer_notes,
+        orderCityId,
       ]
     );
 

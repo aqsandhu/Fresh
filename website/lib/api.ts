@@ -1,5 +1,12 @@
 import axios from 'axios'
 import { Product, Category, Order, Address, User, AttaChakkiRequest } from '@/types'
+import { getSelectedCityId } from '@/lib/cityStorage'
+
+function withCityParams<T extends Record<string, unknown>>(params?: T): T & { city_id?: string } {
+  const cityId = getSelectedCityId()
+  if (!cityId) return (params || {}) as T & { city_id?: string }
+  return { ...(params || {}), city_id: cityId } as T & { city_id?: string }
+}
 
 // IMPORTANT: Set NEXT_PUBLIC_API_URL in production to point to the live backend.
 // e.g., NEXT_PUBLIC_API_URL=https://api.freshbazar.pk/api
@@ -123,7 +130,7 @@ function mapBackendCategory(raw: any): Category {
 // Products API
 export const productsApi = {
   getAll: async (params?: { category?: string; page?: number; limit?: number; search?: string; featured?: string; sortBy?: string; sortOrder?: string; minPrice?: number; maxPrice?: number; inStock?: string }) => {
-    const response = await api.get('/products', { params })
+    const response = await api.get('/products', { params: withCityParams(params) })
     const body = response.data
     const products = (body.data || []).map(mapBackendProduct)
     const meta = body.meta || {}
@@ -131,22 +138,22 @@ export const productsApi = {
   },
 
   getById: async (id: string): Promise<Product> => {
-    const response = await api.get(`/products/${id}`)
+    const response = await api.get(`/products/${id}`, { params: withCityParams() })
     return mapBackendProduct(response.data.data || response.data)
   },
 
   getBySlug: async (slug: string): Promise<Product> => {
-    const response = await api.get(`/products/slug/${slug}`)
+    const response = await api.get(`/products/slug/${slug}`, { params: withCityParams() })
     return mapBackendProduct(response.data.data || response.data)
   },
 
   search: async (q: string): Promise<Product[]> => {
-    const response = await api.get('/products/search', { params: { q } })
+    const response = await api.get('/products/search', { params: withCityParams({ q }) })
     return (response.data.data || []).map(mapBackendProduct)
   },
 
   getFeatured: async (limit: number = 10): Promise<Product[]> => {
-    const response = await api.get('/products/featured/list', { params: { limit } })
+    const response = await api.get('/products/featured/list', { params: withCityParams({ limit }) })
     return (response.data.data || []).map(mapBackendProduct)
   },
 
@@ -162,12 +169,12 @@ export const productsApi = {
 // Categories API
 export const categoriesApi = {
   getAll: async (): Promise<Category[]> => {
-    const response = await api.get('/categories')
+    const response = await api.get('/categories', { params: withCityParams() })
     return (response.data.data || []).map(mapBackendCategory)
   },
 
   getBySlug: async (slug: string): Promise<Category & { subcategories?: Category[] }> => {
-    const response = await api.get(`/categories/${slug}`)
+    const response = await api.get(`/categories/${slug}`, { params: withCityParams() })
     const raw = response.data.data || response.data
     const category = mapBackendCategory(raw)
     if (raw.subcategories) {
@@ -292,6 +299,7 @@ export const ordersApi = {
     payment_method: string
     customer_notes?: string
     requested_delivery_date?: string
+    city_id?: string
   }) => {
     const response = await api.post('/orders', data)
     return response.data
