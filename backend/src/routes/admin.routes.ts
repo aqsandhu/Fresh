@@ -74,6 +74,7 @@ router.put(
   validate(orderSchemas.assignRider),
   adminController.assignRider
 );
+router.delete('/orders/:id', adminController.deleteOrder);
 
 // Riders
 router.get('/riders', adminController.getRiders);
@@ -185,6 +186,9 @@ router.put(
   validate(adminSchemas.assignHouseNumber),
   adminController.assignHouseNumber
 );
+router.delete('/addresses/:id/door-picture', adminController.clearAddressDoorPicture);
+router.delete('/addresses/:id/location', adminController.clearAddressLocation);
+router.delete('/addresses/:id', adminController.deleteAdminAddress);
 
 // Service Cities
 router.get('/cities', adminController.getCities);

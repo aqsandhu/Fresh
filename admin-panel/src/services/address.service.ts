@@ -67,6 +67,26 @@ export const addressService = {
     }
   },
 
+  clearDoorPicture: async (id: string): Promise<Address> => {
+    try {
+      const response = await api.delete<ApiResponse<Address>>(`/admin/addresses/${id}/door-picture`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error removing door picture:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to remove door picture');
+    }
+  },
+
+  clearLocation: async (id: string): Promise<Address> => {
+    try {
+      const response = await api.delete<ApiResponse<Address>>(`/admin/addresses/${id}/location`);
+      return response.data;
+    } catch (error: any) {
+      console.error('Error removing location:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to remove location');
+    }
+  },
+
   searchAddresses: async (query: string, limit: number = 10): Promise<Address[]> => {
     try {
       const response = await api.get<ApiResponse<Address[]>>('/admin/addresses/search', {

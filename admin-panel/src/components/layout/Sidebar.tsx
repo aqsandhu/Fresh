@@ -88,7 +88,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         {/* Navigation */}
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
           {navItems
-            .filter((item) => canAccessRoute(item.path, user?.permissions))
+            .filter((item) => {
+              if (item.path === '/admin/roles' && user?.role !== 'super_admin') return false;
+              return canAccessRoute(item.path, user?.permissions);
+            })
             .map((item) => (
             <NavLink
               key={item.path}
