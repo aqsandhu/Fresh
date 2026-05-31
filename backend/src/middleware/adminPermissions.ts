@@ -91,6 +91,16 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
   if (p.startsWith('/delivery-zones')) {
     return m === 'GET' ? ['settings.view'] : ['settings.update'];
   }
+  // Time slots are operational data (rider charges, order assignment), not only Settings UI.
+  if (p === '/settings/time-slots' && m === 'GET') {
+    return [
+      'settings.view',
+      'riders.view',
+      'riders.manage',
+      'orders.view',
+      'orders.assign_rider',
+    ];
+  }
   if (p.startsWith('/settings') || p.startsWith('/site-settings')) {
     return m === 'GET' ? ['settings.view'] : ['settings.update'];
   }

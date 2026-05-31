@@ -133,12 +133,24 @@ export const errorHandler = (
       message === 'Invalid token' ||
       message === 'Access token required');
 
+  const isExpectedPermissionDenial =
+    statusCode === 403 &&
+    message === 'You do not have permission to perform this action';
+
   if (isExpectedAuthFailure) {
     logger.warn('Auth failure', {
       message,
       statusCode,
       path: req.path,
       method: req.method,
+    });
+  } else if (isExpectedPermissionDenial) {
+    logger.warn('Permission denied', {
+      message,
+      statusCode,
+      path: req.path,
+      method: req.method,
+      userId: (req as any).user?.id,
     });
   } else {
     logger.error('Error occurred', {
