@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { authService } from '@/services/auth.service';
+import { normalizeAdminUser } from '@/lib/adminUser';
 import { refreshAdminAccessToken, tokenNeedsRefresh } from '@/lib/adminTokenRefresh';
 import type { User, LoginCredentials } from '@/types';
 
@@ -72,7 +73,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (credentials: LoginCredentials): Promise<void> => {
     const response = await authService.login(credentials);
-    setUser(response.user);
+    const normalized = normalizeAdminUser(response.user) ?? response.user;
+    setUser(normalized);
   };
 
   const logout = (): void => {

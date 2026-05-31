@@ -59,7 +59,10 @@ export const roleService = {
     const res = await api.get<{ success: boolean; data: AdminRole[] }>(
       '/admin/roles'
     );
-    return res.data || [];
+    return (res.data || []).map((role) => ({
+      ...role,
+      permissions: Array.isArray(role.permissions) ? role.permissions : [],
+    }));
   },
 
   createRole: async (data: CreateRoleData): Promise<AdminRole> => {

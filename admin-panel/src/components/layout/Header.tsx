@@ -21,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   const {
     cities,
     selectedCityId,
+    selectedCity,
     setSelectedCityId,
     canSwitchCity,
     isCityLocked,

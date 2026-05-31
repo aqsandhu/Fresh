@@ -58,7 +58,10 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 
   if (!canAccessRoute(location.pathname, user?.permissions)) {
     const fallback = firstAccessibleRoute(user?.permissions);
-    return <Navigate to={fallback || '/admin/no-access'} replace />;
+    const dest = fallback || '/admin/no-access';
+    if (location.pathname !== dest) {
+      return <Navigate to={dest} replace />;
+    }
   }
 
   return <>{children}</>;
