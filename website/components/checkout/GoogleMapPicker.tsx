@@ -1,8 +1,10 @@
 'use client'
 
-import { MapPin } from 'lucide-react'
+import { Loader2, MapPin } from 'lucide-react'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
 import DraggableMapPicker from './DraggableMapPicker'
+
+const MAP_HEIGHT = 280
 
 interface GoogleMapPickerProps {
   lat: number
@@ -17,7 +19,7 @@ interface GoogleMapPickerProps {
 }
 
 /**
- * Google Maps picker with draggable red pin (Maps JavaScript API).
+ * Checkout map picker — layout and copy match customer-app CheckoutMapPicker.
  */
 export default function GoogleMapPicker({
   lat,
@@ -31,71 +33,91 @@ export default function GoogleMapPicker({
   hasLocation,
 }: GoogleMapPickerProps) {
   return (
-    <div className="mt-2 border border-gray-200 rounded-lg overflow-hidden">
+    <div className="mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white">
       <DraggableMapPicker
         lat={lat}
         lng={lng}
         accuracy={accuracy}
+        height={MAP_HEIGHT}
         onChange={onLatLngChange}
       />
-      <div className="p-3 bg-gray-50 space-y-3">
-        <p className="text-xs text-gray-500">
-          Drag the red pin on the map, tap to move it, or use &quot;Get My Location&quot;.
-          Fine-tune with the lat/lng fields if needed.
+
+      <div className="space-y-2 bg-gray-50 p-4">
+        <p className="text-xs leading-relaxed text-gray-500">
+          Drag the red pin, tap the map, or use Get My Location. Fine-tune with lat/lng if needed.
         </p>
-        {accuracy != null && accuracy > 0 && (
-          <p className="text-xs text-green-700">GPS accuracy: ±{Math.round(accuracy)}m</p>
+
+        {isLocating && (
+          <p className="text-xs text-primary-600">
+            Getting GPS… up to ~12s for under 10m accuracy.
+          </p>
         )}
+
+        {!isLocating && accuracy != null && accuracy > 0 && (
+          <p className="text-xs font-medium text-green-700">
+            GPS accuracy: ±{Math.round(accuracy)}m
+          </p>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Latitude</label>
+            <label className="mb-1 block text-xs text-gray-500">Latitude</label>
             <input
-              type="number"
-              step="any"
+              type="text"
+              inputMode="decimal"
               placeholder={String(DEFAULT_MAP_LAT)}
-              value={Number.isFinite(lat) ? lat : ''}
-              onChange={(e) =>
-                onLatLngChange(parseFloat(e.target.value) || DEFAULT_MAP_LAT, lng)
-              }
-              className="w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={Number.isFinite(lat) ? String(lat) : ''}
+              onChange={(e) => {
+                const next = parseFloat(e.target.value)
+                if (Number.isFinite(next)) onLatLngChange(next, lng)
+              }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Longitude</label>
+            <label className="mb-1 block text-xs text-gray-500">Longitude</label>
             <input
-              type="number"
-              step="any"
+              type="text"
+              inputMode="decimal"
               placeholder={String(DEFAULT_MAP_LNG)}
-              value={Number.isFinite(lng) ? lng : ''}
-              onChange={(e) =>
-                onLatLngChange(lat, parseFloat(e.target.value) || DEFAULT_MAP_LNG)
-              }
-              className="w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              value={Number.isFinite(lng) ? String(lng) : ''}
+              onChange={(e) => {
+                const next = parseFloat(e.target.value)
+                if (Number.isFinite(next)) onLatLngChange(lat, next)
+              }}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
+
+        <div className="mt-1 flex flex-wrap gap-2">
           <button
             type="button"
             disabled={isLocating}
             onClick={onGetLocation}
-            className="flex-1 flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-3 py-2 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
+            className="flex min-w-[140px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-3 py-2.5 text-[13px] font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
           >
-            <MapPin className="w-4 h-4" />
+            {isLocating ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <MapPin className="h-4 w-4" />
+            )}
             {isLocating ? 'Getting location…' : 'Get My Location'}
           </button>
+
           <button
             type="button"
             onClick={onDone}
-            className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-100"
           >
             {hasLocation ? 'Done' : 'Cancel'}
           </button>
+
           {hasLocation && (
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+              className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50"
             >
               Clear
             </button>
