@@ -289,9 +289,17 @@ export const CheckoutScreen: React.FC = () => {
     }
 
     let addressIdToUse = selectedAddressId;
-    if (!addressIdToUse && showNewAddress) {
+
+    if (showNewAddress) {
       if (!newAddressFormRef.current) {
         Toast.show({ type: 'error', text1: 'Please add a delivery address' });
+        return;
+      }
+      if (!newAddressValid) {
+        Toast.show({
+          type: 'error',
+          text1: 'Please enter your full delivery address (at least 5 characters)',
+        });
         return;
       }
       setPlacing(true);
@@ -301,9 +309,12 @@ export const CheckoutScreen: React.FC = () => {
         return;
       }
       addressIdToUse = saved.id;
-    }
-
-    if (!addressIdToUse) {
+      setAddresses((prev) => {
+        const exists = prev.some((a) => a.id === saved.id);
+        return exists ? prev.map((a) => (a.id === saved.id ? saved : a)) : [...prev, saved];
+      });
+      setSelectedAddressId(saved.id);
+    } else if (!addressIdToUse) {
       Toast.show({ type: 'error', text1: 'Please select a delivery address' });
       return;
     }
@@ -476,8 +487,9 @@ export const CheckoutScreen: React.FC = () => {
                     onCancel={addresses.length > 0 ? () => setShowNewAddress(false) : undefined}
                   />
                   <Text style={styles.addressTip}>
-                    Tip: You can press <Text style={styles.addressTipBold}>Place Order</Text> directly —
-                    we'll save this address automatically.
+                    Door photo, map pin, and address text are saved when you press{' '}
+                    <Text style={styles.addressTipBold}>Place Order</Text> — no need to tap Done on the
+                    map or Save here.
                   </Text>
                 </View>
               )}

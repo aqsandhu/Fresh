@@ -21,7 +21,7 @@ import Toast from 'react-native-toast-message';
 import { Address } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button, Input } from '@components';
-import { addressService } from '@services/address.service';
+import { addressService, type CreateAddressRequest } from '@services/address.service';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
 import { getAccuratePosition } from '@/lib/geolocation';
 import { REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
@@ -193,20 +193,26 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
         return null;
       }
 
+      setShowMapPicker(false);
       setSaving(true);
       try {
-        const payload = {
+        const payload: CreateAddressRequest = {
           label: addressType,
           fullAddress: trimmed,
           areaName: areaName.trim() || 'N/A',
           city: cityName,
           landmark: landmark.trim() || undefined,
-          latitude: mapLocation?.lat ?? 0,
-          longitude: mapLocation?.lng ?? 0,
-          locationAccuracy: mapAccuracy,
           doorImage: doorImage || undefined,
           isDefault: defaultOnCreate,
         };
+
+        if (mapLocation) {
+          payload.latitude = mapLocation.lat;
+          payload.longitude = mapLocation.lng;
+          if (mapAccuracy != null && Number.isFinite(mapAccuracy)) {
+            payload.locationAccuracy = mapAccuracy;
+          }
+        }
 
         const response = isEdit && initial?.id
           ? await addressService.updateAddress(initial.id, payload)
