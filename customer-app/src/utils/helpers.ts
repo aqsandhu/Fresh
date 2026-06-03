@@ -96,65 +96,73 @@ export const getRelativeTime = (date: string | Date): string => {
 };
 
 // ---------------------------------------------------------------------------
-// DELIVERY RULES (mirror backend/src/utils/deliveryCalculator.ts)
-//   1) Free-delivery time slot selected → FREE (regardless of amount)
-//   2) Vegetables + fruits subtotal ≥ threshold → FREE
-//   3) Otherwise → flat base charge
+// DELIVERY RULES — @freshbazar/shared-types (same as website + backend)
 // ---------------------------------------------------------------------------
 
-// Category slugs that count toward the free-delivery threshold. Keep this
-// in sync with website/lib/deliveryRules.ts and backend.
-const VEG_FRUIT_CATEGORY_SLUGS = ['vegetables', 'fruits', 'sabzi', 'fruit'];
+import { resolveLineUnitPrice } from '@/lib/unitPricing';
+import {
+  VEG_FRUIT_CATEGORY_SLUGS,
+  NON_VEG_FRUIT_CATEGORY_SLUGS,
+  getVegFruitSubtotal as sharedVegFruitSubtotal,
+  isFreeDelivery as sharedIsFreeDelivery,
+  calculateClientDeliveryCharge,
+  getDeliveryHint as sharedDeliveryHint,
+  type DeliveryCartLine,
+} from '@freshbazar/shared-types';
 
-const isVegOrFruit = (product: any): boolean => {
-  const slug = String(
-    product?.categorySlug || product?.category_slug || product?.category || ''
-  ).toLowerCase();
-  if (slug && VEG_FRUIT_CATEGORY_SLUGS.includes(slug)) return true;
-  // Fallback: match by readable category name.
-  const name = String(product?.categoryName || product?.category_name || '').toLowerCase();
-  return /vegetable|fruit|sabzi|phal/.test(name);
+export { VEG_FRUIT_CATEGORY_SLUGS, NON_VEG_FRUIT_CATEGORY_SLUGS };
+
+type CartLineInput = {
+  product: any;
+  quantity: number;
+  unit?: string;
+  unitPrice?: number;
 };
 
-import { resolveLineUnitPrice } from '@/lib/unitPricing';
+const toDeliveryLines = (items: CartLineInput[]): DeliveryCartLine[] =>
+  items.map((it) => ({
+    product: {
+      ...it.product,
+      category:
+        it.product?.categorySlug ||
+        it.product?.category_slug ||
+        it.product?.category,
+      price: Number(it.product?.price) || 0,
+    },
+    quantity: it.quantity,
+    unitPrice: resolveLineUnitPrice(it),
+  }));
 
-export const getVegFruitSubtotal = (
-  items: { product: any; quantity: number; unit?: string; unitPrice?: number }[]
-): number =>
-  items
-    .filter((it) => isVegOrFruit(it.product))
-    .reduce((sum, it) => sum + resolveLineUnitPrice(it) * it.quantity, 0);
+export const getVegFruitSubtotal = (items: CartLineInput[]): number =>
+  sharedVegFruitSubtotal(toDeliveryLines(items));
 
 export const isFreeDelivery = (
-  items: { product: any; quantity: number }[],
+  items: CartLineInput[],
   freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
   isFreeDeliverySlot: boolean = false
-): boolean => {
-  if (isFreeDeliverySlot) return true;
-  return getVegFruitSubtotal(items) >= freeThreshold;
-};
+): boolean => sharedIsFreeDelivery(toDeliveryLines(items), freeThreshold, isFreeDeliverySlot);
 
 export const calculateDeliveryCharge = (
-  items: { product: any; quantity: number }[],
+  items: CartLineInput[],
   freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
   baseCharge: number = DELIVERY.STANDARD_DELIVERY_CHARGE,
   isFreeDeliverySlot: boolean = false
-): number => {
-  if (items.length === 0) return 0;
-  if (isFreeDelivery(items, freeThreshold, isFreeDeliverySlot)) return 0;
-  return baseCharge;
-};
+): number =>
+  calculateClientDeliveryCharge(
+    toDeliveryLines(items),
+    baseCharge,
+    freeThreshold,
+    isFreeDeliverySlot
+  );
 
 export const calculateCartTotals = (
-  items: { product: any; quantity: number }[],
+  items: CartLineInput[],
   freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
   baseCharge: number = DELIVERY.STANDARD_DELIVERY_CHARGE
 ) => {
-  const subtotal = items.reduce(
-    (sum, item) => sum + (Number(item.product?.price) || 0) * item.quantity,
-    0
-  );
-  const deliveryCharge = calculateDeliveryCharge(items, freeThreshold, baseCharge);
+  const lines = toDeliveryLines(items);
+  const subtotal = lines.reduce((sum, item) => sum + (item.unitPrice ?? 0) * item.quantity, 0);
+  const deliveryCharge = calculateClientDeliveryCharge(lines, baseCharge, freeThreshold);
   const total = subtotal + deliveryCharge;
 
   return {
@@ -162,24 +170,15 @@ export const calculateCartTotals = (
     deliveryCharge,
     total,
     itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
-    vegFruitSubtotal: getVegFruitSubtotal(items),
+    vegFruitSubtotal: sharedVegFruitSubtotal(lines),
   };
 };
 
 export const getDeliveryHint = (
-  items: { product: any; quantity: number }[],
+  items: CartLineInput[],
   freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
   isFreeDeliverySlot: boolean = false
-): string | null => {
-  if (items.length === 0) return null;
-  if (isFreeDeliverySlot) return 'You qualify for free delivery — selected slot is free.';
-  const vegFruit = getVegFruitSubtotal(items);
-  if (vegFruit >= freeThreshold) {
-    return `You qualify for free delivery (Rs. ${vegFruit} in vegetables/fruits).`;
-  }
-  const remaining = Math.max(0, freeThreshold - vegFruit);
-  return `Add Rs. ${remaining} more in vegetables/fruits for free delivery — other items don't count.`;
-};
+): string | null => sharedDeliveryHint(toDeliveryLines(items), freeThreshold, isFreeDeliverySlot);
 
 // Get status color
 export const getStatusColor = (status: string): string => {

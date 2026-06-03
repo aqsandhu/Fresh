@@ -9,8 +9,6 @@ import {
   Plus,
   Edit2,
   Trash2,
-  Check,
-  Camera,
   Loader2,
   Star,
   ArrowLeft,
@@ -18,14 +16,11 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
 import { useAuthStore } from '@/store/cartStore'
 import { addressesApi } from '@/lib/api'
 import api from '@/lib/api'
 import { resolveImageUrl } from '@/lib/utils'
-import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
-import GoogleMapPicker from '@/components/checkout/GoogleMapPicker'
-import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
+import AddressForm, { type AddressFormInitial } from '@/components/checkout/AddressForm'
 import { useCityContext } from '@/context/CityContext'
 import { addressMatchesSelectedCity } from '@/lib/cityStorage'
 
@@ -52,8 +47,11 @@ export default function AddressesPage() {
   const [addresses, setAddresses] = useState<FullAddress[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [formInitial, setFormInitial] = useState<AddressFormInitial | undefined>(undefined)
+
+  const serviceCities = selectedCity
+    ? [{ id: selectedCity.id, name: selectedCity.name, province: selectedCity.province || '' }]
+    : []
 
   const cityAddresses = useMemo(
     () =>
@@ -62,19 +60,6 @@ export default function AddressesPage() {
         : addresses,
     [addresses, selectedCity?.name]
   )
-
-  // Form fields
-  const [formType, setFormType] = useState('home')
-  const [formAddress, setFormAddress] = useState('')
-  const [formArea, setFormArea] = useState('')
-  const [formCity, setFormCity] = useState('Gujrat')
-  const [formLandmark, setFormLandmark] = useState('')
-  const [formDoorPic, setFormDoorPic] = useState<File | null>(null)
-  const [mapLocation, setMapLocation] = useState<{lat: number, lng: number} | null>(null)
-  const [mapLocationAccuracy, setMapLocationAccuracy] = useState<number | null>(null)
-  const [isLocating, setIsLocating] = useState(false)
-  const [showMapPicker, setShowMapPicker] = useState(false)
-  const [cityChangeHint, setCityChangeHint] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -96,80 +81,30 @@ export default function AddressesPage() {
     }
   }
 
-  const resetForm = () => {
-    setFormType('home')
-    setFormAddress('')
-    setFormArea('')
-    setFormCity(selectedCity?.name || 'Gujrat')
-    setFormLandmark('')
-    setFormDoorPic(null)
-    setMapLocation(null)
-    setMapLocationAccuracy(null)
-    setShowMapPicker(false)
-    setEditingId(null)
+  const closeForm = () => {
+    setFormInitial(undefined)
     setShowForm(false)
   }
 
   const openAddForm = () => {
-    resetForm()
+    setFormInitial(undefined)
     setShowForm(true)
   }
 
   const openEditForm = (addr: FullAddress) => {
-    setFormType(addr.address_type || 'home')
-    setFormAddress(addr.written_address || '')
-    setFormArea(addr.area_name || '')
-    setFormCity(addr.city || 'Gujrat')
-    setFormLandmark(addr.landmark || '')
-    setFormDoorPic(null)
-    setMapLocation(addr.latitude && addr.longitude ? { lat: addr.latitude, lng: addr.longitude } : null)
-    setShowMapPicker(false)
-    setEditingId(addr.id)
+    setFormInitial({
+      id: addr.id,
+      address_type: addr.address_type || 'home',
+      written_address: addr.written_address || '',
+      area_name: addr.area_name || '',
+      city: addr.city || selectedCity?.name || 'Gujrat',
+      landmark: addr.landmark || '',
+      latitude: addr.latitude ?? null,
+      longitude: addr.longitude ?? null,
+      door_picture_url: addr.door_picture_url,
+      is_default: addr.is_default,
+    })
     setShowForm(true)
-  }
-
-  const handleSave = async () => {
-    if (!formAddress.trim() || formAddress.trim().length < 5) {
-      toast.error('Please enter a valid address (at least 5 characters)')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const formData = new FormData()
-      formData.append('address_type', formType)
-      formData.append('written_address', formAddress)
-      formData.append('area_name', formArea || 'N/A')
-      formData.append('city', selectedCity?.name || formCity)
-      formData.append('landmark', formLandmark)
-      if (mapLocation) {
-        formData.append('latitude', mapLocation.lat.toString())
-        formData.append('longitude', mapLocation.lng.toString())
-        if (mapLocationAccuracy != null) {
-          formData.append('location_accuracy', mapLocationAccuracy.toString())
-        }
-      }
-      if (formDoorPic) {
-        formData.append('door_picture', formDoorPic)
-      }
-
-      if (editingId) {
-        await api.put(`/addresses/${editingId}`, formData)
-        toast.success('Address updated!')
-      } else {
-        formData.append('is_default', cityAddresses.length === 0 ? 'true' : 'false')
-        await api.post('/addresses', formData)
-        toast.success('Address added!')
-      }
-
-      resetForm()
-      loadAddresses()
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Failed to save address'
-      toast.error(msg)
-    } finally {
-      setSaving(false)
-    }
   }
 
   const handleDelete = async (id: string) => {
@@ -227,173 +162,26 @@ export default function AddressesPage() {
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-xl p-6 shadow-sm mb-6"
           >
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-semibold">
-                {editingId ? 'Edit Address' : 'Add New Address'}
+                {formInitial?.id ? 'Edit Address' : 'Add New Address'}
               </h2>
-              <button onClick={resetForm} className="p-1 hover:bg-gray-100 rounded">
+              <button onClick={closeForm} className="p-1 hover:bg-gray-100 rounded" type="button">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Address Type</label>
-                  <select
-                    value={formType}
-                    onChange={(e) => setFormType(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    <option value="home">Home</option>
-                    <option value="office">Office</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <Input
-                  label="Area Name"
-                  placeholder="e.g., Gulberg, DHA"
-                  value={formArea}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormArea(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                {selectedCity ? (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setCityChangeHint(true)}
-                      className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-800 text-left hover:bg-gray-100 transition-colors"
-                    >
-                      {selectedCity.name}
-                    </button>
-                    {cityChangeHint && (
-                      <p className="mt-2 text-sm text-amber-800">
-                        To change City please go to{' '}
-                        <Link href="/" className="text-primary-600 underline font-medium">
-                          HomePage
-                        </Link>
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <Input
-                    label=""
-                    placeholder="City"
-                    value={formCity}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormCity(e.target.value)}
-                  />
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Full Address *</label>
-                <textarea
-                  rows={3}
-                  placeholder="Enter your complete address"
-                  value={formAddress}
-                  onChange={(e) => setFormAddress(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-
-              <Input
-                label="Landmark (Optional)"
-                placeholder="Near mosque, school, etc."
-                value={formLandmark}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormLandmark(e.target.value)}
-              />
-
-              {/* Door Picture */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Door Picture (Optional)</label>
-                <label className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors cursor-pointer block">
-                  <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-500">
-                    {formDoorPic ? formDoorPic.name : 'Click to upload a picture of your door'}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">This helps our delivery partner find your location</p>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => setFormDoorPic(e.target.files?.[0] || null)}
-                  />
-                </label>
-              </div>
-
-              {/* Map Location */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">📍 Pin Map Location (Optional)</label>
-                {!showMapPicker && !mapLocation && (
-                  <button
-                    type="button"
-                    onClick={() => setShowMapPicker(true)}
-                    className="flex items-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm border border-primary-200 rounded-lg px-4 py-2.5 hover:bg-primary-50 transition-colors"
-                  >
-                    <MapPin className="w-4 h-4" />
-                    Add Google Map Location
-                  </button>
-                )}
-                {mapLocation && !showMapPicker && (
-                  <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-                    <Check className="w-5 h-5 text-green-600" />
-                    <span className="text-sm text-green-700 flex-1">
-                      Location pinned ({mapLocation.lat.toFixed(4)}, {mapLocation.lng.toFixed(4)})
-                      {mapLocationAccuracy != null && (
-                        <span className="text-green-600"> · ±{Math.round(mapLocationAccuracy)}m</span>
-                      )}
-                    </span>
-                    <button type="button" onClick={() => { setMapLocation(null); setMapLocationAccuracy(null); setShowMapPicker(true) }} className="text-sm text-primary-600 hover:underline">Change</button>
-                    <button type="button" onClick={() => { setMapLocation(null); setMapLocationAccuracy(null) }} className="text-sm text-red-500 hover:underline">Remove</button>
-                  </div>
-                )}
-                {showMapPicker && (
-                  <GoogleMapPicker
-                    lat={mapLocation?.lat ?? DEFAULT_MAP_LAT}
-                    lng={mapLocation?.lng ?? DEFAULT_MAP_LNG}
-                    accuracy={mapLocationAccuracy}
-                    isLocating={isLocating}
-                    hasLocation={mapLocation != null}
-                    onLatLngChange={(lat, lng) => {
-                      setMapLocation({ lat, lng })
-                      setMapLocationAccuracy(null)
-                    }}
-                    onGetLocation={async () => {
-                      setIsLocating(true)
-                      toast.loading('Getting precise GPS location...', { id: 'gps' })
-                      const pos = await getAccuratePosition()
-                      setIsLocating(false)
-                      toast.dismiss('gps')
-                      if (pos) {
-                        setMapLocation({ lat: pos.lat, lng: pos.lng })
-                        setMapLocationAccuracy(pos.accuracy)
-                        toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
-                      } else {
-                        toast.error(`Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`)
-                      }
-                    }}
-                    onDone={() => setShowMapPicker(false)}
-                    onCancel={() => {
-                      setMapLocation(null)
-                      setMapLocationAccuracy(null)
-                      setShowMapPicker(false)
-                    }}
-                  />
-                )}
-                <p className="text-xs text-gray-400 mt-1">If you skip this, our rider will pin the location on first delivery</p>
-              </div>
-
-              {/* Buttons */}
-              <div className="flex gap-3 pt-2">
-                <Button variant="outline" onClick={resetForm}>Cancel</Button>
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? 'Saving...' : editingId ? 'Update Address' : 'Save Address'}
-                </Button>
-              </div>
-            </div>
+            <AddressForm
+              key={formInitial?.id || 'new'}
+              initial={formInitial}
+              availableCities={serviceCities}
+              defaultOnCreate={cityAddresses.length === 0 && !formInitial?.id}
+              onSaved={() => {
+                closeForm()
+                loadAddresses()
+              }}
+              onCancel={closeForm}
+            />
           </motion.div>
         )}
 

@@ -3,7 +3,15 @@ const nextConfig = {
   // Tell Next.js to transpile Firebase packages — this forces webpack to use
   // the browser-compatible exports instead of the Node.js (node-esm) build,
   // which was pulling in undici and breaking the client bundle.
-  transpilePackages: ['firebase', '@firebase/auth', '@firebase/app', '@firebase/util', '@firebase/component', '@firebase/logger'],
+  transpilePackages: [
+    '@freshbazar/shared-types',
+    'firebase',
+    '@firebase/auth',
+    '@firebase/app',
+    '@firebase/util',
+    '@firebase/component',
+    '@firebase/logger',
+  ],
 
   // Stop webpack from bundling undici. Firebase Auth's node-esm entry pulls
   // undici (a Node-only fetch impl using class-private `#field` syntax that
