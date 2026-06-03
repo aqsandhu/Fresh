@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,14 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Circle } from 'react-native-maps';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
+import { useMapRegionSync, DEFAULT_MAP_DELTA } from '@/components/maps/useMapRegionSync';
+
+/** Match website DraggableMapPicker height */
+const MAP_HEIGHT = 280;
 
 interface CheckoutMapPickerProps {
   lat: number;
@@ -35,37 +39,56 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
   onDone,
   onCancel,
 }) => {
-  const [region, setRegion] = useState({
-    latitude: lat,
-    longitude: lng,
-    latitudeDelta: 0.008,
-    longitudeDelta: 0.008,
-  });
+  const { mapRef, onMapReady } = useMapRegionSync(lat, lng, DEFAULT_MAP_DELTA);
+  const [pin, setPin] = useState({ latitude: lat, longitude: lng });
 
-  useEffect(() => {
-    setRegion((prev) => ({
-      ...prev,
-      latitude: lat,
-      longitude: lng,
-    }));
+  React.useEffect(() => {
+    setPin({ latitude: lat, longitude: lng });
   }, [lat, lng]);
 
   const syncPin = (latitude: number, longitude: number) => {
-    setRegion((prev) => ({ ...prev, latitude, longitude }));
+    setPin({ latitude, longitude });
     onLatLngChange(latitude, longitude);
   };
 
   return (
     <View style={styles.wrap}>
       <View style={styles.mapBox}>
+        {isLocating && (
+          <View style={styles.mapLoading} pointerEvents="none">
+            <ActivityIndicator size="large" color={COLORS.primary600} />
+          </View>
+        )}
         <MapView
+          ref={mapRef}
           style={styles.map}
-          region={region}
-          onPress={(e) => syncPin(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude)}
+          initialRegion={{
+            latitude: lat,
+            longitude: lng,
+            latitudeDelta: DEFAULT_MAP_DELTA,
+            longitudeDelta: DEFAULT_MAP_DELTA,
+          }}
+          showsUserLocation
+          showsMyLocationButton={false}
+          loadingEnabled
+          onMapReady={onMapReady}
+          onPress={(e) =>
+            syncPin(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude)
+          }
         >
+          {accuracy != null && accuracy > 0 && (
+            <Circle
+              center={pin}
+              radius={accuracy}
+              strokeColor="rgba(16, 185, 129, 0.85)"
+              strokeWidth={1}
+              fillColor="rgba(16, 185, 129, 0.15)"
+            />
+          )}
           <Marker
-            coordinate={{ latitude: region.latitude, longitude: region.longitude }}
+            coordinate={pin}
             draggable
+            pinColor="red"
             onDragEnd={(e) =>
               syncPin(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude)
             }
@@ -144,21 +167,31 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginTop: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.gray200,
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
+    backgroundColor: COLORS.white,
   },
-  mapBox: { height: 200 },
+  mapBox: {
+    height: MAP_HEIGHT,
+    backgroundColor: '#e5e7eb',
+  },
   map: { ...StyleSheet.absoluteFillObject },
+  mapLoading: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 2,
+    backgroundColor: 'rgba(255,255,255,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   panel: {
     padding: SPACING.md,
     backgroundColor: COLORS.gray50,
     gap: SPACING.sm,
   },
   hint: { fontSize: 12, color: COLORS.gray500, lineHeight: 17 },
-  accuracyOk: { fontSize: 12, color: '#15803d' },
+  accuracyOk: { fontSize: 12, color: '#15803d', fontWeight: '500' },
   coordRow: { flexDirection: 'row', gap: SPACING.md },
   coordField: { flex: 1 },
   coordLabel: { fontSize: 12, color: COLORS.gray500, marginBottom: 4 },

@@ -14,7 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, Circle } from 'react-native-maps';
+import { useMapRegionSync } from '@/components/maps/useMapRegionSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { CartStackParamList } from '@types';
@@ -48,6 +49,7 @@ export const AddAddressScreen: React.FC = () => {
   const [isLocating, setIsLocating] = useState(false);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const cameraRef = useRef<CameraView>(null);
+  const { mapRef, onMapReady } = useMapRegionSync(region.latitude, region.longitude, 0.01);
 
   const labels = ['Home', 'Office', 'Other'];
 
@@ -338,13 +340,33 @@ export const AddAddressScreen: React.FC = () => {
         {/* Map */}
         <View style={styles.mapContainer}>
           <MapView
+            ref={mapRef}
             style={styles.map}
-            region={region}
+            initialRegion={region}
+            showsUserLocation
+            loadingEnabled
+            onMapReady={onMapReady}
             onPress={handleLocationSelect}
           >
+            {locationAccuracy != null && locationAccuracy > 0 && (
+              <Circle
+                center={{
+                  latitude: region.latitude,
+                  longitude: region.longitude,
+                }}
+                radius={locationAccuracy}
+                strokeColor="rgba(16, 185, 129, 0.85)"
+                strokeWidth={1}
+                fillColor="rgba(16, 185, 129, 0.15)"
+              />
+            )}
             <Marker
-              coordinate={region}
+              coordinate={{
+                latitude: region.latitude,
+                longitude: region.longitude,
+              }}
               draggable
+              pinColor="red"
               onDragEnd={(e) => {
                 const { latitude, longitude } = e.nativeEvent.coordinate;
                 setRegion((prev) => ({ ...prev, latitude, longitude }));
@@ -473,7 +495,7 @@ const styles = StyleSheet.create({
     color: COLORS.gray900,
   },
   mapContainer: {
-    height: 250,
+    height: 280,
     marginHorizontal: SPACING.lg,
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
