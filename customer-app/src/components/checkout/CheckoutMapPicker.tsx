@@ -7,7 +7,8 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import { Marker } from 'react-native-maps';
+import { AppMapView } from '@/components/maps';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
@@ -58,7 +59,7 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
   return (
     <View style={styles.wrap}>
       <View style={styles.mapBox}>
-        <MapView
+        <AppMapView
           style={styles.map}
           region={region}
           onPress={(e) => syncPin(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude)}
@@ -70,7 +71,7 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
               syncPin(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude)
             }
           />
-        </MapView>
+        </AppMapView>
       </View>
 
       <View style={styles.panel}>

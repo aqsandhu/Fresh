@@ -14,7 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import MapView, { Marker } from 'react-native-maps';
+import { Marker } from 'react-native-maps';
+import { AppMapView } from '@/components/maps';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { CartStackParamList } from '@types';
@@ -77,31 +78,42 @@ export const AddAddressScreen: React.FC = () => {
     }));
   };
 
+  const applyRegion = (lat: number, lng: number, accuracy?: number) => {
+    setRegion({
+      latitude: lat,
+      longitude: lng,
+      latitudeDelta: 0.002,
+      longitudeDelta: 0.002,
+    });
+    if (accuracy != null) setLocationAccuracy(Math.round(accuracy));
+  };
+
   const handleGetCurrentLocation = async () => {
     setIsLocating(true);
     setLocationAccuracy(null);
 
     try {
-      const pos = await getAccuratePosition((acc) => {
-        setLocationAccuracy(Math.round(acc));
+      const pos = await getAccuratePosition({
+        onProgress: (acc) => setLocationAccuracy(Math.round(acc)),
+        onFix: (fix) => applyRegion(fix.lat, fix.lng, fix.accuracy),
       });
 
       if (pos) {
-        setLocationAccuracy(Math.round(pos.accuracy));
-        setRegion({
-          latitude: pos.lat,
-          longitude: pos.lng,
-          latitudeDelta: 0.002,
-          longitudeDelta: 0.002,
-        });
+        applyRegion(pos.lat, pos.lng, pos.accuracy);
+        if (pos.tier !== 'tight' && pos.accuracy >= REQUIRED_LOCATION_ACCURACY_M) {
+          Alert.alert(
+            'Approximate location',
+            `GPS is about ±${Math.round(pos.accuracy)}m. Drag the pin on the map to adjust, or try again in an open area for under ${REQUIRED_LOCATION_ACCURACY_M}m.`
+          );
+        }
       } else {
         Alert.alert(
-          'GPS Not Accurate Enough',
-          `Could not get GPS under ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`
+          'Location unavailable',
+          'Could not get GPS. Tap the map to set your pin or try again outdoors.'
         );
       }
     } catch {
-      Alert.alert('Error', 'Failed to get location. Please try again.');
+      Alert.alert('Error', 'Failed to get location. Tap the map to set your pin.');
     } finally {
       setIsLocating(false);
     }
@@ -326,7 +338,7 @@ export const AddAddressScreen: React.FC = () => {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Map */}
         <View style={styles.mapContainer}>
-          <MapView
+          <AppMapView
             style={styles.map}
             region={region}
             onPress={handleLocationSelect}
@@ -339,7 +351,7 @@ export const AddAddressScreen: React.FC = () => {
                 setRegion((prev) => ({ ...prev, latitude, longitude }));
               }}
             />
-          </MapView>
+          </AppMapView>
           <TouchableOpacity
             style={styles.currentLocationButton}
             onPress={handleGetCurrentLocation}

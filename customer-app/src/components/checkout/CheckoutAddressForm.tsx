@@ -108,39 +108,60 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
       onValidityChange?.(isValid);
     }, [isValid, onValidityChange]);
 
+    const applyGpsFix = (pos: { lat: number; lng: number; accuracy: number }) => {
+      setMapLocation({ lat: pos.lat, lng: pos.lng });
+      setMapAccuracy(pos.accuracy);
+    };
+
     const handleGetGps = async () => {
       setShowMapPicker(true);
       setIsLocating(true);
-      setGpsStatus(
-        `Finding location (need under ${REQUIRED_LOCATION_ACCURACY_M}m accuracy)…`
-      );
+      setGpsStatus('Getting location…');
 
       try {
-        const pos = await getAccuratePosition((acc) => {
-          setGpsStatus(
-            `Getting GPS… ±${Math.round(acc)}m (need under ${REQUIRED_LOCATION_ACCURACY_M}m)`
-          );
+        const pos = await getAccuratePosition({
+          onProgress: (acc) => {
+            setGpsStatus(`Getting GPS… ±${Math.round(acc)}m`);
+          },
+          onFix: (fix) => {
+            applyGpsFix(fix);
+          },
         });
+
         if (pos) {
-          setMapLocation({ lat: pos.lat, lng: pos.lng });
-          setMapAccuracy(pos.accuracy);
-          setGpsStatus(`Location locked (±${Math.round(pos.accuracy)}m)`);
-          Toast.show({
-            type: 'success',
-            text1: `Location detected (±${Math.round(pos.accuracy)}m)`,
-          });
+          applyGpsFix(pos);
+          if (pos.tier === 'tight') {
+            setGpsStatus(`Location locked (±${Math.round(pos.accuracy)}m)`);
+            Toast.show({
+              type: 'success',
+              text1: `Location detected (±${Math.round(pos.accuracy)}m)`,
+            });
+          } else if (pos.tier === 'fallback') {
+            setGpsStatus(`Location set (±${Math.round(pos.accuracy)}m) — drag pin to fine-tune`);
+            Toast.show({
+              type: 'success',
+              text1: `Location set (±${Math.round(pos.accuracy)}m). Drag the pin if needed.`,
+            });
+          } else {
+            setGpsStatus(
+              `Approximate location (±${Math.round(pos.accuracy)}m) — drag pin or retry outdoors`
+            );
+            Toast.show({
+              type: 'info',
+              text1: 'Approximate GPS fix',
+              text2: 'Drag the pin on the map if the marker is off.',
+            });
+          }
         } else {
-          setGpsStatus(
-            `Could not get GPS under ${REQUIRED_LOCATION_ACCURACY_M}m — try again outdoors or pin manually`
-          );
+          setGpsStatus('GPS unavailable — tap the map or enter coordinates');
           Toast.show({
             type: 'error',
-            text1: `Could not get GPS under ${REQUIRED_LOCATION_ACCURACY_M}m. Try again or pin on map.`,
+            text1: 'Could not get GPS. Pin on map or enter lat/lng.',
           });
         }
       } catch {
-        setGpsStatus('GPS failed — enter coordinates manually');
-        Toast.show({ type: 'error', text1: 'GPS failed. Enter lat/lng or try again.' });
+        setGpsStatus('GPS failed — pin on map or enter coordinates');
+        Toast.show({ type: 'error', text1: 'GPS failed. Pin on map or try again.' });
       } finally {
         setIsLocating(false);
       }

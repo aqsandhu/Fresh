@@ -49,8 +49,10 @@ const getApiBaseUrl = (): string => {
 export const API_BASE_URL = getApiBaseUrl();
 export const IS_DEVELOPMENT = isDevelopment;
 export const API_TIMEOUT = 30000;
-/** Keep trying GPS until accuracy is below this (meters). */
+/** Target GPS accuracy (meters, strict less-than). */
 export const REQUIRED_LOCATION_ACCURACY_M = 10;
+/** Accept a weaker fix for map display if the tight target times out. */
+export const FALLBACK_LOCATION_ACCURACY_M = 30;
 
 // App Configuration
 export const APP_NAME = 'Fresh Bazar';
