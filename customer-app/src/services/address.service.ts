@@ -4,7 +4,6 @@ import { API_BASE_URL } from '@utils/constants';
 
 const BACKEND_URL = API_BASE_URL.replace('/api', '');
 
-// Re-host absolute dev/LAN URLs onto the current API base — see product.service.ts for rationale.
 function resolveImageUrl(path: string | null | undefined): string {
   if (!path) return '';
   if (path.startsWith('data:')) return path;
@@ -31,7 +30,6 @@ export interface CreateAddressRequest {
   isDefault?: boolean;
 }
 
-// Map backend snake_case address to customer app Address type
 function mapBackendAddress(raw: any): Address {
   const parts = [raw.written_address, raw.area_name, raw.city].filter(Boolean);
   const doorUrl = raw.door_picture_url ? resolveImageUrl(raw.door_picture_url) : undefined;
@@ -53,8 +51,6 @@ function mapBackendAddress(raw: any): Address {
   } as Address;
 }
 
-// Convert customer app request to backend expected fields
-// Backend Joi enum: 'home' | 'work' | 'office' | 'other' (lowercase only)
 const VALID_ADDRESS_TYPES = ['home', 'work', 'office', 'other'] as const;
 
 function normalizeAddressType(label?: string): string {
@@ -63,8 +59,8 @@ function normalizeAddressType(label?: string): string {
   return (VALID_ADDRESS_TYPES as readonly string[]).includes(normalized) ? normalized : 'other';
 }
 
-function toBackendAddress(data: Partial<CreateAddressRequest>): Record<string, any> {
-  const body: Record<string, any> = {};
+function toBackendAddress(data: Partial<CreateAddressRequest>): Record<string, string | number | boolean> {
+  const body: Record<string, string | number | boolean> = {};
   if (data.label !== undefined) body.address_type = normalizeAddressType(data.label);
   if (data.fullAddress !== undefined) body.written_address = data.fullAddress;
   if (data.areaName !== undefined) body.area_name = data.areaName;
@@ -75,6 +71,24 @@ function toBackendAddress(data: Partial<CreateAddressRequest>): Record<string, a
   if (data.locationAccuracy !== undefined) body.location_accuracy = data.locationAccuracy;
   if (data.isDefault !== undefined) body.is_default = data.isDefault;
   return body;
+}
+
+function isLocalDoorImageUri(uri: string): boolean {
+  return /^(file|content|ph):\/\//i.test(uri);
+}
+
+function buildDoorFormData(data: Partial<CreateAddressRequest>, doorUri: string): FormData {
+  const formData = new FormData();
+  const fields = toBackendAddress(data);
+  Object.entries(fields).forEach(([key, value]) => {
+    formData.append(key, String(value));
+  });
+  formData.append('door_picture', {
+    uri: doorUri,
+    type: 'image/jpeg',
+    name: `door-${Date.now()}.jpg`,
+  } as unknown as Blob);
+  return formData;
 }
 
 class AddressService {
@@ -101,6 +115,16 @@ class AddressService {
 
   async createAddress(data: CreateAddressRequest): Promise<ApiResponse<Address>> {
     try {
+      const doorUri = data.doorImage?.trim();
+      if (doorUri && isLocalDoorImageUri(doorUri)) {
+        const formData = buildDoorFormData(data, doorUri);
+        const response = await apiClient.post('/addresses', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const raw = response.data;
+        return { success: true, data: mapBackendAddress(raw.data) };
+      }
+
       const body = toBackendAddress(data);
       const response = await apiClient.post('/addresses', body);
       const raw = response.data;
@@ -112,6 +136,16 @@ class AddressService {
 
   async updateAddress(id: string, data: Partial<CreateAddressRequest>): Promise<ApiResponse<Address>> {
     try {
+      const doorUri = data.doorImage?.trim();
+      if (doorUri && isLocalDoorImageUri(doorUri)) {
+        const formData = buildDoorFormData(data, doorUri);
+        const response = await apiClient.put(`/addresses/${id}`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const raw = response.data;
+        return { success: true, data: mapBackendAddress(raw.data) };
+      }
+
       const body = toBackendAddress(data);
       const response = await apiClient.put(`/addresses/${id}`, body);
       const raw = response.data;
