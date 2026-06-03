@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "buildCommand": "next build",
+  "buildCommand": "cd .. && pnpm --filter @freshbazar/shared-types build && pnpm --filter freshbazar-website run build",
   "framework": "nextjs",
-  "installCommand": "npm install",
+  "installCommand": "cd .. && pnpm install --frozen-lockfile",
   "env": {
     "NEXT_PUBLIC_API_URL": "https://freshbazar-backend.onrender.com/api",
     "NEXT_PUBLIC_APP_NAME": "Fresh Bazar"
