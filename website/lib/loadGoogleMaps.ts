@@ -1,8 +1,30 @@
-import { resolveGoogleMapsApiKey } from './googleMaps'
+import { resolveGoogleMapsApiKey, setRuntimeGoogleMapsApiKey } from './googleMaps'
 
 let googleMapsLoader: Promise<any> | null = null
 
-/** Load Google Maps JavaScript API once (uses same key as customer-app). */
+const API_BASE =
+  typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
+    ? process.env.NEXT_PUBLIC_API_URL
+    : 'https://freshbazar-backend.onrender.com/api'
+
+/** Optional server-side key (Render env) — browser Maps keys are public anyway. */
+export async function fetchGoogleMapsApiKey(): Promise<string> {
+  const existing = resolveGoogleMapsApiKey()
+  if (existing) return existing
+
+  try {
+    const res = await fetch(`${API_BASE}/site-settings/maps-key`, { cache: 'no-store' })
+    if (!res.ok) return ''
+    const json = await res.json()
+    const key = String(json?.data?.key || json?.key || '').trim()
+    if (key) setRuntimeGoogleMapsApiKey(key)
+    return key
+  } catch {
+    return ''
+  }
+}
+
+/** Load Google Maps JavaScript API when a key exists (optional smoother maps). */
 export function loadGoogleMapsJs(): Promise<any | null> {
   const key = resolveGoogleMapsApiKey()
   if (!key || typeof window === 'undefined') {
