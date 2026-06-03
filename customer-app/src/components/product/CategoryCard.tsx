@@ -118,14 +118,15 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   name: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.gray800,
     textAlign: 'center',
   },
   nameUrdu: {
-    fontSize: 10,
-    color: COLORS.gray500,
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.gray700,
     textAlign: 'center',
   },
   rowCard: {
@@ -154,8 +155,8 @@ const styles = StyleSheet.create({
   },
   rowFallbackText: { fontSize: 24, fontWeight: '700' },
   rowBody: { flex: 1, minWidth: 0 },
-  rowName: { fontSize: 15, fontWeight: '600', color: COLORS.gray900 },
-  rowUrdu: { fontSize: 13, color: COLORS.gray500, marginTop: 2, textAlign: 'right' },
+  rowName: { fontSize: 17, fontWeight: '600', color: COLORS.gray900 },
+  rowUrdu: { fontSize: 15, fontWeight: '700', color: COLORS.gray700, marginTop: 2, textAlign: 'right' },
   rowCount: { fontSize: 11, color: COLORS.gray400, marginTop: 4 },
 });
 

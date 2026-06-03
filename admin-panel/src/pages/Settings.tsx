@@ -36,11 +36,13 @@ import toast from 'react-hot-toast';
 import { useCityContext } from '@/context/CityContext';
 import { useAuthContext } from '@/context/AuthContext';
 import {
+  canAccessSettingsPage,
   canUpdateSettingsTab,
   canViewSettingsTab,
   visibleSettingsTabs,
   type SettingsTabId,
 } from '@/lib/settingsPermissions';
+import { hasPermission } from '@/lib/permissions';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -73,6 +75,11 @@ export const Settings: React.FC = () => {
   }, [allowedTabs, activeTab]);
 
   const canUpdate = (tab: SettingsTabId) => canUpdateSettingsTab(permissions, tab);
+  const canSaveWhatsapp = hasPermission(permissions, [
+    'settings.update',
+    'settings.banner.update',
+    'settings.delivery.update',
+  ]);
 
   // Delivery Settings State
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
@@ -748,23 +755,23 @@ export const Settings: React.FC = () => {
     </div>
   );
 
-  const renderMobileApp = () => (
-    <div className="max-w-2xl space-y-6">
+  const renderWhatsAppOrderCard = () => (
+    <div className="max-w-2xl mb-6">
       {!selectedCityId && (
-        <Card>
+        <Card className="mb-4">
           <div className="p-4 flex items-start gap-3 text-amber-800 bg-amber-50 rounded-lg">
             <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             <p className="text-sm">
-              Select a city from the header before setting the WhatsApp order link. Each city can
-              have its own link on the customer app home screen.
+              <strong>Select a city</strong> from the header dropdown (top bar) before saving the
+              WhatsApp order link.
             </p>
           </div>
         </Card>
       )}
 
       {selectedCity && (
-        <p className="text-sm text-gray-600">
-          Mobile app settings for{' '}
+        <p className="text-sm text-gray-600 mb-3">
+          WhatsApp order link for{' '}
           <span className="font-semibold text-gray-900">{selectedCity.name}</span>
         </p>
       )}
@@ -775,16 +782,16 @@ export const Settings: React.FC = () => {
             e.preventDefault();
             updateWhatsappOrderMutation.mutate(whatsappOrderUrl.trim());
           }}
-          className="space-y-6"
+          className="space-y-6 p-1"
         >
-          <div className="flex items-center space-x-3 mb-2">
+          <div className="flex items-center space-x-3">
             <div className="p-2 bg-green-100 rounded-lg">
               <MessageCircle className="w-5 h-5 text-green-600" />
             </div>
             <div>
-              <h3 className="text-lg font-medium text-gray-900">WhatsApp to Order</h3>
+              <h3 className="text-lg font-medium text-gray-900">WhatsApp to Order (Mobile App)</h3>
               <p className="text-sm text-gray-500">
-                Green button below &quot;Shop Now&quot; on the customer app home screen
+                Button below &quot;Shop Now&quot; on the customer app home screen
               </p>
             </div>
           </div>
@@ -795,11 +802,11 @@ export const Settings: React.FC = () => {
             onChange={(e) => setWhatsappOrderUrl(e.target.value)}
             placeholder="https://wa.me/923001234567 or 0300-1234567"
             leftIcon={<MessageCircle className="w-4 h-4 text-gray-400" />}
-            disabled={!selectedCityId}
+            disabled={!selectedCityId || !canSaveWhatsapp}
           />
           <p className="text-xs text-gray-400 -mt-4">
-            Full wa.me URL or Pakistani mobile number. If empty, the app uses the banner phone number
-            as a fallback.
+            Full wa.me URL or Pakistani mobile number. Stored in <code>site_settings</code> (no extra
+            Supabase table). If empty, the app uses the banner phone number.
           </p>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
@@ -818,12 +825,27 @@ export const Settings: React.FC = () => {
               type="submit"
               isLoading={updateWhatsappOrderMutation.isPending}
               leftIcon={<Save className="w-4 h-4" />}
-              disabled={!selectedCityId || !canUpdate('mobile')}
+              disabled={!selectedCityId || !canSaveWhatsapp}
             >
               Save WhatsApp Link
             </Button>
           </div>
         </form>
+      </Card>
+    </div>
+  );
+
+  const renderMobileApp = () => (
+    <div className="max-w-2xl">
+      <Card>
+        <div className="p-6 text-sm text-gray-600">
+          <p className="font-medium text-gray-900 mb-2">WhatsApp to Order</p>
+          <p>
+            Use the <strong>WhatsApp to Order (Mobile App)</strong> section at the top of this
+            Settings page — it is always visible when you open Settings, no matter which tab is
+            selected.
+          </p>
+        </div>
       </Card>
     </div>
   );
@@ -839,6 +861,8 @@ export const Settings: React.FC = () => {
         </Card>
       ) : (
       <>
+      {canAccessSettingsPage(permissions) && renderWhatsAppOrderCard()}
+
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg mb-6">
         {canViewSettingsTab(permissions, 'delivery') && (

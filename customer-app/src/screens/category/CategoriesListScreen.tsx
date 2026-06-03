@@ -163,13 +163,14 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.md,
   },
   categoryName: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: COLORS.white,
   },
   categoryNameUrdu: {
-    fontSize: 14,
-    color: COLORS.white + 'CC',
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.white,
     marginTop: 2,
   },
   productCount: {
