@@ -42,6 +42,33 @@ export const formatTime = (date: string | Date): string => {
   });
 };
 
+function parseClockTime(time: string): { h: number; m: number; s: number } {
+  const trimmed = time.trim();
+  const isoMatch = trimmed.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (isoMatch) {
+    return {
+      h: parseInt(isoMatch[1], 10) || 0,
+      m: parseInt(isoMatch[2], 10) || 0,
+      s: parseInt(isoMatch[3] || '0', 10) || 0,
+    };
+  }
+  const parts = trimmed.split(':').map((v) => parseInt(v, 10) || 0);
+  return { h: parts[0] || 0, m: parts[1] || 0, s: parts[2] || 0 };
+}
+
+/** Format HH:MM(:SS) using device 12h/24h preference — matches website checkout slots. */
+export function formatSlotTime(time: string): string {
+  if (!time) return '';
+  const { h, m, s } = parseClockTime(time);
+  const d = new Date();
+  d.setHours(h, m, s, 0);
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+export function formatSlotTimeRange(start: string, end: string): string {
+  return `${formatSlotTime(start)} - ${formatSlotTime(end)}`;
+}
+
 // Format date and time
 export const formatDateTime = (date: string | Date): string => {
   const d = new Date(date);
@@ -89,12 +116,14 @@ const isVegOrFruit = (product: any): boolean => {
   return /vegetable|fruit|sabzi|phal/.test(name);
 };
 
+import { resolveLineUnitPrice } from '@/lib/unitPricing';
+
 export const getVegFruitSubtotal = (
-  items: { product: any; quantity: number }[]
+  items: { product: any; quantity: number; unit?: string; unitPrice?: number }[]
 ): number =>
   items
     .filter((it) => isVegOrFruit(it.product))
-    .reduce((sum, it) => sum + (Number(it.product?.price) || 0) * it.quantity, 0);
+    .reduce((sum, it) => sum + resolveLineUnitPrice(it) * it.quantity, 0);
 
 export const isFreeDelivery = (
   items: { product: any; quantity: number }[],

@@ -1,6 +1,6 @@
 import { hasPermission } from './permissions';
 
-export type SettingsTabId = 'delivery' | 'timeslots' | 'business' | 'banner';
+export type SettingsTabId = 'delivery' | 'timeslots' | 'business' | 'banner' | 'mobile';
 
 const TAB_VIEW: Record<SettingsTabId, string[]> = {
   delivery: ['settings.delivery.view', 'settings.view', 'settings.update'],
@@ -15,6 +15,13 @@ const TAB_VIEW: Record<SettingsTabId, string[]> = {
   ],
   business: ['settings.business_hours.view', 'settings.view', 'settings.update'],
   banner: ['settings.banner.view', 'settings.view', 'settings.update'],
+  mobile: [
+    'settings.view',
+    'settings.update',
+    'settings.delivery.view',
+    'settings.banner.view',
+    'settings.business_hours.view',
+  ],
 };
 
 const TAB_UPDATE: Record<SettingsTabId, string[]> = {
@@ -22,6 +29,7 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   timeslots: ['settings.timeslots.manage', 'settings.update'],
   business: ['settings.business_hours.update', 'settings.update'],
   banner: ['settings.banner.update', 'settings.update'],
+  mobile: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
 };
 
 export const ALL_SETTINGS_VIEW_CODES = [
@@ -58,14 +66,14 @@ export function canUpdateSettingsTab(
 export function canAccessSettingsPage(permissions: string[] | undefined): boolean {
   return (
     hasPermission(permissions, ALL_SETTINGS_VIEW_CODES) ||
-    (['delivery', 'timeslots', 'business', 'banner'] as SettingsTabId[]).some((tab) =>
+    (['delivery', 'timeslots', 'business', 'banner', 'mobile'] as SettingsTabId[]).some((tab) =>
       canViewSettingsTab(permissions, tab)
     )
   );
 }
 
 export function visibleSettingsTabs(permissions: string[] | undefined): SettingsTabId[] {
-  return (['delivery', 'timeslots', 'business', 'banner'] as SettingsTabId[]).filter((tab) =>
-    canViewSettingsTab(permissions, tab)
+  return (['delivery', 'timeslots', 'business', 'banner', 'mobile'] as SettingsTabId[]).filter(
+    (tab) => canViewSettingsTab(permissions, tab)
   );
 }

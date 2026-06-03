@@ -21,8 +21,11 @@ function resolveImageUrl(path: string | null | undefined): string {
 export interface CreateAddressRequest {
   label: string;
   fullAddress: string;
-  latitude: number;
-  longitude: number;
+  areaName?: string;
+  city?: string;
+  landmark?: string;
+  latitude?: number;
+  longitude?: number;
   locationAccuracy?: number;
   doorImage?: string;
   isDefault?: boolean;
@@ -38,12 +41,16 @@ function mapBackendAddress(raw: any): Address {
     userId: raw.user_id || '',
     label: raw.address_type || 'home',
     fullAddress: parts.join(', ') || raw.written_address || '',
+    writtenAddress: raw.written_address || '',
+    areaName: raw.area_name || '',
+    landmark: raw.landmark || '',
+    city: raw.city || '',
     latitude: parseFloat(raw.latitude) || 0,
     longitude: parseFloat(raw.longitude) || 0,
     doorImage: doorUrl,
     isDefault: raw.is_default || false,
     createdAt: raw.created_at || '',
-  };
+  } as Address;
 }
 
 // Convert customer app request to backend expected fields
@@ -60,6 +67,9 @@ function toBackendAddress(data: Partial<CreateAddressRequest>): Record<string, a
   const body: Record<string, any> = {};
   if (data.label !== undefined) body.address_type = normalizeAddressType(data.label);
   if (data.fullAddress !== undefined) body.written_address = data.fullAddress;
+  if (data.areaName !== undefined) body.area_name = data.areaName;
+  if (data.city !== undefined) body.city = data.city;
+  if (data.landmark !== undefined) body.landmark = data.landmark;
   if (data.latitude !== undefined) body.latitude = data.latitude;
   if (data.longitude !== undefined) body.longitude = data.longitude;
   if (data.locationAccuracy !== undefined) body.location_accuracy = data.locationAccuracy;

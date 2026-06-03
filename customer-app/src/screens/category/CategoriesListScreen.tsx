@@ -11,13 +11,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { CategoryStackParamList, Category } from '@types';
+import { CategoryStackParamList, Category, ShopStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { ErrorView, SkeletonList } from '@components';
 import { productService } from '@services/product.service';
+import { useCityContext } from '@/context/CityContext';
 
 export const CategoriesListScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<CategoryStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<ShopStackParamList>>();
+  const { selectedCityId } = useCityContext();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -36,9 +38,11 @@ export const CategoriesListScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedCityId]);
 
   useEffect(() => {
+    setLoading(true);
+    setCategories([]);
     loadCategories();
   }, [loadCategories]);
 

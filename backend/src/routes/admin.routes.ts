@@ -220,6 +220,8 @@ router.put(
 // Site Settings - Banner
 router.get('/site-settings/banner', adminController.getBannerSettings);
 router.put('/site-settings/banner', adminController.updateBannerSettings);
+router.get('/site-settings/whatsapp-order', adminController.getWhatsAppOrderSettings);
+router.put('/site-settings/whatsapp-order', adminController.updateWhatsAppOrderSettings);
 
 // Settings - General, Delivery, Time Slots, Business Hours
 router.get('/settings', adminController.getSettings);

@@ -31,6 +31,8 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
         const unreadCount = notifications.filter((n) => !n.isRead).length;
         set({ notifications, unreadCount });
       }
+    } catch {
+      /* ignore when logged out or token expired */
     } finally {
       set({ isLoading: false });
     }

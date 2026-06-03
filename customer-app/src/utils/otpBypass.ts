@@ -11,6 +11,10 @@ export function getOtpBypassCode(): string {
   return process.env.EXPO_PUBLIC_OTP_BYPASS_CODE || '123789';
 }
 
+export function isValidOtpBypassCode(code: string): boolean {
+  return code === getOtpBypassCode();
+}
+
 export function otpBypassHint(): string {
   return `Temporary dev OTP: ${getOtpBypassCode()}`;
 }

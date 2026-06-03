@@ -1,15 +1,20 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { CartStackParamList } from '@types';
+import PinReauthGate from '@components/auth/PinReauthGate';
 import {
-  CartScreen,
-  AddressSelectionScreen,
+  CheckoutScreen,
   AddAddressScreen,
-  TimeSlotScreen,
   OrderConfirmationScreen,
 } from '@screens';
 
 const Stack = createNativeStackNavigator<CartStackParamList>();
+
+const CheckoutWithGate: React.FC = () => (
+  <PinReauthGate>
+    <CheckoutScreen />
+  </PinReauthGate>
+);
 
 export const CartNavigator: React.FC = () => {
   return (
@@ -19,10 +24,8 @@ export const CartNavigator: React.FC = () => {
         animation: 'slide_from_right',
       }}
     >
-      <Stack.Screen name="Cart" component={CartScreen} />
-      <Stack.Screen name="AddressSelection" component={AddressSelectionScreen} />
+      <Stack.Screen name="Checkout" component={CheckoutWithGate} />
       <Stack.Screen name="AddAddress" component={AddAddressScreen} />
-      <Stack.Screen name="TimeSlot" component={TimeSlotScreen} />
       <Stack.Screen
         name="OrderConfirmation"
         component={OrderConfirmationScreen}

@@ -4,3 +4,6 @@ export { MyAddressesScreen } from './MyAddressesScreen';
 export { SettingsScreen } from './SettingsScreen';
 export { NotificationsScreen } from './NotificationsScreen';
 export { WishlistScreen } from './WishlistScreen';
+export { ChangePinScreen } from './ChangePinScreen';
+export { HelpScreen } from './HelpScreen';
+export { AboutScreen } from './AboutScreen';

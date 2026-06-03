@@ -114,7 +114,7 @@ export default function Header() {
     if (items.length <= prev) return
 
     setIsCartOpen(true)
-    const timer = setTimeout(() => setIsCartOpen(false), 4000)
+    const timer = setTimeout(() => setIsCartOpen(false), 2000)
     return () => clearTimeout(timer)
   }, [items.length, cartHasHydrated, pathname])
 

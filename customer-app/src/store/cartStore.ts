@@ -1,31 +1,88 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CartItem, Product } from '@types';
+import { ProductUnit, StoreCartItem, StoreProduct } from '@types';
+import { priceForUnit, resolveLineUnitPrice } from '@/lib/unitPricing';
+import { getSelectedCityId } from '@/lib/cityStorage';
+import { withCityParams } from '@/lib/apiHelpers';
 import { cartService } from '@services/cart.service';
 import { calculateDeliveryCharge as calcDeliveryCharge } from '@utils/helpers';
+import { API_BASE_URL } from '@utils/constants';
+
+const lineKey = (productId: string, unit: ProductUnit = 'full') =>
+  `${productId}::${unit}`;
+
+const persistActiveCityItems = (
+  state: Pick<CartStore, 'items' | 'cartsByCity' | 'activeCityId'>,
+  items: StoreCartItem[]
+): Pick<CartStore, 'items' | 'cartsByCity' | 'activeCityId'> => {
+  const cityId = state.activeCityId;
+  if (!cityId) {
+    return { items };
+  }
+  return {
+    items,
+    activeCityId: cityId,
+    cartsByCity: { ...state.cartsByCity, [cityId]: items },
+  };
+};
+
+const DEFAULT_BASE_CHARGE = 100;
+const DEFAULT_FREE_THRESHOLD = 500;
+
+async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThreshold: number }> {
+  try {
+    const params = withCityParams();
+    const qs = params.city_id ? `?city_id=${encodeURIComponent(params.city_id)}` : '';
+    const res = await fetch(`${API_BASE_URL}/site-settings/delivery${qs}`);
+    const json = await res.json();
+    const data = json?.data || json;
+    return {
+      baseCharge: parseFloat(data?.base_charge) || DEFAULT_BASE_CHARGE,
+      freeThreshold: parseFloat(data?.free_delivery_threshold) || DEFAULT_FREE_THRESHOLD,
+    };
+  } catch {
+    return { baseCharge: DEFAULT_BASE_CHARGE, freeThreshold: DEFAULT_FREE_THRESHOLD };
+  }
+}
 
 interface CartStore {
-  items: CartItem[];
+  items: StoreCartItem[];
+  cartsByCity: Record<string, StoreCartItem[]>;
+  activeCityId: string | null;
   isLoading: boolean;
   syncError: string | null;
   lastSyncedAt: number | null;
-  
-  // Actions
+  deliveryBaseCharge: number;
+  deliveryFreeThreshold: number;
+  hasHydrated: boolean;
+
+  setHasHydrated: (h: boolean) => void;
+  loadDeliverySettings: () => Promise<void>;
   loadCart: () => Promise<void>;
-  addToCart: (product: Product, quantity?: number) => Promise<void>;
-  updateQuantity: (productId: string, quantity: number) => Promise<void>;
-  removeFromCart: (productId: string) => Promise<void>;
+
+  addItem: (product: StoreProduct, quantity?: number, unit?: ProductUnit) => Promise<void>;
+  removeItem: (productId: string, unit?: ProductUnit) => Promise<void>;
+  updateQuantity: (productId: string, quantity: number, unit?: ProductUnit) => Promise<void>;
   clearCart: () => Promise<void>;
+  switchCity: (cityId: string) => void;
+
+  /** Back-compat aliases used by existing screens */
+  addToCart: (product: StoreProduct, quantity?: number, unit?: ProductUnit) => Promise<void>;
+  removeFromCart: (productId: string, unit?: ProductUnit) => Promise<void>;
+
   syncWithBackend: () => Promise<boolean>;
   mergeWithServerCart: () => Promise<void>;
-  isInCart: (productId: string) => boolean;
-  getItemQuantity: (productId: string) => number;
-  
-  // Computed
+  isInCart: (productId: string, unit?: ProductUnit) => boolean;
+  getItemQuantity: (productId: string, unit?: ProductUnit) => number;
+
+  getTotalItems: () => number;
   itemCount: () => number;
+  getSubtotal: () => number;
   subtotal: () => number;
+  getDeliveryCharge: (isFreeDeliverySlot?: boolean) => number;
   deliveryCharge: () => number;
+  getFinalTotal: (isFreeDeliverySlot?: boolean) => number;
   total: () => number;
 }
 
@@ -33,127 +90,152 @@ export const useCartStore = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
+      cartsByCity: {},
+      activeCityId: null,
       isLoading: false,
       syncError: null,
       lastSyncedAt: null,
+      deliveryBaseCharge: DEFAULT_BASE_CHARGE,
+      deliveryFreeThreshold: DEFAULT_FREE_THRESHOLD,
+      hasHydrated: false,
+
+      setHasHydrated: (h) => set({ hasHydrated: h }),
+
+      loadDeliverySettings: async () => {
+        const settings = await fetchDeliverySettings();
+        set({
+          deliveryBaseCharge: settings.baseCharge,
+          deliveryFreeThreshold: settings.freeThreshold,
+        });
+      },
 
       loadCart: async () => {
         set({ isLoading: true, syncError: null });
         try {
-          // Load from local storage
-          const localItems = await cartService.getCart();
-          set({ items: localItems });
-          
-          // Sync local cart to backend in background
-          if (localItems.length > 0) {
-            cartService.syncCartWithBackend(localItems).catch((err: any) => {
-              console.log('Background cart sync failed:', err?.message);
-            });
+          const cityId = get().activeCityId || (await getSelectedCityId());
+          if (cityId) {
+            const cityItems = get().cartsByCity[cityId] || [];
+            set({ items: cityItems, activeCityId: cityId });
           }
+          await get().loadDeliverySettings();
         } catch (error: any) {
-          console.error('Error loading cart:', error);
           set({ syncError: 'Failed to load cart. Please try again.' });
         } finally {
           set({ isLoading: false });
         }
       },
 
-      addToCart: async (product: Product, quantity: number = 1) => {
+      addItem: async (product, quantity = 1, unit = 'full') => {
         set({ isLoading: true, syncError: null });
         try {
-          const items = await cartService.addToCart(product, quantity);
-          set({ items, lastSyncedAt: Date.now() });
-        } catch (error: any) {
-          console.error('Error adding to cart:', error);
-          set({ syncError: 'Failed to add item. Please try again.' });
-          // Still update local state for better UX
-          const currentItems = get().items;
-          const existingItemIndex = currentItems.findIndex((item) => item.product.id === product.id);
-          let updatedItems;
-          if (existingItemIndex >= 0) {
-            updatedItems = [...currentItems];
-            updatedItems[existingItemIndex].quantity += quantity;
-          } else {
-            updatedItems = [...currentItems, { product, quantity }];
-          }
-          set({ items: updatedItems });
-          await cartService.saveCart(updatedItems);
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+          set((state) => {
+            const targetKey = lineKey(product.id, unit);
+            const existingItem = state.items.find(
+              (item) => lineKey(item.product.id, item.unit || 'full') === targetKey
+            );
 
-      updateQuantity: async (productId: string, quantity: number) => {
-        set({ isLoading: true, syncError: null });
-        try {
-          const items = await cartService.updateQuantity(productId, quantity);
-          set({ items, lastSyncedAt: Date.now() });
-        } catch (error: any) {
-          console.error('Error updating quantity:', error);
-          set({ syncError: 'Failed to update quantity. Please try again.' });
-          // Still update local state for better UX
-          const currentItems = get().items;
-          const itemIndex = currentItems.findIndex((item) => item.product.id === productId);
-          if (itemIndex >= 0) {
-            let updatedItems;
-            if (quantity <= 0) {
-              updatedItems = currentItems.filter((item) => item.product.id !== productId);
+            let nextItems: StoreCartItem[];
+            if (existingItem) {
+              nextItems = state.items.map((item) =>
+                lineKey(item.product.id, item.unit || 'full') === targetKey
+                  ? { ...item, quantity: item.quantity + quantity }
+                  : item
+              );
             } else {
-              updatedItems = [...currentItems];
-              updatedItems[itemIndex].quantity = quantity;
+              nextItems = [
+                ...state.items,
+                {
+                  product,
+                  quantity,
+                  unit,
+                  unitPrice: priceForUnit(product, unit),
+                },
+              ];
             }
-            set({ items: updatedItems });
-            await cartService.saveCart(updatedItems);
-          }
+
+            return persistActiveCityItems(state, nextItems);
+          });
+
+          const items = get().items;
+          cartService.syncCartWithBackend(items).catch(() => {});
+          set({ lastSyncedAt: Date.now() });
         } finally {
           set({ isLoading: false });
         }
       },
 
-      removeFromCart: async (productId: string) => {
-        set({ isLoading: true, syncError: null });
+      removeItem: async (productId, unit = 'full') => {
+        set({ isLoading: true });
         try {
-          const items = await cartService.removeFromCart(productId);
-          set({ items, lastSyncedAt: Date.now() });
-        } catch (error: any) {
-          console.error('Error removing from cart:', error);
-          set({ syncError: 'Failed to remove item. Please try again.' });
-          // Still update local state for better UX
-          const currentItems = get().items;
-          const updatedItems = currentItems.filter((item) => item.product.id !== productId);
-          set({ items: updatedItems });
-          await cartService.saveCart(updatedItems);
+          set((state) => {
+            const nextItems = state.items.filter(
+              (item) => lineKey(item.product.id, item.unit || 'full') !== lineKey(productId, unit)
+            );
+            return persistActiveCityItems(state, nextItems);
+          });
+          await cartService.syncCartWithBackend(get().items);
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      updateQuantity: async (productId, quantity, unit = 'full') => {
+        if (quantity <= 0) {
+          await get().removeItem(productId, unit);
+          return;
+        }
+
+        set({ isLoading: true });
+        try {
+          set((state) => {
+            const nextItems = state.items.map((item) =>
+              lineKey(item.product.id, item.unit || 'full') === lineKey(productId, unit)
+                ? { ...item, quantity }
+                : item
+            );
+            return persistActiveCityItems(state, nextItems);
+          });
+          await cartService.syncCartWithBackend(get().items);
         } finally {
           set({ isLoading: false });
         }
       },
 
       clearCart: async () => {
-        set({ isLoading: true, syncError: null });
+        set({ isLoading: true });
         try {
+          set((state) => persistActiveCityItems(state, []));
           await cartService.clearCart();
-          set({ items: [], lastSyncedAt: Date.now() });
-        } catch (error: any) {
-          console.error('Error clearing cart:', error);
-          set({ syncError: 'Failed to clear cart. Please try again.' });
-          // Still clear local state
-          set({ items: [] });
-          await cartService.saveCart([]);
         } finally {
           set({ isLoading: false });
         }
       },
 
+      switchCity: (cityId) => {
+        set((state) => {
+          const nextByCity = { ...state.cartsByCity };
+          if (state.activeCityId) {
+            nextByCity[state.activeCityId] = state.items;
+          }
+          const nextItems = nextByCity[cityId] || [];
+          return {
+            activeCityId: cityId,
+            cartsByCity: nextByCity,
+            items: nextItems,
+          };
+        });
+        get().loadDeliverySettings().catch(() => {});
+      },
+
+      addToCart: async (product, quantity, unit) => get().addItem(product, quantity, unit),
+      removeFromCart: async (productId, unit) => get().removeItem(productId, unit),
+
       syncWithBackend: async () => {
         try {
-          const currentItems = get().items;
-          const success = await cartService.syncCartWithBackend(currentItems);
-          if (success) {
-            set({ lastSyncedAt: Date.now(), syncError: null });
-          }
+          const success = await cartService.syncCartWithBackend(get().items);
+          if (success) set({ lastSyncedAt: Date.now(), syncError: null });
           return success;
-        } catch (error: any) {
-          console.error('Error syncing cart:', error);
+        } catch {
           set({ syncError: 'Failed to sync with server.' });
           return false;
         }
@@ -162,54 +244,64 @@ export const useCartStore = create<CartStore>()(
       mergeWithServerCart: async () => {
         set({ isLoading: true });
         try {
-          // Just sync local cart to backend
-          const localItems = await cartService.getCart();
-          if (localItems.length > 0) {
-            await cartService.syncCartWithBackend(localItems);
-          }
-          set({ items: localItems, lastSyncedAt: Date.now(), syncError: null });
-        } catch (error: any) {
-          console.error('Error merging cart:', error);
-          set({ syncError: 'Failed to merge cart with server.' });
+          await get().syncWithBackend();
         } finally {
           set({ isLoading: false });
         }
       },
 
-      isInCart: (productId: string) => {
-        return get().items.some((item) => item.product.id === productId);
-      },
+      isInCart: (productId, unit = 'full') =>
+        get().items.some(
+          (item) =>
+            item.product.id === productId && (item.unit || 'full') === unit
+        ),
 
-      getItemQuantity: (productId: string) => {
-        const item = get().items.find((item) => item.product.id === productId);
+      getItemQuantity: (productId, unit = 'full') => {
+        const item = get().items.find(
+          (i) => i.product.id === productId && (i.unit || 'full') === unit
+        );
         return item?.quantity || 0;
       },
 
-      itemCount: () => {
-        return get().items.reduce((sum, item) => sum + item.quantity, 0);
-      },
+      getTotalItems: () => get().items.reduce((total, item) => total + item.quantity, 0),
+      itemCount: () => get().getTotalItems(),
 
-      subtotal: () => {
-        return get().items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-      },
+      getSubtotal: () =>
+        get().items.reduce(
+          (total, item) => total + resolveLineUnitPrice(item) * item.quantity,
+          0
+        ),
+      subtotal: () => get().getSubtotal(),
 
-      deliveryCharge: () => {
-        // Local fallback only — screens that know the admin-configured
-        // threshold (CartScreen / TimeSlotScreen) override this with the
-        // server value once it loads.
-        const items = get().items;
+      getDeliveryCharge: (isFreeDeliverySlot = false) => {
+        const { items, deliveryBaseCharge, deliveryFreeThreshold } = get();
         if (items.length === 0) return 0;
-        return calcDeliveryCharge(items);
+        return calcDeliveryCharge(
+          items,
+          deliveryFreeThreshold,
+          deliveryBaseCharge,
+          isFreeDeliverySlot
+        );
       },
+      deliveryCharge: () => get().getDeliveryCharge(),
 
-      total: () => {
-        return get().subtotal() + get().deliveryCharge();
-      },
+      getFinalTotal: (isFreeDeliverySlot = false) =>
+        get().getSubtotal() + get().getDeliveryCharge(isFreeDeliverySlot),
+      total: () => get().getFinalTotal(),
     }),
     {
-      name: 'cart-storage',
+      name: 'freshbazar-cart-v2',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ items: state.items }),
+      partialize: (state) => ({
+        cartsByCity: state.cartsByCity,
+        activeCityId: state.activeCityId,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+        if (state?.activeCityId && state.cartsByCity[state.activeCityId]) {
+          state.items = state.cartsByCity[state.activeCityId];
+        }
+      },
     }
   )
 );

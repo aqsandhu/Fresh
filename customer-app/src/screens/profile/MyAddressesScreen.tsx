@@ -15,9 +15,12 @@ import { ProfileStackParamList, Address } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button, ErrorView, EmptyState } from '@components';
 import { addressService } from '@services/address.service';
+import { useCityContext } from '@/context/CityContext';
+import { addressMatchesSelectedCity } from '@/lib/cityStorage';
 
 export const MyAddressesScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
+  const { selectedCity } = useCityContext();
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -28,7 +31,13 @@ export const MyAddressesScreen: React.FC = () => {
       setError(null);
       const response = await addressService.getAddresses();
       if (response.success) {
-        setAddresses(response.data);
+        const cityName = selectedCity?.name;
+        const list = cityName
+          ? response.data.filter((a) =>
+              addressMatchesSelectedCity((a as any).city || a.city, cityName)
+            )
+          : response.data;
+        setAddresses(list);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load addresses');
@@ -36,9 +45,11 @@ export const MyAddressesScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedCity?.id, selectedCity?.name]);
 
   useEffect(() => {
+    setLoading(true);
+    setAddresses([]);
     loadAddresses();
   }, [loadAddresses]);
 
@@ -90,7 +101,10 @@ export const MyAddressesScreen: React.FC = () => {
               <MaterialIcons name="check-circle-outline" size={20} color={COLORS.gray400} />
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={() => navigation.navigate('AddAddress', { addressId: item.id, returnTo: 'addresses' })}
+          >
             <MaterialIcons name="edit" size={20} color={COLORS.gray400} />
           </TouchableOpacity>
           <TouchableOpacity
@@ -136,7 +150,7 @@ export const MyAddressesScreen: React.FC = () => {
           title="No addresses"
           message="Add an address for faster checkout"
           actionTitle="Add Address"
-          onAction={() => navigation.navigate('AddAddress' as any)}
+          onAction={() => navigation.navigate('AddAddress', { returnTo: 'addresses' })}
         />
       ) : (
         <FlatList
@@ -155,7 +169,7 @@ export const MyAddressesScreen: React.FC = () => {
       <View style={styles.footer}>
         <Button
           title="Add New Address"
-          onPress={() => navigation.navigate('AddAddress' as any)}
+          onPress={() => navigation.navigate('AddAddress', { returnTo: 'addresses' })}
           size="large"
         />
       </View>

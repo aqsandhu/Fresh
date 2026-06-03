@@ -1,5 +1,5 @@
 import React from 'react';
-import { Text, TextStyle, ViewStyle } from 'react-native';
+import { Text, TextStyle, View, ViewStyle } from 'react-native';
 import { COLORS } from '@utils/constants';
 import { formatCurrency, formatProductUnitSuffix } from '@utils/helpers';
 
@@ -11,12 +11,16 @@ interface ProductPriceProps {
   priceStyle?: TextStyle;
   unitStyle?: TextStyle;
   originalPrice?: number;
+  /** Keeps price on one line inside narrow product cards */
+  compact?: boolean;
+  /** Strikethrough above sale price — clearer on narrow product cards */
+  stackDiscount?: boolean;
 }
 
 const sizeStyles = {
-  sm: { price: 14, unit: 10, original: 12 },
-  md: { price: 16, unit: 11, original: 13 },
-  lg: { price: 24, unit: 14, original: 16 },
+  sm: { price: 16, unit: 11, original: 13 },
+  md: { price: 18, unit: 12, original: 14 },
+  lg: { price: 22, unit: 13, original: 15 },
 };
 
 export const ProductPrice: React.FC<ProductPriceProps> = ({
@@ -27,15 +31,22 @@ export const ProductPrice: React.FC<ProductPriceProps> = ({
   priceStyle,
   unitStyle,
   originalPrice,
+  compact = false,
+  stackDiscount = false,
 }) => {
   const sizes = sizeStyles[size];
   const unitSuffix = formatProductUnitSuffix(unit);
+  const hasDiscount = originalPrice != null && originalPrice > price;
+  const showOriginal = !compact && hasDiscount;
 
-  return (
-    <Text style={style}>
+  const priceRow = (
+    <View style={{ flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'baseline', minWidth: 0 }}>
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit={compact}
+        minimumFontScale={compact ? 0.88 : 1}
         style={[
-          { fontWeight: 'bold', color: COLORS.primary, fontSize: sizes.price },
+          { fontWeight: '700', color: COLORS.primary600, fontSize: sizes.price, flexShrink: 1 },
           priceStyle,
         ]}
       >
@@ -43,27 +54,72 @@ export const ProductPrice: React.FC<ProductPriceProps> = ({
       </Text>
       {!!unitSuffix && (
         <Text
+          numberOfLines={1}
           style={[
-            { color: COLORS.gray500, fontSize: sizes.unit, fontWeight: 'normal' },
+            {
+              color: COLORS.gray500,
+              fontSize: sizes.unit,
+              fontWeight: '400',
+              flexShrink: 0,
+              marginLeft: 2,
+            },
             unitStyle,
           ]}
         >
           {unitSuffix}
         </Text>
       )}
-      {originalPrice != null && originalPrice > price && (
+    </View>
+  );
+
+  if (showOriginal && stackDiscount) {
+    return (
+      <View style={[{ flexShrink: 1, minWidth: 0 }, style]}>
         <Text
+          numberOfLines={1}
           style={{
             fontSize: sizes.original,
             color: COLORS.gray400,
             textDecorationLine: 'line-through',
-            marginLeft: 6,
+            marginBottom: 2,
+          }}
+        >
+          {formatCurrency(originalPrice)}
+        </Text>
+        {priceRow}
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={[
+        {
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          alignItems: 'baseline',
+          flexShrink: 1,
+          minWidth: 0,
+          gap: 4,
+        },
+        style,
+      ]}
+    >
+      {showOriginal && (
+        <Text
+          numberOfLines={1}
+          style={{
+            fontSize: sizes.original,
+            color: COLORS.gray400,
+            textDecorationLine: 'line-through',
+            flexShrink: 0,
           }}
         >
           {formatCurrency(originalPrice)}
         </Text>
       )}
-    </Text>
+      {priceRow}
+    </View>
   );
 };
 

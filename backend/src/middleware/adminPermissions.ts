@@ -122,7 +122,7 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
       ? ['settings.business_hours.view', 'settings.view', 'settings.update']
       : ['settings.business_hours.update', 'settings.update'];
   }
-  if (p.startsWith('/site-settings/banner')) {
+  if (p.startsWith('/site-settings/banner') || p.startsWith('/site-settings/whatsapp-order')) {
     return m === 'GET'
       ? ['settings.banner.view', 'settings.view', 'settings.update']
       : ['settings.banner.update', 'settings.update'];

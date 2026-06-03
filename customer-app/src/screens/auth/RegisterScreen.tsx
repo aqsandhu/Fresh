@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -6,126 +6,416 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  TextInput,
   TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AuthStackParamList } from '@types';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Toast from 'react-native-toast-message';
+import { AuthStackParamList, RootStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, VALIDATION } from '@utils/constants';
+import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint } from '@utils/otpBypass';
+import { finishAuthRedirect } from '@utils/authRedirect';
 import { Button, Input, LoadingOverlay } from '@components';
+import AuthShell from '@components/auth/AuthShell';
+import AuthStepIndicator, { RegisterStep } from '@components/auth/AuthStepIndicator';
+import PinInput from '@components/auth/PinInput';
 import { useAuthStore } from '@store';
+import { setLastPhone } from '@/lib/phoneStorage';
+import { formatPhoneNumber } from '@utils/helpers';
 
 type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Register'>;
 
+type PinStage = 'create' | 'confirm';
+
 export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigation }) => {
-  const { phone } = route.params;
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { phone: paramPhone, autoOtp, redirect, code: paramCode } = route.params ?? {};
+
+  const initialStep: RegisterStep = paramCode && paramPhone ? 'profile' : 'phone';
+  const [step, setStep] = useState<RegisterStep>(initialStep);
+  const [phone, setPhone] = useState(paramPhone ?? '');
+  const [verifiedOtpCode, setVerifiedOtpCode] = useState(paramCode ?? '');
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [timer, setTimer] = useState(0);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
-  const { register, isLoading } = useAuthStore();
+  const [errors, setErrors] = useState<{ phone?: string; name?: string; email?: string }>({});
+  const [pin, setPinValue] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [pinStage, setPinStage] = useState<PinStage>('create');
 
-  const validate = (): boolean => {
+  const autoOtpStarted = useRef(false);
+  const otpInputRefs = useRef<(TextInput | null)[]>([]);
+
+  const { sendOtp, register, setPin, isLoading } = useAuthStore();
+
+  useEffect(() => {
+    if (timer > 0) {
+      const interval = setInterval(() => setTimer((t) => t - 1), 1000);
+      return () => clearInterval(interval);
+    }
+  }, [timer]);
+
+  const sendRegisterOtp = useCallback(
+    async (phoneNumber: string) => {
+      try {
+        const result = await sendOtp(phoneNumber);
+        if (result.userExists) {
+          Toast.show({
+            type: 'info',
+            text1: 'This number is already registered. Please login with your PIN.',
+          });
+          navigation.replace('Login', { phone: phoneNumber, redirect });
+          return;
+        }
+        setPhone(phoneNumber);
+        setStep('otp');
+        setOtp(['', '', '', '', '', '']);
+        setTimer(60);
+      } catch (err: any) {
+        Toast.show({ type: 'error', text1: err.message || 'Failed to send OTP' });
+      }
+    },
+    [navigation, redirect, sendOtp]
+  );
+
+  useEffect(() => {
+    if (!autoOtp || !paramPhone || autoOtpStarted.current) return;
+    autoOtpStarted.current = true;
+    sendRegisterOtp(paramPhone);
+  }, [autoOtp, paramPhone, sendRegisterOtp]);
+
+  const validatePhone = (value: string): boolean => {
+    if (!value) {
+      setErrors({ phone: 'Phone number is required' });
+      return false;
+    }
+    if (!VALIDATION.PHONE_REGEX.test(value)) {
+      setErrors({ phone: 'Enter a valid Pakistani number (e.g. 03001234567)' });
+      return false;
+    }
+    setErrors({});
+    return true;
+  };
+
+  const onPhoneSubmit = async () => {
+    if (!validatePhone(phone)) return;
+    await sendRegisterOtp(phone);
+  };
+
+  const verifyOtp = async (code: string) => {
+    if (code.length !== 6) return;
+
+    if (isOtpBypassEnabled() && !isValidOtpBypassCode(code)) {
+      Toast.show({ type: 'error', text1: 'Invalid OTP. Please try again.' });
+      setOtp(['', '', '', '', '', '']);
+      otpInputRefs.current[0]?.focus();
+      return;
+    }
+
+    setVerifiedOtpCode(code);
+    setStep('profile');
+    Toast.show({ type: 'success', text1: 'Phone verified! Now set up your profile.' });
+  };
+
+  const handleOtpChange = (index: number, value: string) => {
+    if (value.length > 1) return;
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+    if (value && index < 5) otpInputRefs.current[index + 1]?.focus();
+    if (index === 5 && value) {
+      verifyOtp([...newOtp.slice(0, 5), value].join(''));
+    }
+  };
+
+  const handleOtpKeyPress = (index: number, key: string) => {
+    if (key === 'Backspace' && !otp[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const validateProfile = (): boolean => {
     const newErrors: { name?: string; email?: string } = {};
-
     if (!name.trim()) {
       newErrors.name = 'Name is required';
     } else if (name.trim().length < VALIDATION.MIN_NAME_LENGTH) {
       newErrors.name = `Name must be at least ${VALIDATION.MIN_NAME_LENGTH} characters`;
     }
-
     if (email && !VALIDATION.EMAIL_REGEX.test(email)) {
       newErrors.email = 'Please enter a valid email address';
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleRegister = async () => {
-    if (!validate()) return;
+  const onProfileSubmit = async () => {
+    if (!validateProfile()) return;
+    if (!verifiedOtpCode) {
+      Toast.show({ type: 'error', text1: 'Verification expired. Please verify OTP again.' });
+      setStep('phone');
+      return;
+    }
 
     try {
-      const code = route.params.code || '';
-      await register(phone, code, name.trim(), email.trim() || undefined);
-      // Navigation will be handled by auth state change
+      await register(phone, verifiedOtpCode, name.trim(), email.trim() || undefined);
+      Toast.show({ type: 'success', text1: 'Almost done — create your 4-digit PIN' });
+      setPinStage('create');
+      setPinValue('');
+      setPinConfirm('');
+      setStep('pin');
     } catch (err: any) {
-      setErrors({ name: err.message || 'Registration failed' });
+      const msg = err.message || 'Registration failed';
+      Toast.show({ type: 'error', text1: msg });
+      if (msg.includes('expired') || msg.includes('not found')) {
+        setStep('phone');
+      }
     }
+  };
+
+  const handlePinFirst = (entered: string) => {
+    setPinValue(entered);
+    setPinConfirm('');
+    setPinStage('confirm');
+  };
+
+  const handlePinConfirm = async (entered: string) => {
+    if (entered !== pin) {
+      Toast.show({ type: 'error', text1: 'PINs do not match. Please try again.' });
+      setPinStage('create');
+      setPinValue('');
+      setPinConfirm('');
+      return;
+    }
+
+    try {
+      await setPin(entered);
+      await setLastPhone(phone);
+      Toast.show({ type: 'success', text1: 'PIN set! You can use it next time you log in.' });
+      finishAuthRedirect(rootNavigation, redirect);
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: err.message || 'Failed to save PIN' });
+      setPinStage('create');
+      setPinValue('');
+      setPinConfirm('');
+    }
+  };
+
+  const handleResend = () => {
+    setTimer(60);
+    setOtp(['', '', '', '', '', '']);
+    sendRegisterOtp(phone).catch(console.error);
+  };
+
+  const formatPhoneInput = (text: string) => text.replace(/[^0-9]/g, '').slice(0, 11);
+
+  const goToLogin = () => {
+    navigation.navigate('Login', { redirect, phone: phone || undefined });
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <LoadingOverlay visible={isLoading} message="Creating account..." />
+      <LoadingOverlay visible={isLoading} message="Please wait..." />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
-          {/* Back Button */}
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <MaterialIcons name="arrow-back" size={24} color={COLORS.gray700} />
           </TouchableOpacity>
 
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.iconContainer}>
-              <MaterialIcons name="person-add" size={48} color={COLORS.primary} />
-            </View>
-            <Text style={styles.title}>Complete Your Profile</Text>
-            <Text style={styles.subtitle}>
-              Just a few more details to get started
-            </Text>
-          </View>
+          <AuthShell
+            title="Create Account"
+            subtitle="Join Fresh Bazar for fresh groceries"
+            footer={
+              <>
+                <View style={styles.dividerWrap}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>or</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                <Text style={styles.loginPrompt}>
+                  Already have an account?{' '}
+                  <Text style={styles.loginLink} onPress={goToLogin}>
+                    Login
+                  </Text>
+                </Text>
+                <Text style={styles.termsText}>
+                  By creating an account, you agree to our Terms and Privacy Policy
+                </Text>
+                <View style={styles.securityNote}>
+                  <MaterialIcons name="verified-user" size={14} color={COLORS.gray400} />
+                  <Text style={styles.securityText}>Phone verified via OTP for your security</Text>
+                </View>
+              </>
+            }
+          >
+            <AuthStepIndicator currentStep={step} />
 
-          {/* Form */}
-          <View style={styles.form}>
-            <Input
-              label="Full Name *"
-              placeholder="Enter your full name"
-              value={name}
-              onChangeText={(text) => {
-                setName(text);
-                setErrors((prev) => ({ ...prev, name: undefined }));
-              }}
-              error={errors.name}
-              leftIcon={<MaterialIcons name="person" size={20} color={COLORS.gray400} />}
-              autoFocus
-            />
+            {step === 'phone' && (
+              <View style={styles.form}>
+                <Input
+                  label="Phone Number"
+                  placeholder="03XX-XXXXXXX"
+                  value={phone}
+                  onChangeText={(text) => {
+                    setPhone(formatPhoneInput(text));
+                    setErrors((prev) => ({ ...prev, phone: undefined }));
+                  }}
+                  keyboardType="phone-pad"
+                  maxLength={11}
+                  error={errors.phone}
+                  leftIcon={<MaterialIcons name="phone" size={20} color={COLORS.gray400} />}
+                  autoFocus
+                />
+                <Button
+                  title="Send OTP via SMS"
+                  onPress={onPhoneSubmit}
+                  disabled={phone.length < 11}
+                  size="large"
+                />
+              </View>
+            )}
 
-            <Input
-              label="Email (Optional)"
-              placeholder="your@email.com"
-              value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                setErrors((prev) => ({ ...prev, email: undefined }));
-              }}
-              error={errors.email}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              leftIcon={<MaterialIcons name="email" size={20} color={COLORS.gray400} />}
-            />
+            {step === 'otp' && (
+              <View style={styles.form}>
+                <Text style={styles.otpHint}>
+                  {isOtpBypassEnabled() ? (
+                    otpBypassHint()
+                  ) : (
+                    <>
+                      Enter the OTP sent to{' '}
+                      <Text style={styles.phoneBold}>{formatPhoneNumber(phone)}</Text> via SMS
+                    </>
+                  )}
+                </Text>
+                <View style={styles.otpRow}>
+                  {otp.map((digit, index) => (
+                    <TextInput
+                      key={index}
+                      ref={(ref) => {
+                        otpInputRefs.current[index] = ref;
+                      }}
+                      style={[styles.otpInput, digit ? styles.otpInputFilled : null]}
+                      value={digit}
+                      onChangeText={(value) => handleOtpChange(index, value)}
+                      onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}
+                      keyboardType="number-pad"
+                      maxLength={1}
+                      selectTextOnFocus
+                    />
+                  ))}
+                </View>
+                <Button
+                  title="Verify Phone"
+                  onPress={() => verifyOtp(otp.join(''))}
+                  disabled={otp.some((d) => !d)}
+                  size="large"
+                />
+                <View style={styles.resendWrap}>
+                  {timer > 0 ? (
+                    <Text style={styles.timerText}>
+                      Resend in <Text style={styles.timerBold}>{timer}s</Text>
+                    </Text>
+                  ) : (
+                    <TouchableOpacity onPress={handleResend}>
+                      <Text style={styles.resendText}>Resend OTP</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={styles.changeNumberBtn}
+                  onPress={() => {
+                    setStep('phone');
+                    setOtp(['', '', '', '', '', '']);
+                  }}
+                >
+                  <MaterialIcons name="arrow-back" size={16} color={COLORS.gray500} />
+                  <Text style={styles.changeNumberText}>Change number</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-            <View style={styles.phoneDisplay}>
-              <MaterialIcons name="phone" size={20} color={COLORS.gray400} />
-              <Text style={styles.phoneText}>{phone}</Text>
-              <MaterialIcons name="check-circle" size={20} color={COLORS.success} />
-            </View>
+            {step === 'profile' && (
+              <View style={styles.form}>
+                <View style={styles.verifiedBanner}>
+                  <MaterialIcons name="check-circle" size={18} color={COLORS.success} />
+                  <Text style={styles.verifiedText}>
+                    Phone verified! One more step before your PIN.
+                  </Text>
+                </View>
+                <Input
+                  label="Full Name"
+                  placeholder="Enter your full name"
+                  value={name}
+                  onChangeText={(text) => {
+                    setName(text);
+                    setErrors((prev) => ({ ...prev, name: undefined }));
+                  }}
+                  error={errors.name}
+                  leftIcon={<MaterialIcons name="person" size={20} color={COLORS.gray400} />}
+                  autoFocus
+                />
+                <Input
+                  label="Email (Optional)"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    setErrors((prev) => ({ ...prev, email: undefined }));
+                  }}
+                  error={errors.email}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  leftIcon={<MaterialIcons name="email" size={20} color={COLORS.gray400} />}
+                />
+                <Button title="Continue to PIN" onPress={onProfileSubmit} disabled={!name.trim()} size="large" />
+              </View>
+            )}
 
-            <Button
-              title="Complete Registration"
-              onPress={handleRegister}
-              disabled={!name.trim()}
-              size="large"
-            />
-          </View>
+            {step === 'pin' && (
+              <View style={styles.form}>
+                <Text style={styles.pinTitle}>
+                  {pinStage === 'create' ? 'Choose your 4-digit PIN' : 'Confirm your PIN'}
+                </Text>
+                <Text style={styles.pinSubtitle}>
+                  {pinStage === 'create'
+                    ? 'You will use this PIN every time you login — quick and easy, no OTP needed.'
+                    : 'Enter the same PIN again to confirm.'}
+                </Text>
+                <PinInput
+                  value={pinStage === 'create' ? pin : pinConfirm}
+                  onChange={pinStage === 'create' ? setPinValue : setPinConfirm}
+                  onComplete={pinStage === 'create' ? handlePinFirst : handlePinConfirm}
+                  disabled={isLoading}
+                  autoFocus={pinStage === 'create'}
+                />
+                {pinStage === 'confirm' && !isLoading && (
+                  <TouchableOpacity
+                    style={styles.startOverBtn}
+                    onPress={() => {
+                      setPinStage('create');
+                      setPinValue('');
+                      setPinConfirm('');
+                    }}
+                  >
+                    <Text style={styles.startOverText}>Start over</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </AuthShell>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -133,63 +423,104 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    padding: SPACING.lg,
-  },
-  backButton: {
-    marginBottom: SPACING.md,
-  },
-  header: {
+  container: { flex: 1, backgroundColor: COLORS.primary50 },
+  keyboardView: { flex: 1 },
+  scrollContent: { padding: SPACING.lg, paddingTop: SPACING.xl, paddingBottom: SPACING.xl },
+  backButton: { marginBottom: SPACING.sm },
+  form: { marginTop: SPACING.xs },
+  dividerWrap: {
+    flexDirection: 'row',
     alignItems: 'center',
     marginTop: SPACING.lg,
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.md,
   },
-  iconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: BORDER_RADIUS.xxl,
-    backgroundColor: COLORS.primaryLighter,
-    justifyContent: 'center',
+  dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.gray200 },
+  dividerText: { paddingHorizontal: SPACING.sm, fontSize: 13, color: COLORS.gray500 },
+  loginPrompt: { textAlign: 'center', fontSize: 14, color: COLORS.gray600 },
+  loginLink: { color: COLORS.primary600, fontWeight: '700' },
+  termsText: {
+    marginTop: SPACING.md,
+    fontSize: 11,
+    color: COLORS.gray400,
+    textAlign: 'center',
+    lineHeight: 16,
+  },
+  securityNote: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.lg,
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.gray900,
-    marginBottom: SPACING.sm,
-  },
-  subtitle: {
+  securityText: { fontSize: 11, color: COLORS.gray400 },
+  otpHint: {
     fontSize: 14,
     color: COLORS.gray500,
     textAlign: 'center',
+    marginBottom: SPACING.lg,
+    lineHeight: 20,
   },
-  form: {
-    marginTop: SPACING.lg,
+  phoneBold: { fontWeight: '600', color: COLORS.gray700 },
+  otpRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
-  phoneDisplay: {
+  otpInput: {
+    width: 44,
+    height: 52,
+    borderWidth: 2,
+    borderColor: COLORS.gray200,
+    borderRadius: BORDER_RADIUS.md,
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    color: COLORS.gray900,
+    backgroundColor: COLORS.gray50,
+  },
+  otpInputFilled: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primaryLighter,
+  },
+  resendWrap: { alignItems: 'center', marginTop: SPACING.md },
+  timerText: { fontSize: 14, color: COLORS.gray500 },
+  timerBold: { fontWeight: '600', color: COLORS.gray700 },
+  resendText: { fontSize: 14, fontWeight: '600', color: COLORS.primary600 },
+  changeNumberBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.lg,
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: SPACING.lg,
+  },
+  changeNumberText: { fontSize: 14, color: COLORS.gray500 },
+  verifiedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.sm,
+    backgroundColor: '#ECFDF5',
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    marginBottom: SPACING.md,
   },
-  phoneText: {
-    flex: 1,
-    fontSize: 16,
-    color: COLORS.gray700,
-    fontWeight: '500',
+  verifiedText: { flex: 1, fontSize: 13, color: '#047857' },
+  pinTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.gray900,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
   },
+  pinSubtitle: {
+    fontSize: 13,
+    color: COLORS.gray500,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
+    lineHeight: 18,
+  },
+  startOverBtn: { alignItems: 'center', marginTop: SPACING.lg },
+  startOverText: { fontSize: 14, color: COLORS.gray500 },
 });
 
 export default RegisterScreen;

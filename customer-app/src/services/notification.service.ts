@@ -1,20 +1,38 @@
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
-import apiClient, { handleApiError } from './api';
+import apiClient from './api';
 import { ApiResponse, Notification } from '@types';
+import { supportsRemotePush } from '@/lib/expoRuntime';
 
-// Configure notifications
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+type NotificationsModule = typeof import('expo-notifications');
+
+let notificationsModule: NotificationsModule | null = null;
+let handlerConfigured = false;
+
+function getNotifications(): NotificationsModule | null {
+  if (!supportsRemotePush()) return null;
+  if (!notificationsModule) {
+    // Lazy load so Expo Go never executes expo-notifications setup at import time.
+    notificationsModule = require('expo-notifications') as NotificationsModule;
+  }
+  if (!handlerConfigured && notificationsModule) {
+    notificationsModule.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+    handlerConfigured = true;
+  }
+  return notificationsModule;
+}
 
 class NotificationService {
   async registerForPushNotifications(): Promise<string | null> {
+    const Notifications = getNotifications();
+    if (!Notifications) return null;
+
     let token = null;
 
     if (Device.isDevice) {
@@ -27,7 +45,6 @@ class NotificationService {
       }
 
       if (finalStatus !== 'granted') {
-        console.log('Failed to get push token for push notification!');
         return null;
       }
 
@@ -36,8 +53,6 @@ class NotificationService {
           projectId: Constants.expoConfig?.extra?.eas?.projectId,
         })
       ).data;
-    } else {
-      console.log('Must use physical device for Push Notifications');
     }
 
     return token;
@@ -47,9 +62,7 @@ class NotificationService {
     try {
       const response = await apiClient.post('/notifications/register', { token });
       return response.data;
-    } catch (error) {
-      // Backend doesn't have notification endpoints yet — fail silently
-      console.log('Push token registration not available yet');
+    } catch {
       return { success: false, data: { message: 'Not available' } };
     }
   }
@@ -58,9 +71,7 @@ class NotificationService {
     try {
       const response = await apiClient.get('/notifications');
       return response.data;
-    } catch (error) {
-      // Backend doesn't have notification endpoints yet — return empty
-      console.log('Notifications endpoint not available yet');
+    } catch {
       return { success: true, data: [] };
     }
   }
@@ -69,8 +80,7 @@ class NotificationService {
     try {
       const response = await apiClient.patch(`/notifications/${id}/read`);
       return response.data;
-    } catch (error) {
-      console.log('Mark as read not available yet');
+    } catch {
       return { success: false, data: {} as Notification };
     }
   }
@@ -79,8 +89,7 @@ class NotificationService {
     try {
       const response = await apiClient.patch('/notifications/read-all');
       return response.data;
-    } catch (error) {
-      console.log('Mark all as read not available yet');
+    } catch {
       return { success: false, data: { message: 'Not available' } };
     }
   }
@@ -89,36 +98,40 @@ class NotificationService {
     try {
       const response = await apiClient.delete(`/notifications/${id}`);
       return response.data;
-    } catch (error) {
-      console.log('Delete notification not available yet');
+    } catch {
       return { success: false, data: { message: 'Not available' } };
     }
   }
 
-  // Local notification helpers
   async scheduleLocalNotification(
     title: string,
     body: string,
     data?: Record<string, any>,
-    trigger?: Notifications.NotificationTriggerInput
-  ): Promise<string> {
-    const id = await Notifications.scheduleNotificationAsync({
+    trigger?: import('expo-notifications').NotificationTriggerInput
+  ): Promise<string | null> {
+    const Notifications = getNotifications();
+    if (!Notifications) return null;
+
+    return Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
         data: data || {},
         sound: 'default',
       },
-      trigger: trigger || null,
+      trigger: trigger ?? null,
     });
-    return id;
   }
 
   async cancelNotification(notificationId: string): Promise<void> {
+    const Notifications = getNotifications();
+    if (!Notifications) return;
     await Notifications.cancelScheduledNotificationAsync(notificationId);
   }
 
   async cancelAllNotifications(): Promise<void> {
+    const Notifications = getNotifications();
+    if (!Notifications) return;
     await Notifications.cancelAllScheduledNotificationsAsync();
   }
 

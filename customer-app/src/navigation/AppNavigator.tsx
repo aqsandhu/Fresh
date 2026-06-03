@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -8,26 +8,27 @@ import { RootStackParamList } from '@types';
 import { COLORS, STORAGE_KEYS } from '@utils/constants';
 import { useAuthStore } from '@store';
 import { LoadingOverlay } from '@components';
+import { CityProvider, useCityContext } from '@/context/CityContext';
 
 import { AuthNavigator } from './AuthNavigator';
 import { TabNavigator } from './TabNavigator';
 import { CartNavigator } from './CartNavigator';
+import { SelectCityScreen } from '@screens/city';
 import { navigationRef, getPendingRedirect, clearPendingRedirect } from './navigationUtils';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export const AppNavigator: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(true);
+const RootNavigator: React.FC = () => {
+  const { isReady, selectedCityId } = useCityContext();
   const { isAuthenticated, setToken, setUser } = useAuthStore();
   const prevAuth = useRef(isAuthenticated);
+  const [bootstrapped, setBootstrapped] = React.useState(false);
 
   useEffect(() => {
-    // Check for stored auth token
     const checkAuth = async () => {
       try {
         const token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
         const userJson = await AsyncStorage.getItem(STORAGE_KEYS.USER);
-        
         if (token && userJson) {
           setToken(token);
           setUser(JSON.parse(userJson));
@@ -35,14 +36,12 @@ export const AppNavigator: React.FC = () => {
       } catch (error) {
         console.error('Error checking auth:', error);
       } finally {
-        setIsLoading(false);
+        setBootstrapped(true);
       }
     };
-
     checkAuth();
   }, [setToken, setUser]);
 
-  // After login, navigate to the page the user was on before being redirected
   useEffect(() => {
     if (isAuthenticated && !prevAuth.current) {
       const pending = getPendingRedirect();
@@ -62,29 +61,42 @@ export const AppNavigator: React.FC = () => {
     prevAuth.current = isAuthenticated;
   }, [isAuthenticated]);
 
-  if (isLoading) {
-    return <LoadingOverlay visible={true} message="Loading..." />;
+  if (!isReady || !bootstrapped) {
+    return <LoadingOverlay visible message="Loading..." />;
   }
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <>
       <StatusBar style="dark" backgroundColor={COLORS.white} />
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {isAuthenticated ? (
-          <>
-            <Stack.Screen name="Main" component={TabNavigator} />
-            <Stack.Screen
-              name="CartFlow"
-              component={CartNavigator}
-              options={{ animation: 'slide_from_bottom' }}
-            />
-          </>
-        ) : (
-          <Stack.Screen name="Auth" component={AuthNavigator} />
-        )}
+      <Stack.Navigator
+        screenOptions={{ headerShown: false }}
+        initialRouteName={selectedCityId ? 'Main' : 'SelectCity'}
+      >
+        <Stack.Screen name="SelectCity" component={SelectCityScreen} />
+        <Stack.Screen name="Main" component={TabNavigator} />
+        <Stack.Screen
+          name="Auth"
+          component={AuthNavigator}
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="CartFlow"
+          component={CartNavigator}
+          options={{ animation: 'slide_from_bottom' }}
+        />
       </Stack.Navigator>
       <Toast />
-    </NavigationContainer>
+    </>
+  );
+};
+
+export const AppNavigator: React.FC = () => {
+  return (
+    <CityProvider>
+      <NavigationContainer ref={navigationRef}>
+        <RootNavigator />
+      </NavigationContainer>
+    </CityProvider>
   );
 };
 

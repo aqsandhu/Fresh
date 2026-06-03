@@ -19,6 +19,8 @@ import {
   Type,
   RotateCcw,
   Eye,
+  MessageCircle,
+  Smartphone,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -28,6 +30,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { settingsService } from '@/services/settings.service';
 import { bannerService } from '@/services/banner.service';
+import { whatsappOrderService } from '@/services/whatsappOrder.service';
 import type { DeliverySettings, TimeSlot, BusinessHours } from '@/types';
 import toast from 'react-hot-toast';
 import { useCityContext } from '@/context/CityContext';
@@ -99,6 +102,7 @@ export const Settings: React.FC = () => {
     bannerRightTextEn: '',
     bannerRightTextUr: '',
   });
+  const [whatsappOrderUrl, setWhatsappOrderUrl] = useState('');
 
   // Fetch Settings
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
@@ -122,6 +126,12 @@ export const Settings: React.FC = () => {
   const { data: bannerSettings } = useQuery({
     queryKey: ['bannerSettings', selectedCityId],
     queryFn: () => bannerService.getBannerSettings(),
+    enabled: !!selectedCityId,
+  });
+
+  const { data: whatsappOrderSettings } = useQuery({
+    queryKey: ['whatsappOrderSettings', selectedCityId],
+    queryFn: () => whatsappOrderService.getSettings(),
     enabled: !!selectedCityId,
   });
 
@@ -158,6 +168,12 @@ export const Settings: React.FC = () => {
       });
     }
   }, [bannerSettings]);
+
+  useEffect(() => {
+    if (whatsappOrderSettings) {
+      setWhatsappOrderUrl(whatsappOrderSettings.whatsappOrderUrl || '');
+    }
+  }, [whatsappOrderSettings]);
 
   // Mutations
   const updateDeliveryMutation = useMutation({
@@ -226,6 +242,17 @@ export const Settings: React.FC = () => {
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update banner settings');
+    },
+  });
+
+  const updateWhatsappOrderMutation = useMutation({
+    mutationFn: (url: string) => whatsappOrderService.updateSettings(url),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsappOrderSettings', selectedCityId] });
+      toast.success('WhatsApp order link updated');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to update WhatsApp order link');
     },
   });
 
@@ -721,6 +748,86 @@ export const Settings: React.FC = () => {
     </div>
   );
 
+  const renderMobileApp = () => (
+    <div className="max-w-2xl space-y-6">
+      {!selectedCityId && (
+        <Card>
+          <div className="p-4 flex items-start gap-3 text-amber-800 bg-amber-50 rounded-lg">
+            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+            <p className="text-sm">
+              Select a city from the header before setting the WhatsApp order link. Each city can
+              have its own link on the customer app home screen.
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {selectedCity && (
+        <p className="text-sm text-gray-600">
+          Mobile app settings for{' '}
+          <span className="font-semibold text-gray-900">{selectedCity.name}</span>
+        </p>
+      )}
+
+      <Card>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            updateWhatsappOrderMutation.mutate(whatsappOrderUrl.trim());
+          }}
+          className="space-y-6"
+        >
+          <div className="flex items-center space-x-3 mb-2">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <MessageCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-medium text-gray-900">WhatsApp to Order</h3>
+              <p className="text-sm text-gray-500">
+                Green button below &quot;Shop Now&quot; on the customer app home screen
+              </p>
+            </div>
+          </div>
+
+          <Input
+            label="WhatsApp link or phone number"
+            value={whatsappOrderUrl}
+            onChange={(e) => setWhatsappOrderUrl(e.target.value)}
+            placeholder="https://wa.me/923001234567 or 0300-1234567"
+            leftIcon={<MessageCircle className="w-4 h-4 text-gray-400" />}
+            disabled={!selectedCityId}
+          />
+          <p className="text-xs text-gray-400 -mt-4">
+            Full wa.me URL or Pakistani mobile number. If empty, the app uses the banner phone number
+            as a fallback.
+          </p>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() =>
+                setWhatsappOrderUrl(whatsappOrderSettings?.whatsappOrderUrl || '')
+              }
+              leftIcon={<RotateCcw className="w-4 h-4" />}
+              disabled={!selectedCityId}
+            >
+              Reset
+            </Button>
+            <Button
+              type="submit"
+              isLoading={updateWhatsappOrderMutation.isPending}
+              leftIcon={<Save className="w-4 h-4" />}
+              disabled={!selectedCityId || !canUpdate('mobile')}
+            >
+              Save WhatsApp Link
+            </Button>
+          </div>
+        </form>
+      </Card>
+    </div>
+  );
+
   return (
     <Layout title="Settings" subtitle="Manage application settings and configuration">
       {allowedTabs.length === 0 ? (
@@ -786,6 +893,19 @@ export const Settings: React.FC = () => {
           <span>Website Banner</span>
         </button>
         )}
+        {canViewSettingsTab(permissions, 'mobile') && (
+        <button
+          onClick={() => setActiveTab('mobile')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'mobile'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Smartphone className="w-4 h-4" />
+          <span>Mobile App</span>
+        </button>
+        )}
       </div>
 
       {/* Tab Content */}
@@ -793,6 +913,7 @@ export const Settings: React.FC = () => {
       {activeTab === 'timeslots' && renderTimeSlots()}
       {activeTab === 'business' && renderBusinessHours()}
       {activeTab === 'banner' && renderBanner()}
+      {activeTab === 'mobile' && renderMobileApp()}
 
       {/* Time Slot Modal */}
       <Modal

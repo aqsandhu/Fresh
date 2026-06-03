@@ -1,6 +1,11 @@
 import apiClient, { handleApiError } from './api';
-import { ApiResponse, Category, Product, Banner, PaginatedResponse } from '@types';
+import { ApiResponse, Category, StoreProduct, Banner, PaginatedResponse } from '@types';
 import { API_BASE_URL } from '@utils/constants';
+import { withCityParams, getCachedCityId } from '@/lib/apiHelpers';
+
+function hasSelectedCity(): boolean {
+  return !!getCachedCityId();
+}
 
 // ============================================================================
 // DATA MAPPING: Backend snake_case → Customer App types
@@ -60,9 +65,14 @@ function mapBackendCategory(raw: any, index: number): Category {
   };
 }
 
-function mapBackendProduct(raw: any): Product {
+function mapBackendProduct(raw: any): StoreProduct {
   const price = parseFloat(raw.price) || 0;
   const compareAt = parseFloat(raw.compare_at_price) || 0;
+  const toOptionalPrice = (v: unknown): number | null | undefined => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(String(v));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
   const primaryImage = resolveImageUrl(raw.primary_image);
   const images = raw.images && Array.isArray(raw.images) && raw.images.length > 0
     ? raw.images.map(resolveImageUrl)
@@ -80,11 +90,16 @@ function mapBackendProduct(raw: any): Product {
     categoryId: raw.category_id || '',
     categoryName: raw.category_name || '',
     categorySlug: raw.category_slug || raw.categorySlug || '',
+    stock: parseInt(raw.stock_quantity) || 0,
     inStock: (parseInt(raw.stock_quantity) || 0) > 0,
+    isFresh: raw.is_fresh !== false && (parseInt(raw.stock_quantity) || 0) > 0,
     rating: parseFloat(raw.rating_average) || 0,
     reviewCount: parseInt(raw.order_count || raw.review_count) || 0,
     isFeatured: raw.is_featured || false,
     tags: raw.tags || [],
+    halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),
+    quarterKgPrice: toOptionalPrice(raw.quarter_kg_price ?? raw.quarterKgPrice),
+    halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
   };
 }
 
@@ -98,12 +113,18 @@ interface GetProductsParams {
   page?: number;
   limit?: number;
   featured?: boolean;
+  sortBy?: string;
+  sortOrder?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  inStock?: string;
 }
 
 class ProductService {
   async getCategories(): Promise<ApiResponse<Category[]>> {
+    if (!hasSelectedCity()) return { success: true, data: [] };
     try {
-      const response = await apiClient.get('/categories');
+      const response = await apiClient.get('/categories', { params: withCityParams() });
       const raw = response.data;
       const items = (raw.data || []).map(mapBackendCategory);
       return { success: true, data: items };
@@ -114,7 +135,7 @@ class ProductService {
 
   async getCategoryById(id: string): Promise<ApiResponse<Category>> {
     try {
-      const response = await apiClient.get(`/categories/${id}`);
+      const response = await apiClient.get(`/categories/${id}`, { params: withCityParams() });
       const raw = response.data;
       return { success: true, data: mapBackendCategory(raw.data || raw, 0) };
     } catch (error) {
@@ -122,13 +143,19 @@ class ProductService {
     }
   }
 
-  async getProducts(params: GetProductsParams = {}): Promise<ApiResponse<PaginatedResponse<Product>>> {
+  async getProducts(params: GetProductsParams = {}): Promise<ApiResponse<PaginatedResponse<StoreProduct>>> {
+    if (!hasSelectedCity()) {
+      return {
+        success: true,
+        data: { data: [], total: 0, page: 1, limit: 20, totalPages: 0 },
+      };
+    }
     try {
       const apiParams: any = { ...params };
       if (params.featured) {
         apiParams.featured = 'true';
       }
-      const response = await apiClient.get('/products', { params: apiParams });
+      const response = await apiClient.get('/products', { params: withCityParams(apiParams) });
       const raw = response.data;
       const items = (raw.data || []).map(mapBackendProduct);
       const meta = raw.meta || {};
@@ -147,9 +174,9 @@ class ProductService {
     }
   }
 
-  async getProductById(id: string): Promise<ApiResponse<Product>> {
+  async getProductById(id: string): Promise<ApiResponse<StoreProduct>> {
     try {
-      const response = await apiClient.get(`/products/${id}`);
+      const response = await apiClient.get(`/products/${id}`, { params: withCityParams() });
       const raw = response.data;
       return { success: true, data: mapBackendProduct(raw.data || raw) };
     } catch (error) {
@@ -157,9 +184,12 @@ class ProductService {
     }
   }
 
-  async getFeaturedProducts(): Promise<ApiResponse<Product[]>> {
+  async getFeaturedProducts(limit = 500): Promise<ApiResponse<StoreProduct[]>> {
+    if (!hasSelectedCity()) return { success: true, data: [] };
     try {
-      const response = await apiClient.get('/products/featured/list');
+      const response = await apiClient.get('/products/featured/list', {
+        params: withCityParams({ limit }),
+      });
       const raw = response.data;
       const items = (raw.data || []).map(mapBackendProduct);
       return { success: true, data: items };
@@ -168,9 +198,15 @@ class ProductService {
     }
   }
 
-  async getProductsByCategory(categoryId: string): Promise<ApiResponse<Product[]>> {
+  async getProductsByCategory(
+    categoryId: string,
+    params: Omit<GetProductsParams, 'category'> = {}
+  ): Promise<ApiResponse<StoreProduct[]>> {
+    if (!hasSelectedCity()) return { success: true, data: [] };
     try {
-      const response = await apiClient.get('/products', { params: { category: categoryId } });
+      const response = await apiClient.get('/products', {
+        params: withCityParams({ category: categoryId, ...params, limit: params.limit || 200 }),
+      });
       const raw = response.data;
       const items = (raw.data || []).map(mapBackendProduct);
       return { success: true, data: items };
@@ -179,19 +215,67 @@ class ProductService {
     }
   }
 
-  async searchProducts(query: string): Promise<ApiResponse<Product[]>> {
+  async searchProducts(query: string): Promise<ApiResponse<StoreProduct[]>> {
+    if (!hasSelectedCity()) return { success: true, data: [] };
     try {
-      const response = await apiClient.get('/products/search', { params: { q: query } });
+      const response = await apiClient.get('/products/search', { params: withCityParams({ q: query }) });
       const raw = response.data;
       const items = (raw.data || []).map(mapBackendProduct);
       return { success: true, data: items };
     } catch (error) {
       throw handleApiError(error);
+    }
+  }
+
+  async getWhatsAppOrderUrl(): Promise<ApiResponse<{ url: string }>> {
+    try {
+      const response = await apiClient.get('/site-settings/whatsapp-order', {
+        params: withCityParams(),
+      });
+      const raw = response.data?.data || response.data || {};
+      const url = String(raw.whatsapp_order_url || raw.whatsappOrderUrl || '').trim();
+      return { success: true, data: { url } };
+    } catch {
+      return { success: true, data: { url: '' } };
+    }
+  }
+
+  async getBannerSettings(): Promise<
+    ApiResponse<{
+      leftText: string;
+      middleText: string;
+      rightTextEn: string;
+      rightTextUr: string;
+      whatsappOrderUrl?: string;
+    }>
+  > {
+    try {
+      const response = await apiClient.get('/site-settings/banner', { params: withCityParams() });
+      const raw = response.data?.data || response.data || {};
+      return {
+        success: true,
+        data: {
+          leftText: raw.banner_left_text || raw.leftText || '0300-1234567',
+          middleText: raw.banner_middle_text || raw.middleText || 'Free Delivery 10AM-2PM',
+          rightTextEn: raw.banner_right_text_en || raw.rightTextEn || 'Fresh Sabzi at Your Doorstep',
+          rightTextUr: raw.banner_right_text_ur || raw.rightTextUr || 'تازہ سبزیاں آپ کے دروازے پر',
+          whatsappOrderUrl: String(raw.whatsapp_order_url || raw.whatsappOrderUrl || '').trim(),
+        },
+      };
+    } catch {
+      return {
+        success: true,
+        data: {
+          leftText: '0300-1234567',
+          middleText: 'Free Delivery 10AM-2PM',
+          rightTextEn: 'Fresh Sabzi at Your Doorstep',
+          rightTextUr: 'تازہ سبزیاں آپ کے دروازے پر',
+        },
+      };
     }
   }
 
   async getBanners(): Promise<ApiResponse<Banner[]>> {
-    // Backend does not have image banners – return empty array gracefully
     return { success: true, data: [] };
   }
 }

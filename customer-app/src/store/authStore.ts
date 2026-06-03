@@ -18,6 +18,7 @@ interface AuthStore extends AuthState {
   // 4-digit PIN flow
   verifyWithPin: (phone: string, pin: string) => Promise<void>;
   setPin: (pin: string) => Promise<void>;
+  resetPinAndLogin: (phone: string, code: string, newPin: string) => Promise<void>;
   /** Bumps pinVerifiedAt so the checkout re-auth gate stops asking. */
   markPinVerified: () => void;
   /** Last successful PIN verification (epoch ms). */
@@ -53,10 +54,15 @@ export const useAuthStore = create<AuthStore>()(
           if (response.success && response.data) {
             const { user, tokens } = response.data;
             await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
+            if (tokens.refreshToken) {
+              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
+            }
+            await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
             set({
               user,
               token: tokens.accessToken,
               isAuthenticated: true,
+              pinVerifiedAt: Date.now(),
             });
           }
         } finally {
@@ -71,6 +77,10 @@ export const useAuthStore = create<AuthStore>()(
           if (response.success && response.data) {
             const { user, tokens } = response.data;
             await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
+            if (tokens.refreshToken) {
+              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
+            }
+            await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
             set({
               user,
               token: tokens.accessToken,
@@ -89,8 +99,11 @@ export const useAuthStore = create<AuthStore>()(
         } catch (error) {
           console.error('Logout error:', error);
         } finally {
-          await AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
-          await AsyncStorage.removeItem(STORAGE_KEYS.USER);
+          await AsyncStorage.multiRemove([
+            STORAGE_KEYS.TOKEN,
+            STORAGE_KEYS.REFRESH_TOKEN,
+            STORAGE_KEYS.USER,
+          ]);
           set({
             user: null,
             token: null,
@@ -132,6 +145,10 @@ export const useAuthStore = create<AuthStore>()(
           if (response.success && response.data) {
             const { user, tokens } = response.data;
             await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
+            if (tokens.refreshToken) {
+              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
+            }
+            await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
             set({
               user,
               token: tokens.accessToken,
@@ -149,6 +166,30 @@ export const useAuthStore = create<AuthStore>()(
         try {
           await authService.setPin(pin);
           set({ pinVerifiedAt: Date.now() });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      resetPinAndLogin: async (phone: string, code: string, newPin: string) => {
+        set({ isLoading: true });
+        try {
+          await authService.resetPinWithCode(phone, code, newPin);
+          const response = await authService.verifyLogin({ phone, code });
+          if (response.success && response.data) {
+            const { user, tokens } = response.data;
+            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
+            if (tokens.refreshToken) {
+              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
+            }
+            await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+            set({
+              user,
+              token: tokens.accessToken,
+              isAuthenticated: true,
+              pinVerifiedAt: Date.now(),
+            });
+          }
         } finally {
           set({ isLoading: false });
         }

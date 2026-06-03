@@ -11,13 +11,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { AttaStackParamList } from '@types';
+import { ProfileStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, ATTA_CHAKKI } from '@utils/constants';
 import { Button } from '@components';
 import { formatCurrency } from '@utils/helpers';
 
 export const AttaChakkiScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<AttaStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
 
   const features = [
     {
@@ -43,10 +43,9 @@ export const AttaChakkiScreen: React.FC = () => {
   ];
 
   const steps = [
-    { number: '1', title: 'Place Request', description: 'Enter wheat weight and address' },
-    { number: '2', title: 'We Pick Up', description: 'Our rider collects your wheat' },
-    { number: '3', title: 'Grinding', description: 'Your wheat is ground fresh' },
-    { number: '4', title: 'Delivery', description: 'Fresh atta delivered to your door' },
+    { number: '1', title: 'Enter Weight', description: 'Tell us how much wheat to grind' },
+    { number: '2', title: 'Schedule Pickup', description: 'We collect wheat from your address' },
+    { number: '3', title: 'Get Fresh Atta', description: 'Fresh atta delivered to your door' },
   ];
 
   return (
@@ -54,8 +53,12 @@ export const AttaChakkiScreen: React.FC = () => {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Atta Chakki</Text>
-          <Text style={styles.subtitle}>Fresh wheat grinding service</Text>
+          <View style={styles.premiumBadge}>
+            <Text style={styles.premiumBadgeText}>Premium Service</Text>
+          </View>
+          <Text style={styles.title}>Atta Chakki Service</Text>
+          <Text style={styles.subtitleUrdu}>آٹا چکی سروس</Text>
+          <Text style={styles.subtitle}>Fresh wheat grinding at your doorstep</Text>
         </View>
 
         {/* Hero Image */}
@@ -115,6 +118,23 @@ export const AttaChakkiScreen: React.FC = () => {
           </View>
         </View>
 
+        {/* Pricing Information */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Pricing Information</Text>
+          <View style={styles.pricingGrid}>
+            <View style={styles.pricingCardPrimary}>
+              <Text style={styles.pricingCardTitle}>Grinding Charges</Text>
+              <Text style={styles.pricingCardPrice}>Rs. 10/kg</Text>
+              <Text style={styles.pricingCardSub}>Minimum 5 kg order</Text>
+            </View>
+            <View style={styles.pricingCardGreen}>
+              <Text style={styles.pricingCardTitleGreen}>Pickup & Delivery</Text>
+              <Text style={styles.pricingCardPriceGreen}>FREE</Text>
+              <Text style={styles.pricingCardSubGreen}>Within city limits</Text>
+            </View>
+          </View>
+        </View>
+
         {/* Bottom padding */}
         <View style={styles.bottomPadding} />
       </ScrollView>
@@ -122,7 +142,7 @@ export const AttaChakkiScreen: React.FC = () => {
       {/* CTA Button */}
       <View style={styles.footer}>
         <Button
-          title="Request Atta Grinding"
+          title="Submit Request"
           onPress={() => navigation.navigate('AttaRequest')}
           size="large"
         />
@@ -140,17 +160,48 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
+    alignItems: 'center',
   },
+  premiumBadge: {
+    backgroundColor: COLORS.primary100,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.full,
+    marginBottom: SPACING.sm,
+  },
+  premiumBadgeText: { fontSize: 12, fontWeight: '700', color: COLORS.primary700 },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
     color: COLORS.gray900,
+    textAlign: 'center',
   },
+  subtitleUrdu: { fontSize: 16, color: COLORS.primary600, marginTop: 4, textAlign: 'center' },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: COLORS.gray500,
     marginTop: 4,
+    textAlign: 'center',
   },
+  pricingGrid: { flexDirection: 'row', gap: SPACING.md },
+  pricingCardPrimary: {
+    flex: 1,
+    backgroundColor: COLORS.primary50,
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.lg,
+  },
+  pricingCardGreen: {
+    flex: 1,
+    backgroundColor: '#E8F5E9',
+    borderRadius: BORDER_RADIUS.xl,
+    padding: SPACING.lg,
+  },
+  pricingCardTitle: { fontSize: 14, fontWeight: '600', color: COLORS.primary700, marginBottom: 4 },
+  pricingCardPrice: { fontSize: 28, fontWeight: '800', color: COLORS.primary700 },
+  pricingCardSub: { fontSize: 12, color: COLORS.primary600, marginTop: 4 },
+  pricingCardTitleGreen: { fontSize: 14, fontWeight: '600', color: '#166534', marginBottom: 4 },
+  pricingCardPriceGreen: { fontSize: 28, fontWeight: '800', color: '#15803d' },
+  pricingCardSubGreen: { fontSize: 12, color: '#16a34a', marginTop: 4 },
   heroContainer: {
     marginHorizontal: SPACING.lg,
     borderRadius: BORDER_RADIUS.lg,

@@ -7,28 +7,38 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { OrdersStackParamList, Order, OrderStatus } from '@types';
+import Toast from 'react-native-toast-message';
+import { OrdersStackParamList, Order, RootStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatCurrency, formatDate, getStatusColor } from '@utils/helpers';
-import { ErrorView, EmptyState, SkeletonList } from '@components';
+import { ErrorView, EmptyState, SkeletonList, Button } from '@components';
+import { MobileHeader } from '@components/layout/MobileHeader';
 import { orderService } from '@services/order.service';
+import { useAuthStore } from '@store';
+import { useCityContext } from '@/context/CityContext';
 
-const tabs: { label: string; value: OrderStatus | 'all' }[] = [
+type OrderTab = 'all' | 'active' | 'completed';
+
+const tabs: { label: string; value: OrderTab }[] = [
   { label: 'All', value: 'all' },
-  { label: 'Active', value: 'pending' },
-  { label: 'Delivered', value: 'delivered' },
+  { label: 'Active', value: 'active' },
+  { label: 'Completed', value: 'completed' },
 ];
 
 export const OrdersListScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { isAuthenticated } = useAuthStore();
+  const { selectedCityId } = useCityContext();
   const [orders, setOrders] = useState<Order[]>([]);
   const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
-  const [activeTab, setActiveTab] = useState<OrderStatus | 'all'>('all');
+  const [activeTab, setActiveTab] = useState<OrderTab>('all');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,27 +56,56 @@ export const OrdersListScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedCityId]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      rootNavigation.navigate('Auth', { screen: 'Login', params: { redirect: 'Orders' } });
+      return;
+    }
+    setLoading(true);
+    setOrders([]);
     loadOrders();
-  }, [loadOrders]);
+  }, [isAuthenticated, loadOrders, rootNavigation, selectedCityId]);
 
   useEffect(() => {
     if (activeTab === 'all') {
       setFilteredOrders(orders);
-    } else if (activeTab === 'pending') {
+    } else if (activeTab === 'active') {
       setFilteredOrders(
         orders.filter(
-          (o) =>
-            o.status !== 'delivered' &&
-            o.status !== 'cancelled'
+          (o) => o.status !== 'delivered' && o.status !== 'cancelled'
         )
       );
     } else {
-      setFilteredOrders(orders.filter((o) => o.status === activeTab));
+      setFilteredOrders(
+        orders.filter((o) => o.status === 'delivered' || o.status === 'cancelled')
+      );
     }
   }, [activeTab, orders]);
+
+  const handleCancelOrder = (orderId: string) => {
+    Alert.alert('Cancel Order', 'Are you sure you want to cancel this order?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes, Cancel',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await orderService.cancelOrder(orderId);
+            Toast.show({ type: 'success', text1: 'Order cancelled successfully' });
+            loadOrders();
+          } catch (err: any) {
+            Toast.show({ type: 'error', text1: err.message || 'Failed to cancel order' });
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleReorder = () => {
+    Toast.show({ type: 'success', text1: 'Items added to cart!' });
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -79,15 +118,9 @@ export const OrdersListScreen: React.FC = () => {
 
   const renderOrder = ({ item }: { item: Order }) => {
     const statusColor = getStatusColor(item.status);
-    const firstItem = item.items[0];
-    const moreItems = item.items.length - 1;
 
     return (
-      <TouchableOpacity
-        style={styles.orderCard}
-        onPress={() => handleOrderPress(item)}
-        activeOpacity={0.9}
-      >
+      <View style={styles.orderCard}>
         <View style={styles.orderHeader}>
           <View>
             <Text style={styles.orderId}>Order #{item.orderNumber || item.id.slice(0, 8)}</Text>
@@ -101,25 +134,65 @@ export const OrdersListScreen: React.FC = () => {
         </View>
 
         <View style={styles.orderItems}>
-          <Image source={{ uri: firstItem.productImage }} style={styles.itemImage} />
-          <View style={styles.itemInfo}>
-            <Text style={styles.itemName} numberOfLines={1}>
-              {firstItem.productName}
-            </Text>
-            <Text style={styles.itemQuantity}>
-              {firstItem.quantity} {firstItem.unit}
-            </Text>
-            {moreItems > 0 && (
-              <Text style={styles.moreItems}>+{moreItems} more items</Text>
-            )}
-          </View>
+          {item.items.map((orderItem, idx) => (
+            <View key={`${item.id}-${idx}`} style={styles.orderItemRow}>
+              <Image source={{ uri: orderItem.productImage }} style={styles.itemImage} />
+              <View style={styles.itemInfo}>
+                <Text style={styles.itemName} numberOfLines={1}>
+                  {orderItem.productName}
+                </Text>
+                <Text style={styles.itemQuantity}>
+                  {orderItem.quantity} × {formatCurrency(orderItem.price)}
+                </Text>
+              </View>
+              <Text style={styles.itemLineTotal}>
+                {formatCurrency(orderItem.price * orderItem.quantity)}
+              </Text>
+            </View>
+          ))}
         </View>
 
         <View style={styles.orderFooter}>
           <Text style={styles.totalLabel}>Total</Text>
           <Text style={styles.totalValue}>{formatCurrency(item.total)}</Text>
         </View>
-      </TouchableOpacity>
+
+        <View style={styles.orderActions}>
+          {(item.status === 'out_for_delivery' || item.status === 'out-for-delivery') && (
+            <Button
+              title="Track Order"
+              size="small"
+              onPress={() => navigation.navigate('TrackOrder', { orderId: item.id })}
+              style={styles.actionBtn}
+            />
+          )}
+          {item.status === 'delivered' && (
+            <Button
+              title="Reorder"
+              variant="outline"
+              size="small"
+              onPress={handleReorder}
+              style={styles.actionBtn}
+            />
+          )}
+          {(item.status === 'pending' || item.status === 'confirmed' || item.status === 'preparing') && (
+            <Button
+              title="Cancel Order"
+              variant="outline"
+              size="small"
+              onPress={() => handleCancelOrder(item.id)}
+              style={styles.actionBtn}
+            />
+          )}
+          <Button
+            title="View Details"
+            variant="outline"
+            size="small"
+            onPress={() => handleOrderPress(item)}
+            style={styles.actionBtn}
+          />
+        </View>
+      </View>
     );
   };
 
@@ -132,13 +205,20 @@ export const OrdersListScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <MobileHeader
+        onSearchPress={() =>
+          rootNavigation.navigate('Main', {
+            screen: 'Shop',
+            params: { screen: 'Search' },
+          })
+        }
+      />
       <View style={styles.header}>
         <Text style={styles.title}>My Orders</Text>
       </View>
 
-      {/* Tabs */}
+      {/* Tabs — website pill style */}
       <View style={styles.tabsContainer}>
         {tabs.map((tab) => (
           <TouchableOpacity
@@ -175,9 +255,14 @@ export const OrdersListScreen: React.FC = () => {
         <EmptyState
           icon="receipt-long"
           title="No orders yet"
-          message="Your order history will appear here"
-          actionTitle="Start Shopping"
-          onAction={() => navigation.getParent()?.navigate('Home')}
+          message="You haven't placed any orders yet. Start shopping to see your orders here."
+          actionTitle="Shop Now"
+          onAction={() =>
+            rootNavigation.navigate('Main', {
+              screen: 'Shop',
+              params: { screen: 'ProductsMain' },
+            })
+          }
         />
       )}
     </SafeAreaView>
@@ -203,24 +288,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
+    gap: SPACING.sm,
   },
   tab: {
-    flex: 1,
+    paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.gray200,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.white,
   },
   tabActive: {
-    borderBottomColor: COLORS.primary,
+    backgroundColor: COLORS.primary600,
   },
   tabText: {
     fontSize: 14,
     fontWeight: '500',
-    color: COLORS.gray500,
+    color: COLORS.gray600,
+    textTransform: 'capitalize',
   },
   tabTextActive: {
-    color: COLORS.primary,
+    color: COLORS.white,
+    fontWeight: '600',
   },
   list: {
     padding: SPACING.lg,
@@ -257,13 +344,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   orderItems: {
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  orderItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    gap: SPACING.sm,
   },
   itemImage: {
-    width: 60,
-    height: 60,
+    width: 64,
+    height: 64,
     borderRadius: BORDER_RADIUS.md,
   },
   itemInfo: {
@@ -279,6 +370,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.gray500,
     marginTop: 2,
+  },
+  itemLineTotal: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.gray900,
   },
   moreItems: {
     fontSize: 12,
@@ -302,6 +398,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.primary,
   },
+  orderActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray200,
+  },
+  actionBtn: { flex: 1, minWidth: '45%' },
 });
 
 export default OrdersListScreen;

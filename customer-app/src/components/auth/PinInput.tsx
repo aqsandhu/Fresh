@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, TextInput, StyleSheet } from 'react-native';
+import { View, TextInput, StyleSheet, InteractionManager } from 'react-native';
 
 // Reusable 4-digit PIN input. Mirrors the website component's behaviour
 // (paste / autofill / backspace / focus chaining) so register / login /
@@ -28,7 +28,11 @@ export default function PinInput({
   const cells = (value + '____').slice(0, LENGTH).split('');
 
   useEffect(() => {
-    if (autoFocus) refs.current[0]?.focus();
+    if (!autoFocus) return;
+    const task = InteractionManager.runAfterInteractions(() => {
+      refs.current[0]?.focus();
+    });
+    return () => task.cancel();
   }, [autoFocus]);
 
   const setCharAt = (index: number, char: string) => {
