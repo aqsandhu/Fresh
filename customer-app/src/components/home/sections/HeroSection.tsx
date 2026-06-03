@@ -128,12 +128,12 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow, onAttaChakk
         </TouchableOpacity>
         {showWhatsappButton ? (
           <TouchableOpacity
-            style={styles.whatsappBtn}
+            style={styles.primaryBtn}
             onPress={() => openWhatsAppOrder(whatsappTarget)}
             activeOpacity={0.85}
           >
-            <MaterialIcons name="chat" size={18} color="#fff" />
-            <Text style={styles.whatsappBtnText}>WhatsApp to Order</Text>
+            <MaterialIcons name="chat" size={18} color={COLORS.white} />
+            <Text style={styles.primaryBtnText}>WhatsApp to Order</Text>
           </TouchableOpacity>
         ) : null}
         {/* Atta Chakki — temporarily hidden; re-enable when service launches
@@ -218,17 +218,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
   },
   primaryBtnText: { fontSize: 16, fontWeight: '600', color: COLORS.white },
-  whatsappBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#25D366',
-    borderRadius: BORDER_RADIUS.lg,
-    paddingVertical: 12,
-    paddingHorizontal: SPACING.lg,
-  },
-  whatsappBtnText: { fontSize: 16, fontWeight: '600', color: COLORS.white },
   outlineBtn: {
     alignItems: 'center',
     justifyContent: 'center',
