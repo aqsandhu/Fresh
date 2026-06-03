@@ -9,12 +9,11 @@ import {
 } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Camera, Check, Loader2, MapPin, Save, X } from 'lucide-react'
+import { Check, Loader2, MapPin, Save, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import api, { addressesApi } from '@/lib/api'
-import { resolveImageUrl } from '@/lib/utils'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
 import {
   getAccuratePosition,
@@ -22,6 +21,7 @@ import {
   REQUIRED_LOCATION_ACCURACY_M,
 } from '@/lib/geolocation'
 import GoogleMapPicker from './GoogleMapPicker'
+import DoorPhotoField from './DoorPhotoField'
 
 export type AddressFormInitial = {
   id?: string
@@ -359,85 +359,55 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
         />
       </div>
 
-      {/* Door picture */}
+      {/* Door picture — same flow as customer app (pick → crop modal) */}
       <div className="mt-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Door Picture (Optional)
-        </label>
-
-        {existingDoorUrl && !doorPicture && (
-          <div className="mb-2 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={resolveImageUrl(existingDoorUrl) || existingDoorUrl}
-              alt="Current door"
-              className="w-14 h-14 rounded-md object-cover"
-            />
-            <span className="text-xs text-gray-600 flex-1">
-              Current door picture. Upload a new one below to replace it.
-            </span>
-          </div>
-        )}
-
-        <label className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary-400 transition-colors cursor-pointer block">
-          <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-          <p className="text-sm text-gray-500">
-            {doorPicture
-              ? doorPicture.name
-              : existingDoorUrl
-              ? 'Tap to replace door picture'
-              : 'Click to upload a picture of your door'}
-          </p>
-          <p className="text-xs text-gray-400 mt-1">
-            Helps our delivery partner find your location
-          </p>
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => setDoorPicture(e.target.files?.[0] || null)}
-          />
-        </label>
+        <DoorPhotoField
+          value={doorPicture}
+          onChange={setDoorPicture}
+          existingUrl={existingDoorUrl}
+        />
       </div>
 
       {/* Map location */}
       <div className="mt-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="mb-2 block text-sm font-semibold text-gray-700">
           📍 Pin Map Location (Optional)
         </label>
 
         {!showMapPicker && !mapLocation && (
-          <div className="flex flex-col sm:flex-row gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
               onClick={() => setShowMapPicker(true)}
-              className="flex items-center justify-center gap-2 text-primary-600 hover:text-primary-700 font-medium text-sm border border-primary-200 rounded-lg px-4 py-2.5 hover:bg-primary-50 transition-colors"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-primary-200 bg-white px-4 py-2.5 text-sm font-semibold text-primary-700 transition-colors hover:bg-primary-50"
             >
-              <MapPin className="w-4 h-4" />
+              <MapPin className="h-4 w-4" />
               Add Google Map Location
             </button>
             <button
               type="button"
               disabled={isLocating}
               onClick={handleGetGps}
-              className="flex items-center justify-center gap-2 bg-primary-600 text-white rounded-lg px-4 py-2.5 text-sm hover:bg-primary-700 transition-colors disabled:opacity-60"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-60"
             >
-              <MapPin className="w-4 h-4" />
+              <MapPin className="h-4 w-4" />
               {isLocating ? 'Getting location…' : 'Get My Location'}
             </button>
           </div>
         )}
 
         {gpsStatus && (
-          <p className={`mt-2 text-xs ${isLocating ? 'text-primary-600' : 'text-gray-600'}`}>
+          <p
+            className={`mt-2 text-xs ${isLocating ? 'text-primary-600' : 'text-gray-600'}`}
+          >
             {gpsStatus}
           </p>
         )}
 
         {mapLocation && !showMapPicker && (
-          <div className="flex flex-wrap items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-            <Check className="w-5 h-5 text-green-600" />
-            <span className="text-sm text-green-700 flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+            <Check className="h-5 w-5 shrink-0 text-green-600" />
+            <span className="min-w-0 flex-1 text-sm text-green-700">
               Location pinned ({mapLocation.lat.toFixed(4)}, {mapLocation.lng.toFixed(4)})
               {mapAccuracy != null && (
                 <span className="text-green-600"> · ±{Math.round(mapAccuracy)}m</span>
@@ -445,10 +415,8 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
             </span>
             <button
               type="button"
-              onClick={() => {
-                setShowMapPicker(true)
-              }}
-              className="text-sm text-primary-600 hover:underline"
+              onClick={() => setShowMapPicker(true)}
+              className="text-sm font-medium text-primary-600 hover:underline"
             >
               Change
             </button>
@@ -457,8 +425,9 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
               onClick={() => {
                 setMapLocation(null)
                 setMapAccuracy(null)
+                setGpsStatus(null)
               }}
-              className="text-sm text-red-500 hover:underline"
+              className="text-sm font-medium text-red-500 hover:underline"
             >
               Remove
             </button>
@@ -481,6 +450,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
             onCancel={() => {
               setMapLocation(null)
               setMapAccuracy(null)
+              setGpsStatus(null)
               setShowMapPicker(false)
             }}
           />

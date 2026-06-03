@@ -147,6 +147,7 @@ export default function DraggableMapPicker({
     if (!maps) return
 
     if (accuracy != null && accuracy > 0) {
+      const radius = Math.min(accuracy, 80)
       if (!circleRef.current) {
         circleRef.current = new maps.Circle({
           strokeColor: '#10B981',
@@ -156,11 +157,11 @@ export default function DraggableMapPicker({
           fillOpacity: 0.15,
           map,
           center: { lat, lng },
-          radius: accuracy,
+          radius,
         })
       } else {
         circleRef.current.setCenter({ lat, lng })
-        circleRef.current.setRadius(accuracy)
+        circleRef.current.setRadius(radius)
         circleRef.current.setMap(map)
       }
     } else if (circleRef.current) {
