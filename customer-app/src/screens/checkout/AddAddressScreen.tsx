@@ -343,7 +343,7 @@ export const AddAddressScreen: React.FC = () => {
           <MapView
             ref={mapRef}
             style={styles.map}
-            region={region}
+            initialRegion={region}
             onPress={handleLocationSelect}
             onMapReady={() => mapRef.current?.animateToRegion(region, 0)}
           >
