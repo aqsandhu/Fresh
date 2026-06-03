@@ -12,7 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import { Marker, Polyline } from 'react-native-maps';
+import { AppMapView } from '@/components/maps';
 import { OrdersStackParamList, OrderStatus } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatDateTime, getStatusColor } from '@utils/helpers';
@@ -196,7 +197,7 @@ export const TrackOrderScreen: React.FC = () => {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Map */}
         <View style={styles.mapContainer}>
-          <MapView
+          <AppMapView
             style={styles.map}
             initialRegion={{
               latitude: (riderLocation.latitude + deliveryLocation.latitude) / 2,
@@ -225,7 +226,7 @@ export const TrackOrderScreen: React.FC = () => {
               strokeColor={COLORS.primary}
               strokeWidth={3}
             />
-          </MapView>
+          </AppMapView>
 
           {/* Rider Info Card */}
           {trackingData.rider && (
