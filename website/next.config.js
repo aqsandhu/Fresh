@@ -1,5 +1,17 @@
 /** @type {import('next').NextConfig} */
+
+// Same Google Maps key resolution as customer-app/app.config.ts (all aliases → public env).
+const googleMapsKey = (
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  process.env.GOOGLE_MAPS_API_KEY ||
+  ''
+).trim();
+
 const nextConfig = {
+  env: {
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: googleMapsKey,
+  },
   // Tell Next.js to transpile Firebase packages — this forces webpack to use
   // the browser-compatible exports instead of the Node.js (node-esm) build,
   // which was pulling in undici and breaking the client bundle.

@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { loadGoogleMapsJs } from '@/lib/loadGoogleMaps'
 import { hasGoogleMapsApiKey } from '@/lib/googleMaps'
+import LeafletDraggableMapPicker from './LeafletDraggableMapPicker'
 
 interface DraggableMapPickerProps {
   lat: number
@@ -14,18 +15,71 @@ interface DraggableMapPickerProps {
   onChange: (lat: number, lng: number) => void
 }
 
+type MapEngine = 'loading' | 'google' | 'leaflet'
+
 /**
- * Interactive Google Maps picker with a draggable red pin.
- * Requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY (Maps JavaScript API enabled).
+ * Interactive map picker — Google Maps when API key is set (same key as app),
+ * otherwise OpenStreetMap/Leaflet so the UI always works like the customer app.
  */
-export default function DraggableMapPicker({
+export default function DraggableMapPicker(props: DraggableMapPickerProps) {
+  const [engine, setEngine] = useState<MapEngine>(
+    hasGoogleMapsApiKey() ? 'loading' : 'leaflet'
+  )
+
+  useEffect(() => {
+    if (!hasGoogleMapsApiKey()) {
+      setEngine('leaflet')
+      return
+    }
+
+    let cancelled = false
+    loadGoogleMapsJs()
+      .then((maps) => {
+        if (cancelled) return
+        setEngine(maps ? 'google' : 'leaflet')
+      })
+      .catch(() => {
+        if (!cancelled) setEngine('leaflet')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (engine === 'leaflet') {
+    return <LeafletDraggableMapPicker {...props} />
+  }
+
+  if (engine === 'loading') {
+    const boxHeight =
+      typeof props.height === 'number' ? `${props.height}px` : props.height || '280px'
+    return (
+      <div
+        className="relative flex w-full items-center justify-center bg-gray-200"
+        style={{ height: boxHeight }}
+      >
+        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
+
+  return <GoogleDraggableMapPicker {...props} onEngineFail={() => setEngine('leaflet')} />
+}
+
+interface GoogleDraggableMapPickerProps extends DraggableMapPickerProps {
+  onEngineFail: () => void
+}
+
+function GoogleDraggableMapPicker({
   lat,
   lng,
   accuracy,
   height = 280,
   zoom = 17,
   onChange,
-}: DraggableMapPickerProps) {
+  onEngineFail,
+}: GoogleDraggableMapPickerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
@@ -34,12 +88,10 @@ export default function DraggableMapPicker({
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
-  const [status, setStatus] = useState<'loading' | 'ready' | 'missing-key' | 'error'>(
-    hasGoogleMapsApiKey() ? 'loading' : 'missing-key'
-  )
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
-    if (!hasGoogleMapsApiKey() || !containerRef.current) return
+    if (!containerRef.current) return
 
     let cancelled = false
     let resizeObserver: ResizeObserver | null = null
@@ -53,7 +105,7 @@ export default function DraggableMapPicker({
       try {
         const maps = await loadGoogleMapsJs()
         if (cancelled || !maps || !containerRef.current) {
-          if (!cancelled) setStatus('error')
+          if (!cancelled) onEngineFail()
           return
         }
 
@@ -89,7 +141,7 @@ export default function DraggableMapPicker({
 
         mapRef.current = map
         markerRef.current = marker
-        setStatus('ready')
+        setReady(true)
 
         const invalidate = () => {
           if (map && !cancelled) {
@@ -105,11 +157,11 @@ export default function DraggableMapPicker({
           resizeObserver.observe(containerRef.current)
         }
       } catch {
-        if (!cancelled) setStatus('error')
+        if (!cancelled) onEngineFail()
       }
     }
 
-    init()
+    void init()
 
     return () => {
       cancelled = true
@@ -172,39 +224,10 @@ export default function DraggableMapPicker({
 
   const boxHeight = typeof height === 'number' ? `${height}px` : height
 
-  if (status === 'missing-key') {
-    return (
-      <div
-        className="flex flex-col items-center justify-center gap-2 bg-amber-50 px-4 text-center"
-        style={{ height: boxHeight }}
-      >
-        <AlertCircle className="h-8 w-8 text-amber-600" />
-        <p className="text-sm font-medium text-amber-900">Google Maps API key required</p>
-        <p className="text-xs text-amber-800 max-w-sm">
-          Set <code className="rounded bg-amber-100 px-1">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code>{' '}
-          on Vercel and enable Maps JavaScript API in Google Cloud.
-        </p>
-      </div>
-    )
-  }
-
-  if (status === 'error') {
-    return (
-      <div
-        className="flex flex-col items-center justify-center gap-2 bg-red-50 px-4 text-center"
-        style={{ height: boxHeight }}
-      >
-        <AlertCircle className="h-8 w-8 text-red-500" />
-        <p className="text-sm font-medium text-red-800">Could not load Google Maps</p>
-        <p className="text-xs text-red-700">Check your API key and billing in Google Cloud Console.</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="relative w-full bg-gray-100" style={{ height: boxHeight }}>
-      {status === 'loading' && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-100">
+    <div className="relative w-full bg-gray-200" style={{ height: boxHeight }}>
+      {!ready && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-200">
           <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
         </div>
       )}

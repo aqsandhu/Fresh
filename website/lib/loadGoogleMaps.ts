@@ -1,8 +1,10 @@
+import { resolveGoogleMapsApiKey } from './googleMaps'
+
 let googleMapsLoader: Promise<any> | null = null
 
-/** Load Google Maps JavaScript API once (requires NEXT_PUBLIC_GOOGLE_MAPS_API_KEY). */
+/** Load Google Maps JavaScript API once (uses same key as customer-app). */
 export function loadGoogleMapsJs(): Promise<any | null> {
-  const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim()
+  const key = resolveGoogleMapsApiKey()
   if (!key || typeof window === 'undefined') {
     return Promise.resolve(null)
   }
