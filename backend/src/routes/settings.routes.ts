@@ -49,6 +49,16 @@ router.get('/delivery', asyncHandler(async (req, res) => {
   successResponse(res, settings, 'Delivery settings retrieved');
 }));
 
+// Public: optional Google Maps JS key (Render GOOGLE_MAPS_API_KEY). Browser keys are public.
+router.get('/maps-key', asyncHandler(async (_req, res) => {
+  const key =
+    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
+    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
+    '';
+  successResponse(res, { key: key || null }, 'Maps key retrieved');
+}));
+
 // Public: Get available time slots (no auth required)
 router.get('/time-slots', asyncHandler(async (req, res) => {
   const dayOfWeek = new Date().getDay();
