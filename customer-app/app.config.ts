@@ -19,16 +19,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...config.extra,
       googleMapsApiKey: googleMapsKey,
     },
-    plugins: [
-      ...(config.plugins ?? []),
-      [
-        'react-native-maps',
-        {
-          iosGoogleMapsApiKey: googleMapsKey,
-          androidGoogleMapsApiKey: googleMapsKey,
-        },
-      ],
-    ],
+    // react-native-maps@1.20.x has no Expo config plugin (needs 1.22+).
+    // API keys are injected via android/ios config below (works on prebuild/EAS).
+    plugins: [...(config.plugins ?? [])],
     android: {
       ...config.android,
       config: {
