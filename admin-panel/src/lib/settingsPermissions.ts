@@ -1,6 +1,6 @@
 import { hasPermission } from './permissions';
 
-export type SettingsTabId = 'delivery' | 'timeslots' | 'business' | 'banner' | 'mobile';
+export type SettingsTabId = 'delivery' | 'timeslots' | 'business' | 'banner' | 'whatsapp';
 
 const TAB_VIEW: Record<SettingsTabId, string[]> = {
   delivery: ['settings.delivery.view', 'settings.view', 'settings.update'],
@@ -15,7 +15,7 @@ const TAB_VIEW: Record<SettingsTabId, string[]> = {
   ],
   business: ['settings.business_hours.view', 'settings.view', 'settings.update'],
   banner: ['settings.banner.view', 'settings.view', 'settings.update'],
-  mobile: [
+  whatsapp: [
     'settings.view',
     'settings.update',
     'settings.delivery.view',
@@ -29,7 +29,7 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   timeslots: ['settings.timeslots.manage', 'settings.update'],
   business: ['settings.business_hours.update', 'settings.update'],
   banner: ['settings.banner.update', 'settings.update'],
-  mobile: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
+  whatsapp: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
 };
 
 export const ALL_SETTINGS_VIEW_CODES = [
@@ -66,14 +66,31 @@ export function canUpdateSettingsTab(
 export function canAccessSettingsPage(permissions: string[] | undefined): boolean {
   return (
     hasPermission(permissions, ALL_SETTINGS_VIEW_CODES) ||
-    (['delivery', 'timeslots', 'business', 'banner', 'mobile'] as SettingsTabId[]).some((tab) =>
+    (['delivery', 'timeslots', 'business', 'banner', 'whatsapp'] as SettingsTabId[]).some((tab) =>
       canViewSettingsTab(permissions, tab)
     )
   );
 }
 
 export function visibleSettingsTabs(permissions: string[] | undefined): SettingsTabId[] {
-  return (['delivery', 'timeslots', 'business', 'banner', 'mobile'] as SettingsTabId[]).filter(
+  return (['delivery', 'timeslots', 'business', 'banner', 'whatsapp'] as SettingsTabId[]).filter(
     (tab) => canViewSettingsTab(permissions, tab)
   );
+}
+
+/** Any admin/super_admin on Settings can open the WhatsApp tab even without granular codes. */
+export function canViewWhatsappSettingsTab(
+  permissions: string[] | undefined,
+  role?: string
+): boolean {
+  if (role === 'super_admin' || role === 'admin') return true;
+  return canViewSettingsTab(permissions, 'whatsapp');
+}
+
+export function canUpdateWhatsappSettings(
+  permissions: string[] | undefined,
+  role?: string
+): boolean {
+  if (role === 'super_admin' || role === 'admin') return true;
+  return canUpdateSettingsTab(permissions, 'whatsapp');
 }

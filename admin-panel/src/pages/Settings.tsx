@@ -20,7 +20,6 @@ import {
   RotateCcw,
   Eye,
   MessageCircle,
-  Smartphone,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -30,19 +29,19 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { settingsService } from '@/services/settings.service';
 import { bannerService } from '@/services/banner.service';
-import { whatsappOrderService } from '@/services/whatsappOrder.service';
+import { WhatsAppOrderSettingsPanel } from '@/components/settings/WhatsAppOrderSettingsPanel';
 import type { DeliverySettings, TimeSlot, BusinessHours } from '@/types';
 import toast from 'react-hot-toast';
 import { useCityContext } from '@/context/CityContext';
 import { useAuthContext } from '@/context/AuthContext';
 import {
-  canAccessSettingsPage,
   canUpdateSettingsTab,
   canViewSettingsTab,
+  canViewWhatsappSettingsTab,
+  canUpdateWhatsappSettings,
   visibleSettingsTabs,
   type SettingsTabId,
 } from '@/lib/settingsPermissions';
-import { hasPermission } from '@/lib/permissions';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -63,7 +62,14 @@ export const Settings: React.FC = () => {
   const { selectedCity, selectedCityId } = useCityContext();
   const { user } = useAuthContext();
   const permissions = user?.permissions;
-  const allowedTabs = visibleSettingsTabs(permissions);
+  const role = user?.role;
+  const baseTabs = visibleSettingsTabs(permissions);
+  const showWhatsappTab = canViewWhatsappSettingsTab(permissions, role);
+  const allowedTabs: SettingsTabId[] = showWhatsappTab
+    ? baseTabs.includes('whatsapp')
+      ? baseTabs
+      : [...baseTabs, 'whatsapp']
+    : baseTabs;
   const [activeTab, setActiveTab] = useState<SettingsTabId>('delivery');
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
@@ -75,11 +81,7 @@ export const Settings: React.FC = () => {
   }, [allowedTabs, activeTab]);
 
   const canUpdate = (tab: SettingsTabId) => canUpdateSettingsTab(permissions, tab);
-  const canSaveWhatsapp = hasPermission(permissions, [
-    'settings.update',
-    'settings.banner.update',
-    'settings.delivery.update',
-  ]);
+  const canEditWhatsapp = canUpdateWhatsappSettings(permissions, role);
 
   // Delivery Settings State
   const [deliverySettings, setDeliverySettings] = useState<DeliverySettings>({
@@ -109,8 +111,6 @@ export const Settings: React.FC = () => {
     bannerRightTextEn: '',
     bannerRightTextUr: '',
   });
-  const [whatsappOrderUrl, setWhatsappOrderUrl] = useState('');
-
   // Fetch Settings
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
     queryKey: ['settings'],
@@ -133,12 +133,6 @@ export const Settings: React.FC = () => {
   const { data: bannerSettings } = useQuery({
     queryKey: ['bannerSettings', selectedCityId],
     queryFn: () => bannerService.getBannerSettings(),
-    enabled: !!selectedCityId,
-  });
-
-  const { data: whatsappOrderSettings } = useQuery({
-    queryKey: ['whatsappOrderSettings', selectedCityId],
-    queryFn: () => whatsappOrderService.getSettings(),
     enabled: !!selectedCityId,
   });
 
@@ -175,12 +169,6 @@ export const Settings: React.FC = () => {
       });
     }
   }, [bannerSettings]);
-
-  useEffect(() => {
-    if (whatsappOrderSettings) {
-      setWhatsappOrderUrl(whatsappOrderSettings.whatsappOrderUrl || '');
-    }
-  }, [whatsappOrderSettings]);
 
   // Mutations
   const updateDeliveryMutation = useMutation({
@@ -249,17 +237,6 @@ export const Settings: React.FC = () => {
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update banner settings');
-    },
-  });
-
-  const updateWhatsappOrderMutation = useMutation({
-    mutationFn: (url: string) => whatsappOrderService.updateSettings(url),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['whatsappOrderSettings', selectedCityId] });
-      toast.success('WhatsApp order link updated');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update WhatsApp order link');
     },
   });
 
@@ -755,104 +732,15 @@ export const Settings: React.FC = () => {
     </div>
   );
 
-  const renderWhatsAppOrderCard = () => (
-    <div className="max-w-2xl mb-6">
-      {!selectedCityId && (
-        <Card className="mb-4">
-          <div className="p-4 flex items-start gap-3 text-amber-800 bg-amber-50 rounded-lg">
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-            <p className="text-sm">
-              <strong>Select a city</strong> from the header dropdown (top bar) before saving the
-              WhatsApp order link.
-            </p>
-          </div>
-        </Card>
-      )}
-
-      {selectedCity && (
-        <p className="text-sm text-gray-600 mb-3">
-          WhatsApp order link for{' '}
-          <span className="font-semibold text-gray-900">{selectedCity.name}</span>
-        </p>
-      )}
-
-      <Card>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            updateWhatsappOrderMutation.mutate(whatsappOrderUrl.trim());
-          }}
-          className="space-y-6 p-1"
-        >
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <MessageCircle className="w-5 h-5 text-green-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">WhatsApp to Order (Mobile App)</h3>
-              <p className="text-sm text-gray-500">
-                Button below &quot;Shop Now&quot; on the customer app home screen
-              </p>
-            </div>
-          </div>
-
-          <Input
-            label="WhatsApp link or phone number"
-            value={whatsappOrderUrl}
-            onChange={(e) => setWhatsappOrderUrl(e.target.value)}
-            placeholder="https://wa.me/923001234567 or 0300-1234567"
-            leftIcon={<MessageCircle className="w-4 h-4 text-gray-400" />}
-            disabled={!selectedCityId || !canSaveWhatsapp}
-          />
-          <p className="text-xs text-gray-400 -mt-4">
-            Full wa.me URL or Pakistani mobile number. Stored in <code>site_settings</code> (no extra
-            Supabase table). If empty, the app uses the banner phone number.
-          </p>
-
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                setWhatsappOrderUrl(whatsappOrderSettings?.whatsappOrderUrl || '')
-              }
-              leftIcon={<RotateCcw className="w-4 h-4" />}
-              disabled={!selectedCityId}
-            >
-              Reset
-            </Button>
-            <Button
-              type="submit"
-              isLoading={updateWhatsappOrderMutation.isPending}
-              leftIcon={<Save className="w-4 h-4" />}
-              disabled={!selectedCityId || !canSaveWhatsapp}
-            >
-              Save WhatsApp Link
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
+  const renderWhatsappTab = () => (
+    <WhatsAppOrderSettingsPanel canEdit={canEditWhatsapp} />
   );
 
-  const renderMobileApp = () => (
-    <div className="max-w-2xl">
-      <Card>
-        <div className="p-6 text-sm text-gray-600">
-          <p className="font-medium text-gray-900 mb-2">WhatsApp to Order</p>
-          <p>
-            Use the <strong>WhatsApp to Order (Mobile App)</strong> section at the top of this
-            Settings page — it is always visible when you open Settings, no matter which tab is
-            selected.
-          </p>
-        </div>
-      </Card>
-    </div>
-  );
+  const hasAnySettingsAccess = allowedTabs.length > 0;
 
   return (
     <Layout title="Settings" subtitle="Manage application settings and configuration">
-      {allowedTabs.length === 0 ? (
+      {!hasAnySettingsAccess ? (
         <Card>
           <div className="p-8 text-center text-gray-600 text-sm">
             You do not have permission to view any settings sections. Ask a super admin to assign
@@ -861,8 +749,6 @@ export const Settings: React.FC = () => {
         </Card>
       ) : (
       <>
-      {canAccessSettingsPage(permissions) && renderWhatsAppOrderCard()}
-
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg mb-6">
         {canViewSettingsTab(permissions, 'delivery') && (
@@ -917,17 +803,17 @@ export const Settings: React.FC = () => {
           <span>Website Banner</span>
         </button>
         )}
-        {canViewSettingsTab(permissions, 'mobile') && (
+        {showWhatsappTab && (
         <button
-          onClick={() => setActiveTab('mobile')}
+          onClick={() => setActiveTab('whatsapp')}
           className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'mobile'
+            activeTab === 'whatsapp'
               ? 'bg-white text-gray-900 shadow-sm'
               : 'text-gray-600 hover:text-gray-900'
           }`}
         >
-          <Smartphone className="w-4 h-4" />
-          <span>Mobile App</span>
+          <MessageCircle className="w-4 h-4" />
+          <span>WhatsApp</span>
         </button>
         )}
       </div>
@@ -937,7 +823,7 @@ export const Settings: React.FC = () => {
       {activeTab === 'timeslots' && renderTimeSlots()}
       {activeTab === 'business' && renderBusinessHours()}
       {activeTab === 'banner' && renderBanner()}
-      {activeTab === 'mobile' && renderMobileApp()}
+      {activeTab === 'whatsapp' && renderWhatsappTab()}
 
       {/* Time Slot Modal */}
       <Modal
