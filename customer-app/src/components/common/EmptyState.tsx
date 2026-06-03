@@ -10,6 +10,8 @@ interface EmptyStateProps {
   message?: string;
   actionTitle?: string;
   onAction?: () => void;
+  secondaryActionTitle?: string;
+  onSecondaryAction?: () => void;
 }
 
 export const EmptyState: React.FC<EmptyStateProps> = ({
@@ -18,10 +20,14 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   message,
   actionTitle,
   onAction,
+  secondaryActionTitle,
+  onSecondaryAction,
 }) => {
   return (
     <View style={styles.container}>
-      <MaterialIcons name={icon as any} size={80} color={COLORS.gray300} />
+      <View style={styles.iconCircle}>
+        <MaterialIcons name={icon as any} size={40} color={COLORS.primary500} />
+      </View>
       <Text style={styles.title}>{title}</Text>
       {message && <Text style={styles.message}>{message}</Text>}
       {actionTitle && onAction && (
@@ -29,6 +35,14 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
           title={actionTitle}
           onPress={onAction}
           style={styles.actionButton}
+        />
+      )}
+      {secondaryActionTitle && onSecondaryAction && (
+        <Button
+          title={secondaryActionTitle}
+          variant="outline"
+          onPress={onSecondaryAction}
+          style={styles.secondaryButton}
         />
       )}
     </View>
@@ -42,10 +56,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.xl,
   },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.primary50,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   title: {
     fontSize: 20,
     fontWeight: '600',
-    color: COLORS.gray700,
+    color: COLORS.gray900,
     marginTop: SPACING.lg,
   },
   message: {
@@ -58,6 +80,10 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     minWidth: 180,
+  },
+  secondaryButton: {
+    minWidth: 180,
+    marginTop: SPACING.sm,
   },
 });
 

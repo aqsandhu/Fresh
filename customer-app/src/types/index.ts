@@ -6,6 +6,44 @@
 export * from '@freshbazar/shared-types';
 
 // ============================================================================
+// Website-synced client types (storefront / cart — mirrors website/types)
+// ============================================================================
+
+export type ProductUnit = 'full' | 'half_kg' | 'quarter_kg' | 'half_dozen';
+
+/** Product shape used across customer app UI (maps from backend like website). */
+export interface StoreProduct {
+  id: string;
+  name: string;
+  nameUrdu?: string;
+  description?: string;
+  price: number;
+  originalPrice?: number;
+  unit: string;
+  images: string[];
+  categoryId: string;
+  categoryName?: string;
+  categorySlug?: string;
+  inStock: boolean;
+  stock?: number;
+  rating?: number;
+  reviewCount?: number;
+  isFeatured?: boolean;
+  tags?: string[];
+  halfKgPrice?: number | null;
+  quarterKgPrice?: number | null;
+  halfDozenPrice?: number | null;
+  isFresh?: boolean;
+}
+
+export interface StoreCartItem {
+  product: StoreProduct;
+  quantity: number;
+  unit?: ProductUnit;
+  unitPrice?: number;
+}
+
+// ============================================================================
 // React Native-specific Types (NOT in shared-types — mobile only)
 // ============================================================================
 
@@ -19,7 +57,7 @@ export interface AuthState {
 
 /** Cart state for React Native Zustand store */
 export interface CartState {
-  items: import('@freshbazar/shared-types').CartItem[];
+  items: StoreCartItem[];
   isLoading: boolean;
 }
 
@@ -42,44 +80,71 @@ export type DeliverySlot = import('@freshbazar/shared-types').TimeSlot;
 // ============================================================================
 
 export type RootStackParamList = {
-  Auth: undefined;
+  SelectCity: undefined;
   Main: undefined;
+  Auth: undefined;
   CartFlow: undefined;
 };
 
 export type AuthStackParamList = {
-  Login: undefined;
-  OTP: { phone: string; userExists?: boolean; userName?: string | null };
-  Register: { phone: string; code?: string };
+  Login:
+    | {
+        redirect?: string;
+        phone?: string;
+        another?: boolean;
+        initialStep?: 'newPin';
+        resetCode?: string;
+      }
+    | undefined;
+  OTP: {
+    phone: string;
+    userExists?: boolean;
+    userName?: string | null;
+    purpose?: 'login' | 'resetPin';
+    redirect?: string;
+  };
+  Register: {
+    phone?: string;
+    code?: string;
+    autoOtp?: boolean;
+    redirect?: string;
+  };
+  SetPin: { phone?: string; redirect?: string };
 };
 
 export type MainTabParamList = {
   Home: undefined;
-  Categories: undefined;
-  AttaChakki: undefined;
+  Shop: undefined;
+  Cart: undefined;
   Orders: undefined;
   Profile: undefined;
 };
 
 export type HomeStackParamList = {
   HomeMain: undefined;
-  Search: undefined;
+  Search: { query?: string } | undefined;
   ProductDetail: { productId: string };
   CategoryProducts: { categoryId: string; categoryName: string };
 };
 
-export type CategoryStackParamList = {
-  CategoriesList: undefined;
-  CategoryProducts: { categoryId: string; categoryName: string };
+export type ShopStackParamList = {
+  ProductsMain: undefined;
+  Search: { query?: string } | undefined;
   ProductDetail: { productId: string };
+  CategoryProducts: { categoryId: string; categoryName: string };
+  CategoriesList: undefined;
+};
+
+/** @deprecated Use ShopStackParamList */
+export type CategoryStackParamList = ShopStackParamList;
+
+export type CartTabStackParamList = {
+  CartMain: undefined;
 };
 
 export type CartStackParamList = {
-  Cart: undefined;
-  AddressSelection: undefined;
-  AddAddress: undefined;
-  TimeSlot: undefined;
-  Payment: undefined;
+  Checkout: undefined;
+  AddAddress: { addressId?: string; returnTo?: 'checkout' | 'addresses' } | undefined;
   OrderConfirmation: { orderId: string; slotLabel?: string; slotDate?: string };
 };
 
@@ -102,4 +167,13 @@ export type ProfileStackParamList = {
   Settings: undefined;
   Notifications: undefined;
   Wishlist: undefined;
+  AttaChakkiMain: undefined;
+  AttaRequest: undefined;
+  AttaTracking: { requestId: string };
+  SelectCity: undefined;
+  ChangePin: undefined;
+  Help: undefined;
+  About: undefined;
+  AddAddress: { addressId?: string; returnTo?: 'checkout' | 'addresses' } | undefined;
+  StaticPage: { pageId: 'terms' | 'privacy' | 'faq' | 'contact' | 'returns' | 'shipping' };
 };

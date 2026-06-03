@@ -24,6 +24,8 @@ const queryClient = new QueryClient({
 LogBox.ignoreLogs([
   'Non-serializable values were found in the navigation state',
   'ViewPropTypes will be removed from React Native',
+  'expo-notifications',
+  'expo-notifications:',
 ]);
 
 // Network Status Banner Component

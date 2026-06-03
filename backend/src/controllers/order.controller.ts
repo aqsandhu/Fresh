@@ -20,7 +20,7 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'Authentication required', 401);
   }
 
-  const { page = 1, limit = 10, status } = req.query;
+  const { page = 1, limit = 10, status, city_id } = req.query;
 
   let whereSql = `WHERE o.user_id = $1 AND o.deleted_at IS NULL`;
   const params: any[] = [req.user.id];
@@ -29,6 +29,11 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   if (status) {
     whereSql += ` AND o.status = $${paramIndex++}`;
     params.push(status);
+  }
+
+  if (city_id && typeof city_id === 'string') {
+    whereSql += ` AND o.city_id = $${paramIndex++}`;
+    params.push(city_id);
   }
 
   // Count total
@@ -44,6 +49,7 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
       o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
       o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
       o.customer_notes, o.cancellation_reason,
+      o.city_id, o.delivery_address_snapshot,
       ts.slot_name, ts.start_time as slot_start, ts.end_time as slot_end,
       o.requested_delivery_date,
       r.id as rider_id, ru.full_name as rider_name, ru.phone as rider_phone

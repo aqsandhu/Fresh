@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { asyncHandler } from '../middleware/errorHandler';
 import { successResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
-import { fetchBannerSettings } from '../utils/siteSettings';
+import { fetchBannerSettings, fetchWhatsAppOrderSettings } from '../utils/siteSettings';
 import { query } from '../config/database';
 
 const router = Router();
@@ -10,8 +10,18 @@ const router = Router();
 // Public: Get banner settings (no auth required)
 router.get('/banner', asyncHandler(async (req, res) => {
   const cityId = await resolvePublicCityId(req);
-  const banner = await fetchBannerSettings(cityId);
-  successResponse(res, banner, 'Banner settings retrieved');
+  const [banner, whatsapp] = await Promise.all([
+    fetchBannerSettings(cityId),
+    fetchWhatsAppOrderSettings(cityId),
+  ]);
+  successResponse(res, { ...banner, ...whatsapp }, 'Banner settings retrieved');
+}));
+
+// Public: WhatsApp order link for customer app hero (per city)
+router.get('/whatsapp-order', asyncHandler(async (req, res) => {
+  const cityId = await resolvePublicCityId(req);
+  const settings = await fetchWhatsAppOrderSettings(cityId);
+  successResponse(res, settings, 'WhatsApp order settings retrieved');
 }));
 
 // Public: Get active service cities (no auth required)

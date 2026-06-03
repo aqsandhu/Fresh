@@ -1,63 +1,64 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  FlatList,
-} from 'react-native';
+import { ScrollView, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { HomeStackParamList, Category, Product, Banner } from '@types';
-import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
+import { HomeStackParamList, Category, StoreProduct } from '@types';
+import { COLORS, SPACING } from '@utils/constants';
+import { useTabBarMetrics } from '@/lib/tabBarMetrics';
+import { ErrorView } from '@components';
+import { MobileHeader } from '@components/layout/MobileHeader';
 import {
-  SearchBar,
-  BannerCarousel,
-  CategoryCard,
-  ProductCard,
-  SectionHeader,
-  FreeDeliveryCard,
-  SkeletonCard,
-  ErrorView,
-} from '@components';
+  HeroSection,
+  CategoriesSection,
+  FeaturedProductsSection,
+  DeliveryInfoSection,
+} from '@components/home/sections';
 import { productService } from '@services/product.service';
-import { useCartStore } from '@store';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useCityContext } from '@/context/CityContext';
 
+/** Mirrors website/app/(shop)/page.tsx section order exactly. */
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
-  const [searchQuery, setSearchQuery] = useState('');
+  const { selectedCityId } = useCityContext();
+  const { inset: tabBarInset } = useTabBarMetrics();
+
   const [categories, setCategories] = useState<Category[]>([]);
-  const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
-  const [banners, setBanners] = useState<Banner[]>([]);
+  const [featuredProducts, setFeaturedProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { items } = useCartStore();
 
   const loadData = useCallback(async () => {
+    if (!selectedCityId) {
+      setCategories([]);
+      setFeaturedProducts([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
     try {
       setError(null);
-      const [categoriesRes, productsRes, bannersRes] = await Promise.all([
+      const [categoriesRes, productsRes] = await Promise.all([
         productService.getCategories(),
-        productService.getFeaturedProducts(),
-        productService.getBanners(),
+        productService.getFeaturedProducts(500),
       ]);
 
       if (categoriesRes.success) setCategories(categoriesRes.data);
-      if (productsRes.success) setFeaturedProducts(productsRes.data.slice(0, 6));
-      if (bannersRes.success) setBanners(bannersRes.data);
+      if (productsRes.success) setFeaturedProducts(productsRes.data);
     } catch (err: any) {
       setError(err.message || 'Failed to load data');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedCityId]);
 
   useEffect(() => {
+    setLoading(true);
+    setCategories([]);
+    setFeaturedProducts([]);
     loadData();
   }, [loadData]);
 
@@ -66,32 +67,8 @@ export const HomeScreen: React.FC = () => {
     loadData();
   };
 
-  const handleSearch = () => {
-    if (searchQuery.trim()) {
-      navigation.navigate('Search', { query: searchQuery });
-    }
-  };
-
-  const handleCategoryPress = (category: Category) => {
-    navigation.navigate('CategoryProducts', {
-      categoryId: category.id,
-      categoryName: category.name,
-    });
-  };
-
-  const handleProductPress = (product: Product) => {
-    navigation.navigate('ProductDetail', { productId: product.id });
-  };
-
-  const handleBannerPress = (banner: Banner) => {
-    if (banner.actionType === 'category' && banner.actionValue) {
-      const category = categories.find((c) => c.id === banner.actionValue);
-      if (category) {
-        handleCategoryPress(category);
-      }
-    } else if (banner.actionType === 'product' && banner.actionValue) {
-      navigation.navigate('ProductDetail', { productId: banner.actionValue });
-    }
+  const goToShop = (screen: 'ProductsMain' | 'CategoriesList' = 'ProductsMain') => {
+    navigation.getParent()?.navigate('Shop' as never, { screen } as never);
   };
 
   if (error && !loading) {
@@ -103,182 +80,45 @@ export const HomeScreen: React.FC = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <MobileHeader onSearchPress={() => navigation.navigate('Search')} />
       <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        {/* Search Bar */}
-        <View style={styles.searchContainer}>
-          <SearchBar
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmit={handleSearch}
-            onClear={() => setSearchQuery('')}
-            placeholder="Search for vegetables, fruits..."
-          />
-        </View>
-
-        {/* Banner / Hero Section */}
-        {loading ? (
-          <View style={styles.bannerSkeleton}>
-            <SkeletonCard />
-          </View>
-        ) : banners.length > 0 ? (
-          <BannerCarousel banners={banners} onBannerPress={handleBannerPress} />
-        ) : (
-          <View style={styles.heroContainer}>
-            <LinearGradient
-              colors={[COLORS.primary, '#2E7D32']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.heroCard}
-            >
-              <Text style={styles.heroTitle}>Fresh Bazar 🥬</Text>
-              <Text style={styles.heroSubtitle}>Farm-fresh vegetables, fruits & groceries delivered to your door</Text>
-              <View style={styles.heroBadge}>
-                <Text style={styles.heroBadgeText}>Free Delivery on orders above Rs. 500</Text>
-              </View>
-            </LinearGradient>
-          </View>
-        )}
-
-        {/* Categories */}
-        <SectionHeader
-          title="Categories"
-          subtitle="Browse by category"
-          onSeeAll={() => navigation.navigate('CategoriesList' as any)}
+        <HeroSection
+          onShopNow={() => goToShop('ProductsMain')}
+          onAttaChakki={() =>
+            navigation.getParent()?.navigate('Profile' as never, { screen: 'AttaChakkiMain' } as never)
+          }
         />
-        {loading ? (
-          <View style={styles.categoriesSkeleton}>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <SkeletonCard key={i} />
-            ))}
-          </View>
-        ) : (
-          <FlatList
-            data={categories}
-            renderItem={({ item }) => (
-              <CategoryCard category={item} onPress={handleCategoryPress} />
-            )}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoriesList}
-          />
-        )}
-
-        {/* Free Delivery Card — counts only vegetables + fruits toward the threshold */}
-        <FreeDeliveryCard
-          vegFruitSubtotal={items
-            .filter((it) => {
-              const slug = String(
-                (it.product as any)?.categorySlug ||
-                  (it.product as any)?.category_slug ||
-                  (it.product as any)?.category ||
-                  ''
-              ).toLowerCase();
-              return ['vegetables', 'fruits', 'sabzi', 'fruit'].includes(slug);
+        <CategoriesSection
+          categories={categories}
+          loading={loading}
+          onCategoryPress={(category) =>
+            navigation.navigate('CategoryProducts', {
+              categoryId: category.id,
+              categoryName: category.name,
             })
-            .reduce((s, it) => s + it.product.price * it.quantity, 0)}
+          }
         />
-
-        {/* Featured Products */}
-        <SectionHeader
-          title="Featured Products"
-          subtitle="Fresh from the farm"
-          onSeeAll={() => navigation.navigate('Search' as any)}
+        <FeaturedProductsSection
+          products={featuredProducts}
+          loading={loading}
+          onProductPress={(product) =>
+            navigation.navigate('ProductDetail', { productId: product.id })
+          }
+          onViewAll={() => goToShop('ProductsMain')}
         />
-        {loading ? (
-          <View style={styles.productsSkeleton}>
-            {[1, 2, 3].map((i) => (
-              <SkeletonCard key={i} />
-            ))}
-          </View>
-        ) : (
-          <FlatList
-            data={featuredProducts}
-            renderItem={({ item }) => (
-              <ProductCard product={item} onPress={handleProductPress} />
-            )}
-            keyExtractor={(item) => item.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.productsList}
-          />
-        )}
-
-        {/* Bottom padding */}
-        <View style={styles.bottomPadding} />
+        <DeliveryInfoSection />
+        <View style={{ height: tabBarInset }} />
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  searchContainer: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
-  },
-  bannerSkeleton: {
-    paddingHorizontal: SPACING.lg,
-  },
-  heroContainer: {
-    paddingHorizontal: SPACING.lg,
-    marginVertical: SPACING.md,
-  },
-  heroCard: {
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.xl,
-  },
-  heroTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: SPACING.xs,
-  },
-  heroSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    marginBottom: SPACING.md,
-    lineHeight: 20,
-  },
-  heroBadge: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    alignSelf: 'flex-start',
-  },
-  heroBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  categoriesList: {
-    paddingHorizontal: SPACING.lg,
-  },
-  categoriesSkeleton: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-  },
-  productsList: {
-    paddingHorizontal: SPACING.lg,
-  },
-  productsSkeleton: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACING.lg,
-  },
-  bottomPadding: {
-    height: SPACING.xxl,
-  },
+  container: { flex: 1, backgroundColor: COLORS.gray50 },
 });
 
 export default HomeScreen;

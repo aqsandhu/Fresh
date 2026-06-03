@@ -10,13 +10,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { AttaStackParamList, AttaRequest, AttaRequestStatus } from '@types';
+import { ProfileStackParamList, AttaRequest, AttaRequestStatus } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, ATTA_STATUS_MESSAGES } from '@utils/constants';
 import { formatCurrency, formatDateTime } from '@utils/helpers';
 import { ErrorView, LoadingOverlay } from '@components';
 import { attaService } from '@services/atta.service';
 
-type AttaTrackingRouteProp = RouteProp<AttaStackParamList, 'AttaTracking'>;
+type AttaTrackingRouteProp = RouteProp<ProfileStackParamList, 'AttaTracking'>;
 
 const statusOrder: AttaRequestStatus[] = [
   'pending_pickup',
@@ -29,7 +29,7 @@ const statusOrder: AttaRequestStatus[] = [
 ];
 
 export const AttaTrackingScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<AttaStackParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const route = useRoute<AttaTrackingRouteProp>();
   const { requestId } = route.params;
   

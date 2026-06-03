@@ -1,35 +1,21 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
-const config = getDefaultConfig(__dirname);
+const projectRoot = __dirname;
+const monorepoRoot = path.resolve(projectRoot, '..');
 
-// Fix module resolution
-config.resolver.sourceExts = ['jsx', 'js', 'ts', 'tsx', 'json', 'cjs', 'mjs'];
-config.resolver.assetExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ttf', 'otf'];
+const config = getDefaultConfig(projectRoot);
 
-// ============================================================================
-// Monorepo / Workspace support
-// ============================================================================
-// Metro does not follow symlinks in monorepos by default.
-// We add the shared packages to the watch folders and nodeModulesPaths.
+// Monorepo: watch workspace + resolve from app and root node_modules.
+// Do NOT set disableHierarchicalLookup — breaks pnpm transitive deps.
+config.watchFolders = [monorepoRoot, path.resolve(monorepoRoot, 'packages')];
 
-const monorepoPackages = {
-  '@freshbazar/shared-types': path.resolve(__dirname, '../packages/shared-types'),
-};
-
-// Add monorepo package roots to Metro's module search paths
 config.resolver.nodeModulesPaths = [
-  path.resolve(__dirname, 'node_modules'),
-  path.resolve(__dirname, '../node_modules'),
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(monorepoRoot, 'node_modules'),
 ];
 
-// Watch the shared packages for changes during development
-config.watchFolders = [
-  path.resolve(__dirname),
-  path.resolve(__dirname, '../packages/shared-types'),
-];
-
-// Ensure symlinks are resolved properly
-config.resolver.disableHierarchicalLookup = false;
+config.resolver.unstable_enableSymlinks = true;
+config.resolver.unstable_enablePackageExports = true;
 
 module.exports = config;

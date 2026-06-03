@@ -49,9 +49,9 @@ export default function HeroSection() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-4"
+              className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-4 text-center lg:text-left"
             >
-              Fresh Sabzi at Your{' '}
+              Fresh Sabzi/Fruit at Your{' '}
               <span className="text-primary-600">Doorstep</span>
             </motion.h1>
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,25 +6,97 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { AuthStackParamList } from '@types';
-import { COLORS, SPACING, BORDER_RADIUS, VALIDATION, ERROR_MESSAGES } from '@utils/constants';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { AuthStackParamList, RootStackParamList } from '@types';
+import { COLORS, SPACING, VALIDATION, ERROR_MESSAGES } from '@utils/constants';
 import { isOtpBypassEnabled, otpBypassHint } from '@utils/otpBypass';
+import { finishAuthRedirect } from '@utils/authRedirect';
 import { Button, Input, LoadingOverlay } from '@components';
+import AuthShell from '@components/auth/AuthShell';
+import PinInput from '@components/auth/PinInput';
 import { useAuthStore } from '@store';
+import { authService } from '@services/auth.service';
+import { clearLastPhone, getLastPhone, maskPhone, setLastPhone } from '@/lib/phoneStorage';
+import Toast from 'react-native-toast-message';
 
-interface LoginScreenProps {
-  navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
-}
+type Step = 'phone' | 'pin' | 'newPin';
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
-  const [phone, setPhone] = useState('');
+type LoginRoute = RouteProp<AuthStackParamList, 'Login'>;
+
+export const LoginScreen: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<LoginRoute>();
+  const redirect = route.params?.redirect;
+
+  const [step, setStep] = useState<Step>(route.params?.initialStep === 'newPin' ? 'newPin' : 'phone');
+  const [phone, setPhone] = useState(route.params?.phone ?? '');
+  const [userName, setUserName] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const { sendOtp, isLoading } = useAuthStore();
+  const [pin, setPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [newPinConfirm, setNewPinConfirm] = useState('');
+  const [resetCode, setResetCode] = useState(route.params?.resetCode ?? '');
+  const [bootstrapping, setBootstrapping] = useState(true);
+
+  const { sendOtp, verifyWithPin, resetPinAndLogin, isLoading } = useAuthStore();
+
+  useEffect(() => {
+    if (route.params?.initialStep === 'newPin' && route.params.resetCode) {
+      setStep('newPin');
+      setResetCode(route.params.resetCode);
+      if (route.params.phone) setPhone(route.params.phone);
+      setBootstrapping(false);
+      return;
+    }
+
+    if (route.params?.another) {
+      clearLastPhone();
+      setStep('phone');
+      setBootstrapping(false);
+      return;
+    }
+
+    if (route.params?.phone) {
+      setPhone(route.params.phone);
+      setBootstrapping(false);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const saved = await getLastPhone();
+      if (!saved) {
+        setBootstrapping(false);
+        return;
+      }
+      try {
+        const status = await authService.pinStatus(saved);
+        if (cancelled) return;
+        if (status.success && status.data?.exists && status.data?.hasPin) {
+          setPhone(saved);
+          setUserName(status.data.fullName || null);
+          setStep('pin');
+        }
+      } catch {
+        /* fall through */
+      } finally {
+        if (!cancelled) setBootstrapping(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [route.params?.another, route.params?.initialStep, route.params?.phone, route.params?.resetCode]);
+
+  const finishLogin = useCallback(() => {
+    finishAuthRedirect(rootNavigation, redirect);
+  }, [redirect, rootNavigation]);
 
   const validatePhone = (value: string): boolean => {
     if (!value) {
@@ -39,84 +111,241 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     return true;
   };
 
-  const handleLogin = async () => {
+  const onPhoneSubmit = async () => {
     if (!validatePhone(phone)) return;
 
     try {
-      const result = await sendOtp(phone);
-      navigation.navigate('OTP', { phone, userExists: result.userExists, userName: result.userName });
+      const status = await authService.pinStatus(phone);
+      if (!status.success || !status.data?.exists) {
+        navigation.navigate('Register', { phone, autoOtp: true, redirect });
+        return;
+      }
+
+      setUserName(status.data.fullName || null);
+
+      if (status.data.hasPin) {
+        setPin('');
+        setStep('pin');
+      } else {
+        const result = await sendOtp(phone);
+        navigation.navigate('OTP', {
+          phone,
+          userExists: result.userExists,
+          userName: result.userName,
+          redirect,
+        });
+      }
     } catch (err: any) {
-      setError(err.message || 'Failed to send OTP');
+      setError(err.message || 'Failed to start sign-in');
+    }
+  };
+
+  const verifyPinHandler = async (entered: string) => {
+    if (entered.length !== 4) return;
+    try {
+      await verifyWithPin(phone, entered);
+      await setLastPhone(phone);
+      Toast.show({ type: 'success', text1: 'Login successful!' });
+      finishLogin();
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: err.message || 'Invalid PIN' });
+      setPin('');
+    }
+  };
+
+  const handleUseAnotherNumber = async () => {
+    await clearLastPhone();
+    setStep('phone');
+    setPhone('');
+    setPin('');
+    setUserName(null);
+  };
+
+  const handleForgotPin = async () => {
+    try {
+      await sendOtp(phone);
+      navigation.navigate('OTP', {
+        phone,
+        userExists: true,
+        userName,
+        purpose: 'resetPin',
+        redirect,
+      });
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: err.message || 'Failed to send OTP' });
+    }
+  };
+
+  const handleNewPinSubmit = async () => {
+    if (newPin.length !== 4 || newPinConfirm.length !== 4) {
+      Toast.show({ type: 'error', text1: 'Please enter and confirm your 4-digit PIN.' });
+      return;
+    }
+    if (newPin !== newPinConfirm) {
+      Toast.show({ type: 'error', text1: 'PINs do not match. Please try again.' });
+      setNewPin('');
+      setNewPinConfirm('');
+      return;
+    }
+    if (!resetCode) {
+      Toast.show({ type: 'error', text1: 'Verification expired. Please request OTP again.' });
+      setStep('pin');
+      return;
+    }
+
+    try {
+      await resetPinAndLogin(phone, resetCode, newPin);
+      await setLastPhone(phone);
+      Toast.show({ type: 'success', text1: 'PIN updated. You are now logged in.' });
+      setNewPin('');
+      setNewPinConfirm('');
+      setResetCode('');
+      finishLogin();
+    } catch (err: any) {
+      Toast.show({ type: 'error', text1: err.message || 'Failed to reset PIN. Please try again.' });
+      setNewPin('');
+      setNewPinConfirm('');
     }
   };
 
   const formatPhoneInput = (text: string): string => {
-    // Remove non-numeric characters
-    const numeric = text.replace(/[^0-9]/g, '');
-    // Limit to 11 digits
-    return numeric.slice(0, 11);
+    return text.replace(/[^0-9]/g, '').slice(0, 11);
   };
+
+  const goToRegister = () => {
+    navigation.navigate('Register', { redirect });
+  };
+
+  const shellTitle =
+    step === 'newPin'
+      ? 'Set New PIN'
+      : step === 'pin'
+        ? `Welcome${userName ? `, ${userName}` : ' back'}`
+        : 'Welcome Back';
+
+  const shellSubtitle =
+    step === 'newPin'
+      ? 'Enter and confirm your new 4-digit PIN'
+      : step === 'pin'
+        ? `Enter your 4-digit PIN for ${maskPhone(phone)}`
+        : 'Login to your Fresh Bazar account';
+
+  if (bootstrapping) {
+    return <LoadingOverlay visible message="Loading..." />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
-      <LoadingOverlay visible={isLoading} message="Sending OTP..." />
+      <LoadingOverlay visible={isLoading} message="Please wait..." />
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* Logo and Header */}
-          <View style={styles.header}>
-            <View style={styles.logoContainer}>
-              <MaterialIcons name="local-grocery-store" size={64} color={COLORS.primary} />
-            </View>
-            <Text style={styles.title}>Welcome to Fresh Bazar</Text>
-            <Text style={styles.subtitle}>Fresh groceries delivered to your door</Text>
-          </View>
+        <View style={styles.body}>
+          <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
+          >
+            <AuthShell
+              title={shellTitle}
+              subtitle={shellSubtitle}
+              footer={
+                step !== 'newPin' ? (
+                  <>
+                    <View style={styles.dividerWrap}>
+                      <View style={styles.dividerLine} />
+                      <Text style={styles.dividerText}>or</Text>
+                      <View style={styles.dividerLine} />
+                    </View>
+                    <Text style={styles.registerPrompt}>
+                      Don&apos;t have an account?{' '}
+                      <Text style={styles.registerLink} onPress={goToRegister}>
+                        Register
+                      </Text>
+                    </Text>
+                    <View style={styles.securityNote}>
+                      <MaterialIcons name="verified-user" size={14} color={COLORS.gray400} />
+                      <Text style={styles.securityText}>OTP verification keeps your account secure</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.footerSpacer} />
+                )
+              }
+            >
+            {step === 'phone' && (
+              <View style={styles.form}>
+                <Input
+                  label="Phone Number"
+                  placeholder="03XX-XXXXXXX"
+                  value={phone}
+                  onChangeText={(text) => {
+                    setPhone(formatPhoneInput(text));
+                    setError('');
+                  }}
+                  keyboardType="phone-pad"
+                  maxLength={11}
+                  error={error}
+                  leftIcon={<MaterialIcons name="phone" size={20} color={COLORS.gray400} />}
+                  autoFocus
+                />
+                <Button
+                  title="Continue"
+                  onPress={onPhoneSubmit}
+                  disabled={phone.length < 11}
+                  size="large"
+                />
+                <Text style={styles.hint}>
+                  {isOtpBypassEnabled()
+                    ? otpBypassHint()
+                    : "New customer? Enter your number — we'll verify with OTP on the next screen."}
+                </Text>
+              </View>
+            )}
 
-          {/* Form */}
-          <View style={styles.form}>
-            <Text style={styles.label}>Enter your phone number</Text>
-            <Input
-              placeholder="03XXXXXXXXX"
-              value={phone}
-              onChangeText={(text) => {
-                setPhone(formatPhoneInput(text));
-                setError('');
-              }}
-              keyboardType="phone-pad"
-              maxLength={11}
-              error={error}
-              leftIcon={<MaterialIcons name="phone" size={20} color={COLORS.gray400} />}
-              autoFocus
-            />
+            {step === 'pin' && (
+              <View style={styles.form}>
+                <PinInput value={pin} onChange={setPin} onComplete={verifyPinHandler} autoFocus />
+                <TouchableOpacity onPress={handleForgotPin} style={styles.linkBtn}>
+                  <Text style={styles.linkText}>Forgot PIN? Sign in with OTP</Text>
+                </TouchableOpacity>
+                <Button
+                  title="Login with another number"
+                  onPress={handleUseAnotherNumber}
+                  variant="outline"
+                  size="large"
+                  style={styles.outlineBtn}
+                />
+              </View>
+            )}
 
-            <Button
-              title="Continue"
-              onPress={handleLogin}
-              disabled={phone.length < 11}
-              size="large"
-            />
+            {step === 'newPin' && (
+              <View style={styles.form}>
+                <Text style={styles.pinLabel}>New PIN</Text>
+                <PinInput value={newPin} onChange={setNewPin} disabled={isLoading} autoFocus />
+                <Text style={[styles.pinLabel, styles.pinLabelSpaced]}>Confirm PIN</Text>
+                <PinInput value={newPinConfirm} onChange={setNewPinConfirm} disabled={isLoading} />
+                <Button
+                  title="Save PIN & Continue"
+                  onPress={handleNewPinSubmit}
+                  disabled={newPin.length !== 4 || newPinConfirm.length !== 4}
+                  size="large"
+                  style={styles.savePinBtn}
+                />
+              </View>
+            )}
+          </AuthShell>
+          </ScrollView>
 
-            <Text style={styles.hint}>
-              {isOtpBypassEnabled()
-                ? otpBypassHint()
-                : "We'll send you a verification code via SMS"}
-            </Text>
-          </View>
-
-          {/* Footer */}
-          <View style={styles.footer}>
+          <View style={styles.termsFooter}>
             <Text style={styles.footerText}>
-              By continuing, you agree to our{' '}
-              <Text style={styles.footerLink}>Terms of Service</Text> and{' '}
-              <Text style={styles.footerLink}>Privacy Policy</Text>
+              By continuing, you agree to our Terms of Service and Privacy Policy
             </Text>
           </View>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -125,68 +354,71 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.primary50,
   },
-  keyboardView: {
-    flex: 1,
-  },
+  keyboardView: { flex: 1 },
+  body: { flex: 1 },
   scrollContent: {
-    flexGrow: 1,
     padding: SPACING.lg,
+    paddingTop: SPACING.xl,
+    paddingBottom: SPACING.md,
   },
-  header: {
-    alignItems: 'center',
-    marginTop: SPACING.xxl,
-    marginBottom: SPACING.xl,
-  },
-  logoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: BORDER_RADIUS.xxl,
-    backgroundColor: COLORS.primaryLighter,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.gray900,
-    marginBottom: SPACING.xs,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.gray500,
-  },
-  form: {
-    marginTop: SPACING.xl,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.gray700,
-    marginBottom: SPACING.md,
-  },
+  form: { marginTop: SPACING.sm },
   hint: {
     fontSize: 12,
     color: COLORS.gray500,
     textAlign: 'center',
     marginTop: SPACING.md,
-  },
-  footer: {
-    marginTop: 'auto',
-    paddingTop: SPACING.xl,
-  },
-  footerText: {
-    fontSize: 12,
-    color: COLORS.gray500,
-    textAlign: 'center',
     lineHeight: 18,
   },
-  footerLink: {
-    color: COLORS.primary,
+  linkBtn: { alignItems: 'center', marginTop: SPACING.md },
+  linkText: { fontSize: 14, color: COLORS.primary600, fontWeight: '600' },
+  outlineBtn: { marginTop: SPACING.md },
+  pinLabel: {
+    fontSize: 13,
     fontWeight: '600',
+    color: COLORS.gray700,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
   },
+  pinLabelSpaced: { marginTop: SPACING.lg },
+  savePinBtn: { marginTop: SPACING.lg },
+  dividerWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.gray200 },
+  dividerText: {
+    paddingHorizontal: SPACING.sm,
+    fontSize: 13,
+    color: COLORS.gray500,
+  },
+  registerPrompt: {
+    textAlign: 'center',
+    fontSize: 14,
+    color: COLORS.gray600,
+  },
+  registerLink: {
+    color: COLORS.primary600,
+    fontWeight: '700',
+  },
+  securityNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.lg,
+  },
+  securityText: { fontSize: 11, color: COLORS.gray400 },
+  footerSpacer: { minHeight: 72 },
+  termsFooter: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    paddingTop: SPACING.xs,
+  },
+  footerText: { fontSize: 11, color: COLORS.gray500, textAlign: 'center', lineHeight: 16 },
 });
 
 export default LoginScreen;

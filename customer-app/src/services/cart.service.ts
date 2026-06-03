@@ -1,24 +1,31 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CartItem, Product } from '@types';
+import { ProductUnit, StoreCartItem, StoreProduct } from '@types';
 import { STORAGE_KEYS } from '@utils/constants';
 import apiClient, { handleApiError } from './api';
 import { ApiResponse } from '@types';
+
+const lineKey = (productId: string, unit: ProductUnit = 'full') =>
+  `${productId}::${unit}`;
 
 class CartService {
   private syncInProgress = false;
   private pendingSync = false;
 
-  async getCart(): Promise<CartItem[]> {
+  private async hasAuthToken(): Promise<boolean> {
+    const token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+    return !!token;
+  }
+
+  async getCart(): Promise<StoreCartItem[]> {
     try {
       const cartJson = await AsyncStorage.getItem(STORAGE_KEYS.CART);
       return cartJson ? JSON.parse(cartJson) : [];
-    } catch (error) {
-      console.error('Error getting cart:', error);
+    } catch {
       return [];
     }
   }
 
-  async saveCart(cart: CartItem[]): Promise<void> {
+  async saveCart(cart: StoreCartItem[]): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(cart));
     } catch (error) {
@@ -26,29 +33,36 @@ class CartService {
     }
   }
 
-  async addToCart(product: Product, quantity: number = 1): Promise<CartItem[]> {
+  async addToCart(
+    product: StoreProduct,
+    quantity: number = 1,
+    unit: ProductUnit = 'full'
+  ): Promise<StoreCartItem[]> {
     const cart = await this.getCart();
-    const existingItemIndex = cart.findIndex((item) => item.product.id === product.id);
+    const existingItemIndex = cart.findIndex(
+      (item) => lineKey(item.product.id, item.unit || 'full') === lineKey(product.id, unit)
+    );
 
     if (existingItemIndex >= 0) {
       cart[existingItemIndex].quantity += quantity;
     } else {
-      cart.push({ product, quantity });
+      cart.push({ product, quantity, unit });
     }
 
     await this.saveCart(cart);
-    
-    // Sync with backend
-    this.syncCartWithBackend(cart).catch(err => {
-      console.log('Background cart sync failed:', err);
-    });
-    
+    this.syncCartWithBackend(cart).catch(() => {});
     return cart;
   }
 
-  async updateQuantity(productId: string, quantity: number): Promise<CartItem[]> {
+  async updateQuantity(
+    productId: string,
+    quantity: number,
+    unit: ProductUnit = 'full'
+  ): Promise<StoreCartItem[]> {
     const cart = await this.getCart();
-    const itemIndex = cart.findIndex((item) => item.product.id === productId);
+    const itemIndex = cart.findIndex(
+      (item) => lineKey(item.product.id, item.unit || 'full') === lineKey(productId, unit)
+    );
 
     if (itemIndex >= 0) {
       if (quantity <= 0) {
@@ -59,101 +73,68 @@ class CartService {
     }
 
     await this.saveCart(cart);
-    
-    // Sync with backend
-    this.syncCartWithBackend(cart).catch(err => {
-      console.log('Background cart sync failed:', err);
-    });
-    
+    this.syncCartWithBackend(cart).catch(() => {});
     return cart;
   }
 
-  async removeFromCart(productId: string): Promise<CartItem[]> {
+  async removeFromCart(productId: string, unit: ProductUnit = 'full'): Promise<StoreCartItem[]> {
     const cart = await this.getCart();
-    const updatedCart = cart.filter((item) => item.product.id !== productId);
+    const updatedCart = cart.filter(
+      (item) => lineKey(item.product.id, item.unit || 'full') !== lineKey(productId, unit)
+    );
     await this.saveCart(updatedCart);
-    
-    // Sync with backend
-    this.syncCartWithBackend(updatedCart).catch(err => {
-      console.log('Background cart sync failed:', err);
-    });
-    
+    this.syncCartWithBackend(updatedCart).catch(() => {});
     return updatedCart;
   }
 
   async clearCart(): Promise<void> {
     await AsyncStorage.removeItem(STORAGE_KEYS.CART);
-    
-    // Clear cart on backend
-    this.clearBackendCart().catch(err => {
-      console.log('Backend cart clear failed:', err);
-    });
+    this.clearBackendCart().catch(() => {});
   }
 
-  async getCartItemCount(): Promise<number> {
-    const cart = await this.getCart();
-    return cart.reduce((total, item) => total + item.quantity, 0);
-  }
+  async syncCartWithBackend(cart: StoreCartItem[]): Promise<boolean> {
+    if (!(await this.hasAuthToken())) return true;
 
-  async isInCart(productId: string): Promise<boolean> {
-    const cart = await this.getCart();
-    return cart.some((item) => item.product.id === productId);
-  }
-
-  async getCartTotal(): Promise<number> {
-    const cart = await this.getCart();
-    return cart.reduce((total, item) => total + item.product.price * item.quantity, 0);
-  }
-
-  // Backend sync: clear backend cart and re-add all local items
-  async syncCartWithBackend(cart: CartItem[]): Promise<boolean> {
     if (this.syncInProgress) {
       this.pendingSync = true;
       return false;
     }
 
     this.syncInProgress = true;
-    
+
     try {
-      // Clear backend cart first
       await apiClient.delete('/cart/clear').catch(() => {});
 
-      // Add each item to backend cart
       for (const item of cart) {
-        await apiClient.post('/cart/add', {
-          product_id: item.product.id,
-          quantity: item.quantity,
-        }).catch(err => {
-          console.log(`Failed to sync item ${item.product.id}:`, err?.message);
-        });
+        await apiClient
+          .post('/cart/add', {
+            product_id: item.product.id,
+            quantity: item.quantity,
+            unit: item.unit || 'full',
+          })
+          .catch(() => {});
       }
       return true;
-    } catch (error) {
-      console.error('Cart sync error:', error);
+    } catch {
       return false;
     } finally {
       this.syncInProgress = false;
-      
-      // If there was a pending sync, trigger it now
       if (this.pendingSync) {
         this.pendingSync = false;
-        const currentCart = await this.getCart();
-        this.syncCartWithBackend(currentCart);
       }
     }
   }
 
   async clearBackendCart(): Promise<boolean> {
+    if (!(await this.hasAuthToken())) return true;
     try {
       const response = await apiClient.delete<ApiResponse<{ message: string }>>('/cart/clear');
       return response.data.success;
-    } catch (error) {
-      console.error('Clear backend cart error:', error);
+    } catch {
       return false;
     }
   }
 
-  // Sync local cart to backend before placing order
   async ensureBackendCartSynced(): Promise<boolean> {
     const cart = await this.getCart();
     if (cart.length === 0) return true;

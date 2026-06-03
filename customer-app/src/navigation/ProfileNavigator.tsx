@@ -8,7 +8,16 @@ import {
   SettingsScreen,
   NotificationsScreen,
   WishlistScreen,
+  AttaChakkiScreen,
+  AttaRequestScreen,
+  AttaTrackingScreen,
+  ChangePinScreen,
+  HelpScreen,
+  AboutScreen,
 } from '@screens';
+import { SelectCityScreen } from '@screens/city';
+import { StaticPageScreen } from '@screens/info/StaticPageScreen';
+import { AddAddressScreen } from '@screens/checkout/AddAddressScreen';
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
 
@@ -26,6 +35,15 @@ export const ProfileNavigator: React.FC = () => {
       <Stack.Screen name="Settings" component={SettingsScreen} />
       <Stack.Screen name="Notifications" component={NotificationsScreen} />
       <Stack.Screen name="Wishlist" component={WishlistScreen} />
+      <Stack.Screen name="AttaChakkiMain" component={AttaChakkiScreen} />
+      <Stack.Screen name="AttaRequest" component={AttaRequestScreen} />
+      <Stack.Screen name="AttaTracking" component={AttaTrackingScreen} />
+      <Stack.Screen name="SelectCity" component={SelectCityScreen} />
+      <Stack.Screen name="ChangePin" component={ChangePinScreen} />
+      <Stack.Screen name="Help" component={HelpScreen} />
+      <Stack.Screen name="About" component={AboutScreen} />
+      <Stack.Screen name="AddAddress" component={AddAddressScreen} />
+      <Stack.Screen name="StaticPage" component={StaticPageScreen} />
     </Stack.Navigator>
   );
 };

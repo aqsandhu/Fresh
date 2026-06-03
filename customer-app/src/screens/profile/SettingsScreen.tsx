@@ -13,6 +13,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
+import { useAuthStore } from '@store';
 
 interface SettingItem {
   icon: string;
@@ -26,7 +27,8 @@ interface SettingItem {
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
-  
+  const { user } = useAuthStore();
+
   const [notifications, setNotifications] = useState(true);
   const [promotions, setPromotions] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
@@ -58,12 +60,11 @@ export const SettingsScreen: React.FC = () => {
       onToggle: setLocationServices,
     },
     {
-      icon: 'dark-mode',
-      title: 'Dark Mode',
-      subtitle: 'Switch to dark theme',
-      type: 'toggle',
-      value: darkMode,
-      onToggle: setDarkMode,
+      icon: 'verified-user',
+      title: 'PIN Security',
+      subtitle: 'Change your 4-digit login PIN',
+      type: 'link',
+      onPress: () => navigation.navigate('ChangePin'),
     },
     {
       icon: 'language',
@@ -76,61 +77,65 @@ export const SettingsScreen: React.FC = () => {
       icon: 'privacy-tip',
       title: 'Privacy Policy',
       type: 'link',
-      onPress: () => {},
+      onPress: () => navigation.navigate('StaticPage', { pageId: 'privacy' }),
     },
     {
       icon: 'description',
       title: 'Terms of Service',
       type: 'link',
-      onPress: () => {},
+      onPress: () => navigation.navigate('StaticPage', { pageId: 'terms' }),
     },
     {
-      icon: 'delete',
-      title: 'Clear Cache',
-      type: 'button',
-      onPress: () => {},
+      icon: 'help',
+      title: 'FAQ',
+      type: 'link',
+      onPress: () => navigation.navigate('StaticPage', { pageId: 'faq' }),
+    },
+    {
+      icon: 'local-shipping',
+      title: 'Shipping Info',
+      type: 'link',
+      onPress: () => navigation.navigate('StaticPage', { pageId: 'shipping' }),
+    },
+    {
+      icon: 'assignment-return',
+      title: 'Returns Policy',
+      type: 'link',
+      onPress: () => navigation.navigate('StaticPage', { pageId: 'returns' }),
     },
   ];
 
   const renderSettingItem = (item: SettingItem, index: number) => (
-    <View
+    <TouchableOpacity
       key={index}
-      style={[
-        styles.settingItem,
-        index === settings.length - 1 && styles.settingItemLast,
-      ]}
+      style={[styles.settingItem, index === settings.length - 1 && styles.settingItemLast]}
+      onPress={item.type === 'link' || item.type === 'button' ? item.onPress : undefined}
+      disabled={item.type === 'toggle'}
+      activeOpacity={item.type === 'toggle' ? 1 : 0.7}
     >
       <View style={styles.settingIcon}>
-        <MaterialIcons name={item.icon as any} size={22} color={COLORS.primary} />
+        <MaterialIcons name={item.icon as any} size={22} color={COLORS.primary600} />
       </View>
       <View style={styles.settingContent}>
         <Text style={styles.settingTitle}>{item.title}</Text>
-        {item.subtitle && (
-          <Text style={styles.settingSubtitle}>{item.subtitle}</Text>
-        )}
+        {item.subtitle && <Text style={styles.settingSubtitle}>{item.subtitle}</Text>}
       </View>
       {item.type === 'toggle' && (
         <Switch
           value={item.value}
           onValueChange={item.onToggle}
-          trackColor={{ false: COLORS.gray300, true: COLORS.primary }}
+          trackColor={{ false: COLORS.gray300, true: COLORS.primary500 }}
           thumbColor={COLORS.white}
         />
       )}
       {item.type === 'link' && (
         <MaterialIcons name="chevron-right" size={22} color={COLORS.gray400} />
       )}
-      {item.type === 'button' && (
-        <TouchableOpacity onPress={item.onPress}>
-          <MaterialIcons name="chevron-right" size={22} color={COLORS.gray400} />
-        </TouchableOpacity>
-      )}
-    </View>
+    </TouchableOpacity>
   );
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <MaterialIcons name="arrow-back" size={24} color={COLORS.gray700} />
@@ -140,23 +145,24 @@ export const SettingsScreen: React.FC = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Settings Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Notifications</Text>
-          <View style={styles.settingsCard}>
-            {settings.slice(0, 4).map((item, index) => renderSettingItem(item, index))}
+        <View style={styles.userCard}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>
+              {(user?.fullName || 'U').charAt(0).toUpperCase()}
+            </Text>
+          </View>
+          <View>
+            <Text style={styles.userName}>{user?.fullName || 'User'}</Text>
+            <Text style={styles.userPhone}>{user?.phone || ''}</Text>
           </View>
         </View>
 
-        {/* General Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>General</Text>
+          <Text style={styles.sectionTitle}>Preferences</Text>
           <View style={styles.settingsCard}>
-            {settings.slice(4).map((item, index) => renderSettingItem(item, index + 4))}
+            {settings.map((item, index) => renderSettingItem(item, index))}
           </View>
         </View>
-
-        {/* Bottom padding */}
         <View style={styles.bottomPadding} />
       </ScrollView>
     </SafeAreaView>
@@ -164,36 +170,46 @@ export const SettingsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
+  container: { flex: 1, backgroundColor: COLORS.gray50 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    backgroundColor: COLORS.white,
   },
-  title: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.gray900,
+  title: { fontSize: 18, fontWeight: '600', color: COLORS.gray900 },
+  userCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    margin: SPACING.lg,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.white,
+    borderRadius: BORDER_RADIUS.xl,
   },
-  section: {
-    marginTop: SPACING.lg,
-    paddingHorizontal: SPACING.lg,
+  avatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary100,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+  avatarText: { fontSize: 22, fontWeight: '700', color: COLORS.primary600 },
+  userName: { fontSize: 17, fontWeight: '600', color: COLORS.gray900 },
+  userPhone: { fontSize: 14, color: COLORS.gray500, marginTop: 2 },
+  section: { paddingHorizontal: SPACING.lg },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: COLORS.gray500,
     marginBottom: SPACING.sm,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   settingsCard: {
-    backgroundColor: COLORS.gray50,
+    backgroundColor: COLORS.white,
     borderRadius: BORDER_RADIUS.lg,
     overflow: 'hidden',
   },
@@ -202,36 +218,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
+    borderBottomColor: COLORS.gray100,
   },
-  settingItemLast: {
-    borderBottomWidth: 0,
-  },
+  settingItemLast: { borderBottomWidth: 0 },
   settingIcon: {
     width: 40,
     height: 40,
     borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.primaryLighter,
+    backgroundColor: COLORS.primary50,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  settingContent: {
-    flex: 1,
-    marginLeft: SPACING.md,
-  },
-  settingTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: COLORS.gray900,
-  },
-  settingSubtitle: {
-    fontSize: 12,
-    color: COLORS.gray500,
-    marginTop: 2,
-  },
-  bottomPadding: {
-    height: SPACING.xxl,
-  },
+  settingContent: { flex: 1, marginLeft: SPACING.md },
+  settingTitle: { fontSize: 15, fontWeight: '500', color: COLORS.gray900 },
+  settingSubtitle: { fontSize: 12, color: COLORS.gray500, marginTop: 2 },
+  bottomPadding: { height: SPACING.xxl },
 });
 
 export default SettingsScreen;

@@ -1,6 +1,7 @@
 import apiClient, { handleApiError } from './api';
 import { API_BASE_URL } from '@utils/constants';
 import { ApiResponse, Order, OrderItem, OrderStatus, DeliverySlot, PaginatedResponse, Address, Rider } from '@types';
+import { withCityParams, getCachedCityId } from '@/lib/apiHelpers';
 
 const BACKEND_URL = API_BASE_URL.replace('/api', '');
 
@@ -89,6 +90,8 @@ function mapBackendOrder(raw: any): Order {
     id: raw.id,
     orderNumber: raw.order_number || '',
     userId: raw.user_id || '',
+    cityId: raw.city_id || undefined,
+    cityName: addressSnapshot?.city || undefined,
     items: (raw.items || []).map(mapOrderItem),
     status: raw.status as OrderStatus,
     subtotal: parseFloat(raw.subtotal) || 0,
@@ -119,16 +122,18 @@ function formatSlotTime(time: string): string {
 }
 
 // Map backend time slot to customer app DeliverySlot type
-function mapTimeSlot(raw: any, dateStr: string): DeliverySlot {
+function mapTimeSlot(raw: any, dateStr: string): DeliverySlot & { available_slots?: number } {
   const startFormatted = formatSlotTime(raw.start_time);
   const endFormatted = formatSlotTime(raw.end_time);
+  const availableSlots = parseInt(raw.available_slots, 10) || 0;
   return {
     id: raw.id,
     date: dateStr,
     startTime: raw.start_time || '',
     endTime: raw.end_time || '',
     label: raw.slot_name || `${startFormatted} - ${endFormatted}`,
-    available: (parseInt(raw.available_slots) || 0) > 0,
+    available: availableSlots > 0,
+    available_slots: availableSlots,
     isFreeDelivery: raw.is_free_delivery_slot === true,
     isExpress: raw.is_express_slot === true,
   };
@@ -146,6 +151,9 @@ class OrderService {
       if (data.requestedDeliveryDate) {
         body.requested_delivery_date = data.requestedDeliveryDate;
       }
+      const { getSelectedCityId } = require('@/lib/cityStorage');
+      const cityId = await getSelectedCityId();
+      if (cityId) body.city_id = cityId;
       const response = await apiClient.post('/orders', body);
       const raw = response.data;
       // Backend returns { data: { order: { id, order_number, ... } } }
@@ -157,8 +165,14 @@ class OrderService {
   }
 
   async getOrders(status?: OrderStatus): Promise<ApiResponse<PaginatedResponse<Order>>> {
+    if (!getCachedCityId()) {
+      return {
+        success: true,
+        data: { data: [], total: 0, page: 1, limit: 10, totalPages: 0 },
+      };
+    }
     try {
-      const params = status ? { status } : {};
+      const params = withCityParams(status ? { status } : {});
       const response = await apiClient.get('/orders', { params });
       const raw = response.data;
       const orders = (raw.data?.orders || raw.data || []).map(mapBackendOrder);
@@ -220,7 +234,7 @@ class OrderService {
 
   async getDeliverySettings(): Promise<ApiResponse<{ base_charge: number; free_delivery_threshold: number; express_charge: number }>> {
     try {
-      const response = await apiClient.get('/site-settings/delivery');
+      const response = await apiClient.get('/site-settings/delivery', { params: withCityParams() });
       const raw = response.data;
       return { success: true, data: raw.data };
     } catch (error) {

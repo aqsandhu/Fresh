@@ -138,6 +138,19 @@ class AuthService {
       throw handleApiError(error);
     }
   }
+
+  async resetPinWithCode(
+    phone: string,
+    code: string,
+    newPin: string
+  ): Promise<ApiResponse<{ ok: boolean }>> {
+    try {
+      const response = await apiClient.post('/auth/reset-pin', { phone, code, newPin });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
 }
 
 export const authService = new AuthService();

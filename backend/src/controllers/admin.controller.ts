@@ -22,7 +22,13 @@ import {
   requireCityScope,
 } from '../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../utils/productTags';
-import { fetchBannerSettings, upsertBannerSettings, upsertGlobalSiteSetting } from '../utils/siteSettings';
+import {
+  fetchBannerSettings,
+  upsertBannerSettings,
+  fetchWhatsAppOrderSettings,
+  upsertWhatsAppOrderSettings,
+  upsertGlobalSiteSetting,
+} from '../utils/siteSettings';
 import { loadAdminSession } from '../utils/adminSession';
 
 const SALT_ROUNDS = 12;
@@ -2429,6 +2435,51 @@ export const updateBannerSettings = asyncHandler(async (req: Request, res: Respo
   });
 
   successResponse(res, banner, 'Banner settings updated successfully');
+});
+
+/**
+ * Get WhatsApp order link for mobile app (per city)
+ * GET /api/admin/site-settings/whatsapp-order
+ */
+export const getWhatsAppOrderSettings = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const settings = await fetchWhatsAppOrderSettings(scope.cityId);
+  successResponse(res, settings, 'WhatsApp order settings retrieved');
+});
+
+/**
+ * Update WhatsApp order link for mobile app (per city)
+ * PUT /api/admin/site-settings/whatsapp-order
+ */
+export const updateWhatsAppOrderSettings = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  if (!scope.cityId) {
+    return errorResponse(res, 'Select a city before updating WhatsApp order settings', 400);
+  }
+
+  const userId = req.user?.id;
+  const raw =
+    req.body.whatsapp_order_url ??
+    req.body.whatsappOrderUrl ??
+    '';
+
+  const url = String(raw).trim();
+  if (url && !/^https?:\/\//i.test(url) && !/^\+?\d[\d\s-]{8,}$/.test(url)) {
+    return errorResponse(
+      res,
+      'Enter a valid WhatsApp link (https://wa.me/...) or phone number',
+      400
+    );
+  }
+
+  const settings = await upsertWhatsAppOrderSettings(url, scope.cityId, userId);
+
+  logger.info('WhatsApp order settings updated', {
+    updatedBy: userId,
+    cityId: scope.cityId,
+  });
+
+  successResponse(res, settings, 'WhatsApp order settings updated successfully');
 });
 
 // ============================================================================

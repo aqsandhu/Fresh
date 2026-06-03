@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,12 +21,16 @@ import { CartStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
 import { Button, Input, LoadingOverlay } from '@components';
 import { addressService } from '@services/address.service';
-import * as Location from 'expo-location';
+import { getAccuratePosition } from '@/lib/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '@utils/constants';
 
 export const AddAddressScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<CartStackParamList>>();
+  const route = useRoute<RouteProp<CartStackParamList, 'AddAddress'>>();
+  const addressId = route.params?.addressId;
+  const returnTo = route.params?.returnTo || 'checkout';
+  const isEditing = Boolean(addressId);
   const [permission, requestPermission] = useCameraPermissions();
   
   const [label, setLabel] = useState('Home');
@@ -47,6 +51,23 @@ export const AddAddressScreen: React.FC = () => {
 
   const labels = ['Home', 'Office', 'Other'];
 
+  useEffect(() => {
+    if (!addressId) return;
+    addressService.getAddressById(addressId).then((res) => {
+      if (res.success && res.data) {
+        const addr = res.data;
+        setLabel(addr.label.charAt(0).toUpperCase() + addr.label.slice(1));
+        setAddress(addr.fullAddress);
+        setRegion((prev) => ({
+          ...prev,
+          latitude: addr.latitude || prev.latitude,
+          longitude: addr.longitude || prev.longitude,
+        }));
+        if (addr.doorImage) setDoorImage(addr.doorImage);
+      }
+    }).catch(console.error);
+  }, [addressId]);
+
   const handleLocationSelect = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setRegion((prev) => ({
@@ -57,64 +78,29 @@ export const AddAddressScreen: React.FC = () => {
   };
 
   const handleGetCurrentLocation = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Location permission is needed to get your current position.');
-      return;
-    }
-
     setIsLocating(true);
     setLocationAccuracy(null);
 
     try {
-      // Watch GPS until we get ≤5m accuracy or timeout after 15s
-      const bestLocation = await new Promise<Location.LocationObject | null>((resolve) => {
-        let best: Location.LocationObject | null = null;
-        let done = false;
-
-        const timer = setTimeout(() => {
-          if (!done) { done = true; sub?.remove(); resolve(best); }
-        }, 15000);
-
-        let sub: Location.LocationSubscription;
-        Location.watchPositionAsync(
-          { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 0 },
-          (loc) => {
-            const acc = loc.coords.accuracy ?? 9999;
-            if (!best || acc < (best.coords.accuracy ?? 9999)) {
-              best = loc;
-              setLocationAccuracy(Math.round(acc));
-            }
-            if (acc <= REQUIRED_LOCATION_ACCURACY_M && !done) {
-              done = true;
-              clearTimeout(timer);
-              sub.remove();
-              resolve(loc);
-            }
-          }
-        ).then(s => { sub = s; });
+      const pos = await getAccuratePosition((acc) => {
+        setLocationAccuracy(Math.round(acc));
       });
 
-      if (bestLocation) {
-        const acc = bestLocation.coords.accuracy ?? 9999;
-        if (acc > REQUIRED_LOCATION_ACCURACY_M) {
-          Alert.alert(
-            'GPS Not Accurate Enough',
-            `Could not get GPS within ${REQUIRED_LOCATION_ACCURACY_M}m (best: ~${Math.round(acc)}m). Move to an open area and try again.`
-          );
-          return;
-        }
-        setLocationAccuracy(Math.round(acc));
+      if (pos) {
+        setLocationAccuracy(Math.round(pos.accuracy));
         setRegion({
-          latitude: bestLocation.coords.latitude,
-          longitude: bestLocation.coords.longitude,
+          latitude: pos.lat,
+          longitude: pos.lng,
           latitudeDelta: 0.002,
           longitudeDelta: 0.002,
         });
       } else {
-        Alert.alert('GPS Error', 'Could not get GPS signal. Move to an open area and try again.');
+        Alert.alert(
+          'GPS Not Accurate Enough',
+          `Could not get GPS under ${REQUIRED_LOCATION_ACCURACY_M}m. Move to an open area and try again.`
+        );
       }
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to get location. Please try again.');
     } finally {
       setIsLocating(false);
@@ -226,7 +212,9 @@ export const AddAddressScreen: React.FC = () => {
       let apiError: any = null;
 
       try {
-        const response = await addressService.createAddress(addressData);
+        const response = isEditing
+          ? await addressService.updateAddress(addressId!, addressData)
+          : await addressService.createAddress(addressData);
         if (response.success) {
           savedAddress = response.data;
           apiSuccess = true;
@@ -268,14 +256,18 @@ export const AddAddressScreen: React.FC = () => {
 
       Alert.alert(
         'Success',
-        'Address saved successfully!',
+        isEditing ? 'Address updated successfully!' : 'Address saved successfully!',
         [
           {
             text: 'OK',
             onPress: () => {
-              navigation.navigate('AddressSelection', { refresh: true } as any);
-            }
-          }
+              if (returnTo === 'checkout') {
+                navigation.navigate('Checkout');
+              } else {
+                navigation.goBack();
+              }
+            },
+          },
         ]
       );
     } catch (error: any) {
@@ -446,7 +438,7 @@ export const AddAddressScreen: React.FC = () => {
 
       {/* Save Button */}
       <View style={styles.footer}>
-        <Button title="Save Address" onPress={handleSave} size="large" />
+        <Button title={isEditing ? 'Update Address' : 'Save Address'} onPress={handleSave} size="large" />
       </View>
     </SafeAreaView>
   );

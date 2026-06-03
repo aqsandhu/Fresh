@@ -44,14 +44,14 @@ export const OrderConfirmationScreen: React.FC = () => {
           state: {
             routes: [
               { name: 'Home' },
-              { name: 'Categories' },
-              { name: 'AttaChakki' },
+              { name: 'Shop' },
+              { name: 'Cart' },
               {
                 name: 'Orders',
                 state: {
                   routes: [
                     { name: 'OrdersList' },
-                    { name: 'OrderDetail', params: { orderId } },
+                    { name: 'TrackOrder', params: { orderId } },
                   ],
                   index: 1,
                 },

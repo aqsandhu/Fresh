@@ -21,7 +21,13 @@ const getDevHost = (): string | null => {
 };
 
 const getApiBaseUrl = (): string => {
-  // For production builds (when __DEV__ is false), use the production API
+  // Override for Expo Go / dev testing against deployed backend (website + Supabase via Render).
+  const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (envUrl) {
+    return envUrl.replace(/\/$/, '');
+  }
+
+  // Production builds (when __DEV__ is false)
   if (!isDevelopment) {
     return 'https://api.freshbazar.pk/api';
   }
@@ -43,24 +49,40 @@ const getApiBaseUrl = (): string => {
 export const API_BASE_URL = getApiBaseUrl();
 export const IS_DEVELOPMENT = isDevelopment;
 export const API_TIMEOUT = 30000;
-export const REQUIRED_LOCATION_ACCURACY_M = 5;
+/** Keep trying GPS until accuracy is below this (meters). */
+export const REQUIRED_LOCATION_ACCURACY_M = 10;
 
 // App Configuration
 export const APP_NAME = 'Fresh Bazar';
 export const APP_VERSION = '1.0.0';
 
-// Colors - Green Theme for Pakistani Grocery
-export const COLORS = {
-  // Primary Colors
-  primary: '#2E7D32',
-  primaryDark: '#1B5E20',
-  primaryLight: '#4CAF50',
-  primaryLighter: '#E8F5E9',
+/** Bottom tab bar height — matches website MobileNav (~64px) */
+export const TAB_BAR_BASE_HEIGHT = 56;
+/** @deprecated Use useTabBarMetrics() for device-safe tab bar sizing */
+export const TAB_BAR_HEIGHT = 64;
+/** @deprecated Use useTabBarMetrics().inset */
+export const TAB_BAR_INSET = TAB_BAR_HEIGHT + 8;
 
-  // Secondary Colors
-  secondary: '#FF9800',
-  secondaryDark: '#F57C00',
-  secondaryLight: '#FFB74D',
+/** Auto-close cart dropdown after add-to-cart (website Header + app CartMiniSheet). */
+export const CART_DROPDOWN_AUTO_CLOSE_MS = 2000;
+
+// Colors — synced with website tailwind.config.ts (primary / secondary scales)
+export const COLORS = {
+  // Primary (green) — website primary-500/600
+  primary: '#22c55e',
+  primaryDark: '#16a34a',
+  primaryLight: '#4ade80',
+  primaryLighter: '#f0fdf4',
+  primary50: '#f0fdf4',
+  primary100: '#dcfce7',
+  primary500: '#22c55e',
+  primary600: '#16a34a',
+  primary700: '#15803d',
+
+  // Secondary (amber) — website secondary scale
+  secondary: '#f59e0b',
+  secondaryDark: '#d97706',
+  secondaryLight: '#fbbf24',
 
   // Accent Colors
   accent: '#00BCD4',
@@ -72,16 +94,16 @@ export const COLORS = {
   // Neutral Colors
   white: '#FFFFFF',
   black: '#000000',
-  gray50: '#FAFAFA',
-  gray100: '#F5F5F5',
-  gray200: '#EEEEEE',
-  gray300: '#E0E0E0',
-  gray400: '#BDBDBD',
-  gray500: '#9E9E9E',
-  gray600: '#757575',
-  gray700: '#616161',
-  gray800: '#424242',
-  gray900: '#212121',
+  gray50: '#f9fafb',
+  gray100: '#f3f4f6',
+  gray200: '#e5e7eb',
+  gray300: '#d1d5db',
+  gray400: '#9ca3af',
+  gray500: '#6b7280',
+  gray600: '#4b5563',
+  gray700: '#374151',
+  gray800: '#1f2937',
+  gray900: '#111827',
 
   // Category Colors
   sabzi: '#4CAF50',
@@ -131,7 +153,7 @@ export const DELIVERY = {
 
 // Atta Chakki Configuration
 export const ATTA_CHAKKI = {
-  PRICE_PER_KG: 8,
+  PRICE_PER_KG: 10,
   MIN_WEIGHT_KG: 5,
   MAX_WEIGHT_KG: 100,
   GRINDING_TIME_HOURS: 2,
@@ -172,6 +194,7 @@ export const ATTA_STATUS_MESSAGES: Record<string, { en: string; ur: string }> = 
 // Storage Keys
 export const STORAGE_KEYS = {
   TOKEN: '@token',
+  REFRESH_TOKEN: '@refreshToken',
   USER: '@user',
   CART: '@cart',
   ADDRESSES: '@addresses',

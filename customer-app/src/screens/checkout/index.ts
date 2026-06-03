@@ -1,5 +1,3 @@
-export { AddressSelectionScreen } from './AddressSelectionScreen';
+export { CheckoutScreen } from './CheckoutScreen';
 export { AddAddressScreen } from './AddAddressScreen';
-export { TimeSlotScreen } from './TimeSlotScreen';
-export { PaymentScreen } from './PaymentScreen';
 export { OrderConfirmationScreen } from './OrderConfirmationScreen';

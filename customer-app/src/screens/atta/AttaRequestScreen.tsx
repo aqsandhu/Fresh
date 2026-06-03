@@ -10,46 +10,47 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { AttaStackParamList, Address, DeliverySlot } from '@types';
-import { COLORS, SPACING, BORDER_RADIUS, ATTA_CHAKKI } from '@utils/constants';
+import { ProfileStackParamList, Address } from '@types';
+import { COLORS, SPACING, BORDER_RADIUS, ATTA_CHAKKI, VALIDATION } from '@utils/constants';
 import { formatCurrency } from '@utils/helpers';
 import { Button, Input, LoadingOverlay } from '@components';
 import { addressService } from '@services/address.service';
-import { orderService } from '@services/order.service';
 import { attaService } from '@services/atta.service';
+import { useAuthStore } from '@store';
+
+type FlourType = 'fine' | 'medium' | 'coarse';
+
+const FLOUR_OPTIONS: { value: FlourType; label: string }[] = [
+  { value: 'fine', label: 'Fine (باریک)' },
+  { value: 'medium', label: 'Medium (درمیانی)' },
+  { value: 'coarse', label: 'Coarse (موٹا)' },
+];
 
 export const AttaRequestScreen: React.FC = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<AttaStackParamList>>();
-  
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
+  const { user } = useAuthStore();
+
   const [weight, setWeight] = useState('');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [flourType, setFlourType] = useState<FlourType>('fine');
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
-  const [slots, setSlots] = useState<DeliverySlot[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<DeliverySlot | null>(null);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ 
-    weight?: string; 
-    address?: string; 
-    slot?: string;
+  const [errors, setErrors] = useState<{
+    weight?: string;
+    address?: string;
+    phone?: string;
     notes?: string;
   }>({});
 
   const loadData = useCallback(async () => {
     try {
-      const [addressesRes, slotsRes] = await Promise.all([
-        addressService.getAddresses(),
-        orderService.getDeliverySlots(),
-      ]);
-      
+      const addressesRes = await addressService.getAddresses();
       if (addressesRes.success) {
         setAddresses(addressesRes.data);
         const defaultAddr = addressesRes.data.find((a) => a.isDefault);
         if (defaultAddr) setSelectedAddress(defaultAddr);
-      }
-      
-      if (slotsRes.success) {
-        setSlots(slotsRes.data.filter((s) => s.available));
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -64,10 +65,10 @@ export const AttaRequestScreen: React.FC = () => {
   const totalPrice = weightValue * ATTA_CHAKKI.PRICE_PER_KG;
 
   const validate = (): boolean => {
-    const newErrors: { 
-      weight?: string; 
-      address?: string; 
-      slot?: string;
+    const newErrors: {
+      weight?: string;
+      address?: string;
+      phone?: string;
       notes?: string;
     } = {};
     
@@ -86,10 +87,9 @@ export const AttaRequestScreen: React.FC = () => {
     if (!selectedAddress) {
       newErrors.address = 'Please select a pickup address';
     }
-    
-    // Time slot validation
-    if (!selectedSlot) {
-      newErrors.slot = 'Please select a preferred pickup time';
+
+    if (!phone || !VALIDATION.PHONE_REGEX.test(phone)) {
+      newErrors.phone = 'Enter a valid contact number (03XXXXXXXXX)';
     }
     
     // Notes validation (optional but with max length)
@@ -102,14 +102,15 @@ export const AttaRequestScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!validate() || !selectedAddress || !selectedSlot) return;
+    if (!validate() || !selectedAddress) return;
 
     setLoading(true);
     try {
       const response = await attaService.createRequest({
         addressId: selectedAddress.id,
         wheatQuantityKg: weightValue,
-        specialInstructions: notes || undefined,
+        flourType,
+        specialInstructions: notes ? `${notes}${phone ? `\nContact: ${phone}` : ''}` : `Contact: ${phone}`,
       });
 
       if (response.success) {
@@ -131,7 +132,7 @@ export const AttaRequestScreen: React.FC = () => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <MaterialIcons name="arrow-back" size={24} color={COLORS.gray700} />
         </TouchableOpacity>
-        <Text style={styles.title}>Request Atta Grinding</Text>
+        <Text style={styles.title}>Request Atta Chakki Service</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -153,6 +154,7 @@ export const AttaRequestScreen: React.FC = () => {
           <Text style={styles.pricePreview}>
             Total: {formatCurrency(totalPrice)}
           </Text>
+          <Text style={styles.hintText}>Minimum order: 5 kg | Rate: Rs. 10 per kg</Text>
         </View>
 
         {/* Address Selection */}
@@ -195,40 +197,45 @@ export const AttaRequestScreen: React.FC = () => {
           )))}
         </View>
 
-        {/* Time Slot Selection */}
+        {/* Flour Type */}
         <View style={styles.section}>
-          <Text style={styles.label}>Preferred Pickup Time</Text>
-          {errors.slot && (
-            <Text style={styles.errorText}>{errors.slot}</Text>
-          )}
-          {slots.length === 0 ? (
-            <View style={styles.noSlotsContainer}>
-              <MaterialIcons name="schedule" size={32} color={COLORS.gray400} />
-              <Text style={styles.noSlotsText}>No time slots available</Text>
-            </View>
-          ) : (
-          <View style={styles.slotsGrid}>
-            {slots.map((slot) => (
+          <Text style={styles.label}>Flour Type</Text>
+          <View style={styles.flourGrid}>
+            {FLOUR_OPTIONS.map((option) => (
               <TouchableOpacity
-                key={slot.id}
+                key={option.value}
                 style={[
-                  styles.slotCard,
-                  selectedSlot?.id === slot.id && styles.slotCardSelected,
+                  styles.flourOption,
+                  flourType === option.value && styles.flourOptionSelected,
                 ]}
-                onPress={() => setSelectedSlot(slot)}
+                onPress={() => setFlourType(option.value)}
               >
-                <Text
-                  style={[
-                    styles.slotText,
-                    selectedSlot?.id === slot.id && styles.slotTextSelected,
-                  ]}
-                >
-                  {slot.label}
-                </Text>
+                <MaterialIcons
+                  name={flourType === option.value ? 'radio-button-checked' : 'radio-button-unchecked'}
+                  size={18}
+                  color={flourType === option.value ? COLORS.primary600 : COLORS.gray400}
+                />
+                <Text style={styles.flourOptionText}>{option.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
-          )}
+        </View>
+
+        {/* Contact Phone */}
+        <View style={styles.section}>
+          <Text style={styles.label}>Contact Number *</Text>
+          <Input
+            placeholder="03XX-XXXXXXX"
+            value={phone}
+            onChangeText={(text) => {
+              setPhone(text.replace(/[^0-9]/g, '').slice(0, 11));
+              setErrors((e) => ({ ...e, phone: undefined }));
+            }}
+            keyboardType="phone-pad"
+            maxLength={11}
+            error={errors.phone}
+            leftIcon={<MaterialIcons name="phone" size={20} color={COLORS.gray400} />}
+          />
         </View>
 
         {/* Notes */}
@@ -264,9 +271,9 @@ export const AttaRequestScreen: React.FC = () => {
       {/* Submit Button */}
       <View style={styles.footer}>
         <Button
-          title={`Submit Request - ${formatCurrency(totalPrice)}`}
+          title={loading ? 'Submitting...' : 'Submit Request'}
           onPress={handleSubmit}
-          disabled={!weight || !selectedAddress || !selectedSlot}
+          disabled={!weight || !selectedAddress || !phone}
           size="large"
         />
       </View>
@@ -307,6 +314,19 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     marginTop: SPACING.sm,
   },
+  hintText: { fontSize: 12, color: COLORS.gray500, marginTop: 4 },
+  flourGrid: { gap: SPACING.sm },
+  flourOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+  },
+  flourOptionSelected: { borderColor: COLORS.primary500, backgroundColor: COLORS.primary50 },
+  flourOptionText: { fontSize: 14, color: COLORS.gray800 },
   addressCard: {
     flexDirection: 'row',
     alignItems: 'center',

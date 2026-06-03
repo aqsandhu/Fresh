@@ -54,7 +54,7 @@ export const WishlistScreen: React.FC = () => {
   const handleProductPress = (productId: string) => {
     navigation.dispatch(
       CommonActions.navigate({
-        name: 'Categories',
+        name: 'Shop',
         params: {
           screen: 'ProductDetail',
           params: { productId },
