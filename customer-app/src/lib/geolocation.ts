@@ -99,7 +99,6 @@ function watchForAccurate(
         if (!best || acc < (best.coords.accuracy ?? 9999)) {
           best = loc;
           onProgress?.(acc);
-          onFix?.(toResult(loc, 'approximate'));
         }
         if (acc < maxAccuracyM) {
           finish(loc);

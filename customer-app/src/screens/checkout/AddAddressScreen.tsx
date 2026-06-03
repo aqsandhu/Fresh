@@ -15,7 +15,6 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import MapView, { Marker, Circle } from 'react-native-maps';
-import { useMapRegionSync } from '@/components/maps/useMapRegionSync';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { CartStackParamList } from '@types';
@@ -49,7 +48,7 @@ export const AddAddressScreen: React.FC = () => {
   const [isLocating, setIsLocating] = useState(false);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const cameraRef = useRef<CameraView>(null);
-  const { mapRef, onMapReady } = useMapRegionSync(region.latitude, region.longitude, 0.01);
+  const mapRef = useRef<MapView>(null);
 
   const labels = ['Home', 'Office', 'Other'];
 
@@ -80,12 +79,14 @@ export const AddAddressScreen: React.FC = () => {
   };
 
   const applyRegion = (lat: number, lng: number, accuracy?: number) => {
-    setRegion({
+    const next = {
       latitude: lat,
       longitude: lng,
       latitudeDelta: 0.002,
       longitudeDelta: 0.002,
-    });
+    };
+    setRegion(next);
+    mapRef.current?.animateToRegion(next, 400);
     if (accuracy != null) setLocationAccuracy(Math.round(accuracy));
   };
 
@@ -342,11 +343,9 @@ export const AddAddressScreen: React.FC = () => {
           <MapView
             ref={mapRef}
             style={styles.map}
-            initialRegion={region}
-            showsUserLocation
-            loadingEnabled
-            onMapReady={onMapReady}
+            region={region}
             onPress={handleLocationSelect}
+            onMapReady={() => mapRef.current?.animateToRegion(region, 0)}
           >
             {locationAccuracy != null && locationAccuracy > 0 && (
               <Circle
@@ -354,7 +353,7 @@ export const AddAddressScreen: React.FC = () => {
                   latitude: region.latitude,
                   longitude: region.longitude,
                 }}
-                radius={locationAccuracy}
+                radius={Math.min(locationAccuracy, 80)}
                 strokeColor="rgba(16, 185, 129, 0.85)"
                 strokeWidth={1}
                 fillColor="rgba(16, 185, 129, 0.15)"

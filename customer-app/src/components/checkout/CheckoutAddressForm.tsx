@@ -14,9 +14,7 @@ import {
   Alert,
   Modal,
   Pressable,
-  ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
@@ -115,8 +113,7 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
       setMapAccuracy(pos.accuracy);
     };
 
-    const handleGetGps = async () => {
-      setShowMapPicker(true);
+    const runGpsCapture = async () => {
       setIsLocating(true);
       setGpsStatus('Getting location…');
 
@@ -338,7 +335,7 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
           <View style={styles.gpsRow}>
             <TouchableOpacity
               style={styles.mapOutlineBtn}
-              onPress={() => setShowMapPicker(true)}
+              onPress={openMapPicker}
             >
               <MaterialIcons name="place" size={18} color={COLORS.primary600} />
               <Text style={styles.mapOutlineText}>Add Google Map Location</Text>
@@ -382,47 +379,27 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
           </View>
         )}
 
-        <Modal
-          visible={showMapPicker}
-          animationType="slide"
-          onRequestClose={() => setShowMapPicker(false)}
-        >
-          <SafeAreaView style={styles.mapModalRoot} edges={['top', 'bottom']}>
-            <View style={styles.mapModalHeader}>
-              <Text style={styles.mapModalTitle}>Pin map location</Text>
-              <TouchableOpacity
-                onPress={() => setShowMapPicker(false)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <MaterialIcons name="close" size={24} color={COLORS.gray700} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.mapModalScroll}
-            >
-              <CheckoutMapPicker
-                lat={mapLocation?.lat ?? DEFAULT_MAP_LAT}
-                lng={mapLocation?.lng ?? DEFAULT_MAP_LNG}
-                accuracy={mapAccuracy ?? null}
-                isLocating={isLocating}
-                hasLocation={mapLocation != null}
-                onLatLngChange={(lat, lng) => {
-                  setMapLocation({ lat, lng });
-                  setMapAccuracy(undefined);
-                }}
-                onGetLocation={handleGetGps}
-                onDone={() => setShowMapPicker(false)}
-                onCancel={() => {
-                  setMapLocation(null);
-                  setMapAccuracy(undefined);
-                  setGpsStatus(null);
-                  setShowMapPicker(false);
-                }}
-              />
-            </ScrollView>
-          </SafeAreaView>
-        </Modal>
+        {showMapPicker && (
+          <CheckoutMapPicker
+            lat={mapLocation?.lat ?? DEFAULT_MAP_LAT}
+            lng={mapLocation?.lng ?? DEFAULT_MAP_LNG}
+            accuracy={mapAccuracy ?? null}
+            isLocating={isLocating}
+            hasLocation={mapLocation != null}
+            onLatLngChange={(lat, lng) => {
+              setMapLocation({ lat, lng });
+              setMapAccuracy(undefined);
+            }}
+            onGetLocation={() => void runGpsCapture()}
+            onDone={() => setShowMapPicker(false)}
+            onCancel={() => {
+              setMapLocation(null);
+              setMapAccuracy(undefined);
+              setGpsStatus(null);
+              setShowMapPicker(false);
+            }}
+          />
+        )}
 
         <Text style={styles.mapFooterHint}>
           {isEdit
@@ -557,18 +534,6 @@ const styles = StyleSheet.create({
   changeLink: { fontSize: 14, color: COLORS.primary600, fontWeight: '500' },
   removeLink: { fontSize: 14, color: COLORS.error, fontWeight: '500' },
   mapFooterHint: { fontSize: 12, color: COLORS.gray400, marginTop: SPACING.xs },
-  mapModalRoot: { flex: 1, backgroundColor: COLORS.white },
-  mapModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray200,
-  },
-  mapModalTitle: { fontSize: 17, fontWeight: '600', color: COLORS.gray900 },
-  mapModalScroll: { padding: SPACING.lg, paddingBottom: SPACING.xl },
   actions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
 });
 

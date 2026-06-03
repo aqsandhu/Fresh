@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,26 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import MapView, { Marker, Circle } from 'react-native-maps';
+import MapView, { Marker, Circle, type Region } from 'react-native-maps';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
-import { useMapRegionSync, DEFAULT_MAP_DELTA } from '@/components/maps/useMapRegionSync';
 
-/** Match website DraggableMapPicker height */
 const MAP_HEIGHT = 280;
+const MAP_DELTA = 0.008;
+
+function safeCoord(value: number, fallback: number): number {
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function regionFrom(lat: number, lng: number): Region {
+  return {
+    latitude: safeCoord(lat, DEFAULT_MAP_LAT),
+    longitude: safeCoord(lng, DEFAULT_MAP_LNG),
+    latitudeDelta: MAP_DELTA,
+    longitudeDelta: MAP_DELTA,
+  };
+}
 
 interface CheckoutMapPickerProps {
   lat: number;
@@ -39,54 +51,59 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
   onDone,
   onCancel,
 }) => {
-  const { mapRef, onMapReady } = useMapRegionSync(lat, lng, DEFAULT_MAP_DELTA);
-  const [pin, setPin] = useState({ latitude: lat, longitude: lng });
+  const mapRef = useRef<MapView>(null);
+  const skipNextSync = useRef(false);
+  const [region, setRegion] = useState(() => regionFrom(lat, lng));
 
-  React.useEffect(() => {
-    setPin({ latitude: lat, longitude: lng });
+  const displayLat = safeCoord(lat, DEFAULT_MAP_LAT);
+  const displayLng = safeCoord(lng, DEFAULT_MAP_LNG);
+  const circleRadius =
+    accuracy != null && accuracy > 0 ? Math.min(accuracy, 80) : null;
+
+  useEffect(() => {
+    if (skipNextSync.current) {
+      skipNextSync.current = false;
+      return;
+    }
+    const next = regionFrom(lat, lng);
+    setRegion(next);
+    mapRef.current?.animateToRegion(next, 400);
   }, [lat, lng]);
 
   const syncPin = (latitude: number, longitude: number) => {
-    setPin({ latitude, longitude });
+    skipNextSync.current = true;
+    const next = regionFrom(latitude, longitude);
+    setRegion(next);
     onLatLngChange(latitude, longitude);
   };
 
   return (
     <View style={styles.wrap}>
       <View style={styles.mapBox}>
-        {isLocating && (
-          <View style={styles.mapLoading} pointerEvents="none">
-            <ActivityIndicator size="large" color={COLORS.primary600} />
-          </View>
-        )}
         <MapView
           ref={mapRef}
           style={styles.map}
-          initialRegion={{
-            latitude: lat,
-            longitude: lng,
-            latitudeDelta: DEFAULT_MAP_DELTA,
-            longitudeDelta: DEFAULT_MAP_DELTA,
+          region={region}
+          onRegionChangeComplete={(r) => {
+            if (isLocating) return;
+            setRegion(r);
           }}
-          showsUserLocation
-          showsMyLocationButton={false}
-          loadingEnabled
-          onMapReady={onMapReady}
           onPress={(e) =>
             syncPin(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude)
           }
+          onMapReady={() => mapRef.current?.animateToRegion(region, 0)}
         >
-          {accuracy != null && accuracy > 0 && (
+          {circleRadius != null && (
             <Circle
-              center={pin}
-              radius={accuracy}
+              center={{ latitude: displayLat, longitude: displayLng }}
+              radius={circleRadius}
               strokeColor="rgba(16, 185, 129, 0.85)"
               strokeWidth={1}
               fillColor="rgba(16, 185, 129, 0.15)"
             />
           )}
           <Marker
-            coordinate={pin}
+            coordinate={{ latitude: displayLat, longitude: displayLng }}
             draggable
             pinColor="red"
             onDragEnd={(e) =>
@@ -98,10 +115,12 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
 
       <View style={styles.panel}>
         <Text style={styles.hint}>
-          Drag the red pin on the map, tap to move it, or use &quot;Get My Location&quot;. Fine-tune
-          with the lat/lng fields if needed.
+          Drag the red pin, tap the map, or use Get My Location. Fine-tune with lat/lng if needed.
         </Text>
-        {accuracy != null && accuracy > 0 && (
+        {isLocating && (
+          <Text style={styles.locatingText}>Getting GPS… this may take a few seconds outdoors.</Text>
+        )}
+        {!isLocating && accuracy != null && accuracy > 0 && (
           <Text style={styles.accuracyOk}>GPS accuracy: ±{Math.round(accuracy)}m</Text>
         )}
 
@@ -167,6 +186,7 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
 
 const styles = StyleSheet.create({
   wrap: {
+    marginTop: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.gray200,
     borderRadius: BORDER_RADIUS.lg,
@@ -175,15 +195,12 @@ const styles = StyleSheet.create({
   },
   mapBox: {
     height: MAP_HEIGHT,
+    width: '100%',
     backgroundColor: '#e5e7eb',
   },
-  map: { ...StyleSheet.absoluteFillObject },
-  mapLoading: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 2,
-    backgroundColor: 'rgba(255,255,255,0.65)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  map: {
+    width: '100%',
+    height: MAP_HEIGHT,
   },
   panel: {
     padding: SPACING.md,
@@ -191,6 +208,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   hint: { fontSize: 12, color: COLORS.gray500, lineHeight: 17 },
+  locatingText: { fontSize: 12, color: COLORS.primary600 },
   accuracyOk: { fontSize: 12, color: '#15803d', fontWeight: '500' },
   coordRow: { flexDirection: 'row', gap: SPACING.md },
   coordField: { flex: 1 },
