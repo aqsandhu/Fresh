@@ -166,6 +166,13 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
       }
     };
 
+    const openMapPicker = () => setShowMapPicker(true);
+
+    const handleGetGps = () => {
+      setShowMapPicker(true);
+      void runGpsCapture();
+    };
+
     const handlePickDoorImage = async () => {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) return;

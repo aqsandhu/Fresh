@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   TextInput,
   ActivityIndicator,
 } from 'react-native';
-import MapView, { Marker, Circle, type Region } from 'react-native-maps';
+import MapView, { Marker, Circle } from 'react-native-maps';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
@@ -17,15 +17,6 @@ const MAP_DELTA = 0.008;
 
 function safeCoord(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
-}
-
-function regionFrom(lat: number, lng: number): Region {
-  return {
-    latitude: safeCoord(lat, DEFAULT_MAP_LAT),
-    longitude: safeCoord(lng, DEFAULT_MAP_LNG),
-    latitudeDelta: MAP_DELTA,
-    longitudeDelta: MAP_DELTA,
-  };
 }
 
 interface CheckoutMapPickerProps {
@@ -52,28 +43,24 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
   onCancel,
 }) => {
   const mapRef = useRef<MapView>(null);
-  const skipNextSync = useRef(false);
-  const [region, setRegion] = useState(() => regionFrom(lat, lng));
-
   const displayLat = safeCoord(lat, DEFAULT_MAP_LAT);
   const displayLng = safeCoord(lng, DEFAULT_MAP_LNG);
   const circleRadius =
     accuracy != null && accuracy > 0 ? Math.min(accuracy, 80) : null;
 
   useEffect(() => {
-    if (skipNextSync.current) {
-      skipNextSync.current = false;
-      return;
-    }
-    const next = regionFrom(lat, lng);
-    setRegion(next);
-    mapRef.current?.animateToRegion(next, 400);
-  }, [lat, lng]);
+    mapRef.current?.animateToRegion(
+      {
+        latitude: displayLat,
+        longitude: displayLng,
+        latitudeDelta: MAP_DELTA,
+        longitudeDelta: MAP_DELTA,
+      },
+      400
+    );
+  }, [displayLat, displayLng]);
 
   const syncPin = (latitude: number, longitude: number) => {
-    skipNextSync.current = true;
-    const next = regionFrom(latitude, longitude);
-    setRegion(next);
     onLatLngChange(latitude, longitude);
   };
 
@@ -83,15 +70,26 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
         <MapView
           ref={mapRef}
           style={styles.map}
-          region={region}
-          onRegionChangeComplete={(r) => {
-            if (isLocating) return;
-            setRegion(r);
+          initialRegion={{
+            latitude: displayLat,
+            longitude: displayLng,
+            latitudeDelta: MAP_DELTA,
+            longitudeDelta: MAP_DELTA,
           }}
           onPress={(e) =>
             syncPin(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude)
           }
-          onMapReady={() => mapRef.current?.animateToRegion(region, 0)}
+          onMapReady={() =>
+            mapRef.current?.animateToRegion(
+              {
+                latitude: displayLat,
+                longitude: displayLng,
+                latitudeDelta: MAP_DELTA,
+                longitudeDelta: MAP_DELTA,
+              },
+              0
+            )
+          }
         >
           {circleRadius != null && (
             <Circle
@@ -118,7 +116,7 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
           Drag the red pin, tap the map, or use Get My Location. Fine-tune with lat/lng if needed.
         </Text>
         {isLocating && (
-          <Text style={styles.locatingText}>Getting GPS… this may take a few seconds outdoors.</Text>
+          <Text style={styles.locatingText}>Getting GPS… up to ~12s for under 10m accuracy.</Text>
         )}
         {!isLocating && accuracy != null && accuracy > 0 && (
           <Text style={styles.accuracyOk}>GPS accuracy: ±{Math.round(accuracy)}m</Text>
