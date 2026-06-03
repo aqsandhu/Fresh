@@ -14,8 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Marker } from 'react-native-maps';
-import { AppMapView } from '@/components/maps';
+import MapView, { Marker } from 'react-native-maps';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { CartStackParamList } from '@types';
@@ -338,7 +337,7 @@ export const AddAddressScreen: React.FC = () => {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Map */}
         <View style={styles.mapContainer}>
-          <AppMapView
+          <MapView
             style={styles.map}
             region={region}
             onPress={handleLocationSelect}
@@ -351,7 +350,7 @@ export const AddAddressScreen: React.FC = () => {
                 setRegion((prev) => ({ ...prev, latitude, longitude }));
               }}
             />
-          </AppMapView>
+          </MapView>
           <TouchableOpacity
             style={styles.currentLocationButton}
             onPress={handleGetCurrentLocation}
