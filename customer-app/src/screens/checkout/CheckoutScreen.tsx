@@ -38,15 +38,9 @@ import { orderService } from '@services/order.service';
 import apiClient from '@services/api';
 import { useCartStore } from '@store';
 import { getSlotAvailability } from '@/lib/timeSlots';
+import { getAddressTypeLabel } from '@/constants/addressTypes';
 
 type DayTab = 'today' | 'tomorrow';
-
-const ADDRESS_TYPE_LABELS: Record<string, string> = {
-  home: 'Home',
-  work: 'Work',
-  office: 'Office',
-  other: 'Other',
-};
 
 function getDateString(day: DayTab): string {
   const d = new Date();
@@ -73,11 +67,9 @@ function formatAddressLine(addr: Address): string {
   return addr.fullAddress || (addr as any).fullAddress || '';
 }
 
-function getAddressTypeLabel(addr: Address): string {
-  const raw = String(
-    (addr as any).label || (addr as any).address_type || (addr as any).addressType || 'home'
-  ).toLowerCase();
-  return ADDRESS_TYPE_LABELS[raw] || raw.charAt(0).toUpperCase() + raw.slice(1);
+function addressTypeLabel(addr: Address): string {
+  const raw = (addr as any).label || (addr as any).address_type || (addr as any).addressType;
+  return getAddressTypeLabel(raw);
 }
 
 export const CheckoutScreen: React.FC = () => {
@@ -419,7 +411,7 @@ export const CheckoutScreen: React.FC = () => {
                         />
                         <View style={styles.addressContent}>
                           <View style={styles.addressLabelRow}>
-                            <Text style={styles.addressLabel}>{getAddressTypeLabel(addr)}</Text>
+                            <Text style={styles.addressLabel}>{addressTypeLabel(addr)}</Text>
                             {addr.isDefault && (
                               <View style={styles.defaultBadge}>
                                 <Text style={styles.defaultBadgeText}>Default</Text>

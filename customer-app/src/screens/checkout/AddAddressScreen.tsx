@@ -16,10 +16,13 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as ImagePicker from 'expo-image-picker';
 import { CartStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
 import { Button, Input, LoadingOverlay } from '@components';
+import { DoorPhotoCropModal } from '@components/common/DoorPhotoCropModal';
+import { AddressTypePicker } from '@components/checkout/AddressTypePicker';
+import { normalizeAddressType, type AddressTypeValue } from '@/constants/addressTypes';
+import { pickDoorPhotoFromLibrary } from '@/lib/pickDoorPhoto';
 import { addressService } from '@services/address.service';
 import { getAccuratePosition } from '@/lib/geolocation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -33,7 +36,10 @@ export const AddAddressScreen: React.FC = () => {
   const isEditing = Boolean(addressId);
   const [permission, requestPermission] = useCameraPermissions();
   
-  const [label, setLabel] = useState('Home');
+  const [addressType, setAddressType] = useState<AddressTypeValue>('home');
+  const [cropVisible, setCropVisible] = useState(false);
+  const [cropUri, setCropUri] = useState<string | null>(null);
+  const [cropSize, setCropSize] = useState({ width: 0, height: 0 });
   const [address, setAddress] = useState('');
   const [region, setRegion] = useState({
     latitude: 31.5204,
@@ -50,14 +56,12 @@ export const AddAddressScreen: React.FC = () => {
   const cameraRef = useRef<CameraView>(null);
   const mapRef = useRef<MapView>(null);
 
-  const labels = ['Home', 'Office', 'Other'];
-
   useEffect(() => {
     if (!addressId) return;
     addressService.getAddressById(addressId).then((res) => {
       if (res.success && res.data) {
         const addr = res.data;
-        setLabel(addr.label.charAt(0).toUpperCase() + addr.label.slice(1));
+        setAddressType(normalizeAddressType(addr.label));
         setAddress(addr.fullAddress);
         setRegion((prev) => ({
           ...prev,
@@ -150,28 +154,11 @@ export const AddAddressScreen: React.FC = () => {
   };
 
   const handlePickFromGallery = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      if (!perm.canAskAgain) {
-        Alert.alert(
-          'Photo Access Required',
-          'Please allow access to your photos in settings to pick a door picture.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: openAppSettings },
-          ]
-        );
-      }
-      return;
-    }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setDoorImage(result.assets[0].uri);
-    }
+    const picked = await pickDoorPhotoFromLibrary();
+    if (!picked) return;
+    setCropUri(picked.uri);
+    setCropSize({ width: picked.width, height: picked.height });
+    setCropVisible(true);
   };
 
   const handleDoorPicturePress = () => {
@@ -211,7 +198,7 @@ export const AddAddressScreen: React.FC = () => {
     setIsSaving(true);
     try {
       const addressData = {
-        label,
+        label: addressType,
         fullAddress: address,
         latitude: region.latitude,
         longitude: region.longitude,
@@ -394,26 +381,19 @@ export const AddAddressScreen: React.FC = () => {
         </View>
         <Text style={styles.mapHint}>Tap or drag the pin to adjust your exact location</Text>
         <View style={styles.form}>
-          {/* Label Selection */}
-          <Text style={styles.label}>Address Label</Text>
-          <View style={styles.labelContainer}>
-            {labels.map((l) => (
-              <TouchableOpacity
-                key={l}
-                style={[styles.labelButton, label === l && styles.labelButtonActive]}
-                onPress={() => setLabel(l)}
-              >
-                <Text
-                  style={[
-                    styles.labelButtonText,
-                    label === l && styles.labelButtonTextActive,
-                  ]}
-                >
-                  {l}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <AddressTypePicker value={addressType} onChange={setAddressType} label="Address Type" />
+
+          <DoorPhotoCropModal
+            visible={cropVisible}
+            imageUri={cropUri}
+            imageWidth={cropSize.width}
+            imageHeight={cropSize.height}
+            onCancel={() => setCropVisible(false)}
+            onConfirm={(uri) => {
+              setDoorImage(uri);
+              setCropVisible(false);
+            }}
+          />
 
           {/* Address Input */}
           <Input
@@ -544,31 +524,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.gray700,
     marginBottom: SPACING.sm,
-  },
-  labelContainer: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.lg,
-  },
-  labelButton: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.gray100,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  labelButtonActive: {
-    backgroundColor: COLORS.primaryLighter,
-    borderColor: COLORS.primary,
-  },
-  labelButtonText: {
-    fontSize: 14,
-    color: COLORS.gray600,
-  },
-  labelButtonTextActive: {
-    color: COLORS.primary,
-    fontWeight: '600',
   },
   addressInput: {
     height: 80,

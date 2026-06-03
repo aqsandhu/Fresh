@@ -12,20 +12,21 @@ import {
   TouchableOpacity,
   Image,
   Alert,
-  Modal,
-  Pressable,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { Address } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button, Input } from '@components';
+import { DoorPhotoCropModal } from '@components/common/DoorPhotoCropModal';
 import { addressService, type CreateAddressRequest } from '@services/address.service';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
 import { getAccuratePosition } from '@/lib/geolocation';
 import { REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
+import { normalizeAddressType, type AddressTypeValue } from '@/constants/addressTypes';
+import { pickDoorPhotoFromLibrary } from '@/lib/pickDoorPhoto';
 import { CheckoutMapPicker } from './CheckoutMapPicker';
+import { AddressTypePicker } from './AddressTypePicker';
 
 export interface CheckoutAddressFormInitial {
   id?: string;
@@ -53,18 +54,6 @@ interface CheckoutAddressFormProps {
   onValidityChange?: (isValid: boolean) => void;
 }
 
-const ADDRESS_TYPES = [
-  { value: 'home', label: 'Home' },
-  { value: 'work', label: 'Work' },
-  { value: 'office', label: 'Office' },
-  { value: 'other', label: 'Other' },
-] as const;
-
-function normalizeAddressType(raw?: string): string {
-  const lower = (raw || 'home').toLowerCase();
-  return ADDRESS_TYPES.some((t) => t.value === lower) ? lower : 'home';
-}
-
 export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, CheckoutAddressFormProps>(
   function CheckoutAddressForm(
     {
@@ -79,8 +68,12 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
     ref
   ) {
     const isEdit = Boolean(initial?.id);
-    const [addressType, setAddressType] = useState(normalizeAddressType(initial?.label));
-    const [typeMenuOpen, setTypeMenuOpen] = useState(false);
+    const [addressType, setAddressType] = useState<AddressTypeValue>(
+      normalizeAddressType(initial?.label)
+    );
+    const [cropVisible, setCropVisible] = useState(false);
+    const [cropUri, setCropUri] = useState<string | null>(null);
+    const [cropSize, setCropSize] = useState({ width: 0, height: 0 });
     const [areaName, setAreaName] = useState(initial?.areaName || '');
     const [writtenAddress, setWrittenAddress] = useState(initial?.fullAddress || '');
     const [landmark, setLandmark] = useState(initial?.landmark || '');
@@ -98,9 +91,6 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
     const [isLocating, setIsLocating] = useState(false);
     const [gpsStatus, setGpsStatus] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-
-    const selectedTypeLabel =
-      ADDRESS_TYPES.find((t) => t.value === addressType)?.label || 'Home';
 
     const isValid = writtenAddress.trim().length >= 5;
 
@@ -174,16 +164,11 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
     };
 
     const handlePickDoorImage = async () => {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) return;
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.8,
-      });
-      if (!result.canceled && result.assets[0]) {
-        setDoorImage(result.assets[0].uri);
-      }
+      const picked = await pickDoorPhotoFromLibrary();
+      if (!picked) return;
+      setCropUri(picked.uri);
+      setCropSize({ width: picked.width, height: picked.height });
+      setCropVisible(true);
     };
 
     const handleSubmit = useCallback(async (): Promise<Address | null> => {
@@ -256,44 +241,19 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
 
     return (
       <View style={styles.wrap}>
-        <Text style={styles.fieldLabel}>Address Type</Text>
-        <TouchableOpacity
-          style={styles.selectField}
-          onPress={() => setTypeMenuOpen(true)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.selectValue}>{selectedTypeLabel}</Text>
-          <MaterialIcons name="arrow-drop-down" size={22} color={COLORS.gray600} />
-        </TouchableOpacity>
+        <AddressTypePicker value={addressType} onChange={setAddressType} />
 
-        <Modal visible={typeMenuOpen} transparent animationType="fade">
-          <Pressable style={styles.modalBackdrop} onPress={() => setTypeMenuOpen(false)}>
-            <Pressable style={styles.typeMenu} onPress={() => {}}>
-              {ADDRESS_TYPES.map((t) => (
-                <TouchableOpacity
-                  key={t.value}
-                  style={[styles.typeOption, addressType === t.value && styles.typeOptionActive]}
-                  onPress={() => {
-                    setAddressType(t.value);
-                    setTypeMenuOpen(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.typeOptionText,
-                      addressType === t.value && styles.typeOptionTextActive,
-                    ]}
-                  >
-                    {t.label}
-                  </Text>
-                  {addressType === t.value && (
-                    <MaterialIcons name="check" size={18} color={COLORS.primary600} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </Pressable>
-          </Pressable>
-        </Modal>
+        <DoorPhotoCropModal
+          visible={cropVisible}
+          imageUri={cropUri}
+          imageWidth={cropSize.width}
+          imageHeight={cropSize.height}
+          onCancel={() => setCropVisible(false)}
+          onConfirm={(uri) => {
+            setDoorImage(uri);
+            setCropVisible(false);
+          }}
+        />
 
         <Input
           label="Area Name"
@@ -446,42 +406,6 @@ const styles = StyleSheet.create({
     color: COLORS.gray700,
     marginBottom: SPACING.sm,
   },
-  selectField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 11,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.gray300,
-    backgroundColor: COLORS.white,
-    marginBottom: SPACING.md,
-  },
-  selectValue: { fontSize: 15, color: COLORS.gray900 },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    padding: SPACING.lg,
-  },
-  typeMenu: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-  },
-  typeOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.gray100,
-  },
-  typeOptionActive: { backgroundColor: COLORS.primary50 },
-  typeOptionText: { fontSize: 15, color: COLORS.gray800 },
-  typeOptionTextActive: { color: COLORS.primary700, fontWeight: '600' },
   cityField: { marginBottom: SPACING.md },
   cityLocked: {
     paddingHorizontal: SPACING.md,

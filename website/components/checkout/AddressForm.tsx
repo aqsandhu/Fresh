@@ -193,6 +193,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
       return null
     }
 
+    setShowMapPicker(false)
     setSaving(true)
     try {
       const baseFields: Record<string, string | number | boolean> = {

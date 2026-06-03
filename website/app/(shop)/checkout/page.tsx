@@ -258,9 +258,9 @@ function CheckoutPage() {
       return
     }
 
-    // Auto-save the inline new-address form if needed.
+    // Auto-save inline new-address form (door photo + map pin — no Done/Save required).
     let addressIdToUse = selectedAddress
-    if (!addressIdToUse && showNewAddress) {
+    if (showNewAddress && newAddressValid) {
       if (!newAddressFormRef.current) {
         toast.error('Please add a delivery address')
         return
@@ -268,11 +268,15 @@ function CheckoutPage() {
       setIsPlacingOrder(true)
       const saved = await newAddressFormRef.current.submit()
       if (!saved?.id) {
-        // submit() already surfaced the validation/network error toast.
         setIsPlacingOrder(false)
         return
       }
       addressIdToUse = saved.id
+      setSelectedAddress(saved.id)
+      setAddresses((prev) => {
+        const exists = prev.some((a) => a.id === saved.id)
+        return exists ? prev.map((a) => (a.id === saved.id ? saved : a)) : [...prev, saved]
+      })
     }
 
     if (!addressIdToUse) {
@@ -550,7 +554,8 @@ function CheckoutPage() {
                         }
                       />
                       <p className="mt-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                        Tip: You can press <strong>Place Order</strong> directly — we&apos;ll save this address automatically.
+                        Door photo, map pin, and address text are saved when you press{' '}
+                        <strong>Place Order</strong> — no need to tap Done on the map or Save here.
                       </p>
                     </div>
                   )}

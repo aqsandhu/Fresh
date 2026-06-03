@@ -17,6 +17,7 @@ import { Button, ErrorView, EmptyState } from '@components';
 import { addressService } from '@services/address.service';
 import { useCityContext } from '@/context/CityContext';
 import { addressMatchesSelectedCity } from '@/lib/cityStorage';
+import { getAddressTypeLabel, normalizeAddressType } from '@/constants/addressTypes';
 
 export const MyAddressesScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
@@ -76,16 +77,27 @@ export const MyAddressesScreen: React.FC = () => {
     }
   };
 
-  const renderAddress = ({ item }: { item: Address }) => (
+  const renderAddress = ({ item }: { item: Address }) => {
+    const typeKey = normalizeAddressType(item.label);
+    const typeLabel = getAddressTypeLabel(item.label);
+    return (
     <View style={styles.addressCard}>
       <View style={styles.addressHeader}>
         <View style={styles.labelContainer}>
           <MaterialIcons
-            name={item.label === 'home' || item.label === 'Home' ? 'home' : item.label === 'work' || item.label === 'office' || item.label === 'Office' ? 'business' : 'location-on'}
+            name={
+              typeKey === 'home'
+                ? 'home'
+                : typeKey === 'work' || typeKey === 'office'
+                  ? 'business'
+                  : 'location-on'
+            }
             size={20}
             color={COLORS.primary}
           />
-          <Text style={styles.label}>{item.label}</Text>
+          <Text style={styles.label} numberOfLines={1}>
+            {typeLabel}
+          </Text>
           {item.isDefault && (
             <View style={styles.defaultBadge}>
               <Text style={styles.defaultText}>Default</Text>
@@ -124,6 +136,7 @@ export const MyAddressesScreen: React.FC = () => {
       )}
     </View>
   );
+  };
 
   if (error && !loading) {
     return (
@@ -214,8 +227,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
+    flex: 1,
+    minWidth: 0,
   },
   label: {
+    flexShrink: 1,
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.gray900,
