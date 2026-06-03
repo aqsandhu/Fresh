@@ -188,6 +188,90 @@ export async function upsertWhatsAppOrderSettings(
   return fetchWhatsAppOrderSettings(cityId);
 }
 
+export type WhatsAppCitySettingRow = {
+  cityId: string;
+  cityName: string;
+  province: string;
+  whatsappOrderUrl: string;
+};
+
+export type WhatsAppOrderSettingsAll = {
+  globalWhatsappOrderUrl: string;
+  cities: WhatsAppCitySettingRow[];
+};
+
+/** All active cities with per-city WhatsApp URLs plus optional global fallback. */
+export async function fetchWhatsAppOrderSettingsAll(): Promise<WhatsAppOrderSettingsAll> {
+  const hasCityColumn = await hasSiteSettingsCityColumn();
+
+  const citiesResult = await query(
+    `SELECT id, name, province FROM service_cities WHERE is_active = true ORDER BY name`
+  );
+
+  let globalWhatsappOrderUrl = '';
+  const perCity = new Map<string, string>();
+
+  if (hasCityColumn) {
+    const settingsResult = await query(
+      `SELECT city_id, value FROM site_settings WHERE key = $1`,
+      [WHATSAPP_ORDER_URL_KEY]
+    );
+    for (const row of settingsResult.rows) {
+      if (row.city_id == null) {
+        globalWhatsappOrderUrl = row.value || '';
+      } else {
+        perCity.set(row.city_id, row.value || '');
+      }
+    }
+  } else {
+    const settingsResult = await query(
+      `SELECT value FROM site_settings WHERE key = $1 LIMIT 1`,
+      [WHATSAPP_ORDER_URL_KEY]
+    );
+    globalWhatsappOrderUrl = settingsResult.rows[0]?.value || '';
+  }
+
+  return {
+    globalWhatsappOrderUrl,
+    cities: citiesResult.rows.map((row) => ({
+      cityId: row.id,
+      cityName: row.name,
+      province: row.province,
+      whatsappOrderUrl: perCity.get(row.id) || '',
+    })),
+  };
+}
+
+export type WhatsAppBulkEntry = { cityId: string; whatsappOrderUrl: string };
+
+export async function upsertWhatsAppOrderSettingsBulk(
+  payload: {
+    globalWhatsappOrderUrl?: string;
+    cities?: WhatsAppBulkEntry[];
+  },
+  userId?: string
+): Promise<WhatsAppOrderSettingsAll> {
+  if (payload.globalWhatsappOrderUrl !== undefined) {
+    await upsertGlobalSiteSetting(
+      WHATSAPP_ORDER_URL_KEY,
+      String(payload.globalWhatsappOrderUrl).trim(),
+      userId
+    );
+  }
+
+  for (const entry of payload.cities || []) {
+    if (!entry.cityId) continue;
+    await upsertKeyedSetting(
+      WHATSAPP_ORDER_URL_KEY,
+      String(entry.whatsappOrderUrl ?? '').trim(),
+      entry.cityId,
+      userId
+    );
+  }
+
+  return fetchWhatsAppOrderSettingsAll();
+}
+
 /** Upsert a global (non-city) site setting row. */
 export async function upsertGlobalSiteSetting(
   key: string,

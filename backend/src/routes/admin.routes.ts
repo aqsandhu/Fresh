@@ -222,6 +222,8 @@ router.get('/site-settings/banner', adminController.getBannerSettings);
 router.put('/site-settings/banner', adminController.updateBannerSettings);
 router.get('/site-settings/whatsapp-order', adminController.getWhatsAppOrderSettings);
 router.put('/site-settings/whatsapp-order', adminController.updateWhatsAppOrderSettings);
+router.get('/site-settings/whatsapp-order/all', adminController.getWhatsAppOrderSettingsAll);
+router.put('/site-settings/whatsapp-order/bulk', adminController.updateWhatsAppOrderSettingsBulk);
 
 // Settings - General, Delivery, Time Slots, Business Hours
 router.get('/settings', adminController.getSettings);
