@@ -1,6 +1,7 @@
 /**
  * Removes near-white background and writes transparent PNG + favicon sizes.
- * Run: node scripts/process-brand-logo.mjs
+ * Run: pnpm brand:logo
+ * One-time local dep: npm install sharp --prefix backend
  */
 import fs from 'fs';
 import path from 'path';
@@ -8,7 +9,13 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const sharp = require(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'backend', 'node_modules', 'sharp'));
+let sharp;
+try {
+  sharp = require(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'backend', 'node_modules', 'sharp'));
+} catch {
+  console.error('Install sharp locally first: npm install sharp --prefix backend');
+  process.exit(1);
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..');
