@@ -29,6 +29,7 @@ import { useCityContext } from '@/context/CityContext'
 import { Product, Category } from '@/types'
 import { phoneToTelHref } from '@/lib/phoneStorage'
 import NotificationBell from '@/components/notifications/NotificationBell'
+import BrandLogo from '@/components/ui/BrandLogo'
 
 export default function Header() {
   const pathname = usePathname()
@@ -252,14 +253,8 @@ export default function Header() {
       <div ref={searchAreaRef} className="container mx-auto px-3 sm:px-4 py-2">
         <div className="flex items-center justify-between gap-2 sm:gap-3">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">S</span>
-            </div>
-            <div className="hidden sm:block">
-              <h1 className="font-bold text-lg leading-tight text-gray-900">Fresh Bazar</h1>
-              <p className="text-[11px] text-primary-600 font-urdu leading-tight" dir="rtl">فریش بازار</p>
-            </div>
+          <Link href="/" className="shrink-0">
+            <BrandLogo priority />
           </Link>
 
           {/* Desktop Navigation */}

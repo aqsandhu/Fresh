@@ -30,6 +30,9 @@ import {
   upsertWhatsAppOrderSettings,
   upsertWhatsAppOrderSettingsBulk,
   upsertGlobalSiteSetting,
+  fetchBrandLogoSettings,
+  BRAND_LOGO_URL_KEY,
+  BRAND_LOGO_STORAGE_PATH_KEY,
 } from '../utils/siteSettings';
 import { loadAdminSession } from '../utils/adminSession';
 
@@ -2391,6 +2394,56 @@ export const getCustomerAddresses = asyncHandler(async (req: Request, res: Respo
 // ============================================================================
 // SITE SETTINGS (Banner)
 // ============================================================================
+
+/**
+ * Get global brand logo (view-only for city admins)
+ * GET /api/admin/site-settings/brand
+ */
+export const getBrandLogoSettings = asyncHandler(async (req: Request, res: Response) => {
+  const brand = await fetchBrandLogoSettings();
+  successResponse(res, brand, 'Brand logo settings retrieved');
+});
+
+/**
+ * Update global brand logo (super admin only)
+ * PUT /api/admin/site-settings/brand
+ */
+export const updateBrandLogoSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can change the brand logo', 403);
+  }
+
+  const file = req.file as Express.Multer.File & {
+    storageUrl?: string;
+    storagePath?: string;
+  };
+
+  if (!file?.storageUrl) {
+    return errorResponse(res, 'Logo image file is required', 400);
+  }
+
+  const previous = await fetchBrandLogoSettings();
+  if (previous.brand_logo_storage_path) {
+    try {
+      await deleteFileFromStorage(previous.brand_logo_storage_path);
+    } catch (err) {
+      logger.warn('Could not delete previous brand logo from storage', { err });
+    }
+  }
+
+  const userId = req.user?.id;
+  await upsertGlobalSiteSetting(BRAND_LOGO_URL_KEY, file.storageUrl, userId);
+  await upsertGlobalSiteSetting(
+    BRAND_LOGO_STORAGE_PATH_KEY,
+    file.storagePath || '',
+    userId
+  );
+
+  logger.info('Brand logo updated', { updatedBy: userId, url: file.storageUrl });
+
+  const brand = await fetchBrandLogoSettings();
+  successResponse(res, brand, 'Brand logo updated successfully');
+});
 
 /**
  * Get banner settings
