@@ -197,9 +197,9 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
-      {/* Top Bar */}
-      <div className="bg-primary-700 text-white text-xs py-2">
-        <div className="container mx-auto px-4 flex items-center justify-between">
+      {/* Top Bar — compact (matches app density) */}
+      <div className="bg-primary-700 text-white text-[11px] sm:text-xs py-1">
+        <div className="container mx-auto px-3 sm:px-4 flex items-center justify-between gap-2">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <Phone className="w-3 h-3" />
@@ -219,35 +219,35 @@ export default function Header() {
               {banner.middleText}
             </span>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:inline">{banner.rightTextEn}</span>
-            <span className="font-urdu" dir="rtl">{banner.rightTextUr}</span>
+          <div className="hidden md:flex items-center gap-3 min-w-0">
+            <span className="truncate">{banner.rightTextEn}</span>
+            <span className="font-urdu truncate" dir="rtl">{banner.rightTextUr}</span>
           </div>
         </div>
       </div>
 
       {/* Main Header */}
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between gap-4">
+      <div className="container mx-auto px-3 sm:px-4 py-2">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">S</span>
+          <Link href="/" className="flex items-center gap-2 shrink-0">
+            <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-lg">S</span>
             </div>
             <div className="hidden sm:block">
-              <h1 className="font-bold text-xl text-gray-900">Fresh Bazar</h1>
-              <p className="text-xs text-primary-600 font-urdu" dir="rtl">فریش بازار</p>
+              <h1 className="font-bold text-lg leading-tight text-gray-900">Fresh Bazar</h1>
+              <p className="text-[11px] text-primary-600 font-urdu leading-tight" dir="rtl">فریش بازار</p>
             </div>
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-0.5">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 className={cn(
-                  'px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                  'px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors',
                   pathname === link.href
                     ? 'bg-primary-50 text-primary-700'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -268,7 +268,7 @@ export default function Header() {
                   setTimeout(() => searchInputRef.current?.focus(), 100)
                 }
               }}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <Search className="w-5 h-5 text-gray-600" />
             </button>
@@ -280,7 +280,7 @@ export default function Header() {
             {hasMounted && isAuthenticated && (
               <Link
                 href="/orders"
-                className="hidden sm:flex p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <Package className="w-5 h-5 text-gray-600" />
               </Link>
@@ -290,7 +290,7 @@ export default function Header() {
             <div className="relative">
               <button
                 onClick={() => setIsCartOpen(!isCartOpen)}
-                className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="relative p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <ShoppingCart className="w-5 h-5 text-gray-600" />
                 {cartItemCount > 0 && (
@@ -310,7 +310,7 @@ export default function Header() {
             {/* Profile */}
             <Link
               href={hasMounted && isAuthenticated ? '/profile' : `/login?redirect=${pathname}`}
-              className="hidden sm:flex p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <User className="w-5 h-5 text-gray-600" />
             </Link>
@@ -319,7 +319,7 @@ export default function Header() {
             <button
               ref={menuButtonRef}
               onClick={() => setIsMenuOpen((open) => !open)}
-              className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               aria-label={isMenuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={isMenuOpen}
             >
@@ -341,7 +341,7 @@ export default function Header() {
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="pt-4 relative">
+              <div className="pt-2 pb-1 relative">
                 <form onSubmit={handleSearchSubmit}>
                   <div className="relative">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
