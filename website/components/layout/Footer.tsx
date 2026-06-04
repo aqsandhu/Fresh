@@ -110,7 +110,7 @@ export default function Footer() {
               Your trusted partner for fresh groceries delivery in Pakistan. 
               We deliver farm-fresh vegetables, fruits, and more right to your doorstep.
             </p>
-            <p className="text-gray-500 text-sm font-urdu mb-6" dir="rtl">
+            <p className="text-gray-600 text-lg font-bold font-urdu mb-6 leading-relaxed" dir="rtl">
               پاکستان میں تازہ سبزیاں اور پھل آپ کے گھر تک
             </p>
 

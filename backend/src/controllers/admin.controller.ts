@@ -2413,13 +2413,18 @@ export const updateBrandLogoSettings = asyncHandler(async (req: Request, res: Re
     return errorResponse(res, 'Only super admin can change the brand logo', 403);
   }
 
-  const file = req.file as Express.Multer.File & {
-    storageUrl?: string;
-    storagePath?: string;
-  };
+  const file = req.file as Express.Multer.File | undefined;
 
-  if (!file?.storageUrl) {
+  if (!file?.buffer?.length) {
     return errorResponse(res, 'Logo image file is required', 400);
+  }
+
+  if (!file.url) {
+    return errorResponse(
+      res,
+      'Logo upload failed. Check Supabase Storage (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) on Render.',
+      500
+    );
   }
 
   const previous = await fetchBrandLogoSettings();
@@ -2432,14 +2437,14 @@ export const updateBrandLogoSettings = asyncHandler(async (req: Request, res: Re
   }
 
   const userId = req.user?.id;
-  await upsertGlobalSiteSetting(BRAND_LOGO_URL_KEY, file.storageUrl, userId);
+  await upsertGlobalSiteSetting(BRAND_LOGO_URL_KEY, file.url, userId);
   await upsertGlobalSiteSetting(
     BRAND_LOGO_STORAGE_PATH_KEY,
     file.storagePath || '',
     userId
   );
 
-  logger.info('Brand logo updated', { updatedBy: userId, url: file.storageUrl });
+  logger.info('Brand logo updated', { updatedBy: userId, url: file.url });
 
   const brand = await fetchBrandLogoSettings();
   successResponse(res, brand, 'Brand logo updated successfully');
