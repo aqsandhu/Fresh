@@ -1,3 +1,8 @@
 {
+  "version": 2,
+  "buildCommand": "cd .. && pnpm install --frozen-lockfile && pnpm --filter freshbazar-admin run build",
+  "installCommand": "cd .. && pnpm install --frozen-lockfile",
+  "outputDirectory": "dist",
+  "framework": "vite",
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
