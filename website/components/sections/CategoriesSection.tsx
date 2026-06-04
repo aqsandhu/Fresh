@@ -50,7 +50,7 @@ export default function CategoriesSection() {
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
             Shop by Category
           </h2>
-          <p className="text-lg text-gray-600 font-urdu" dir="rtl">
+          <p className="text-xl font-bold text-gray-700 font-urdu" dir="rtl">
             کیٹیگری کے مطابق خریداری کریں
           </p>
         </motion.div>

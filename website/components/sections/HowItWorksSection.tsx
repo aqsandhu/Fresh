@@ -66,7 +66,7 @@ export default function HowItWorksSection() {
           <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
             How It Works
           </h2>
-          <p className="text-lg text-gray-600 font-urdu" dir="rtl">
+          <p className="text-xl font-bold text-gray-700 font-urdu" dir="rtl">
             یہ کیسے کام کرتا ہے
           </p>
         </motion.div>

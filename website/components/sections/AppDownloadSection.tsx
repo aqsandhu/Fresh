@@ -28,7 +28,7 @@ export default function AppDownloadSection() {
               <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
                 Download Our App
               </h2>
-              <p className="text-xl text-primary-100 font-urdu mb-4" dir="rtl">
+              <p className="text-2xl font-bold text-primary-50 font-urdu mb-4" dir="rtl">
                 ایپ ڈاؤنلوڈ کریں
               </p>
               <p className="text-primary-100 mb-6">

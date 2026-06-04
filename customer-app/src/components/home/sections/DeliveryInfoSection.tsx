@@ -54,7 +54,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary600,
   },
   title: { fontSize: 26, fontWeight: '700', color: COLORS.white, textAlign: 'center', paddingHorizontal: SPACING.lg },
-  urdu: { fontSize: 16, color: COLORS.primary100, textAlign: 'center', marginTop: 4, marginBottom: SPACING.lg, paddingHorizontal: SPACING.lg },
+  urdu: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.white,
+    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+  },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, justifyContent: 'space-between', paddingHorizontal: SPACING.lg },
   card: {
     width: '48%',

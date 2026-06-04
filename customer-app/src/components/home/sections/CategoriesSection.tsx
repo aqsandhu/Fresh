@@ -92,7 +92,13 @@ const styles = StyleSheet.create({
 
   title: { fontSize: 26, fontWeight: '700', color: COLORS.gray900, textAlign: 'center' },
 
-  urdu: { fontSize: 16, color: COLORS.gray600, marginTop: 4, textAlign: 'center' },
+  urdu: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.gray700,
+    marginTop: 4,
+    textAlign: 'center',
+  },
 
   empty: { textAlign: 'center', color: COLORS.gray500, paddingVertical: SPACING.xl },
 

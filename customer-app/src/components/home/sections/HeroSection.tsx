@@ -191,10 +191,12 @@ const styles = StyleSheet.create({
   },
   accent: { color: COLORS.primary600 },
   urdu: {
-    fontSize: 17,
-    color: COLORS.gray600,
+    fontSize: 22,
+    fontWeight: '700',
+    color: COLORS.gray800,
     marginTop: SPACING.sm,
     textAlign: 'center',
+    lineHeight: 32,
   },
   featureGrid: {
     flexDirection: 'row',

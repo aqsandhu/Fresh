@@ -45,7 +45,7 @@ export default function DeliveryInfoSection() {
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
             Delivery Information
           </h2>
-          <p className="text-lg text-primary-100 font-urdu" dir="rtl">
+          <p className="text-xl font-bold text-primary-50 font-urdu" dir="rtl">
             ترسیل کی معلومات
           </p>
         </motion.div>

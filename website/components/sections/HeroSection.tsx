@@ -113,7 +113,7 @@ export default function HeroSection() {
             </h1>
 
             <p
-              className="text-[17px] text-gray-600 mt-3 text-center lg:text-left font-urdu"
+              className="text-xl md:text-2xl font-bold text-gray-700 mt-3 text-center lg:text-left font-urdu leading-relaxed"
               dir="rtl"
             >
               تازہ سبزیاں اور پھل آپ کے گھر تک
