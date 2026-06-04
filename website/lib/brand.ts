@@ -1,21 +1,15 @@
 import api from './api'
 
-const DEFAULT_LOGO = '/logo.png'
+let cachedLogoUrl: string | null | undefined
 
-let cachedLogoUrl: string | null = null
-
-export async function fetchBrandLogoUrl(): Promise<string> {
-  if (cachedLogoUrl) return cachedLogoUrl
+export async function fetchBrandLogoUrl(): Promise<string | null> {
+  if (cachedLogoUrl !== undefined) return cachedLogoUrl
   try {
     const res = await api.get('/site-settings/brand')
     const url = res.data?.data?.logoUrl || res.data?.data?.logo_url
-    cachedLogoUrl = typeof url === 'string' && url.trim() ? url.trim() : DEFAULT_LOGO
+    cachedLogoUrl = typeof url === 'string' && url.trim() ? url.trim() : null
   } catch {
-    cachedLogoUrl = DEFAULT_LOGO
+    cachedLogoUrl = null
   }
   return cachedLogoUrl
-}
-
-export function getDefaultBrandLogo(): string {
-  return DEFAULT_LOGO
 }

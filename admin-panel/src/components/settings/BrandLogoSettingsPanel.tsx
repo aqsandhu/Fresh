@@ -6,8 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { brandService } from '@/services/brand.service';
 import toast from 'react-hot-toast';
 
-const DEFAULT_LOGO = '/logo.png';
-
 interface BrandLogoSettingsPanelProps {
   canEdit: boolean;
 }
@@ -36,14 +34,14 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
     },
   });
 
-  const displayUrl =
-    preview || (data?.brand_logo_url?.trim() ? data.brand_logo_url : DEFAULT_LOGO);
+  const storedUrl = data?.brandLogoUrl?.trim();
+  const displayUrl = preview || storedUrl || null;
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      toast.error('Please choose a PNG or JPG image');
+      toast.error('Please choose a PNG, WebP, or JPG image');
       return;
     }
     setPreview(URL.createObjectURL(file));
@@ -58,8 +56,8 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
         <div>
           <h3 className="text-lg font-semibold text-gray-900">Brand Logo</h3>
           <p className="text-sm text-gray-500 mt-1">
-            Shown on website, mobile apps, rider app, and admin panel. City admins
-            can preview only; super admin can upload a new logo.
+            Upload a transparent PNG. Stored in Supabase and shown on website, apps,
+            and admin. City admins can preview only.
           </p>
         </div>
       </div>
@@ -67,12 +65,17 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
       <div className="flex flex-col sm:flex-row items-center gap-6 p-6 bg-gray-50 rounded-xl border border-gray-100">
         {isLoading ? (
           <div className="w-48 h-32 bg-gray-200 animate-pulse rounded-lg" />
-        ) : (
+        ) : displayUrl ? (
           <img
             src={displayUrl}
             alt="Fresh Bazar logo"
             className="max-h-32 max-w-[220px] object-contain"
           />
+        ) : (
+          <div className="text-center text-sm text-gray-500 px-4">
+            No logo uploaded yet.
+            {canEdit ? ' Upload a transparent PNG below.' : ''}
+          </div>
         )}
 
         {canEdit ? (
@@ -80,7 +83,7 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
             <input
               ref={fileRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/png,image/webp,image/jpeg"
               className="hidden"
               onChange={onFile}
             />
@@ -90,9 +93,9 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
               disabled={uploadMutation.isPending}
             >
               <Upload className="w-4 h-4 mr-2" />
-              {uploadMutation.isPending ? 'Uploading…' : 'Upload new logo'}
+              {uploadMutation.isPending ? 'Uploading…' : 'Upload logo (PNG)'}
             </Button>
-            <p className="text-xs text-gray-500">PNG with transparent background recommended</p>
+            <p className="text-xs text-gray-500">Use a transparent PNG for best results</p>
           </div>
         ) : (
           <div className="flex items-center gap-2 text-sm text-gray-600">
