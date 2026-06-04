@@ -81,10 +81,10 @@ export default function FeaturedProductsSection() {
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6"
+            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5"
           >
             {featuredProducts.map((product) => (
-              <motion.div key={product.id} variants={itemVariants}>
+              <motion.div key={product.id} variants={itemVariants} className="min-w-0">
                 <ProductCard product={product} />
               </motion.div>
             ))}
