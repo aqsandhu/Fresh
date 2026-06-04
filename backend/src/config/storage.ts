@@ -209,6 +209,32 @@ export async function deleteFileFromStorage(objectPath: string): Promise<void> {
   }
 }
 
+/** Parse object path from Supabase public URL (e.g. brand/uuid.png). */
+export function objectPathFromSupabasePublicUrl(publicUrl: string): string | null {
+  if (!publicUrl?.trim()) return null;
+  try {
+    const parsed = new URL(publicUrl.trim());
+    const needle = `/object/public/${STORAGE_BUCKET}/`;
+    const idx = parsed.pathname.indexOf(needle);
+    if (idx === -1) return null;
+    return decodeURIComponent(parsed.pathname.slice(idx + needle.length));
+  } catch {
+    return null;
+  }
+}
+
+/** Delete unique storage objects; returns how many paths were attempted. */
+export async function deleteStoragePaths(paths: Iterable<string>): Promise<number> {
+  let count = 0;
+  for (const raw of paths) {
+    const p = raw?.trim();
+    if (!p) continue;
+    await deleteFileFromStorage(p);
+    count += 1;
+  }
+  return count;
+}
+
 export function isStorageConfigured(): boolean {
   return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
 }

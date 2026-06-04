@@ -4,13 +4,14 @@ import { fetchBrandLogoUrl } from '@services/brand.service';
 import { COLORS } from '@utils/constants';
 
 interface BrandLogoProps {
+  /** Logo height in px; width follows image aspect ratio */
   height?: number;
   style?: ViewStyle;
   imageStyle?: ImageStyle;
 }
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({
-  height = 56,
+  height = 40,
   style,
   imageStyle,
 }) => {
@@ -31,7 +32,9 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   }, []);
 
   if (loading) {
-    return <View style={[styles.placeholder, { height, width: height * 2 }, style]} />;
+    return (
+      <View style={[styles.placeholder, { height, width: height * 1.5 }, style]} />
+    );
   }
 
   if (!url) {
@@ -45,7 +48,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   return (
     <Image
       source={{ uri: url }}
-      style={[styles.img, { height, width: height * 2.2 }, imageStyle]}
+      style={[styles.img, { height }, imageStyle]}
       resizeMode="contain"
       accessibilityLabel="Fresh Bazar logo"
     />
@@ -53,7 +56,11 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 };
 
 const styles = StyleSheet.create({
-  img: { alignSelf: 'center' },
+  img: {
+    alignSelf: 'center',
+    width: undefined,
+    maxWidth: '100%',
+  },
   placeholder: {
     alignSelf: 'center',
     backgroundColor: COLORS.gray100,

@@ -1,4 +1,9 @@
 import { query } from '../config/database';
+import {
+  deleteStoragePaths,
+  objectPathFromSupabasePublicUrl,
+} from '../config/storage';
+import logger from './logger';
 
 const BANNER_KEYS = [
   'banner_left_text',
@@ -10,6 +15,8 @@ const BANNER_KEYS = [
 export const WHATSAPP_ORDER_URL_KEY = 'whatsapp_order_url';
 export const BRAND_LOGO_URL_KEY = 'brand_logo_url';
 export const BRAND_LOGO_STORAGE_PATH_KEY = 'brand_logo_storage_path';
+export const BRAND_FAVICON_URL_KEY = 'brand_favicon_url';
+export const BRAND_FAVICON_STORAGE_PATH_KEY = 'brand_favicon_storage_path';
 
 let cachedCityColumn: boolean | null = null;
 
@@ -320,4 +327,89 @@ export async function fetchBrandLogoSettings(): Promise<BrandLogoSettings> {
     brand_logo_url: map[BRAND_LOGO_URL_KEY] || '',
     brand_logo_storage_path: map[BRAND_LOGO_STORAGE_PATH_KEY] || '',
   };
+}
+
+/** Collect storage paths for the current logo (path field + URL fallback). */
+export function brandLogoStoragePaths(settings: BrandLogoSettings): string[] {
+  const paths = new Set<string>();
+  const stored = settings.brand_logo_storage_path?.trim();
+  if (stored) paths.add(stored);
+  const fromUrl = objectPathFromSupabasePublicUrl(settings.brand_logo_url || '');
+  if (fromUrl) paths.add(fromUrl);
+  return [...paths];
+}
+
+/** Remove logo file(s) from Supabase; skips `exceptPath` (e.g. newly uploaded file). */
+export async function deleteBrandLogoFromStorage(
+  settings: BrandLogoSettings,
+  exceptPath?: string
+): Promise<number> {
+  const skip = exceptPath?.trim();
+  const toDelete = brandLogoStoragePaths(settings).filter((p) => p !== skip);
+  const count = await deleteStoragePaths(toDelete);
+  if (count > 0) {
+    logger.info('Deleted previous brand logo file(s) from storage', {
+      count,
+      paths: toDelete,
+    });
+  }
+  return count;
+}
+
+export async function clearBrandLogoSettings(userId?: string): Promise<BrandLogoSettings> {
+  await upsertGlobalSiteSetting(BRAND_LOGO_URL_KEY, '', userId);
+  await upsertGlobalSiteSetting(BRAND_LOGO_STORAGE_PATH_KEY, '', userId);
+  return fetchBrandLogoSettings();
+}
+
+export interface BrandFaviconSettings {
+  brand_favicon_url: string;
+  brand_favicon_storage_path: string;
+}
+
+export async function fetchBrandFaviconSettings(): Promise<BrandFaviconSettings> {
+  const hasCityColumn = await hasSiteSettingsCityColumn();
+  const result = await query(
+    hasCityColumn
+      ? `SELECT key, value FROM site_settings
+         WHERE key IN ($1, $2) AND city_id IS NULL`
+      : `SELECT key, value FROM site_settings WHERE key IN ($1, $2)`,
+    [BRAND_FAVICON_URL_KEY, BRAND_FAVICON_STORAGE_PATH_KEY]
+  );
+  const map = rowsToMap(result.rows);
+  return {
+    brand_favicon_url: map[BRAND_FAVICON_URL_KEY] || '',
+    brand_favicon_storage_path: map[BRAND_FAVICON_STORAGE_PATH_KEY] || '',
+  };
+}
+
+export function brandFaviconStoragePaths(settings: BrandFaviconSettings): string[] {
+  const paths = new Set<string>();
+  const stored = settings.brand_favicon_storage_path?.trim();
+  if (stored) paths.add(stored);
+  const fromUrl = objectPathFromSupabasePublicUrl(settings.brand_favicon_url || '');
+  if (fromUrl) paths.add(fromUrl);
+  return [...paths];
+}
+
+export async function deleteBrandFaviconFromStorage(
+  settings: BrandFaviconSettings,
+  exceptPath?: string
+): Promise<number> {
+  const skip = exceptPath?.trim();
+  const toDelete = brandFaviconStoragePaths(settings).filter((p) => p !== skip);
+  const count = await deleteStoragePaths(toDelete);
+  if (count > 0) {
+    logger.info('Deleted previous brand favicon file(s) from storage', {
+      count,
+      paths: toDelete,
+    });
+  }
+  return count;
+}
+
+export async function clearBrandFaviconSettings(userId?: string): Promise<BrandFaviconSettings> {
+  await upsertGlobalSiteSetting(BRAND_FAVICON_URL_KEY, '', userId);
+  await upsertGlobalSiteSetting(BRAND_FAVICON_STORAGE_PATH_KEY, '', userId);
+  return fetchBrandFaviconSettings();
 }

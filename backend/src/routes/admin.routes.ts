@@ -224,6 +224,15 @@ router.put(
   uploadSingle('logo', 'brand'),
   adminController.updateBrandLogoSettings
 );
+router.delete('/site-settings/brand', adminController.deleteBrandLogoSettings);
+
+router.get('/site-settings/favicon', adminController.getBrandFaviconSettings);
+router.put(
+  '/site-settings/favicon',
+  uploadSingle('favicon', 'favicon'),
+  adminController.updateBrandFaviconSettings
+);
+router.delete('/site-settings/favicon', adminController.deleteBrandFaviconSettings);
 
 // Site Settings - Banner
 router.get('/site-settings/banner', adminController.getBannerSettings);

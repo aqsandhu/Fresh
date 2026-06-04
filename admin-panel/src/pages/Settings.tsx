@@ -21,6 +21,7 @@ import {
   Eye,
   MessageCircle,
   Image,
+  Sparkles,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -42,10 +43,13 @@ import {
   canUpdateWhatsappSettings,
   canViewBrandSettingsTab,
   canUpdateBrandLogo,
+  canViewFaviconSettingsTab,
+  canUpdateFavicon,
   visibleSettingsTabs,
   type SettingsTabId,
 } from '@/lib/settingsPermissions';
 import { BrandLogoSettingsPanel } from '@/components/settings/BrandLogoSettingsPanel';
+import { BrandFaviconSettingsPanel } from '@/components/settings/BrandFaviconSettingsPanel';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -69,7 +73,9 @@ export const Settings: React.FC = () => {
   const role = user?.role;
   const baseTabs = visibleSettingsTabs(permissions, role);
   const showBrandTab = canViewBrandSettingsTab(permissions, role);
+  const showFaviconTab = canViewFaviconSettingsTab(permissions, role);
   const canEditBrandLogo = canUpdateBrandLogo(role);
+  const canEditFavicon = canUpdateFavicon(role);
   const showWhatsappTab = canViewWhatsappSettingsTab(permissions, role);
   const allowedTabs: SettingsTabId[] = showWhatsappTab
     ? baseTabs.includes('whatsapp')
@@ -822,6 +828,19 @@ export const Settings: React.FC = () => {
           <span>Brand Logo</span>
         </button>
         )}
+        {showFaviconTab && (
+        <button
+          onClick={() => setActiveTab('favicon')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'favicon'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>Favicon</span>
+        </button>
+        )}
         {showWhatsappTab && (
         <button
           onClick={() => setActiveTab('whatsapp')}
@@ -844,6 +863,9 @@ export const Settings: React.FC = () => {
       {activeTab === 'banner' && renderBanner()}
       {activeTab === 'brand' && (
         <BrandLogoSettingsPanel canEdit={canEditBrandLogo} />
+      )}
+      {activeTab === 'favicon' && (
+        <BrandFaviconSettingsPanel canEdit={canEditFavicon} />
       )}
       {activeTab === 'whatsapp' && renderWhatsappTab()}
 

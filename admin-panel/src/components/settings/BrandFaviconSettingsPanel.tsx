@@ -1,16 +1,16 @@
 import React, { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Image, Upload, Info, Trash2 } from 'lucide-react';
+import { Sparkles, Upload, Info, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { brandService } from '@/services/brand.service';
+import { faviconService } from '@/services/favicon.service';
 import toast from 'react-hot-toast';
 
-interface BrandLogoSettingsPanelProps {
+interface BrandFaviconSettingsPanelProps {
   canEdit: boolean;
 }
 
-export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
+export const BrandFaviconSettingsPanel: React.FC<BrandFaviconSettingsPanelProps> = ({
   canEdit,
 }) => {
   const queryClient = useQueryClient();
@@ -18,35 +18,35 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
   const [preview, setPreview] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['brand-logo'],
-    queryFn: () => brandService.get(),
+    queryKey: ['brand-favicon'],
+    queryFn: () => faviconService.get(),
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => brandService.upload(file),
+    mutationFn: (file: File) => faviconService.upload(file),
     onSuccess: ({ message }) => {
-      queryClient.invalidateQueries({ queryKey: ['brand-logo'] });
+      queryClient.invalidateQueries({ queryKey: ['brand-favicon'] });
       setPreview(null);
       toast.success(message);
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'Failed to upload logo');
+      toast.error(err.message || 'Failed to upload favicon');
     },
   });
 
   const removeMutation = useMutation({
-    mutationFn: () => brandService.remove(),
+    mutationFn: () => faviconService.remove(),
     onSuccess: ({ message }) => {
-      queryClient.invalidateQueries({ queryKey: ['brand-logo'] });
+      queryClient.invalidateQueries({ queryKey: ['brand-favicon'] });
       setPreview(null);
       toast.success(message);
     },
     onError: (err: Error) => {
-      toast.error(err.message || 'Failed to remove logo');
+      toast.error(err.message || 'Failed to remove favicon');
     },
   });
 
-  const storedUrl = data?.brandLogoUrl?.trim();
+  const storedUrl = data?.brandFaviconUrl?.trim();
   const displayUrl = preview || storedUrl || null;
 
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -64,30 +64,31 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
   return (
     <Card>
       <div className="flex items-start gap-3 mb-4">
-        <Image className="w-5 h-5 text-primary-600 mt-0.5" />
+        <Sparkles className="w-5 h-5 text-primary-600 mt-0.5" />
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">Brand Logo</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Brand Favicon</h3>
           <p className="text-sm text-gray-500 mt-1">
-            Upload a transparent PNG. Stored in Supabase and shown on website, apps,
-            and admin. Replacing a logo deletes the previous file from storage automatically.
-            City admins can preview only.
+            Separate from the navbar logo. Used for browser tabs and home-screen icons.
+            Upload a square PNG (512×512 recommended). Stored in Supabase under{' '}
+            <code className="text-xs bg-gray-100 px-1 rounded">favicon/</code>. Replacing
+            deletes the previous file automatically.
           </p>
         </div>
       </div>
 
       <div className="flex flex-col sm:flex-row items-center gap-6 p-6 bg-gray-50 rounded-xl border border-gray-100">
         {isLoading ? (
-          <div className="w-48 h-32 bg-gray-200 animate-pulse rounded-lg" />
+          <div className="w-32 h-32 bg-gray-200 animate-pulse rounded-lg" />
         ) : displayUrl ? (
           <img
             src={displayUrl}
-            alt="Fresh Bazar logo"
+            alt="Site favicon preview"
             className="h-32 w-auto max-w-none object-contain"
           />
         ) : (
           <div className="text-center text-sm text-gray-500 px-4">
-            No logo uploaded yet.
-            {canEdit ? ' Upload a transparent PNG below.' : ''}
+            No favicon uploaded yet.
+            {canEdit ? ' Upload a square PNG (up to 512px).' : ''}
           </div>
         )}
 
@@ -109,8 +110,8 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
               {uploadMutation.isPending
                 ? 'Uploading…'
                 : storedUrl
-                  ? 'Replace logo (PNG)'
-                  : 'Upload logo (PNG)'}
+                  ? 'Replace favicon'
+                  : 'Upload favicon'}
             </Button>
             {storedUrl ? (
               <Button
@@ -121,7 +122,7 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
                 onClick={() => {
                   if (
                     !window.confirm(
-                      'Remove the brand logo from the site and delete the file from storage?'
+                      'Remove the favicon from the site and delete the file from storage?'
                     )
                   ) {
                     return;
@@ -130,15 +131,17 @@ export const BrandLogoSettingsPanel: React.FC<BrandLogoSettingsPanelProps> = ({
                 }}
               >
                 <Trash2 className="w-4 h-4 mr-2" />
-                {removeMutation.isPending ? 'Removing…' : 'Remove logo'}
+                {removeMutation.isPending ? 'Removing…' : 'Remove favicon'}
               </Button>
             ) : null}
-            <p className="text-xs text-gray-500">Use a transparent PNG for best results</p>
+            <p className="text-xs text-gray-500">
+              Max display sizes: 16–512px (generated from your image on website/admin)
+            </p>
           </div>
         ) : (
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <Info className="w-4 h-4 shrink-0" />
-            <span>View only — contact super admin to change the logo.</span>
+            <span>View only — contact super admin to change the favicon.</span>
           </div>
         )}
       </div>

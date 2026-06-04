@@ -31,8 +31,15 @@ import {
   upsertWhatsAppOrderSettingsBulk,
   upsertGlobalSiteSetting,
   fetchBrandLogoSettings,
+  deleteBrandLogoFromStorage,
+  clearBrandLogoSettings,
   BRAND_LOGO_URL_KEY,
   BRAND_LOGO_STORAGE_PATH_KEY,
+  fetchBrandFaviconSettings,
+  deleteBrandFaviconFromStorage,
+  clearBrandFaviconSettings,
+  BRAND_FAVICON_URL_KEY,
+  BRAND_FAVICON_STORAGE_PATH_KEY,
 } from '../utils/siteSettings';
 import { loadAdminSession } from '../utils/adminSession';
 
@@ -2428,26 +2435,129 @@ export const updateBrandLogoSettings = asyncHandler(async (req: Request, res: Re
   }
 
   const previous = await fetchBrandLogoSettings();
-  if (previous.brand_logo_storage_path) {
-    try {
-      await deleteFileFromStorage(previous.brand_logo_storage_path);
-    } catch (err) {
-      logger.warn('Could not delete previous brand logo from storage', { err });
-    }
-  }
+  const newPath = file.storagePath?.trim() || '';
+  const removedCount = await deleteBrandLogoFromStorage(previous, newPath);
 
   const userId = req.user?.id;
   await upsertGlobalSiteSetting(BRAND_LOGO_URL_KEY, file.url, userId);
-  await upsertGlobalSiteSetting(
-    BRAND_LOGO_STORAGE_PATH_KEY,
-    file.storagePath || '',
-    userId
-  );
+  await upsertGlobalSiteSetting(BRAND_LOGO_STORAGE_PATH_KEY, newPath, userId);
 
-  logger.info('Brand logo updated', { updatedBy: userId, url: file.url });
+  logger.info('Brand logo updated', {
+    updatedBy: userId,
+    url: file.url,
+    previousFilesRemoved: removedCount,
+  });
 
   const brand = await fetchBrandLogoSettings();
-  successResponse(res, brand, 'Brand logo updated successfully');
+  const message =
+    removedCount > 0
+      ? 'Brand logo updated. Previous file removed from storage.'
+      : 'Brand logo updated successfully';
+  successResponse(res, { ...brand, previousFilesRemoved: removedCount }, message);
+});
+
+/**
+ * Remove global brand logo (super admin only)
+ * DELETE /api/admin/site-settings/brand
+ */
+export const deleteBrandLogoSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can remove the brand logo', 403);
+  }
+
+  const previous = await fetchBrandLogoSettings();
+  const removedCount = await deleteBrandLogoFromStorage(previous);
+  const userId = req.user?.id;
+  const brand = await clearBrandLogoSettings(userId);
+
+  logger.info('Brand logo removed', { updatedBy: userId, filesRemoved: removedCount });
+
+  successResponse(
+    res,
+    { ...brand, filesRemoved: removedCount },
+    removedCount > 0
+      ? 'Brand logo removed from site and storage.'
+      : 'Brand logo settings cleared.'
+  );
+});
+
+/**
+ * Get global brand favicon (view-only for city admins)
+ * GET /api/admin/site-settings/favicon
+ */
+export const getBrandFaviconSettings = asyncHandler(async (req: Request, res: Response) => {
+  const favicon = await fetchBrandFaviconSettings();
+  successResponse(res, favicon, 'Brand favicon settings retrieved');
+});
+
+/**
+ * Update global brand favicon (super admin only)
+ * PUT /api/admin/site-settings/favicon
+ */
+export const updateBrandFaviconSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can change the brand favicon', 403);
+  }
+
+  const file = req.file as Express.Multer.File | undefined;
+
+  if (!file?.buffer?.length) {
+    return errorResponse(res, 'Favicon image file is required', 400);
+  }
+
+  if (!file.url) {
+    return errorResponse(
+      res,
+      'Favicon upload failed. Check Supabase Storage (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) on Render.',
+      500
+    );
+  }
+
+  const previous = await fetchBrandFaviconSettings();
+  const newPath = file.storagePath?.trim() || '';
+  const removedCount = await deleteBrandFaviconFromStorage(previous, newPath);
+
+  const userId = req.user?.id;
+  await upsertGlobalSiteSetting(BRAND_FAVICON_URL_KEY, file.url, userId);
+  await upsertGlobalSiteSetting(BRAND_FAVICON_STORAGE_PATH_KEY, newPath, userId);
+
+  logger.info('Brand favicon updated', {
+    updatedBy: userId,
+    url: file.url,
+    previousFilesRemoved: removedCount,
+  });
+
+  const favicon = await fetchBrandFaviconSettings();
+  const message =
+    removedCount > 0
+      ? 'Brand favicon updated. Previous file removed from storage.'
+      : 'Brand favicon updated successfully';
+  successResponse(res, { ...favicon, previousFilesRemoved: removedCount }, message);
+});
+
+/**
+ * Remove global brand favicon (super admin only)
+ * DELETE /api/admin/site-settings/favicon
+ */
+export const deleteBrandFaviconSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can remove the brand favicon', 403);
+  }
+
+  const previous = await fetchBrandFaviconSettings();
+  const removedCount = await deleteBrandFaviconFromStorage(previous);
+  const userId = req.user?.id;
+  const favicon = await clearBrandFaviconSettings(userId);
+
+  logger.info('Brand favicon removed', { updatedBy: userId, filesRemoved: removedCount });
+
+  successResponse(
+    res,
+    { ...favicon, filesRemoved: removedCount },
+    removedCount > 0
+      ? 'Brand favicon removed from site and storage.'
+      : 'Brand favicon settings cleared.'
+  );
 });
 
 /**

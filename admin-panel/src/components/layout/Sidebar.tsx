@@ -75,8 +75,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         `}
       >
         {/* Logo */}
-        <div className="px-6 py-5 border-b border-gray-200 flex-shrink-0">
-          <BrandLogo size="nav" />
+        <div className="px-6 py-3 border-b border-gray-200 flex-shrink-0">
+          <NavLink
+            to="/admin/dashboard"
+            className="h-9 lg:h-[43px] flex items-center leading-none"
+            aria-label="Dashboard"
+          >
+            <BrandLogo size="nav" className="h-full" />
+          </NavLink>
           <p className="text-xs text-gray-500 mt-1">Admin Panel · Pakistan</p>
         </div>
 

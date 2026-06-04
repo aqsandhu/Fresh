@@ -4,26 +4,26 @@ import { brandService } from '@/services/brand.service';
 
 type BrandLogoSize = 'nav' | 'default' | 'lg';
 
-const SIZE_CLASSES: Record<BrandLogoSize, string> = {
-  nav: 'h-11 w-auto max-w-[200px] object-contain',
-  default: 'h-9 w-auto max-w-[140px] object-contain',
-  lg: 'h-20 w-auto max-w-[240px] object-contain',
+const IMG_CLASSES: Record<BrandLogoSize, string> = {
+  nav: 'h-[90%] max-h-full w-auto max-w-none object-contain object-center',
+  default: 'h-10 w-auto max-w-none object-contain',
+  lg: 'h-20 sm:h-24 w-auto max-w-none object-contain',
 };
 
 interface BrandLogoProps {
   className?: string;
   imgClassName?: string;
-  showText?: boolean;
   size?: BrandLogoSize;
 }
 
+/** Logo image only — no English/Urdu title beside the mark. */
 export const BrandLogo: React.FC<BrandLogoProps> = ({
   className = '',
   imgClassName,
-  showText = true,
   size = 'default',
 }) => {
-  const imageClass = imgClassName ?? SIZE_CLASSES[size];
+  const imageClass = imgClassName ?? IMG_CLASSES[size];
+  const isNav = size === 'nav';
   const { data, isLoading } = useQuery({
     queryKey: ['brand-logo'],
     queryFn: () => brandService.get(),
@@ -33,22 +33,18 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   const src = data?.brandLogoUrl?.trim();
 
   return (
-    <div className={`flex items-center gap-2.5 min-w-0 ${className}`}>
+    <div
+      className={`flex items-center min-w-0 leading-none ${isNav ? 'h-full' : ''} ${className}`}
+    >
       {isLoading ? (
-        <div className="h-11 w-28 bg-gray-100 animate-pulse rounded" />
+        <div className="h-[90%] max-h-full w-24 bg-gray-100 animate-pulse rounded shrink-0" />
       ) : src ? (
-        <img src={src} alt="Fresh Bazar" className={imageClass} />
+        <img src={src} alt="" className={imageClass} />
       ) : (
-        <span className="font-bold text-primary-700 text-xl tracking-tight">FB</span>
+        <span className="font-bold text-primary-700 text-base tracking-tight leading-none">
+          FB
+        </span>
       )}
-      {showText ? (
-        <div className={src ? 'hidden sm:block' : ''}>
-          <p className="font-bold text-sm text-gray-900 leading-tight">Fresh Bazar</p>
-          <p className="text-[11px] text-primary-600 font-urdu leading-tight" dir="rtl">
-            فریش بازار
-          </p>
-        </div>
-      ) : null}
     </div>
   );
 };
