@@ -196,7 +196,7 @@ export default function SearchPage() {
 
         {/* Product Grid — same cards as homepage featured section */}
         {!loading && filteredProducts.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
             {filteredProducts.map((product, index) => (
               <motion.div
                 key={product.id}

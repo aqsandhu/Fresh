@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
 import { ShoppingCart, Plus, Minus, Trash2, Leaf } from 'lucide-react'
 import { Product, ProductUnit } from '@/types'
 import ProductPrice from './ProductPrice'
@@ -27,6 +26,7 @@ function ImageFallback() {
   )
 }
 
+/** Layout mirrors customer-app ProductCard (fullWidth / featured grid). */
 export default function ProductCard({ product, showAddToCart = true }: ProductCardProps) {
   const { addItem, updateQuantity, items } = useCartStore()
   const unitOptions = useMemo(() => getUnitOptions(product), [product])
@@ -71,50 +71,46 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
   const productHref = `/product/${product.id}`
 
   return (
-    <motion.div
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.2 }}
-      className="h-full"
-    >
-      <div className="group h-full flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-visible">
+    <div className="h-full w-full">
+      <div className="group h-full flex flex-col bg-white rounded-xl border border-gray-200 shadow-[0_2px_6px_rgba(0,0,0,0.08)] overflow-hidden">
         <Link
           href={productHref}
-          className="block relative aspect-square overflow-hidden rounded-t-2xl bg-gradient-to-br from-gray-50 to-gray-100"
+          className="block relative aspect-square overflow-hidden bg-gray-50"
         >
           <SmartImage
             src={product.image}
             alt={product.name}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            className="object-cover group-hover:scale-110 transition-transform duration-500"
+            className="object-cover"
             fallback={<ImageFallback />}
           />
 
           <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
             {product.isFresh ? (
-              <span className="bg-green-500/90 backdrop-blur-sm text-white text-xs font-medium px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm">
-                <Leaf className="w-3 h-3" />
+              <span className="bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-0.5">
+                <Leaf className="w-2.5 h-2.5" />
                 Fresh
               </span>
             ) : (
               <Badge variant="danger">Out of Stock</Badge>
             )}
             {discountPercent > 0 && (
-              <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-lg shadow-sm">
+              <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded">
                 -{discountPercent}% OFF
               </span>
             )}
           </div>
         </Link>
 
-        <div className="p-3 flex flex-col flex-grow min-w-0 w-full">
+        <div className="p-2 flex flex-col flex-grow min-w-0 w-full">
           <Link href={productHref} className="block min-w-0">
-            <h3 className="font-semibold text-gray-900 line-clamp-2 text-[15px] leading-snug">
+            <h3 className="font-semibold text-gray-900 line-clamp-2 text-[15px] leading-5 min-h-[20px]">
               {product.name}
             </h3>
             {product.nameUrdu && (
               <p
-                className="text-sm font-bold text-gray-800 mt-0.5 font-urdu line-clamp-1 leading-snug"
+                className="text-sm font-bold text-gray-800 mb-1 font-urdu line-clamp-1 text-right"
                 dir="rtl"
               >
                 {product.nameUrdu}
@@ -123,18 +119,17 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
           </Link>
 
           {hasFractionUnits && (
-            <div className="mt-2 mb-2 w-full min-w-0">
-              <UnitSelector
-                product={product}
-                selectedUnit={selectedUnit}
-                onChange={setSelectedUnit}
-                size="md"
-                fullWidth
-              />
-            </div>
+            <UnitSelector
+              product={product}
+              selectedUnit={selectedUnit}
+              onChange={setSelectedUnit}
+              size="sm"
+              fullWidth
+              className="my-1.5"
+            />
           )}
 
-          <div className="mt-auto pt-1 space-y-2 w-full min-w-0">
+          <div className="mt-auto pt-1 w-full min-w-0">
             <ProductPrice
               price={displayPrice}
               unit={
@@ -151,32 +146,34 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
             />
 
             {showAddToCart && product.isFresh && quantity > 0 && (
-              <div className="flex items-center justify-between gap-1 w-full bg-primary-50 rounded-xl p-1 border border-primary-100">
-                <button
-                  type="button"
-                  onClick={handleDecrement}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm hover:bg-red-50 transition-colors border border-gray-100 shrink-0"
-                  aria-label={
-                    quantity === 1 ? 'Remove from cart' : 'Decrease quantity'
-                  }
-                >
-                  {quantity === 1 ? (
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  ) : (
-                    <Minus className="w-4 h-4 text-gray-600" />
-                  )}
-                </button>
-                <span className="flex-1 text-center text-base font-bold text-primary-700 tabular-nums">
-                  {quantity}
-                </span>
-                <button
-                  type="button"
-                  onClick={handleIncrement}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg bg-primary-600 hover:bg-primary-700 shadow-sm transition-colors shrink-0"
-                  aria-label="Increase quantity"
-                >
-                  <Plus className="w-4 h-4 text-white" />
-                </button>
+              <div className="flex justify-end mt-1">
+                <div className="inline-flex items-center bg-primary-50 rounded-xl p-0.5">
+                  <button
+                    type="button"
+                    onClick={handleDecrement}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-gray-100 shrink-0"
+                    aria-label={
+                      quantity === 1 ? 'Remove from cart' : 'Decrease quantity'
+                    }
+                  >
+                    {quantity === 1 ? (
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    ) : (
+                      <Minus className="w-3.5 h-3.5 text-gray-600" />
+                    )}
+                  </button>
+                  <span className="min-w-[26px] px-0.5 text-center text-[13px] font-bold text-primary-700 tabular-nums">
+                    {quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleIncrement}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary-600 hover:bg-primary-700 shrink-0"
+                    aria-label="Increase quantity"
+                  >
+                    <Plus className="w-3.5 h-3.5 text-white" />
+                  </button>
+                </div>
               </div>
             )}
 
@@ -184,15 +181,15 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               <button
                 type="button"
                 onClick={handleAddToCart}
-                className="w-full inline-flex items-center justify-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold py-2.5 rounded-xl transition-colors"
+                className="w-full mt-1 inline-flex items-center justify-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-[13px] font-bold py-2 rounded-lg transition-colors"
               >
-                <Plus className="w-4 h-4" />
+                <ShoppingCart className="w-4 h-4" />
                 Add to Cart
               </button>
             )}
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }

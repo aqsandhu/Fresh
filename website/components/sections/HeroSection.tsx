@@ -163,14 +163,14 @@ export default function HeroSection() {
                 </Button>
               </Link>
               {showWhatsappButton ? (
-                <Button
-                  size="lg"
-                  className="w-full"
+                <button
+                  type="button"
                   onClick={() => openWhatsAppOrder(whatsappTarget)}
+                  className="w-full inline-flex items-center justify-center gap-1.5 py-3 rounded-xl border-2 border-primary-600 bg-white text-primary-600 text-base font-semibold hover:bg-primary-50 transition-colors"
                 >
-                  <MessageCircle className="w-5 h-5 mr-2" />
+                  <MessageCircle className="w-5 h-5" />
                   WhatsApp to Order
-                </Button>
+                </button>
               ) : null}
             </div>
           </div>

@@ -142,198 +142,205 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4">
-        <nav className="flex flex-wrap items-center gap-1 text-xs text-gray-500 py-2">
-          <Link href="/" className="text-primary-600 font-medium hover:underline">
-            Home
-          </Link>
-          <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-          {categorySlug && (
-            <>
-              <Link
-                href={`/category/${categorySlug}`}
-                className="text-primary-600 font-medium hover:underline capitalize"
-              >
-                {categoryName}
-              </Link>
-              <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-            </>
-          )}
-          <span className="text-gray-500 truncate max-w-[50%]">{product.name}</span>
-        </nav>
-
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-10">
-          <div className="relative mx-4 mt-4 aspect-square max-h-[360px] rounded-2xl overflow-hidden bg-gray-100">
-            <SmartImage
-              src={imageSrc}
-              alt={product.name}
-              fill
-              className="object-cover"
-              priority
-              sizes="100vw"
-              fallback={
-                <div className="w-full h-full flex items-center justify-center text-gray-300">
-                  <ShoppingCart className="w-16 h-16" />
-                </div>
-              }
-            />
-            {isFresh && stockQty > 0 && (
-              <span className="absolute top-3 left-3 bg-green-600 text-white text-xs font-bold px-2 py-1 rounded-lg flex items-center gap-1">
-                Fresh
-              </span>
-            )}
-            <button
-              type="button"
-              className="absolute top-3 right-3 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md"
-              aria-label="Wishlist"
+      <nav className="container mx-auto px-4 flex flex-wrap items-center gap-1 text-xs py-1">
+        <Link href="/" className="text-primary-600 font-medium hover:underline">
+          Home
+        </Link>
+        <ChevronRight className="w-4 h-4 text-gray-400" />
+        {categorySlug && (
+          <>
+            <Link
+              href={`/category/${categorySlug}`}
+              className="text-primary-600 font-medium hover:underline capitalize"
             >
-              <Heart className="w-5 h-5 text-gray-600" />
-            </button>
+              {categoryName}
+            </Link>
+            <ChevronRight className="w-4 h-4 text-gray-400" />
+          </>
+        )}
+        <span className="text-gray-500 truncate flex-1 min-w-0">
+          {product.name}
+        </span>
+      </nav>
+
+      {/* Flat product section — customer-app ProductDetailScreen (no card wrapper) */}
+      <section className="bg-white pb-6 mb-8">
+        <div className="relative mx-4 mt-1 aspect-square max-w-lg md:max-w-none bg-gray-100 rounded-xl overflow-hidden">
+          <SmartImage
+            src={imageSrc}
+            alt={product.name}
+            fill
+            className="object-cover"
+            priority
+            sizes="100vw"
+            fallback={
+              <div className="w-full h-full flex items-center justify-center text-gray-300">
+                <ShoppingCart className="w-16 h-16" />
+              </div>
+            }
+          />
+          {isFresh && stockQty > 0 && (
+            <span className="absolute top-2 left-2 bg-green-600 text-white text-[11px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
+              Fresh
+            </span>
+          )}
+          <button
+            type="button"
+            className="absolute top-2 right-2 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md"
+            aria-label="Wishlist"
+          >
+            <Heart className="w-5 h-5 text-gray-600" />
+          </button>
+        </div>
+
+        <div className="px-4 pt-4 space-y-3">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <h1 className="text-[22px] font-bold text-gray-900 leading-7">
+              {product.name}
+            </h1>
+            {product.nameUrdu && (
+              <p className="text-base font-semibold text-gray-600 font-urdu" dir="rtl">
+                {product.nameUrdu}
+              </p>
+            )}
           </div>
 
-          <div className="p-4 md:p-6 space-y-4">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-              {product.nameUrdu && (
-                <p className="text-lg text-gray-700 font-urdu mt-1" dir="rtl">
-                  {product.nameUrdu}
-                </p>
-              )}
+          {(product as Product & { rating?: number }).rating != null &&
+            (product as Product & { rating?: number }).rating! > 0 && (
+            <div className="flex items-center gap-1.5 text-sm">
+              <Star className="w-[18px] h-[18px] text-yellow-400 fill-yellow-400" />
+              <span className="text-[15px] font-bold text-gray-900">
+                {(product as Product & { rating?: number }).rating}
+              </span>
+              <span className="text-gray-300">|</span>
+              <span className="text-[13px] text-gray-500">
+                {(product as Product & { reviews?: number }).reviews ?? 0} reviews
+              </span>
             </div>
+          )}
 
-            {(product as Product & { rating?: number }).rating != null &&
-              (product as Product & { rating?: number }).rating! > 0 && (
-              <div className="flex items-center gap-2 text-sm">
-                <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-                <span className="font-semibold text-gray-900">
-                  {(product as Product & { rating?: number }).rating}
-                </span>
-                <span className="text-gray-400">|</span>
-                <span className="text-gray-500">
-                  {(product as Product & { reviews?: number }).reviews ?? 0} reviews
-                </span>
-              </div>
-            )}
-
-            <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex-1 min-w-0">
               <ProductPrice
                 price={displayPrice}
                 unit={product.unit}
                 size="lg"
                 compareAtPrice={product.compareAtPrice}
               />
-              <button
-                type="button"
-                onClick={handleShare}
-                className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 shrink-0"
-                aria-label="Share"
-              >
-                <Share2 className="w-5 h-5 text-gray-600" />
-              </button>
             </div>
+            <button
+              type="button"
+              onClick={handleShare}
+              className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 shrink-0"
+              aria-label="Share"
+            >
+              <Share2 className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
 
-            <UnitSelector
-              product={product}
-              selectedUnit={selectedUnit}
-              onChange={setSelectedUnit}
-              size="md"
-              fullWidth
-            />
+          <UnitSelector
+            product={product}
+            selectedUnit={selectedUnit}
+            onChange={setSelectedUnit}
+            size="md"
+            fullWidth
+          />
 
-            {product.description && (
-              <p className="text-gray-600 text-sm leading-relaxed">
-                {product.description}
-              </p>
-            )}
+          {product.description && (
+            <p className="text-sm text-gray-600 leading-[22px]">
+              {product.description}
+            </p>
+          )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Truck className="w-4 h-4 text-primary-600 shrink-0" />
-                <span>
-                  Free Delivery on Rs. {freeThreshold}+ Sabzi/Fruits
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <ShieldCheck className="w-4 h-4 text-primary-600 shrink-0" />
-                <span>Freshness Guaranteed</span>
-              </div>
+          <div className="flex flex-wrap gap-2">
+            <div className="flex items-center gap-1.5 w-[48%] min-w-[46%] text-xs text-gray-600 leading-4">
+              <Truck className="w-4 h-4 text-primary-600 shrink-0" />
+              <span>
+                Free Delivery on Rs. {freeThreshold}+ Sabzi/Fruits
+              </span>
             </div>
+            <div className="flex items-center gap-1.5 w-[48%] min-w-[46%] text-xs text-gray-600 leading-4">
+              <ShieldCheck className="w-4 h-4 text-primary-600 shrink-0" />
+              <span>Freshness Guaranteed</span>
+            </div>
+          </div>
 
-            {!isFresh || stockQty <= 0 ? (
-              <span className="inline-block bg-red-100 text-red-700 text-sm font-semibold px-3 py-1 rounded-lg">
-                Out of Stock
-              </span>
-            ) : (
-              <span className="inline-block bg-green-100 text-green-800 text-sm font-semibold px-3 py-1 rounded-lg">
-                In Stock ({stockQty} {product.unit}s available)
-              </span>
-            )}
+          {!isFresh || stockQty <= 0 ? (
+            <span className="inline-block bg-red-100 text-red-600 text-xs font-bold px-4 py-2 rounded-full mt-1">
+              Out of Stock
+            </span>
+          ) : (
+            <span className="inline-block bg-primary-50 text-primary-700 text-xs font-bold px-4 py-2 rounded-full border border-primary-100 mt-1">
+              In Stock ({stockQty} {product.unit}s available)
+            </span>
+          )}
 
-            {isFresh && stockQty > 0 && (
-              <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                <div className="flex items-center justify-between border border-gray-200 rounded-xl px-3 py-2 sm:w-36">
-                  <button
-                    type="button"
-                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    disabled={quantity <= 1}
-                    className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-40"
-                  >
-                    <Minus className="w-4 h-4" />
-                  </button>
-                  <span className="text-lg font-bold text-gray-900 tabular-nums">
-                    {quantity}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setQuantity((q) => Math.min(maxQuantity, q + 1))
-                    }
-                    disabled={quantity >= maxQuantity}
-                    className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-40"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
-
+          {isFresh && stockQty > 0 && (
+            <div className="flex items-center gap-4 mt-6">
+              <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-2 py-1.5 bg-white">
                 <button
                   type="button"
-                  onClick={handleAddToCart}
-                  className={`flex-1 inline-flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-white transition-colors ${
-                    inCart
-                      ? 'bg-green-600 hover:bg-green-700'
-                      : 'bg-primary-600 hover:bg-primary-700'
-                  }`}
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  disabled={quantity <= 1}
+                  className="w-8 h-8 flex items-center justify-center rounded-full disabled:opacity-40"
+                  aria-label="Decrease quantity"
                 >
-                  {inCart ? (
-                    <>
-                      <Check className="w-5 h-5" />
-                      Added to Cart
-                    </>
-                  ) : (
-                    <>
-                      <ShoppingCart className="w-5 h-5" />
-                      Add to Cart
-                    </>
-                  )}
+                  <Minus className="w-[18px] h-[18px] text-gray-700" />
+                </button>
+                <span className="min-w-[28px] text-center text-base font-bold text-gray-900 tabular-nums">
+                  {quantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQuantity((q) => Math.min(maxQuantity, q + 1))
+                  }
+                  disabled={quantity >= maxQuantity}
+                  className="w-8 h-8 flex items-center justify-center rounded-full disabled:opacity-40"
+                  aria-label="Increase quantity"
+                >
+                  <Plus className="w-[18px] h-[18px] text-gray-700" />
                 </button>
               </div>
-            )}
+
+              <button
+                type="button"
+                onClick={handleAddToCart}
+                className={`flex-1 inline-flex items-center justify-center gap-2 py-3.5 rounded-lg font-bold text-white text-base transition-colors ${
+                  inCart
+                    ? 'bg-primary-700 hover:bg-primary-800'
+                    : 'bg-primary-600 hover:bg-primary-700'
+                }`}
+              >
+                {inCart ? (
+                  <>
+                    <Check className="w-5 h-5" />
+                    Added to Cart
+                  </>
+                ) : (
+                  <>
+                    <ShoppingCart className="w-5 h-5" />
+                    Add to Cart
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {relatedProducts.length > 0 && (
+        <div className="container mx-auto px-4">
+          <h2 className="text-xl font-bold text-gray-900 mb-4">
+            Related Products
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {relatedProducts.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
           </div>
         </div>
-
-        {relatedProducts.length > 0 && (
-          <div>
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              Related Products
-            </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-5">
-              {relatedProducts.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   )
 }
