@@ -33,7 +33,7 @@ SELECT r.id, p.id
    AND p.code = 'settings.brand.view'
 ON CONFLICT DO NOTHING;
 
--- Global logo keys (empty = clients use bundled /logo.png until upload)
+-- Global logo keys (empty until super admin uploads PNG to Supabase via Settings)
 INSERT INTO site_settings (key, value, city_id, updated_at)
 VALUES
   ('brand_logo_url', '', NULL, NOW()),

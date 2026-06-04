@@ -1,24 +1,22 @@
-import api from './api';
+import apiService from './api';
 
-const DEFAULT_LOGO = require('../../assets/logo.png') as number;
-
-let cachedRemoteUrl: string | null = null;
-
-export async function fetchBrandLogoSource(): Promise<string | number> {
-  if (cachedRemoteUrl) return cachedRemoteUrl;
-  try {
-    const res = await api.get('/site-settings/brand');
-    const url = res.data?.data?.logoUrl || res.data?.data?.logo_url;
-    if (typeof url === 'string' && url.trim()) {
-      cachedRemoteUrl = url.trim();
-      return cachedRemoteUrl;
-    }
-  } catch {
-    /* bundled default */
-  }
-  return DEFAULT_LOGO;
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
 }
 
-export function getDefaultBrandLogoSource(): number {
-  return DEFAULT_LOGO;
+let cachedRemoteUrl: string | null | undefined;
+
+export async function fetchBrandLogoUrl(): Promise<string | null> {
+  if (cachedRemoteUrl !== undefined) return cachedRemoteUrl;
+  try {
+    const response = await apiService.get<ApiResponse<{ logoUrl?: string; logo_url?: string }>>(
+      '/site-settings/brand'
+    );
+    const url = response.data?.logoUrl || response.data?.logo_url;
+    cachedRemoteUrl = typeof url === 'string' && url.trim() ? url.trim() : null;
+  } catch {
+    cachedRemoteUrl = null;
+  }
+  return cachedRemoteUrl;
 }

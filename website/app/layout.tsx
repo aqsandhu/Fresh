@@ -6,6 +6,7 @@ import ConditionalFooter from '@/components/layout/ConditionalFooter'
 import MobileNav from '@/components/layout/MobileNav'
 import { Toaster } from 'react-hot-toast'
 import AppProviders from '@/components/providers/AppProviders'
+import BrandFavicon from '@/components/BrandFavicon'
 import ErrorBoundary from '@/components/providers/ErrorBoundary'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -44,10 +45,6 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
-  icons: {
-    icon: [{ url: '/favicon.png', type: 'image/png' }],
-    apple: '/apple-touch-icon.png',
-  },
 }
 
 export default function RootLayout({
@@ -60,6 +57,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ErrorBoundary>
           <AppProviders>
+            <BrandFavicon />
             <div className="min-h-screen flex flex-col">
               <Header />
               <main className="flex-1">{children}</main>

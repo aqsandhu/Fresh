@@ -10,8 +10,7 @@
     "lint": "turbo run lint",
     "dev": "turbo run dev",
     "clean": "turbo run clean && rm -rf node_modules/.cache",
-    "typecheck": "turbo run typecheck",
-    "brand:logo": "node scripts/process-brand-logo.mjs"
+    "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "turbo": "^2.3.0"
