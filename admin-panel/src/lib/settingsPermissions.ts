@@ -1,6 +1,13 @@
 import { hasPermission } from './permissions';
 
-export type SettingsTabId = 'delivery' | 'timeslots' | 'business' | 'banner' | 'brand' | 'whatsapp';
+export type SettingsTabId =
+  | 'delivery'
+  | 'timeslots'
+  | 'business'
+  | 'banner'
+  | 'brand'
+  | 'favicon'
+  | 'whatsapp';
 
 const TAB_VIEW: Record<SettingsTabId, string[]> = {
   delivery: ['settings.delivery.view', 'settings.view', 'settings.update'],
@@ -16,6 +23,7 @@ const TAB_VIEW: Record<SettingsTabId, string[]> = {
   business: ['settings.business_hours.view', 'settings.view', 'settings.update'],
   banner: ['settings.banner.view', 'settings.view', 'settings.update'],
   brand: ['settings.brand.view', 'settings.view', 'settings.update'],
+  favicon: ['settings.favicon.view', 'settings.view', 'settings.update'],
   whatsapp: [
     'settings.view',
     'settings.update',
@@ -31,6 +39,7 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   business: ['settings.business_hours.update', 'settings.update'],
   banner: ['settings.banner.update', 'settings.update'],
   brand: ['settings.brand.update', 'settings.update'],
+  favicon: ['settings.favicon.update', 'settings.update'],
   whatsapp: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
 };
 
@@ -47,6 +56,8 @@ export const ALL_SETTINGS_VIEW_CODES = [
   'settings.banner.update',
   'settings.brand.view',
   'settings.brand.update',
+  'settings.favicon.view',
+  'settings.favicon.update',
   'settings.cities.view',
   'settings.cities.manage',
   'settings.delivery_zones.view',
@@ -79,10 +90,24 @@ export function canUpdateBrandLogo(role?: string): boolean {
   return role === 'super_admin';
 }
 
+export function canViewFaviconSettingsTab(
+  permissions: string[] | undefined,
+  role?: string
+): boolean {
+  if (role === 'super_admin' || role === 'admin') return true;
+  return canViewSettingsTab(permissions, 'favicon');
+}
+
+export function canUpdateFavicon(role?: string): boolean {
+  return role === 'super_admin';
+}
+
 export function canAccessSettingsPage(permissions: string[] | undefined): boolean {
   return (
     hasPermission(permissions, ALL_SETTINGS_VIEW_CODES) ||
-    (['delivery', 'timeslots', 'business', 'banner', 'brand', 'whatsapp'] as SettingsTabId[]).some(
+    (
+      ['delivery', 'timeslots', 'business', 'banner', 'brand', 'favicon', 'whatsapp'] as SettingsTabId[]
+    ).some(
       (tab) => canViewSettingsTab(permissions, tab)
     )
   );
@@ -97,6 +122,9 @@ export function visibleSettingsTabs(
   );
   if (canViewBrandSettingsTab(permissions, role) && !tabs.includes('brand')) {
     tabs.push('brand');
+  }
+  if (canViewFaviconSettingsTab(permissions, role) && !tabs.includes('favicon')) {
+    tabs.push('favicon');
   }
   return tabs;
 }

@@ -22,13 +22,26 @@ export const brandService = {
     return mapBrand(response.data || {});
   },
 
-  upload: async (file: File): Promise<BrandLogoSettings> => {
+  upload: async (file: File): Promise<{ settings: BrandLogoSettings; message: string }> => {
     const form = new FormData();
     form.append('logo', file);
     const response = await api.putForm<ApiResponse<Record<string, string>>>(
       '/admin/site-settings/brand',
       form
     );
-    return mapBrand(response.data || {});
+    return {
+      settings: mapBrand(response.data || {}),
+      message: response.message || 'Brand logo updated',
+    };
+  },
+
+  remove: async (): Promise<{ settings: BrandLogoSettings; message: string }> => {
+    const response = await api.delete<ApiResponse<Record<string, string>>>(
+      '/admin/site-settings/brand'
+    );
+    return {
+      settings: mapBrand(response.data || {}),
+      message: response.message || 'Brand logo removed',
+    };
   },
 };

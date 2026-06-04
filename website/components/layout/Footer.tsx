@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import BrandLogo from '@/components/ui/BrandLogo'
 import {
   Phone,
   Mail,
@@ -95,16 +96,8 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
           {/* Brand Column */}
           <div className="lg:col-span-2">
-            <Link href="/" className="flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 bg-primary-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-xl">S</span>
-              </div>
-              <div>
-                <h2 className="font-bold text-xl">Fresh Bazar</h2>
-                <p className="text-xs text-primary-400 font-urdu" dir="rtl">
-                  فریش بازار
-                </p>
-              </div>
+            <Link href="/" className="inline-flex items-center mb-4 leading-none" aria-label="Home">
+              <BrandLogo size="lg" />
             </Link>
             <p className="text-gray-400 text-sm mb-4 max-w-sm">
               Your trusted partner for fresh groceries delivery in Pakistan. 

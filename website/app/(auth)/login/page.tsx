@@ -505,11 +505,10 @@ export default function LoginPage() {
           <div className={`text-center ${isCompactStep ? 'mb-4' : 'mb-6 sm:mb-8'}`}>
             <div className={`flex justify-center ${isCompactStep ? 'mb-2' : 'mb-3 sm:mb-4'}`}>
               <BrandLogo
-                showText={false}
                 imgClassName={
                   isCompactStep
-                    ? 'h-10 w-auto max-w-[180px] object-contain'
-                    : 'h-14 sm:h-16 w-auto max-w-[220px] object-contain'
+                    ? 'h-10 w-auto max-w-none object-contain'
+                    : 'h-14 sm:h-16 w-auto max-w-none object-contain'
                 }
               />
             </div>

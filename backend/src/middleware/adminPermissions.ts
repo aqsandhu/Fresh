@@ -127,6 +127,11 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
       ? ['settings.brand.view', 'settings.view', 'settings.update']
       : null;
   }
+  if (p.startsWith('/site-settings/favicon')) {
+    return m === 'GET'
+      ? ['settings.favicon.view', 'settings.view', 'settings.update']
+      : null;
+  }
   if (
     p.startsWith('/site-settings/banner') ||
     p.startsWith('/site-settings/whatsapp-order')

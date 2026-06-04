@@ -212,11 +212,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Go to home"
         >
-          <BrandLogo height={46} />
-          <View style={styles.logoTextCol}>
-            <Text style={styles.logoTitle}>Fresh Bazar</Text>
-            <Text style={styles.logoUrdu}>فریش بازار</Text>
-          </View>
+          <BrandLogo height={36} />
         </Pressable>
 
         <View style={styles.actions}>
@@ -407,15 +403,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingVertical: 5,
+    minHeight: 40,
     backgroundColor: COLORS.white,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.gray100,
   },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, flex: 1, minWidth: 0 },
-  logoTextCol: { flexShrink: 1, minWidth: 0 },
-  logoTitle: { fontSize: 16, fontWeight: '700', color: COLORS.gray900 },
-  logoUrdu: { fontSize: 11, color: COLORS.primary600 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
   actions: { flexDirection: 'row', alignItems: 'center' },
   iconBtn: { padding: 8, position: 'relative' },
   cartBadge: {

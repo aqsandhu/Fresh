@@ -6,6 +6,7 @@ import {
   fetchBannerSettings,
   fetchWhatsAppOrderSettings,
   fetchBrandLogoSettings,
+  fetchBrandFaviconSettings,
 } from '../utils/siteSettings';
 import { query } from '../config/database';
 
@@ -16,6 +17,12 @@ router.get('/brand', asyncHandler(async (_req, res) => {
   const brand = await fetchBrandLogoSettings();
   const logoUrl = brand.brand_logo_url?.trim() || null;
   successResponse(res, { logoUrl, logo_url: logoUrl }, 'Brand logo retrieved');
+}));
+
+router.get('/favicon', asyncHandler(async (_req, res) => {
+  const favicon = await fetchBrandFaviconSettings();
+  const faviconUrl = favicon.brand_favicon_url?.trim() || null;
+  successResponse(res, { faviconUrl, favicon_url: faviconUrl }, 'Brand favicon retrieved');
 }));
 
 // Public: Get banner settings (no auth required)

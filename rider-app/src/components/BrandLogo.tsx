@@ -8,7 +8,7 @@ interface BrandLogoProps {
   imageStyle?: ImageStyle;
 }
 
-export const BrandLogo: React.FC<BrandLogoProps> = ({ height = 80, imageStyle }) => {
+export const BrandLogo: React.FC<BrandLogoProps> = ({ height = 64, imageStyle }) => {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -26,7 +26,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ height = 80, imageStyle })
   }, []);
 
   if (loading) {
-    return <View style={[styles.placeholder, { height, width: height * 2 }]} />;
+    return <View style={[styles.placeholder, { height, width: height * 1.5 }]} />;
   }
 
   if (!url) {
@@ -40,7 +40,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ height = 80, imageStyle })
   return (
     <Image
       source={{ uri: url }}
-      style={[styles.img, { height, width: height * 2.2 }, imageStyle]}
+      style={[styles.img, { height }, imageStyle]}
       resizeMode="contain"
       accessibilityLabel="Fresh Bazar logo"
     />
@@ -48,7 +48,11 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ height = 80, imageStyle })
 };
 
 const styles = StyleSheet.create({
-  img: { alignSelf: 'center' },
+  img: {
+    alignSelf: 'center',
+    width: undefined,
+    maxWidth: '100%',
+  },
   placeholder: {
     alignSelf: 'center',
     backgroundColor: COLORS.gray100,

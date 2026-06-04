@@ -337,7 +337,7 @@ export default function RegisterPage() {
           {/* Logo */}
           <div className="text-center mb-6">
             <div className="flex justify-center mb-4">
-              <BrandLogo showText={false} imgClassName="h-16 w-auto max-w-[220px] object-contain" />
+              <BrandLogo imgClassName="h-16 w-auto max-w-none object-contain" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Create Account</h1>
             <p className="text-gray-500 mt-1 text-sm">Join Fresh Bazar for fresh groceries</p>
