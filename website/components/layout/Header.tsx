@@ -89,6 +89,7 @@ export default function Header() {
   }, [selectedCityId])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<NodeJS.Timeout>()
+  const searchAreaRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -145,6 +146,27 @@ export default function Header() {
     }
   }, [isMenuOpen])
 
+  // Close search when clicking outside — only if user has not started searching (query < 2 chars).
+  useEffect(() => {
+    if (!isSearchOpen) return
+
+    const handlePointer = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node
+      if (searchAreaRef.current?.contains(target)) return
+      if (searchQuery.trim().length >= 2) return
+      setIsSearchOpen(false)
+      setSearchQuery('')
+      setSearchResults([])
+    }
+
+    document.addEventListener('mousedown', handlePointer)
+    document.addEventListener('touchstart', handlePointer)
+    return () => {
+      document.removeEventListener('mousedown', handlePointer)
+      document.removeEventListener('touchstart', handlePointer)
+    }
+  }, [isSearchOpen, searchQuery])
+
   // Search functionality
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
@@ -197,9 +219,9 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
-      {/* Top Bar — compact (matches app density) */}
-      <div className="bg-primary-700 text-white text-[11px] sm:text-xs py-1">
-        <div className="container mx-auto px-3 sm:px-4 flex items-center justify-between gap-2">
+      {/* Top Bar */}
+      <div className="bg-primary-700 text-white text-xs py-2">
+        <div className="container mx-auto px-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <Phone className="w-3 h-3" />
@@ -219,15 +241,15 @@ export default function Header() {
               {banner.middleText}
             </span>
           </div>
-          <div className="hidden md:flex items-center gap-3 min-w-0">
-            <span className="truncate">{banner.rightTextEn}</span>
-            <span className="font-urdu truncate" dir="rtl">{banner.rightTextUr}</span>
+          <div className="flex items-center gap-4">
+            <span className="hidden sm:inline">{banner.rightTextEn}</span>
+            <span className="font-urdu" dir="rtl">{banner.rightTextUr}</span>
           </div>
         </div>
       </div>
 
-      {/* Main Header */}
-      <div className="container mx-auto px-3 sm:px-4 py-2">
+      {/* Main Header + search (click-outside closes idle search) */}
+      <div ref={searchAreaRef} className="container mx-auto px-3 sm:px-4 py-2">
         <div className="flex items-center justify-between gap-2 sm:gap-3">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 shrink-0">
@@ -263,6 +285,12 @@ export default function Header() {
             {/* Search Button */}
             <button
               onClick={() => {
+                if (isSearchOpen && searchQuery.trim().length < 2) {
+                  setIsSearchOpen(false)
+                  setSearchQuery('')
+                  setSearchResults([])
+                  return
+                }
                 setIsSearchOpen(!isSearchOpen)
                 if (!isSearchOpen) {
                   setTimeout(() => searchInputRef.current?.focus(), 100)
