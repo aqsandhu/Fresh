@@ -55,7 +55,7 @@ export default function FeaturedProductsSection() {
             No featured products available at the moment.
           </p>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-5">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
             {featuredProducts.map((product) => (
               <motion.div
                 key={product.id}

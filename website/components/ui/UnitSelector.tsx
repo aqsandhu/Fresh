@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import type { Product, ProductUnit } from '@/types'
 import {
   getUnitOptions,
@@ -24,7 +24,7 @@ const CHIP =
   'text-[#2F6B4F] bg-[#F4F9F6] border-[#C5DECF] hover:bg-[#e8f3ec]'
 
 /**
- * Unit picker — modal menu like customer-app (all options visible, no clip).
+ * Unit picker — matches customer-app UnitSelector / ProductCard modal.
  */
 export default function UnitSelector({
   product,
@@ -61,63 +61,52 @@ export default function UnitSelector({
     unitOptions
   )
 
-  const chipPad = size === 'md' ? 'px-3 py-2.5' : 'px-2.5 py-2'
+  const chipPad =
+    size === 'md' ? 'px-3.5 py-[11px]' : 'px-[10px] py-[9px]'
   const chipText = size === 'md' ? 'text-sm' : 'text-xs'
+  const chevronClass = size === 'md' ? 'w-5 h-5' : 'w-4 h-4'
 
   const modal =
     open && mounted
       ? createPortal(
           <div
-            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4 bg-black/40"
+            className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/35"
             role="dialog"
             aria-modal="true"
             onClick={() => setOpen(false)}
           >
             <div
-              className="w-full max-w-sm bg-white rounded-2xl shadow-xl overflow-hidden"
+              className="w-full max-w-md bg-white rounded-lg border border-gray-200 overflow-hidden shadow-lg"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                <span className="text-sm font-semibold text-gray-900">
-                  Select unit
-                </span>
+              {unitOptions.map((opt) => (
                 <button
+                  key={opt.unit}
                   type="button"
-                  onClick={() => setOpen(false)}
-                  className="p-1 rounded-lg hover:bg-gray-100"
-                  aria-label="Close"
+                  onClick={() => {
+                    onChange(opt.unit)
+                    setOpen(false)
+                  }}
+                  className={`w-full text-left px-4 py-4 flex items-center justify-between gap-3 border-b border-gray-100 last:border-0 transition-colors ${
+                    opt.unit === selectedUnit
+                      ? 'bg-[#F4F9F6]'
+                      : 'hover:bg-gray-50'
+                  }`}
                 >
-                  <X className="w-5 h-5 text-gray-500" />
-                </button>
-              </div>
-              <div className="max-h-[min(70vh,320px)] overflow-y-auto">
-                {unitOptions.map((opt) => (
-                  <button
-                    key={opt.unit}
-                    type="button"
-                    onClick={() => {
-                      onChange(opt.unit)
-                      setOpen(false)
-                    }}
-                    className={`w-full text-left px-4 py-3.5 flex items-center justify-between gap-3 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${
+                  <span
+                    className={`flex-1 min-w-0 text-sm ${
                       opt.unit === selectedUnit
-                        ? 'bg-[#F4F9F6] text-[#2F6B4F]'
-                        : 'text-gray-800'
+                        ? 'font-bold text-[#2F6B4F]'
+                        : 'font-medium text-gray-700'
                     }`}
                   >
-                    <span
-                      className={`text-sm ${
-                        opt.unit === selectedUnit ? 'font-bold' : 'font-medium'
-                      }`}
-                    >
-                      {opt.label}
-                    </span>
-                    <span className="text-sm font-semibold text-gray-600 shrink-0">
-                      {formatPriceShort(opt.price)}
-                    </span>
-                  </button>
-                ))}
-              </div>
+                    {opt.label}
+                  </span>
+                  <span className="text-sm font-semibold text-gray-600 shrink-0">
+                    {formatPriceShort(opt.price)}
+                  </span>
+                </button>
+              ))}
             </div>
           </div>,
           document.body
@@ -139,14 +128,12 @@ export default function UnitSelector({
           e.stopPropagation()
           setOpen(true)
         }}
-        className={`${fullWidth ? 'w-full' : 'inline-flex'} flex items-center justify-between gap-2 font-semibold border rounded-xl transition-colors ${CHIP} ${chipPad} ${chipText}`}
+        className={`${fullWidth ? 'w-full' : 'inline-flex self-stretch'} flex items-center justify-between gap-1.5 font-semibold border rounded-lg transition-colors ${CHIP} ${chipPad} ${chipText}`}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className="flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis min-w-0">
-          {displayLabel}
-        </span>
-        <ChevronDown className="w-4 h-4 shrink-0" />
+        <span className="flex-1 text-left min-w-0 truncate">{displayLabel}</span>
+        <ChevronDown className={`${chevronClass} shrink-0`} />
       </button>
       {modal}
     </div>
