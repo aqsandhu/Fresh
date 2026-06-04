@@ -76,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
       >
         {/* Logo */}
         <div className="px-6 py-5 border-b border-gray-200 flex-shrink-0">
-          <BrandLogo />
+          <BrandLogo size="nav" />
           <p className="text-xs text-gray-500 mt-1">Admin Panel · Pakistan</p>
         </div>
 

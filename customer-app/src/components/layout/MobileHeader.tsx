@@ -21,6 +21,7 @@ import { useCityContext } from '@/context/CityContext';
 import { useAuthStore, useCartStore, useNotificationStore, useCartUiStore } from '@store';
 import { productService } from '@services/product.service';
 import { Category, StoreProduct } from '@types';
+import { BrandLogo } from '@components/BrandLogo';
 
 interface BannerSettings {
   leftText: string;
@@ -211,10 +212,8 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           accessibilityRole="button"
           accessibilityLabel="Go to home"
         >
-          <View style={styles.logoBox}>
-            <Text style={styles.logoLetter}>S</Text>
-          </View>
-          <View>
+          <BrandLogo height={46} />
+          <View style={styles.logoTextCol}>
             <Text style={styles.logoTitle}>Fresh Bazar</Text>
             <Text style={styles.logoUrdu}>فریش بازار</Text>
           </View>
