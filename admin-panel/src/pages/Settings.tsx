@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Eye,
   MessageCircle,
+  Image,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -39,9 +40,12 @@ import {
   canViewSettingsTab,
   canViewWhatsappSettingsTab,
   canUpdateWhatsappSettings,
+  canViewBrandSettingsTab,
+  canUpdateBrandLogo,
   visibleSettingsTabs,
   type SettingsTabId,
 } from '@/lib/settingsPermissions';
+import { BrandLogoSettingsPanel } from '@/components/settings/BrandLogoSettingsPanel';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -63,7 +67,9 @@ export const Settings: React.FC = () => {
   const { user } = useAuthContext();
   const permissions = user?.permissions;
   const role = user?.role;
-  const baseTabs = visibleSettingsTabs(permissions);
+  const baseTabs = visibleSettingsTabs(permissions, role);
+  const showBrandTab = canViewBrandSettingsTab(permissions, role);
+  const canEditBrandLogo = canUpdateBrandLogo(role);
   const showWhatsappTab = canViewWhatsappSettingsTab(permissions, role);
   const allowedTabs: SettingsTabId[] = showWhatsappTab
     ? baseTabs.includes('whatsapp')
@@ -803,6 +809,19 @@ export const Settings: React.FC = () => {
           <span>Website Banner</span>
         </button>
         )}
+        {showBrandTab && (
+        <button
+          onClick={() => setActiveTab('brand')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'brand'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Image className="w-4 h-4" />
+          <span>Brand Logo</span>
+        </button>
+        )}
         {showWhatsappTab && (
         <button
           onClick={() => setActiveTab('whatsapp')}
@@ -823,6 +842,9 @@ export const Settings: React.FC = () => {
       {activeTab === 'timeslots' && renderTimeSlots()}
       {activeTab === 'business' && renderBusinessHours()}
       {activeTab === 'banner' && renderBanner()}
+      {activeTab === 'brand' && (
+        <BrandLogoSettingsPanel canEdit={canEditBrandLogo} />
+      )}
       {activeTab === 'whatsapp' && renderWhatsappTab()}
 
       {/* Time Slot Modal */}

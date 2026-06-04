@@ -14,8 +14,8 @@ import {
   Settings,
   Shield,
   LogOut,
-  Store,
 } from 'lucide-react';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { useAuthContext } from '@/context/AuthContext';
 import { canAccessRoute } from '@/lib/permissions';
 
@@ -75,14 +75,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
         `}
       >
         {/* Logo */}
-        <div className="flex items-center px-6 py-5 border-b border-gray-200 flex-shrink-0">
-          <div className="p-2 bg-primary-600 rounded-lg mr-3">
-            <Store className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900">Fresh Bazar Admin</h1>
-            <p className="text-xs text-gray-500">Pakistan</p>
-          </div>
+        <div className="px-6 py-5 border-b border-gray-200 flex-shrink-0">
+          <BrandLogo />
+          <p className="text-xs text-gray-500 mt-1">Admin Panel · Pakistan</p>
         </div>
 
         {/* Navigation */}

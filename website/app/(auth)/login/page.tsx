@@ -23,6 +23,7 @@ import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, otpBypassHint } from '@/lib/otpBypass'
 import PinInput from '@/components/auth/PinInput'
+import BrandLogo from '@/components/ui/BrandLogo'
 import {
   clearLastPhone,
   getLastPhone,
@@ -502,12 +503,15 @@ export default function LoginPage() {
         >
           {/* Logo */}
           <div className={`text-center ${isCompactStep ? 'mb-4' : 'mb-6 sm:mb-8'}`}>
-            <div
-              className={`bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl sm:rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-primary-200 ${
-                isCompactStep ? 'w-11 h-11 mb-2' : 'w-14 h-14 sm:w-16 sm:h-16 mb-3 sm:mb-4'
-              }`}
-            >
-              <span className={`text-white font-bold ${isCompactStep ? 'text-lg' : 'text-xl sm:text-2xl'}`}>S</span>
+            <div className={`flex justify-center ${isCompactStep ? 'mb-2' : 'mb-3 sm:mb-4'}`}>
+              <BrandLogo
+                showText={false}
+                imgClassName={
+                  isCompactStep
+                    ? 'h-10 w-auto max-w-[180px] object-contain'
+                    : 'h-14 sm:h-16 w-auto max-w-[220px] object-contain'
+                }
+              />
             </div>
             <h1 className={`font-bold text-gray-900 ${isCompactStep ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'}`}>
               {step === 'otp'

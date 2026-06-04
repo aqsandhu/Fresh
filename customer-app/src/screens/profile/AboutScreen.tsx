@@ -7,6 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { ProfileStackParamList } from '@types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
+import { BrandLogo } from '@components/BrandLogo';
 
 const VALUES = [
   {
@@ -47,9 +48,7 @@ export const AboutScreen: React.FC = () => {
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.hero}>
-          <View style={styles.logoBox}>
-            <Text style={styles.logoText}>FB</Text>
-          </View>
+          <BrandLogo height={72} />
           <Text style={styles.heroTitle}>Fresh Bazar</Text>
           <Text style={styles.heroUrdu}>سبزی والا</Text>
           <Text style={styles.heroDesc}>

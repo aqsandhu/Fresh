@@ -217,6 +217,14 @@ router.put(
   adminController.updateAttaStatus
 );
 
+// Site Settings - Brand logo (global)
+router.get('/site-settings/brand', adminController.getBrandLogoSettings);
+router.put(
+  '/site-settings/brand',
+  uploadSingle('logo', 'brand'),
+  adminController.updateBrandLogoSettings
+);
+
 // Site Settings - Banner
 router.get('/site-settings/banner', adminController.getBannerSettings);
 router.put('/site-settings/banner', adminController.updateBannerSettings);

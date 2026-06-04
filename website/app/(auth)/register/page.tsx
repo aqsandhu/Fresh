@@ -16,6 +16,7 @@ import * as z from 'zod'
 import toast from 'react-hot-toast'
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth'
 import Button from '@/components/ui/Button'
+import BrandLogo from '@/components/ui/BrandLogo'
 import Input from '@/components/ui/Input'
 import PinInput from '@/components/auth/PinInput'
 import { useAuthStore } from '@/store/cartStore'
@@ -335,8 +336,8 @@ export default function RegisterPage() {
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8">
           {/* Logo */}
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-200">
-              <span className="text-white font-bold text-2xl">S</span>
+            <div className="flex justify-center mb-4">
+              <BrandLogo showText={false} imgClassName="h-16 w-auto max-w-[220px] object-contain" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Create Account</h1>
             <p className="text-gray-500 mt-1 text-sm">Join Fresh Bazar for fresh groceries</p>

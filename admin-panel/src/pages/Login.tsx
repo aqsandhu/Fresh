@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Store, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
+import { BrandLogo } from '@/components/ui/BrandLogo';
 import { useAuthContext } from '@/context/AuthContext';
 import { authService } from '@/services/auth.service';
 import { canAccessRoute, firstAccessibleRoute } from '@/lib/permissions';
@@ -66,10 +67,8 @@ export const Login: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo & Title */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary-600 rounded-2xl mb-4">
-            <Store className="w-8 h-8 text-white" />
-          </div>
+        <div className="flex flex-col items-center mb-8">
+          <BrandLogo showText={false} imgClassName="h-20 w-auto max-w-[240px] object-contain mb-3" />
           <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
           <p className="text-gray-600 mt-1">Pakistani Grocery Delivery</p>
         </div>

@@ -1,6 +1,6 @@
 import { hasPermission } from './permissions';
 
-export type SettingsTabId = 'delivery' | 'timeslots' | 'business' | 'banner' | 'whatsapp';
+export type SettingsTabId = 'delivery' | 'timeslots' | 'business' | 'banner' | 'brand' | 'whatsapp';
 
 const TAB_VIEW: Record<SettingsTabId, string[]> = {
   delivery: ['settings.delivery.view', 'settings.view', 'settings.update'],
@@ -15,6 +15,7 @@ const TAB_VIEW: Record<SettingsTabId, string[]> = {
   ],
   business: ['settings.business_hours.view', 'settings.view', 'settings.update'],
   banner: ['settings.banner.view', 'settings.view', 'settings.update'],
+  brand: ['settings.brand.view', 'settings.view', 'settings.update'],
   whatsapp: [
     'settings.view',
     'settings.update',
@@ -29,6 +30,7 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   timeslots: ['settings.timeslots.manage', 'settings.update'],
   business: ['settings.business_hours.update', 'settings.update'],
   banner: ['settings.banner.update', 'settings.update'],
+  brand: ['settings.brand.update', 'settings.update'],
   whatsapp: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
 };
 
@@ -43,6 +45,8 @@ export const ALL_SETTINGS_VIEW_CODES = [
   'settings.business_hours.update',
   'settings.banner.view',
   'settings.banner.update',
+  'settings.brand.view',
+  'settings.brand.update',
   'settings.cities.view',
   'settings.cities.manage',
   'settings.delivery_zones.view',
@@ -63,19 +67,38 @@ export function canUpdateSettingsTab(
   return hasPermission(permissions, TAB_UPDATE[tab]);
 }
 
+export function canViewBrandSettingsTab(
+  permissions: string[] | undefined,
+  role?: string
+): boolean {
+  if (role === 'super_admin' || role === 'admin') return true;
+  return canViewSettingsTab(permissions, 'brand');
+}
+
+export function canUpdateBrandLogo(role?: string): boolean {
+  return role === 'super_admin';
+}
+
 export function canAccessSettingsPage(permissions: string[] | undefined): boolean {
   return (
     hasPermission(permissions, ALL_SETTINGS_VIEW_CODES) ||
-    (['delivery', 'timeslots', 'business', 'banner', 'whatsapp'] as SettingsTabId[]).some((tab) =>
-      canViewSettingsTab(permissions, tab)
+    (['delivery', 'timeslots', 'business', 'banner', 'brand', 'whatsapp'] as SettingsTabId[]).some(
+      (tab) => canViewSettingsTab(permissions, tab)
     )
   );
 }
 
-export function visibleSettingsTabs(permissions: string[] | undefined): SettingsTabId[] {
-  return (['delivery', 'timeslots', 'business', 'banner', 'whatsapp'] as SettingsTabId[]).filter(
+export function visibleSettingsTabs(
+  permissions: string[] | undefined,
+  role?: string
+): SettingsTabId[] {
+  const tabs = (['delivery', 'timeslots', 'business', 'banner', 'whatsapp'] as SettingsTabId[]).filter(
     (tab) => canViewSettingsTab(permissions, tab)
   );
+  if (canViewBrandSettingsTab(permissions, role) && !tabs.includes('brand')) {
+    tabs.push('brand');
+  }
+  return tabs;
 }
 
 /** Any admin/super_admin on Settings can open the WhatsApp tab even without granular codes. */

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
+import { BrandLogo } from '@components/BrandLogo';
 
 interface AuthShellProps {
   title: string;
@@ -21,13 +21,7 @@ export const AuthShell: React.FC<AuthShellProps> = ({
 }) => (
   <View style={[styles.card, compact && styles.cardCompact]}>
     <View style={[styles.logoWrap, compact && styles.logoWrapCompact]}>
-      <View style={[styles.logoBox, compact && styles.logoBoxCompact]}>
-        <MaterialIcons
-          name="local-grocery-store"
-          size={compact ? 22 : 28}
-          color={COLORS.white}
-        />
-      </View>
+      <BrandLogo height={compact ? 44 : 56} />
       <Text style={[styles.title, compact && styles.titleCompact]}>{title}</Text>
       {subtitle ? (
         <Text style={[styles.subtitle, compact && styles.subtitleCompact]}>{subtitle}</Text>

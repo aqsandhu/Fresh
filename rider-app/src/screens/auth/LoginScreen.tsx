@@ -19,6 +19,7 @@ import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../utils/constants';
 import { getTranslation, isValidPhoneNumber, formatPhoneNumber } from '../../utils/helpers';
+import { BrandLogo } from '../../components/BrandLogo';
 
 interface LoginScreenProps {
   navigation: any;
@@ -116,13 +117,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
         >
           {/* Logo Section */}
           <View style={styles.logoSection}>
-            <View style={styles.logoContainer}>
-              <MaterialCommunityIcons
-                name="motorbike"
-                size={80}
-                color={COLORS.primary}
-              />
-            </View>
+            <BrandLogo height={88} />
             <Text style={styles.appTitle}>
               {language === 'ur' ? 'رائیڈر ایپ' : 'Rider App'}
             </Text>

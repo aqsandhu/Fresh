@@ -2,10 +2,21 @@ import { Router } from 'express';
 import { asyncHandler } from '../middleware/errorHandler';
 import { successResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
-import { fetchBannerSettings, fetchWhatsAppOrderSettings } from '../utils/siteSettings';
+import {
+  fetchBannerSettings,
+  fetchWhatsAppOrderSettings,
+  fetchBrandLogoSettings,
+} from '../utils/siteSettings';
 import { query } from '../config/database';
 
 const router = Router();
+
+// Public: global brand logo URL (no auth)
+router.get('/brand', asyncHandler(async (_req, res) => {
+  const brand = await fetchBrandLogoSettings();
+  const logoUrl = brand.brand_logo_url?.trim() || null;
+  successResponse(res, { logoUrl, logo_url: logoUrl }, 'Brand logo retrieved');
+}));
 
 // Public: Get banner settings (no auth required)
 router.get('/banner', asyncHandler(async (req, res) => {

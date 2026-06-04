@@ -8,6 +8,8 @@ const BANNER_KEYS = [
 ] as const;
 
 export const WHATSAPP_ORDER_URL_KEY = 'whatsapp_order_url';
+export const BRAND_LOGO_URL_KEY = 'brand_logo_url';
+export const BRAND_LOGO_STORAGE_PATH_KEY = 'brand_logo_storage_path';
 
 let cachedCityColumn: boolean | null = null;
 
@@ -296,4 +298,26 @@ export async function upsertGlobalSiteSetting(
       [key, value, userId || null]
     );
   }
+}
+
+export interface BrandLogoSettings {
+  brand_logo_url: string;
+  brand_logo_storage_path: string;
+}
+
+/** Global brand logo (same across all cities). */
+export async function fetchBrandLogoSettings(): Promise<BrandLogoSettings> {
+  const hasCityColumn = await hasSiteSettingsCityColumn();
+  const result = await query(
+    hasCityColumn
+      ? `SELECT key, value FROM site_settings
+         WHERE key IN ($1, $2) AND city_id IS NULL`
+      : `SELECT key, value FROM site_settings WHERE key IN ($1, $2)`,
+    [BRAND_LOGO_URL_KEY, BRAND_LOGO_STORAGE_PATH_KEY]
+  );
+  const map = rowsToMap(result.rows);
+  return {
+    brand_logo_url: map[BRAND_LOGO_URL_KEY] || '',
+    brand_logo_storage_path: map[BRAND_LOGO_STORAGE_PATH_KEY] || '',
+  };
 }
