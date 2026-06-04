@@ -1,21 +1,17 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { ShoppingCart, Plus, Minus, Trash2, Leaf, ChevronDown } from 'lucide-react'
+import { ShoppingCart, Plus, Minus, Trash2, Leaf } from 'lucide-react'
 import { Product, ProductUnit } from '@/types'
 import ProductPrice from './ProductPrice'
+import UnitSelector from './UnitSelector'
 import { useCartStore } from '@/store/cartStore'
 import Badge from './Badge'
 import SmartImage from './SmartImage'
 import toast from 'react-hot-toast'
-import {
-  getUnitOptions,
-  getUnitPickerDisplayLabel,
-  unitLabelShort,
-} from '@/lib/unitPricing'
-import { formatPriceShort } from '@/lib/utils'
+import { getUnitOptions, unitLabelShort } from '@/lib/unitPricing'
 
 interface ProductCardProps {
   product: Product
@@ -36,30 +32,10 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
   const unitOptions = useMemo(() => getUnitOptions(product), [product])
   const hasFractionUnits = unitOptions.length > 1
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
-  const [unitMenuOpen, setUnitMenuOpen] = useState(false)
-  const unitMenuRef = useRef<HTMLDivElement>(null)
+
   const activeOption =
     unitOptions.find((o) => o.unit === selectedUnit) || unitOptions[0]
   const displayPrice = activeOption?.price ?? product.price
-  const unitPickerLabel = getUnitPickerDisplayLabel(
-    product,
-    selectedUnit,
-    unitOptions
-  )
-
-  useEffect(() => {
-    if (!unitMenuOpen) return
-    const close = (e: MouseEvent) => {
-      if (
-        unitMenuRef.current &&
-        !unitMenuRef.current.contains(e.target as Node)
-      ) {
-        setUnitMenuOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [unitMenuOpen])
 
   const cartItem = items.find(
     (item) =>
@@ -100,9 +76,11 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
       transition={{ duration: 0.2 }}
       className="h-full"
     >
-      <div className="group h-full flex flex-col bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300">
-        {/* Image — link only here so cart buttons never fight navigation */}
-        <Link href={productHref} className="block relative aspect-square overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="group h-full flex flex-col bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl transition-all duration-300 overflow-visible">
+        <Link
+          href={productHref}
+          className="block relative aspect-square overflow-hidden rounded-t-2xl bg-gradient-to-br from-gray-50 to-gray-100"
+        >
           <SmartImage
             src={product.image}
             alt={product.name}
@@ -129,7 +107,7 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
           </div>
         </Link>
 
-        <div className="p-3 flex flex-col flex-grow min-w-0">
+        <div className="p-3 flex flex-col flex-grow min-w-0 w-full">
           <Link href={productHref} className="block min-w-0">
             <h3 className="font-semibold text-gray-900 line-clamp-2 text-[15px] leading-snug">
               {product.name}
@@ -145,54 +123,18 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
           </Link>
 
           {hasFractionUnits && (
-            <div
-              ref={unitMenuRef}
-              className="relative mt-2 mb-2 w-full min-w-0"
-            >
-              <button
-                type="button"
-                onClick={() => setUnitMenuOpen((v) => !v)}
-                className="w-full min-h-[40px] flex items-center justify-between gap-2 text-sm font-semibold text-[#2F6B4F] bg-[#F4F9F6] hover:bg-[#e8f3ec] border border-[#C5DECF] px-3 py-2 rounded-xl transition-colors"
-                aria-haspopup="listbox"
-                aria-expanded={unitMenuOpen}
-              >
-                <span className="flex-1 text-left leading-snug whitespace-normal break-words">
-                  {unitPickerLabel}
-                </span>
-                <ChevronDown
-                  className={`w-4 h-4 shrink-0 transition-transform ${
-                    unitMenuOpen ? 'rotate-180' : ''
-                  }`}
-                />
-              </button>
-              {unitMenuOpen && (
-                <div className="absolute z-30 top-full left-0 right-0 mt-1 min-w-[200px] bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-                  {unitOptions.map((opt) => (
-                    <button
-                      key={opt.unit}
-                      type="button"
-                      onClick={() => {
-                        setSelectedUnit(opt.unit)
-                        setUnitMenuOpen(false)
-                      }}
-                      className={`w-full text-left px-3 py-2.5 text-sm flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors ${
-                        opt.unit === selectedUnit
-                          ? 'bg-[#F4F9F6] text-[#2F6B4F] font-semibold'
-                          : 'text-gray-700'
-                      }`}
-                    >
-                      <span className="leading-snug">{opt.label}</span>
-                      <span className="text-gray-600 font-medium shrink-0">
-                        {formatPriceShort(opt.price)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
+            <div className="mt-2 mb-2 w-full min-w-0">
+              <UnitSelector
+                product={product}
+                selectedUnit={selectedUnit}
+                onChange={setSelectedUnit}
+                size="md"
+                fullWidth
+              />
             </div>
           )}
 
-          <div className="mt-auto pt-1 space-y-2 min-w-0">
+          <div className="mt-auto pt-1 space-y-2 w-full min-w-0">
             <ProductPrice
               price={displayPrice}
               unit={
@@ -214,7 +156,9 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
                   type="button"
                   onClick={handleDecrement}
                   className="w-9 h-9 flex items-center justify-center rounded-lg bg-white shadow-sm hover:bg-red-50 transition-colors border border-gray-100 shrink-0"
-                  aria-label={quantity === 1 ? 'Remove from cart' : 'Decrease quantity'}
+                  aria-label={
+                    quantity === 1 ? 'Remove from cart' : 'Decrease quantity'
+                  }
                 >
                   {quantity === 1 ? (
                     <Trash2 className="w-4 h-4 text-red-500" />

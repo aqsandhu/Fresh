@@ -8,27 +8,16 @@ import { useCityContext } from '@/context/CityContext'
 import ProductCard from '@/components/ui/ProductCard'
 import { productsApi } from '@/lib/api'
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.08,
-    },
-  },
-}
-
 const itemVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: {
     opacity: 1,
     y: 0,
-    transition: {
-      duration: 0.5,
-    },
+    transition: { duration: 0.5 },
   },
 }
 
+/** Mirrors customer-app FeaturedProductsSection layout. */
 export default function FeaturedProductsSection() {
   const { selectedCityId } = useCityContext()
   const { data: featuredProducts, isLoading } = useQuery({
@@ -38,57 +27,48 @@ export default function FeaturedProductsSection() {
   })
 
   return (
-    <section className="py-16 bg-gray-50">
+    <section className="py-10 md:py-12 bg-gray-50">
       <div className="container mx-auto px-4">
-        {/* Section Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
+        <motion.h2
+          initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-12"
+          className="text-[26px] md:text-3xl font-bold text-gray-900 text-center"
         >
-          <div>
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-              Featured Products
-            </h2>
-            <p className="text-gray-600 font-urdu" dir="rtl">
-              خصوصی مصنوعات
-            </p>
-          </div>
-          <Link
-            href="/products"
-            className="inline-flex items-center text-primary-600 font-medium hover:text-primary-700 transition-colors"
-          >
-            View All Products
-            <ArrowRight className="w-4 h-4 ml-1" />
-          </Link>
-        </motion.div>
+          Featured Products
+        </motion.h2>
 
-        {/* Loading State */}
+        <Link
+          href="/products"
+          className="mt-2 mb-6 flex items-center justify-center gap-1 text-sm font-semibold text-primary-600 hover:text-primary-700 transition-colors"
+        >
+          Click to View All Products
+          <ArrowRight className="w-4 h-4" />
+        </Link>
+
         {isLoading ? (
           <div className="flex justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
           </div>
         ) : !featuredProducts || featuredProducts.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No featured products available at the moment.</p>
-          </div>
+          <p className="text-center text-gray-500 py-12">
+            No featured products available at the moment.
+          </p>
         ) : (
-          /* Products Grid */
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true }}
-            className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5"
-          >
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3 md:gap-5">
             {featuredProducts.map((product) => (
-              <motion.div key={product.id} variants={itemVariants} className="min-w-0">
+              <motion.div
+                key={product.id}
+                variants={itemVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+                className="min-w-0"
+              >
                 <ProductCard product={product} />
               </motion.div>
             ))}
-          </motion.div>
+          </div>
         )}
       </div>
     </section>
