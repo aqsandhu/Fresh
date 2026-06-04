@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Plus, Minus, Trash2, Leaf, ChevronDown } from 'lucide-react'
@@ -10,7 +10,11 @@ import { useCartStore } from '@/store/cartStore'
 import Badge from './Badge'
 import SmartImage from './SmartImage'
 import toast from 'react-hot-toast'
-import { getUnitOptions, unitLabelShort } from '@/lib/unitPricing'
+import {
+  getUnitOptions,
+  getUnitPickerDisplayLabel,
+  unitLabelShort,
+} from '@/lib/unitPricing'
 import { formatPriceShort } from '@/lib/utils'
 
 interface ProductCardProps {
@@ -36,9 +40,29 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
   const hasFractionUnits = unitOptions.length > 1
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
   const [unitMenuOpen, setUnitMenuOpen] = useState(false)
+  const unitMenuRef = useRef<HTMLDivElement>(null)
   const activeOption =
     unitOptions.find((o) => o.unit === selectedUnit) || unitOptions[0]
   const displayPrice = activeOption?.price ?? product.price
+  const unitPickerLabel = getUnitPickerDisplayLabel(
+    product,
+    selectedUnit,
+    unitOptions
+  )
+
+  useEffect(() => {
+    if (!unitMenuOpen) return
+    const close = (e: MouseEvent) => {
+      if (
+        unitMenuRef.current &&
+        !unitMenuRef.current.contains(e.target as Node)
+      ) {
+        setUnitMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [unitMenuOpen])
 
   // We treat each (product, unit) as a distinct cart line so a customer can
   // have "1 kg apples" and "half kg apples" side by side.
@@ -150,7 +174,8 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
                 user can switch between Per kg / Half kg / Quarter kg etc. */}
             {hasFractionUnits && (
               <div
-                className="relative mt-1 mb-1"
+                ref={unitMenuRef}
+                className="relative mt-1.5 mb-1.5 w-full"
                 onClick={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
@@ -163,15 +188,19 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
                     e.stopPropagation()
                     setUnitMenuOpen((v) => !v)
                   }}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 bg-primary-50 hover:bg-primary-100 px-2 py-1 rounded-md transition-colors"
+                  className="w-full flex items-center justify-between gap-2 text-xs font-semibold text-[#2F6B4F] bg-[#F4F9F6] hover:bg-[#e8f3ec] border border-[#C5DECF] px-2.5 py-2 rounded-xl transition-colors"
                   aria-haspopup="listbox"
                   aria-expanded={unitMenuOpen}
                 >
-                  {activeOption?.label || 'Per unit'}
-                  <ChevronDown className="w-3 h-3" />
+                  <span className="truncate text-left">{unitPickerLabel}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 shrink-0 transition-transform ${
+                      unitMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
                 </button>
                 {unitMenuOpen && (
-                  <div className="absolute z-20 top-full left-0 mt-1 w-44 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                  <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
                     {unitOptions.map((opt) => (
                       <button
                         key={opt.unit}
@@ -182,14 +211,14 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
                           setSelectedUnit(opt.unit)
                           setUnitMenuOpen(false)
                         }}
-                        className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors ${
+                        className={`w-full text-left px-3 py-2.5 text-xs flex items-center justify-between gap-2 hover:bg-gray-50 transition-colors ${
                           opt.unit === selectedUnit
-                            ? 'bg-primary-50 text-primary-700 font-semibold'
+                            ? 'bg-[#F4F9F6] text-[#2F6B4F] font-semibold'
                             : 'text-gray-700'
                         }`}
                       >
-                        <span>{opt.label}</span>
-                        <span className="text-gray-600 font-medium">
+                        <span className="truncate">{opt.label}</span>
+                        <span className="text-gray-600 font-medium shrink-0">
                           {formatPriceShort(opt.price)}
                         </span>
                       </button>

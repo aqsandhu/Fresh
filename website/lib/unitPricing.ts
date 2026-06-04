@@ -29,10 +29,10 @@ export function getUnitOptions(product: Product): UnitOption[] {
   if (unit === 'dozen') {
     const halfDozenOverride = toNumber(product.halfDozenPrice)
     return [
-      { unit: 'full', label: 'Per dozen', price: base, derived: false },
+      { unit: 'full', label: 'Per Dozen', price: base, derived: false },
       {
         unit: 'half_dozen',
-        label: 'Half dozen (6)',
+        label: 'Half Dozen (6 pcs)',
         price: halfDozenOverride ?? base * 0.5,
         derived: halfDozenOverride == null,
       },
@@ -43,16 +43,16 @@ export function getUnitOptions(product: Product): UnitOption[] {
     const halfKgOverride = toNumber(product.halfKgPrice)
     const quarterKgOverride = toNumber(product.quarterKgPrice)
     return [
-      { unit: 'full', label: 'Per kg', price: base, derived: false },
+      { unit: 'full', label: 'Per Kg', price: base, derived: false },
       {
         unit: 'half_kg',
-        label: 'Half kg (\u00BD kg)',
+        label: 'Half Kg (\u00BD kg)',
         price: halfKgOverride ?? base * 0.5,
         derived: halfKgOverride == null,
       },
       {
         unit: 'quarter_kg',
-        label: 'Quarter kg (\u00BC kg)',
+        label: 'Quarter Kg (\u00BC kg)',
         price: quarterKgOverride ?? base * 0.25,
         derived: quarterKgOverride == null,
       },
@@ -107,6 +107,35 @@ export function unitPriceCaption(unit: ProductUnit | undefined): string {
       return 'per ½ dozen'
     default:
       return ''
+  }
+}
+
+/** Default picker label on product cards when full unit is selected (matches app). */
+export function getUnitPickerPrompt(product: Product): string {
+  const unit = String(product.unit || '').toLowerCase()
+  if (unit === 'dozen') return 'Select Half Dozen'
+  if (unit === 'kg' || unit === 'gram') return 'Select Half Kg'
+  return 'Select Unit'
+}
+
+/** Chip label on product cards — prompt when "full", short name when fraction selected. */
+export function getUnitPickerDisplayLabel(
+  product: Product,
+  selectedUnit: ProductUnit,
+  options: UnitOption[]
+): string {
+  if (selectedUnit === 'full') return getUnitPickerPrompt(product)
+  const active = options.find((o) => o.unit === selectedUnit)
+  if (!active) return getUnitPickerPrompt(product)
+  switch (selectedUnit) {
+    case 'half_kg':
+      return 'Half Kg'
+    case 'quarter_kg':
+      return 'Quarter Kg'
+    case 'half_dozen':
+      return 'Half Dozen'
+    default:
+      return active.label
   }
 }
 
