@@ -7,6 +7,7 @@ import { CityProvider } from '@/context/CityContext';
 import { NotificationProvider } from '@/context/NotificationContext';
 import { canAccessRoute, firstAccessibleRoute } from '@/lib/permissions';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import { BrandFavicon } from '@/components/BrandFavicon';
 import {
   Login,
   Dashboard,
@@ -276,6 +277,7 @@ function App() {
         <CityProvider>
         <ErrorBoundary>
           <BrowserRouter>
+            <BrandFavicon />
             <AppRoutes />
           </BrowserRouter>
         </ErrorBoundary>

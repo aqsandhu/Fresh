@@ -250,11 +250,11 @@ export default function Header() {
       </div>
 
       {/* Main Header + search (click-outside closes idle search) */}
-      <div ref={searchAreaRef} className="container mx-auto px-3 sm:px-4 py-2">
+      <div ref={searchAreaRef} className="container mx-auto px-3 sm:px-4 py-2.5 min-h-[56px] flex flex-col justify-center">
         <div className="flex items-center justify-between gap-2 sm:gap-3">
-          {/* Logo */}
-          <Link href="/" className="shrink-0">
-            <BrandLogo priority />
+          {/* Logo — sized to main nav bar height */}
+          <Link href="/" className="shrink-0 flex items-center">
+            <BrandLogo size="nav" showText />
           </Link>
 
           {/* Desktop Navigation */}

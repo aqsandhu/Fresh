@@ -68,7 +68,7 @@ export const Login: React.FC = () => {
       <div className="w-full max-w-md">
         {/* Logo & Title */}
         <div className="flex flex-col items-center mb-8">
-          <BrandLogo showText={false} imgClassName="h-20 w-auto max-w-[240px] object-contain mb-3" />
+          <BrandLogo size="lg" showText={false} className="mb-3" />
           <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
           <p className="text-gray-600 mt-1">Pakistani Grocery Delivery</p>
         </div>
