@@ -15,6 +15,15 @@ function mapBrand(raw: Record<string, string>): BrandLogoSettings {
 }
 
 export const brandService = {
+  /** Public — no auth (login page, sidebar logo). */
+  getPublic: async (): Promise<BrandLogoSettings> => {
+    const response = await api.get<
+      ApiResponse<{ logoUrl?: string | null; logo_url?: string | null }>
+    >('/site-settings/brand');
+    const url = response.data?.logoUrl || response.data?.logo_url || '';
+    return { brandLogoUrl: typeof url === 'string' ? url : '', brandLogoStoragePath: '' };
+  },
+
   get: async (): Promise<BrandLogoSettings> => {
     const response = await api.get<ApiResponse<Record<string, string>>>(
       '/admin/site-settings/brand'

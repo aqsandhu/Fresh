@@ -26,8 +26,9 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   const isNav = size === 'nav';
   const { data, isLoading } = useQuery({
     queryKey: ['brand-logo'],
-    queryFn: () => brandService.get(),
+    queryFn: () => brandService.getPublic(),
     staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 
   const src = data?.brandLogoUrl?.trim();

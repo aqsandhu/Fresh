@@ -15,6 +15,18 @@ function mapFavicon(raw: Record<string, string>): BrandFaviconSettings {
 }
 
 export const faviconService = {
+  /** Public — no auth (favicon on login and all routes). */
+  getPublic: async (): Promise<BrandFaviconSettings> => {
+    const response = await api.get<
+      ApiResponse<{ faviconUrl?: string | null; favicon_url?: string | null }>
+    >('/site-settings/favicon');
+    const url = response.data?.faviconUrl || response.data?.favicon_url || '';
+    return {
+      brandFaviconUrl: typeof url === 'string' ? url : '',
+      brandFaviconStoragePath: '',
+    };
+  },
+
   get: async (): Promise<BrandFaviconSettings> => {
     const response = await api.get<ApiResponse<Record<string, string>>>(
       '/admin/site-settings/favicon'
