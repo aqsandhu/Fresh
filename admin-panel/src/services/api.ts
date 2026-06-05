@@ -113,6 +113,12 @@ function redirectToLogin() {
     : '/admin/login';
 }
 
+/** Only force login redirect when user had a session (not guest/login-page API noise). */
+function shouldForceLoginRedirect(): boolean {
+  if (window.location.pathname.startsWith('/admin/login')) return false;
+  return Boolean(localStorage.getItem('admin_refresh_token'));
+}
+
 // Response interceptor for error handling and snake_case -> camelCase conversion
 apiClient.interceptors.response.use(
   (response) => {
@@ -129,7 +135,11 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401 && original && !original._retried) {
       const isRefreshCall = original.url?.includes('/auth/refresh');
       if (isRefreshCall) {
-        redirectToLogin();
+        if (shouldForceLoginRedirect()) redirectToLogin();
+        return Promise.reject(error);
+      }
+
+      if (!shouldForceLoginRedirect()) {
         return Promise.reject(error);
       }
 
@@ -151,8 +161,9 @@ apiClient.interceptors.response.use(
       toast.error('Session expired. Please login again.');
       redirectToLogin();
     } else if (error.response?.status === 401) {
-      // Already retried once — give up.
-      redirectToLogin();
+      if (shouldForceLoginRedirect()) {
+        redirectToLogin();
+      }
     } else if (error.response?.status === 403) {
       toast.error('You do not have permission to perform this action');
     } else if (error.response?.status && error.response.status >= 500) {
