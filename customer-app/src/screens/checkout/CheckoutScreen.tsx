@@ -497,28 +497,9 @@ export const CheckoutScreen: React.FC = () => {
             </View>
             <Text style={styles.sectionTitle}>Delivery Time</Text>
           </View>
-          <View style={styles.dayTabs}>
-            {(['today', 'tomorrow'] as DayTab[]).map((day) => (
-              <TouchableOpacity
-                key={day}
-                style={[styles.dayTab, activeDay === day && styles.dayTabActive]}
-                onPress={() => handleDayChange(day)}
-              >
-                <MaterialIcons
-                  name="calendar-today"
-                  size={18}
-                  color={activeDay === day ? COLORS.primary700 : COLORS.gray500}
-                  style={{ marginBottom: 4 }}
-                />
-                <Text style={[styles.dayTabText, activeDay === day && styles.dayTabTextActive]}>
-                  {day === 'today' ? 'Today' : 'Tomorrow'}
-                </Text>
-                <Text style={[styles.dayTabDate, activeDay === day && styles.dayTabDateActive]}>
-                  {getDisplayDate(day)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <Text style={styles.slotsHeading}>
+            {activeDay === 'today' ? 'Today available time slots' : 'Tomorrow time slots'}
+          </Text>
           {loadingSlots ? (
             <View style={styles.sectionLoader}>
               <ActivityIndicator color={COLORS.primary600} size="small" />
@@ -573,6 +554,28 @@ export const CheckoutScreen: React.FC = () => {
               })}
             </View>
           )}
+          <View style={styles.dayTabs}>
+            {(['today', 'tomorrow'] as DayTab[]).map((day) => (
+              <TouchableOpacity
+                key={day}
+                style={[styles.dayTab, activeDay === day && styles.dayTabActive]}
+                onPress={() => handleDayChange(day)}
+              >
+                <MaterialIcons
+                  name="calendar-today"
+                  size={18}
+                  color={activeDay === day ? COLORS.primary700 : COLORS.gray500}
+                  style={{ marginBottom: 4 }}
+                />
+                <Text style={[styles.dayTabText, activeDay === day && styles.dayTabTextActive]}>
+                  {day === 'today' ? 'Today' : 'Tomorrow'}
+                </Text>
+                <Text style={[styles.dayTabDate, activeDay === day && styles.dayTabDateActive]}>
+                  {getDisplayDate(day)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Payment */}
@@ -754,6 +757,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sectionTitle: { fontSize: 20, fontWeight: '600', color: COLORS.gray900 },
+  slotsHeading: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.gray800,
+    marginBottom: SPACING.md,
+  },
   sectionLoader: { paddingVertical: SPACING.xl, alignItems: 'center' },
   addressList: { gap: SPACING.sm, marginBottom: SPACING.md },
   addressCard: {
@@ -795,7 +804,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   addressTipBold: { fontWeight: '700', color: COLORS.gray700 },
-  dayTabs: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
+  dayTabs: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.lg },
   dayTab: {
     flex: 1,
     alignItems: 'center',

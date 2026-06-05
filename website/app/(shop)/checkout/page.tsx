@@ -577,25 +577,11 @@ function CheckoutPage() {
                 <h2 className="text-xl font-semibold">Delivery Time</h2>
               </div>
 
-              {/* Today / Tomorrow Tabs */}
-              <div className="flex gap-3 mb-6">
-                {(['today', 'tomorrow'] as const).map((day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => handleDayChange(day)}
-                    className={`flex-1 flex flex-col items-center py-3 px-4 rounded-xl border-2 transition-colors ${
-                      selectedDay === day
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                    }`}
-                  >
-                    <CalendarDays className="w-5 h-5 mb-1" />
-                    <span className="font-semibold text-sm capitalize">{day}</span>
-                    <span className="text-xs opacity-75">{getDisplayDate(day)}</span>
-                  </button>
-                ))}
-              </div>
+              <p className="text-sm font-medium text-gray-800 mb-4">
+                {selectedDay === 'today'
+                  ? 'Today available time slots'
+                  : 'Tomorrow time slots'}
+              </p>
 
               <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
                 {loadingSlots ? (
@@ -650,6 +636,25 @@ function CheckoutPage() {
                     )
                   })
                 )}
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                {(['today', 'tomorrow'] as const).map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => handleDayChange(day)}
+                    className={`flex-1 flex flex-col items-center py-3 px-4 rounded-xl border-2 transition-colors ${
+                      selectedDay === day
+                        ? 'border-primary-500 bg-primary-50 text-primary-700'
+                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                    }`}
+                  >
+                    <CalendarDays className="w-5 h-5 mb-1" />
+                    <span className="font-semibold text-sm capitalize">{day}</span>
+                    <span className="text-xs opacity-75">{getDisplayDate(day)}</span>
+                  </button>
+                ))}
               </div>
             </motion.div>
 
