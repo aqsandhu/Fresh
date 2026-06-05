@@ -291,8 +291,25 @@ export const TimeSlotScreen: React.FC = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Day Tabs */}
-        <Text style={styles.sectionTitle}>Select Delivery Day</Text>
+        {/* Time slots */}
+        <Text style={styles.sectionTitle}>
+          {activeDay === 'today' ? 'Today available time slots' : 'Tomorrow time slots'}
+        </Text>
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+          </View>
+        ) : currentSlots.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <MaterialIcons name="event-busy" size={48} color={COLORS.gray400} />
+            <Text style={styles.emptyText}>No time slots available for this day</Text>
+          </View>
+        ) : (
+          <View style={styles.slotsContainer}>
+            {currentSlots.map(renderSlot)}
+          </View>
+        )}
+
         <View style={styles.dayTabs}>
           <TouchableOpacity
             style={[styles.dayTab, activeDay === 'today' && styles.dayTabActive]}
@@ -311,23 +328,6 @@ export const TimeSlotScreen: React.FC = () => {
             <Text style={[styles.dayTabDate, activeDay === 'tomorrow' && styles.dayTabDateActive]}>{getDisplayDate('tomorrow')}</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Time Slots */}
-        <Text style={styles.sectionTitle}>Select Time Slot</Text>
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-          </View>
-        ) : currentSlots.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <MaterialIcons name="event-busy" size={48} color={COLORS.gray400} />
-            <Text style={styles.emptyText}>No time slots available for this day</Text>
-          </View>
-        ) : (
-          <View style={styles.slotsContainer}>
-            {currentSlots.map(renderSlot)}
-          </View>
-        )}
 
         {/* Payment Method */}
         <Text style={styles.sectionTitle}>Payment Method</Text>
@@ -454,6 +454,7 @@ const styles = StyleSheet.create({
   dayTabs: {
     flexDirection: 'row',
     gap: SPACING.md,
+    marginTop: SPACING.lg,
     marginBottom: SPACING.sm,
   },
   dayTab: {
