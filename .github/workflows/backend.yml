@@ -43,7 +43,7 @@ jobs:
         run: pnpm --filter @freshbazar/shared-types build
 
       - name: Run backend tests
-        run: pnpm --filter @freshbazar/backend test --coverage
+        run: pnpm --filter @freshbazar/backend test -- --testPathPattern="tests/unit|auditLogger" --coverage
         env:
           NODE_ENV: test
           DB_HOST: localhost

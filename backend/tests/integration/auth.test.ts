@@ -7,32 +7,15 @@ import { jest } from '@jest/globals';
 import request from 'supertest';
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import { query } from '@/config/database';
+import * as authModule from '@/controllers/auth.controller';
 
-// Mock database before importing routes
-jest.unstable_mockModule('@/config/database', () => ({
-  query: jest.fn(),
-  withTransaction: jest.fn((cb) => cb({ query: jest.fn() })),
-}));
-
-jest.unstable_mockModule('@/utils/logger', () => ({
-  __esModule: true,
-  default: {
-    info: jest.fn(),
-    error: jest.fn(),
-    warn: jest.fn(),
-    debug: jest.fn(),
-  },
-}));
-
-const { query } = await import('@/config/database');
 const mockQuery = query as jest.MockedFunction<typeof query>;
 
 // Build a minimal app with auth routes
 const app = express();
 app.use(express.json());
-
-// Import auth controller functions
-const authModule = await import('@/controllers/auth.controller');
 
 // Simple mock route implementations for testing
 const mockGenerateTokenPair = (userId: string, phone: string, role: string) => ({
@@ -121,7 +104,6 @@ describe('Authentication Endpoints', () => {
     });
 
     it('should hash the password before storing', async () => {
-      const bcrypt = await import('bcryptjs');
       const plainPassword = 'SecurePass123!';
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
       
@@ -146,7 +128,7 @@ describe('Authentication Endpoints', () => {
         phone: '+923001234567',
         full_name: 'Test User',
         role: 'customer',
-        password_hash: await (await import('bcryptjs')).hash('admin123', 12),
+        password_hash: await bcrypt.hash('admin123', 12),
         status: 'active',
       };
 
@@ -163,7 +145,6 @@ describe('Authentication Endpoints', () => {
       expect(result.rows[0]).toBeDefined();
       expect(result.rows[0].phone).toBe(validLoginBody.phone);
       
-      const bcrypt = await import('bcryptjs');
       const isMatch = await bcrypt.compare(validLoginBody.password, result.rows[0].password_hash);
       expect(isMatch).toBe(true);
 
@@ -182,7 +163,7 @@ describe('Authentication Endpoints', () => {
       const mockUser = {
         id: 'user-123',
         phone: '+923001234567',
-        password_hash: await (await import('bcryptjs')).hash('correctpassword', 12),
+        password_hash: await bcrypt.hash('correctpassword', 12),
       };
 
       mockQuery.mockResolvedValueOnce({
@@ -195,7 +176,6 @@ describe('Authentication Endpoints', () => {
         [validLoginBody.phone]
       );
 
-      const bcrypt = await import('bcryptjs');
       const isMatch = await bcrypt.compare('wrongpassword', result.rows[0].password_hash);
       expect(isMatch).toBe(false);
     });
@@ -319,17 +299,24 @@ describe('Authentication Endpoints', () => {
     });
 
     it('should handle logout without authentication', async () => {
-      // Client-side logout should always succeed
+      const mockStorage: Record<string, string> = { token: 'some-token' };
+      const localStorageMock = {
+        getItem: (key: string) => mockStorage[key] ?? null,
+        setItem: (key: string, value: string) => { mockStorage[key] = value; },
+        removeItem: (key: string) => { delete mockStorage[key]; },
+      };
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: localStorageMock,
+        writable: true,
+        configurable: true,
+      });
+
       const clientLogout = () => {
-        localStorage.removeItem('token');
+        globalThis.localStorage.removeItem('token');
         return true;
       };
-      
-      // Mock localStorage
-      const mockStorage: Record<string, string> = { token: 'some-token' };
-      const mockRemoveItem = (key: string) => { delete mockStorage[key]; };
-      
-      mockRemoveItem('token');
+
+      expect(clientLogout()).toBe(true);
       expect(mockStorage.token).toBeUndefined();
     });
   });

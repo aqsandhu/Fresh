@@ -1,13 +1,9 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
 import { CITY_STORAGE_KEY, clearCitySelection } from '@/lib/cityStorage';
+import { API_BASE_URL } from '@/config/env';
 
-// IMPORTANT: Set VITE_API_URL in production to point to the live backend.
-// e.g., VITE_API_URL=https://api.freshbazar.pk/api
-// The localhost fallback is for development only.
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-
-if (!import.meta.env.VITE_API_URL) {
+if (!process.env.VITE_API_URL) {
   console.warn('[Fresh Bazar Admin] VITE_API_URL is not set. Falling back to localhost:3000. Set this env var in production!');
 }
 

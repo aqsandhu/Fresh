@@ -10,6 +10,7 @@ yarn.lock
 dist/
 build/
 .next/
+coverage/
 *.tsbuildinfo
 
 # Environment variables

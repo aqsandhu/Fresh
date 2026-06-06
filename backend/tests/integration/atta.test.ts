@@ -4,18 +4,8 @@
 // ============================================================================
 
 import { jest } from '@jest/globals';
+import { query } from '@/config/database';
 
-jest.unstable_mockModule('@/config/database', () => ({
-  query: jest.fn(),
-  withTransaction: jest.fn((cb) => cb({ query: jest.fn() })),
-}));
-
-jest.unstable_mockModule('@/utils/logger', () => ({
-  __esModule: true,
-  default: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
-}));
-
-const { query } = await import('@/config/database');
 const mockQuery = query as jest.MockedFunction<typeof query>;
 
 describe('Atta Chakki Endpoints', () => {

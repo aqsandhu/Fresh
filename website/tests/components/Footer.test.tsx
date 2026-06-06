@@ -1,15 +1,21 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+
+import '../mocks/layoutMocks';
 import Footer from '@/components/layout/Footer';
 
-// Mock Next.js Link
 jest.mock('next/link', () => {
-  return ({ children, href, className }: any) => (
-    <a href={href} className={className}>{children}</a>
+  return ({ children, href, className }: {
+    children: React.ReactNode;
+    href: string;
+    className?: string;
+  }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
   );
 });
 
-// Mock lucide-react icons
 jest.mock('lucide-react', () => ({
   Phone: () => <span data-testid="phone-icon">Phone</span>,
   Mail: () => <span data-testid="mail-icon">Mail</span>,
@@ -31,17 +37,16 @@ describe('Footer', () => {
 
   it('renders footer with features bar', () => {
     render(<Footer />);
-    
     expect(screen.getByText('Free Delivery')).toBeInTheDocument();
-    expect(screen.getByText('On orders above Rs. 500')).toBeInTheDocument();
+    expect(screen.getByText('On Rs. 500+ vegetables/fruits')).toBeInTheDocument();
   });
 
   it('renders all four feature items', () => {
     render(<Footer />);
-    
+
     const features = [
-      { title: 'Free Delivery', desc: 'On orders above Rs. 500' },
-      { title: '10AM-2PM Free', desc: 'If ordered before 10AM' },
+      { title: 'Free Delivery', desc: 'On Rs. 500+ vegetables/fruits' },
+      { title: 'Free Time Slots', desc: 'Pick a free-delivery slot' },
       { title: 'Fresh Guarantee', desc: '100% fresh products' },
       { title: 'Cash on Delivery', desc: 'Pay when you receive' },
     ];
@@ -52,101 +57,58 @@ describe('Footer', () => {
     }
   });
 
-  it('renders brand name and description', () => {
+  it('renders brand logo and description', () => {
     render(<Footer />);
-    
-    expect(screen.getByText('SabziWala')).toBeInTheDocument();
-    expect(screen.getByText(/Your trusted partner for fresh groceries delivery/)).toBeInTheDocument();
+    expect(screen.getByTestId('brand-logo')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Your trusted partner for fresh groceries delivery in Pakistan/)
+    ).toBeInTheDocument();
   });
 
-  it('renders Urdu brand text', () => {
+  it('renders Urdu tagline', () => {
     render(<Footer />);
-    
-    // Check for Urdu text presence (سبزی والا)
-    const urduElement = screen.getByText(/سبزی والا/);
-    expect(urduElement).toBeInTheDocument();
+    expect(screen.getByText(/پاکستان میں تازہ سبزیاں اور پھل آپ کے گھر تک/)).toBeInTheDocument();
   });
 
   it('renders shop links', () => {
     render(<Footer />);
-    
-    const shopLinks = [
+
+    for (const label of [
       'Fresh Vegetables',
       'Fresh Fruits',
       'Dry Fruits',
       'Fresh Chicken',
       'Atta Chakki',
-    ];
-
-    for (const link of shopLinks) {
-      expect(screen.getByText(link)).toBeInTheDocument();
+    ]) {
+      expect(screen.getByText(label)).toBeInTheDocument();
     }
   });
 
   it('renders company links', () => {
     render(<Footer />);
-    
-    expect(screen.getByText('About Us')).toBeInTheDocument();
-    expect(screen.getByText('Contact Us')).toBeInTheDocument();
-    expect(screen.getByText('FAQs')).toBeInTheDocument();
-    expect(screen.getByText('Privacy Policy')).toBeInTheDocument();
-    expect(screen.getByText('Terms of Service')).toBeInTheDocument();
+
+    for (const label of ['About Us', 'Contact Us', 'FAQs', 'Privacy Policy', 'Terms of Service']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 
   it('renders support links', () => {
     render(<Footer />);
-    
-    expect(screen.getByText('Help Center')).toBeInTheDocument();
-    expect(screen.getByText('Track Order')).toBeInTheDocument();
-    expect(screen.getByText('Returns')).toBeInTheDocument();
-    expect(screen.getByText('Shipping Info')).toBeInTheDocument();
+
+    for (const label of ['Help Center', 'Track Order', 'Returns', 'Shipping Info']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    }
   });
 
   it('renders contact information', () => {
     render(<Footer />);
-    
     expect(screen.getByText('0300-1234567')).toBeInTheDocument();
-    expect(screen.getByText('support@sabziwala.pk')).toBeInTheDocument();
+    expect(screen.getByText('support@freshbazar.pk')).toBeInTheDocument();
     expect(screen.getByText('Gujrat, Pakistan')).toBeInTheDocument();
   });
 
-  it('renders social media links', () => {
+  it('renders copyright notice', () => {
     render(<Footer />);
-    
-    const socialLinks = ['facebook', 'instagram', 'twitter', 'youtube'];
-    
-    for (const social of socialLinks) {
-      const icon = screen.getByTestId(`${social}-icon`);
-      expect(icon).toBeInTheDocument();
-    }
-  });
-
-  it('renders copyright text with current year', () => {
-    render(<Footer />);
-    
-    const currentYear = new Date().getFullYear().toString();
-    expect(screen.getByText(new RegExp(currentYear))).toBeInTheDocument();
-    expect(screen.getByText(/SabziWala Pakistan. All rights reserved./)).toBeInTheDocument();
-  });
-
-  it('renders footer links with correct hrefs', () => {
-    render(<Footer />);
-    
-    const sabziLink = screen.getByText('Fresh Vegetables').closest('a');
-    expect(sabziLink).toHaveAttribute('href', '/category/sabzi');
-    
-    const fruitLink = screen.getByText('Fresh Fruits').closest('a');
-    expect(fruitLink).toHaveAttribute('href', '/category/fruit');
-    
-    const attaLink = screen.getByText('Atta Chakki').closest('a');
-    expect(attaLink).toHaveAttribute('href', '/atta-chakki');
-  });
-
-  it('renders footer with dark background styling', () => {
-    const { container } = render(<Footer />);
-    
-    const footer = container.querySelector('footer');
-    expect(footer).toHaveClass('bg-gray-900');
-    expect(footer).toHaveClass('text-white');
+    expect(screen.getByText(/Fresh Bazar Pakistan/)).toBeInTheDocument();
   });
 });

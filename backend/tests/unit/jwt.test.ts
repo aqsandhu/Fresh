@@ -5,10 +5,7 @@
 
 import { jest } from '@jest/globals';
 import jwt from 'jsonwebtoken';
-
-// Import the JWT module after setting env vars
-const jwtModule = await import('@/config/jwt');
-const {
+import {
   generateAccessToken,
   generateRefreshToken,
   verifyAccessToken,
@@ -16,7 +13,7 @@ const {
   generateTokenPair,
   decodeToken,
   getTokenExpiry,
-} = jwtModule;
+} from '@/config/jwt';
 
 describe('JWT Token Management', () => {
   const mockUserId = 'user-123';
@@ -156,11 +153,7 @@ describe('JWT Token Management', () => {
 
     it('should throw error for access token used as refresh token', () => {
       const accessToken = generateAccessToken(mockUserId, mockPhone, mockRole as any);
-      // Access token doesn't have type: 'refresh' but should still verify structurally
-      const payload = verifyRefreshToken(accessToken);
-      // It will verify successfully as the same secret is not used - wait, different secrets are used
-      // This test verifies the different secret behavior
-      expect(payload).toBeDefined();
+      expect(() => verifyRefreshToken(accessToken)).toThrow();
     });
 
     it('should throw error for expired refresh token', () => {
@@ -272,9 +265,9 @@ describe('JWT Token Management', () => {
       expect(decoded.secret).toBeUndefined();
     });
 
-    it('should generate unique tokens each time (jti or timestamp)', () => {
+    it('should generate unique tokens each time (jti or timestamp)', async () => {
       const token1 = generateAccessToken(mockUserId, mockPhone, mockRole as any);
-      // Small delay to ensure different timestamps
+      await new Promise((resolve) => setTimeout(resolve, 1100));
       const token2 = generateAccessToken(mockUserId, mockPhone, mockRole as any);
 
       expect(token1).not.toBe(token2);

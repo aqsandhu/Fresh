@@ -33,7 +33,7 @@ import BrandLogo from '@/components/ui/BrandLogo'
 
 export default function Header() {
   const pathname = usePathname()
-  if (pathname.startsWith('/select-city')) {
+  if (pathname?.startsWith('/select-city')) {
     return null
   }
   const [isMenuOpen, setIsMenuOpen] = useState(false)

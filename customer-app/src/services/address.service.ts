@@ -1,6 +1,7 @@
 import apiClient, { handleApiError } from './api';
 import { ApiResponse, Address } from '@types';
 import { API_BASE_URL } from '@utils/constants';
+import { pickString } from '@freshbazar/shared-types';
 
 const BACKEND_URL = API_BASE_URL.replace('/api', '');
 
@@ -30,24 +31,28 @@ export interface CreateAddressRequest {
   isDefault?: boolean;
 }
 
-function mapBackendAddress(raw: any): Address {
-  const parts = [raw.written_address, raw.area_name, raw.city].filter(Boolean);
-  const doorUrl = raw.door_picture_url ? resolveImageUrl(raw.door_picture_url) : undefined;
+function mapBackendAddress(raw: Record<string, unknown>): Address {
+  const writtenAddress = pickString(raw, 'writtenAddress', 'written_address') || '';
+  const areaName = pickString(raw, 'areaName', 'area_name') || '';
+  const city = pickString(raw, 'city') || '';
+  const parts = [writtenAddress, areaName, city].filter(Boolean);
+  const doorRaw = pickString(raw, 'doorPictureUrl', 'door_picture_url');
+  const doorUrl = doorRaw ? resolveImageUrl(doorRaw) : undefined;
 
   return {
-    id: raw.id,
-    userId: raw.user_id || '',
-    label: raw.address_type || 'home',
-    fullAddress: parts.join(', ') || raw.written_address || '',
-    writtenAddress: raw.written_address || '',
-    areaName: raw.area_name || '',
-    landmark: raw.landmark || '',
-    city: raw.city || '',
-    latitude: parseFloat(raw.latitude) || 0,
-    longitude: parseFloat(raw.longitude) || 0,
+    id: String(raw.id ?? ''),
+    userId: pickString(raw, 'userId', 'user_id') || '',
+    label: pickString(raw, 'addressType', 'address_type') || 'home',
+    fullAddress: parts.join(', ') || writtenAddress,
+    writtenAddress,
+    areaName,
+    landmark: pickString(raw, 'landmark') || '',
+    city,
+    latitude: parseFloat(String(raw.latitude ?? '0')) || 0,
+    longitude: parseFloat(String(raw.longitude ?? '0')) || 0,
     doorImage: doorUrl,
-    isDefault: raw.is_default || false,
-    createdAt: raw.created_at || '',
+    isDefault: Boolean(raw.is_default ?? raw.isDefault ?? false),
+    createdAt: pickString(raw, 'createdAt', 'created_at') || '',
   } as Address;
 }
 
