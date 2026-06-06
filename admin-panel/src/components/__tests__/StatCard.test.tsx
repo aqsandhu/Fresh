@@ -47,7 +47,7 @@ describe('StatCard', () => {
     const trendElement = screen.getByText(/15%/);
     expect(trendElement).toBeInTheDocument();
     expect(trendElement.closest('div')).toHaveClass('text-green-600');
-    expect(screen.getByText('↑')).toBeInTheDocument();
+    expect(screen.getByText(/↑/)).toBeInTheDocument();
   });
 
   it('renders negative trend indicator', () => {
@@ -62,7 +62,7 @@ describe('StatCard', () => {
     const trendElement = screen.getByText(/10%/);
     expect(trendElement).toBeInTheDocument();
     expect(trendElement.closest('div')).toHaveClass('text-red-600');
-    expect(screen.getByText('↓')).toBeInTheDocument();
+    expect(screen.getByText(/↓/)).toBeInTheDocument();
   });
 
   it('applies custom className', () => {

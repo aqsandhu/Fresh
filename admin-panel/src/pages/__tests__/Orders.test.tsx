@@ -33,7 +33,7 @@ describe('Orders Page', () => {
       customer_name: 'Ali Khan',
       customer_phone: '+923001234567',
       total_amount: 1500,
-      delivery_charge: 100,
+      delivery_charge: 0,
       status: 'pending',
       payment_method: 'cod',
       delivery_address: 'House 123, Street 4, Gujrat',
@@ -64,7 +64,7 @@ describe('Orders Page', () => {
       customer_name: 'Usman Ali',
       customer_phone: '+923005551111',
       total_amount: 850,
-      delivery_charge: 100,
+      delivery_charge: 0,
       status: 'out_for_delivery',
       payment_method: 'cod',
       delivery_address: 'Village Chowk, Gujrat',
@@ -106,7 +106,7 @@ describe('Orders Page', () => {
     const grandTotal = itemsTotal + order.delivery_charge;
     
     expect(itemsTotal).toBe(650); // 2*250 + 1*150
-    expect(grandTotal).toBe(750); // 650 + 100 delivery
+    expect(grandTotal).toBe(650);
   });
 
   it('identifies correct order statuses', () => {

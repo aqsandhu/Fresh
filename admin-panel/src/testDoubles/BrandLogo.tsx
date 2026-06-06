@@ -1,7 +1,15 @@
-export default function BrandLogo({ size }: { size?: string }) {
+export function BrandLogo({
+  size,
+  className,
+}: {
+  size?: string;
+  className?: string;
+}) {
   return (
-    <div data-testid="brand-logo" data-size={size}>
+    <div data-testid="brand-logo" data-size={size} className={className}>
       FreshBazar
     </div>
   );
 }
+
+export default BrandLogo;
