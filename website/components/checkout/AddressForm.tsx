@@ -13,7 +13,7 @@ import { Check, Loader2, MapPin, Save, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
-import api, { addressesApi } from '@/lib/api'
+import { addressesApi } from '@/lib/api'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
 import {
   getAccuratePosition,
@@ -218,13 +218,10 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
       // FormData + multer on the backend already accepts the same JSON
       // fields, so this path supports both update and create with picture.
       if (doorPicture) {
-        const formData = new FormData()
-        Object.entries(baseFields).forEach(([k, v]) => formData.append(k, String(v)))
-        formData.append('door_picture', doorPicture)
         const res = isEdit
-          ? await api.put(`/addresses/${editingId}`, formData)
-          : await api.post('/addresses', formData)
-        saved = res.data?.data || res.data
+          ? await addressesApi.updateWithDoorPicture(editingId, baseFields, doorPicture)
+          : await addressesApi.createWithDoorPicture(baseFields, doorPicture)
+        saved = res as unknown as SavedAddress
       } else if (isEdit) {
         const res = await addressesApi.update(editingId, baseFields as any)
         saved = res as unknown as SavedAddress

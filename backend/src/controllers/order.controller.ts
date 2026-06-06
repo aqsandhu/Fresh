@@ -337,6 +337,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
           city: address.city,
           province: address.province,
           postal_code: address.postal_code,
+          door_picture_url: address.door_picture_url || '',
           location: {
             latitude: address.location ? address.location.y : null,
             longitude: address.location ? address.location.x : null,

@@ -123,7 +123,10 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
       ts.slot_name, o.requested_delivery_date,
       ST_Y(addr.location::geometry) as address_latitude,
       ST_X(addr.location::geometry) as address_longitude,
-      addr.door_picture_url as address_door_picture_url
+      COALESCE(
+        NULLIF(addr.door_picture_url, ''),
+        o.delivery_address_snapshot->>'door_picture_url'
+      ) as address_door_picture_url
     FROM orders o
     JOIN users u ON o.user_id = u.id
     LEFT JOIN riders r ON o.rider_id = r.id
@@ -167,7 +170,10 @@ export const getOrderDetails = asyncHandler(async (req: Request, res: Response) 
       dcr.rule_name as delivery_rule_applied,
       ST_Y(addr.location::geometry) as address_latitude,
       ST_X(addr.location::geometry) as address_longitude,
-      addr.door_picture_url as address_door_picture_url
+      COALESCE(
+        NULLIF(addr.door_picture_url, ''),
+        o.delivery_address_snapshot->>'door_picture_url'
+      ) as address_door_picture_url
     FROM orders o
     JOIN users u ON o.user_id = u.id
     LEFT JOIN riders r ON o.rider_id = r.id
