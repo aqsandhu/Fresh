@@ -65,7 +65,7 @@ const features = [
 
 export default function Footer() {
   const pathname = usePathname()
-  if (pathname.startsWith('/select-city') || pathname === '/profile') {
+  if (pathname?.startsWith('/select-city') || pathname === '/profile') {
     return null
   }
   return (

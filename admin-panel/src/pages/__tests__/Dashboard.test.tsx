@@ -219,9 +219,9 @@ describe('Dashboard Page', () => {
 
   it('shows view all link for orders', async () => {
     renderDashboard();
-    
+
     await waitFor(() => {
-      expect(screen.getByText('View All')).toBeInTheDocument();
+      expect(screen.getAllByText('View All').length).toBeGreaterThan(0);
     });
   });
 

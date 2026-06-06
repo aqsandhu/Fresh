@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { IS_DEV } from '@/config/env';
 
 interface Props {
   children: ReactNode;
@@ -76,7 +77,7 @@ export class ErrorBoundary extends Component<Props, State> {
               We apologize for the inconvenience. An unexpected error has occurred in Fresh Bazar Admin.
             </p>
 
-            {import.meta.env.DEV && this.state.error && (
+            {IS_DEV && this.state.error && (
               <div className="bg-gray-100 rounded-lg p-4 mb-6 text-left overflow-auto max-h-48">
                 <p className="text-red-600 font-mono text-sm mb-2">
                   {this.state.error.toString()}

@@ -21,6 +21,8 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^@/components/ui/BrandLogo$': '<rootDir>/src/testDoubles/BrandLogo.tsx',
+    '^@tanstack/react-query$': '<rootDir>/src/testDoubles/reactQuery.tsx',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
   transform: {

@@ -4,6 +4,8 @@
  * Includes admin context, timestamps, and error stack traces.
  */
 
+import { API_BASE_URL, IS_DEV } from '@/config/env';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 interface LogContext {
@@ -32,9 +34,7 @@ const LOG_VERSION = '1.0.0';
 const SERVICE_NAME = 'freshbazar-admin-panel';
 const BATCH_SIZE = 10;
 const FLUSH_INTERVAL_MS = 30000;
-const IS_DEVELOPMENT = import.meta.env.DEV;
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const IS_DEVELOPMENT = IS_DEV;
 
 class Logger {
   private queue: LogEntry[] = [];

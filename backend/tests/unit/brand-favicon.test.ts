@@ -4,36 +4,27 @@
 
 import { jest } from '@jest/globals';
 
-const mockDeleteStoragePaths = jest.fn<() => Promise<number>>();
-
-jest.unstable_mockModule('@/config/database', () => ({
-  query: jest.fn(),
-}));
-
-jest.unstable_mockModule('@/config/storage', () => ({
-  deleteStoragePaths: mockDeleteStoragePaths,
+jest.mock('@/config/storage', () => ({
+  deleteStoragePaths: jest.fn<any>().mockResolvedValue(1),
   objectPathFromSupabasePublicUrl: (url: string) => {
     const m = url.match(/\/uploads\/(.+)$/);
     return m ? m[1] : null;
   },
 }));
 
-jest.unstable_mockModule('@/utils/logger', () => ({
-  __esModule: true,
-  default: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
-}));
-
-const { query } = await import('@/config/database');
-const mockQuery = query as jest.MockedFunction<typeof query>;
-
-const {
+import { query } from '@/config/database';
+import { deleteStoragePaths } from '@/config/storage';
+import {
   brandFaviconStoragePaths,
   deleteBrandFaviconFromStorage,
   clearBrandFaviconSettings,
   fetchBrandFaviconSettings,
   BRAND_FAVICON_URL_KEY,
   BRAND_FAVICON_STORAGE_PATH_KEY,
-} = await import('@/utils/siteSettings');
+} from '@/utils/siteSettings';
+
+const mockQuery = query as jest.MockedFunction<typeof query>;
+const mockDeleteStoragePaths = deleteStoragePaths as jest.MockedFunction<typeof deleteStoragePaths>;
 
 describe('Brand favicon site settings', () => {
   beforeEach(() => {
@@ -76,6 +67,7 @@ describe('Brand favicon site settings', () => {
   describe('clearBrandFaviconSettings', () => {
     it('upserts empty URL and storage path keys', async () => {
       mockQuery
+        .mockResolvedValueOnce({ rows: [], rowCount: 0, command: '', oid: 0, fields: [] })
         .mockResolvedValueOnce({ rows: [], rowCount: 0, command: '', oid: 0, fields: [] })
         .mockResolvedValueOnce({ rows: [], rowCount: 0, command: '', oid: 0, fields: [] })
         .mockResolvedValueOnce({

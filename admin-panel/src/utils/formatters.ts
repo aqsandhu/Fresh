@@ -1,9 +1,5 @@
 import { format, parseISO } from 'date-fns';
-
-// Backend host derived from VITE_API_URL (strips trailing /api). Used for
-// resolving relative `/uploads/...` paths and re-hosting legacy absolute
-// dev/LAN URLs that used to be stored in the DB.
-const BACKEND_HOST = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/api\/?$/, '');
+import { BACKEND_HOST } from '@/config/env';
 
 // Normalize any image reference into something the browser can load from the
 // current backend. Accepts: data URLs (pass-through), absolute URLs (re-host

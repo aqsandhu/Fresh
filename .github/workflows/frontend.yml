@@ -23,6 +23,7 @@ jobs:
       - run: pnpm install
       - run: pnpm --filter @freshbazar/shared-types build
       - run: pnpm --filter freshbazar-admin typecheck
+      - run: pnpm --filter freshbazar-admin test -- --testPathPattern="Dashboard|StatCard"
       - run: pnpm --filter freshbazar-admin build
       - uses: actions/upload-artifact@v4
         with:
@@ -43,7 +44,7 @@ jobs:
       - run: pnpm install
       - run: pnpm --filter @freshbazar/shared-types build
       - run: pnpm --filter freshbazar-website typecheck
-      - run: pnpm --filter freshbazar-website test -- tests/store tests/lib
+      - run: pnpm --filter freshbazar-website test
       - run: pnpm --filter freshbazar-website build
       - uses: actions/upload-artifact@v4
         with:

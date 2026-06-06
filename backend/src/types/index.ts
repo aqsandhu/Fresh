@@ -32,6 +32,8 @@ export interface JwtPayload {
   userId: string;
   phone: string;
   role: UserRole;
+  /** Present on refresh tokens only */
+  type?: 'refresh';
 }
 
 // ---------------------------------------------------------------------------
