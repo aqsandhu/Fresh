@@ -5,7 +5,7 @@
 import crypto from 'crypto';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query } from '../config/database';
+import { query, withTransaction } from '../config/database';
 import { generateTokenPair, generateAdminTokenPair, verifyRefreshToken } from '../config/jwt';
 import { asyncHandler } from '../middleware';
 import {
@@ -267,20 +267,22 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-  const result = await query(
-    `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified)
-     VALUES ($1, $2, $3, $4, 'customer', FALSE)
-     RETURNING id, phone, full_name, email, role, created_at`,
-    [normalizedPhone, full_name, email ? email.toLowerCase() : null, passwordHash]
-  );
+  const user = await withTransaction(async (client) => {
+    const result = await client.query(
+      `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified)
+       VALUES ($1, $2, $3, $4, 'customer', FALSE)
+       RETURNING id, phone, full_name, email, role, created_at`,
+      [normalizedPhone, full_name, email ? email.toLowerCase() : null, passwordHash]
+    );
+    const inserted = result.rows[0];
+    await client.query(
+      'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
+      [inserted.id]
+    );
+    return inserted;
+  });
 
-  const user = result.rows[0];
   const tokens = generateTokenPair(user.id, user.phone, user.role);
-
-  await query(
-    'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
-    [user.id]
-  );
 
   logger.info('New user registered (legacy)', { userId: user.id, phone: user.phone });
 

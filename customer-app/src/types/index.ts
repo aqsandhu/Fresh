@@ -30,6 +30,8 @@ export interface StoreProduct {
   reviewCount?: number;
   isFeatured?: boolean;
   tags?: string[];
+  /** Legacy single-image field from some API responses */
+  imageUrl?: string;
   halfKgPrice?: number | null;
   quarterKgPrice?: number | null;
   halfDozenPrice?: number | null;

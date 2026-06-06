@@ -44,7 +44,7 @@ jest.mock('firebase-admin', () => ({
     cert: jest.fn(),
   },
   auth: jest.fn().mockReturnValue({
-    verifyIdToken: jest.fn().mockResolvedValue({
+    verifyIdToken: jest.fn<any>().mockResolvedValue({
       uid: 'test-uid',
       phone_number: '+923001234567',
     }),
@@ -53,8 +53,16 @@ jest.mock('firebase-admin', () => ({
 
 // Mock Firebase Auth Service
 jest.mock('@/services/otp.service', () => ({
-  verifyFirebaseToken: jest.fn().mockResolvedValue({ success: true, phone: '+923001234567', message: 'Token verified' }),
-  verifyPhoneFromRequest: jest.fn().mockResolvedValue({ success: true, phone: '+923001234567', message: 'Token verified' }),
+  verifyFirebaseToken: jest.fn<any>().mockResolvedValue({
+    success: true,
+    phone: '+923001234567',
+    message: 'Token verified',
+  }),
+  verifyPhoneFromRequest: jest.fn<any>().mockResolvedValue({
+    success: true,
+    phone: '+923001234567',
+    message: 'Token verified',
+  }),
 }));
 
 // Mock logger to reduce test noise
@@ -74,9 +82,11 @@ jest.mock('@/utils/logger', () => ({
 // Mock database
 jest.mock('@/config/database', () => ({
   query: jest.fn(),
-  withTransaction: jest.fn((callback) => callback({ query: jest.fn() })),
-  testConnection: jest.fn().mockResolvedValue(true),
-  closePool: jest.fn().mockResolvedValue(undefined),
+  withTransaction: jest.fn((callback: (client: { query: jest.Mock }) => unknown) =>
+    callback({ query: jest.fn() })
+  ),
+  testConnection: jest.fn<any>().mockResolvedValue(true),
+  closePool: jest.fn<any>().mockResolvedValue(undefined),
 }));
 
 // ============================================================================

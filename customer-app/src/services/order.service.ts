@@ -122,7 +122,16 @@ function formatSlotTime(time: string): string {
 }
 
 // Map backend time slot to customer app DeliverySlot type
-function mapTimeSlot(raw: any, dateStr: string): DeliverySlot & { available_slots?: number } {
+export type DeliverySlotWithCapacity = DeliverySlot & {
+  available_slots?: number;
+  isFreeDelivery?: boolean;
+  date?: string;
+  label?: string;
+  available?: boolean;
+  isExpress?: boolean;
+};
+
+function mapTimeSlot(raw: any, dateStr: string): DeliverySlotWithCapacity {
   const startFormatted = formatSlotTime(raw.start_time);
   const endFormatted = formatSlotTime(raw.end_time);
   const availableSlots = parseInt(raw.available_slots, 10) || 0;
@@ -220,7 +229,7 @@ class OrderService {
     }
   }
 
-  async getDeliverySlots(date?: string): Promise<ApiResponse<DeliverySlot[]>> {
+  async getDeliverySlots(date?: string): Promise<ApiResponse<DeliverySlotWithCapacity[]>> {
     try {
       const dateStr = date || new Date().toISOString().split('T')[0];
       const response = await apiClient.get('/orders/time-slots', { params: { date: dateStr } });

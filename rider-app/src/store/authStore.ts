@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Rider, LoginCredentials } from '../types';
 import authService from '../services/auth.service';
 import { storeTokens, clearTokens, getStoredToken } from '../lib/secureTokens';
+import { registerSessionHandlers } from '../lib/sessionEvents';
 
 interface AuthState {
   rider: Rider | null;
@@ -108,3 +109,8 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+registerSessionHandlers({
+  onClear: () => useAuthStore.getState().logout(),
+  onTokenUpdate: (token) => useAuthStore.setState({ token, isAuthenticated: true }),
+});
