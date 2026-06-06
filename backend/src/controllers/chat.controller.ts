@@ -68,6 +68,11 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'Message cannot be empty', 400);
   }
 
+  const trimmedMessage = message.trim();
+  if (trimmedMessage.length > 2000) {
+    return errorResponse(res, 'Message must be at most 2000 characters', 400);
+  }
+
   // Verify access and check order is active (not delivered/cancelled)
   const access = await query(
     `SELECT o.id, o.status, o.user_id,
@@ -98,7 +103,7 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     `INSERT INTO order_messages (order_id, sender_type, sender_id, message)
      VALUES ($1, $2, $3, $4)
      RETURNING id, message, sender_type, created_at`,
-    [orderId, senderType, req.user.id, message.trim()]
+    [orderId, senderType, req.user.id, trimmedMessage]
   );
 
   const newMsg = result.rows[0];
@@ -113,7 +118,7 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
     const { emitToUser } = require('../config/socket');
     emitToUser(notifyUserId, 'chat:notification', {
       orderId,
-      message: message.trim(),
+      message: trimmedMessage,
       senderName: req.user.full_name,
       senderType,
     });
