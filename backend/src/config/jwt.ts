@@ -174,7 +174,12 @@ export const getTokenExpiry = () => {
 // Helper to parse expiration string to seconds
 const parseExpiration = (exp: string): number => {
   const match = exp.match(/^(\d+)([smhd])$/);
-  if (!match) return 900; // Default 15 minutes
+  if (!match) {
+    logger.warn(
+      `Invalid JWT expiration format "${exp}" — expected e.g. 15m, 7d. Falling back to 900 seconds.`
+    );
+    return 900;
+  }
 
   const value = parseInt(match[1]);
   const unit = match[2];
