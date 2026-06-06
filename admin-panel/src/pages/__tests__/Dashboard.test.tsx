@@ -61,8 +61,16 @@ jest.mock('@/components/ui/Button', () => ({
 }));
 
 jest.mock('@/components/ui/Badge', () => ({
-  __esModule: true,
-  default: ({ children, className }: any) => <span className={className}>{children}</span>,
+  Badge: ({ children, className }: any) => <span className={className}>{children}</span>,
+}));
+
+jest.mock('lucide-react', () => ({
+  TrendingUp: () => <span>TrendingUp</span>,
+  ShoppingBag: () => <span>ShoppingBag</span>,
+  Clock: () => <span>Clock</span>,
+  CheckCircle: () => <span>CheckCircle</span>,
+  AlertTriangle: () => <span>AlertTriangle</span>,
+  ArrowRight: () => <span>ArrowRight</span>,
 }));
 
 describe('Dashboard Page', () => {

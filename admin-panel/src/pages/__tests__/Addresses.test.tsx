@@ -4,54 +4,49 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { Addresses } from '@/pages/Addresses';
 
-// Mock services
 const mockAssignHouseNumber = jest.fn();
+const mockGetCustomers = jest.fn();
+const mockGetAddresses = jest.fn();
+
+jest.mock('@/context/AuthContext', () => ({
+  useAuthContext: () => ({
+    user: { role: 'admin', fullName: 'Test Admin', permissions: ['addresses.view'] },
+  }),
+}));
+
 jest.mock('@/services/address.service', () => ({
   addressService: {
-    assignHouseNumber: (addressId: string, houseNumber: string) => mockAssignHouseNumber(addressId, houseNumber),
+    assignHouseNumber: (...args: unknown[]) => mockAssignHouseNumber(...args),
+    getAddresses: (...args: unknown[]) => mockGetAddresses(...args),
+    deleteAddress: jest.fn(),
+    clearDoorPicture: jest.fn(),
+    clearLocation: jest.fn(),
   },
 }));
 
-// Mock toast
-jest.mock('react-hot-toast', () => ({
-  success: jest.fn(),
-  error: jest.fn(),
+jest.mock('@/services/customer.service', () => ({
+  customerService: {
+    getCustomers: (...args: unknown[]) => mockGetCustomers(...args),
+    getCustomerAddresses: jest.fn(),
+  },
 }));
 
-// Mock UI components
-jest.mock('@/components/ui/Card', () => ({
-  __esModule: true,
-  default: ({ children, className }: any) => <div className={className}>{children}</div>,
+jest.mock('@/utils/formatters', () => ({
+  resolveImageUrl: (url: string) => url,
 }));
 
-jest.mock('@/components/ui/Button', () => ({
-  __esModule: true,
-  default: ({ children, type, isLoading, onClick, className }: any) => (
-    <button type={type} disabled={isLoading} onClick={onClick} className={className}>
-      {isLoading ? 'Assigning...' : children}
-    </button>
-  ),
-}));
-
-jest.mock('@/components/ui/Input', () => ({
-  __esModule: true,
-  default: ({ label, value, onChange, placeholder, required, error }: any) => (
-    <div>
-      <label>{label}</label>
-      <input
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        required={required}
-        aria-label={label}
-      />
-      {error && <span role="alert">{error}</span>}
-    </div>
-  ),
-}));
+jest.mock('react-hot-toast', () => {
+  const success = jest.fn();
+  const error = jest.fn();
+  return {
+    __esModule: true,
+    default: { success, error },
+    success,
+    error,
+  };
+});
 
 jest.mock('@/components/layout', () => ({
-  __esModule: true,
   Layout: ({ children, title, subtitle }: any) => (
     <div data-testid="layout">
       <h1>{title}</h1>
@@ -61,11 +56,49 @@ jest.mock('@/components/layout', () => ({
   ),
 }));
 
-// Mock lucide-react
 jest.mock('lucide-react', () => ({
-  MapPin: () => <span data-testid="map-icon">MapPin</span>,
-  CheckCircle: () => <span data-testid="check-icon">CheckCircle</span>,
+  MapPin: () => <span>MapPin</span>,
+  CheckCircle: () => <span>CheckCircle</span>,
+  Search: () => <span>Search</span>,
+  Home: () => <span>Home</span>,
+  User: () => <span>User</span>,
+  Phone: () => <span>Phone</span>,
+  Navigation: () => <span>Navigation</span>,
+  Calendar: () => <span>Calendar</span>,
+  Trash2: () => <span>Trash2</span>,
+  Edit3: () => <span>Edit3</span>,
+  ChevronDown: () => <span>ChevronDown</span>,
+  X: () => <span>X</span>,
+  Loader2: () => <span>Loader2</span>,
+  Building: () => <span>Building</span>,
+  Filter: () => <span>Filter</span>,
+  Image: () => <span>Image</span>,
 }));
+
+const mockAddresses = [
+  {
+    id: 'addr-1',
+    writtenAddress: 'House 12, Street 4',
+    areaName: 'Model Town',
+    city: 'Gujrat',
+    province: 'Punjab',
+    houseNumber: '',
+    addressType: 'home',
+    isDefault: true,
+    createdAt: '2024-01-15T10:00:00Z',
+  },
+  {
+    id: 'addr-2',
+    writtenAddress: 'Flat 5, Block B',
+    areaName: 'City Center',
+    city: 'Gujrat',
+    province: 'Punjab',
+    houseNumber: '42-A',
+    addressType: 'work',
+    isDefault: false,
+    createdAt: '2024-02-01T10:00:00Z',
+  },
+];
 
 describe('Addresses Page', () => {
   const createTestQueryClient = () =>
@@ -88,166 +121,125 @@ describe('Addresses Page', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetCustomers.mockResolvedValue({
+      customers: [
+        { id: 'cust-1', fullName: 'Ali Khan', phone: '+923001234567' },
+      ],
+    });
+    mockGetAddresses.mockResolvedValue({ addresses: mockAddresses });
   });
 
-  it('renders page title and subtitle', () => {
+  it('renders page title and subtitle', async () => {
     renderAddresses();
-    
+
     expect(screen.getByText('Address Management')).toBeInTheDocument();
-    expect(screen.getByText('Assign house numbers to delivery addresses')).toBeInTheDocument();
+    expect(
+      screen.getByText('Manage customer addresses and assign house numbers')
+    ).toBeInTheDocument();
   });
 
   it('renders information card about house number assignment', () => {
     renderAddresses();
-    
+
     expect(screen.getByText('House Number Assignment')).toBeInTheDocument();
-    expect(screen.getByText(/Assign a house number to a customer address/)).toBeInTheDocument();
+    expect(screen.getByText(/Select a customer to view their addresses/)).toBeInTheDocument();
   });
 
-  it('renders address ID input field', () => {
+  it('renders customer selector', () => {
     renderAddresses();
-    
-    expect(screen.getByLabelText('Address ID *')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter address UUID')).toBeInTheDocument();
+
+    expect(screen.getByText('Select Customer')).toBeInTheDocument();
+    expect(screen.getByText('All Customers')).toBeInTheDocument();
   });
 
-  it('renders house number input field', () => {
+  it('renders address search field', () => {
     renderAddresses();
-    
-    expect(screen.getByLabelText('House/Flat Number *')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('e.g., 42-A, Flat 5')).toBeInTheDocument();
+
+    expect(screen.getByText('Search Addresses')).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText('Search by area, city, house number...')
+    ).toBeInTheDocument();
   });
 
-  it('renders assign button', () => {
+  it('loads and displays addresses', async () => {
     renderAddresses();
-    
-    const assignButton = screen.getByRole('button', { name: /assign house number/i });
-    expect(assignButton).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByText('House 12, Street 4')).toBeInTheDocument();
+      expect(screen.getByText('Flat 5, Block B')).toBeInTheDocument();
+    });
   });
 
-  it('allows entering address ID', () => {
+  it('shows unassigned house number state', async () => {
     renderAddresses();
-    
-    const addressInput = screen.getByLabelText('Address ID *');
-    fireEvent.change(addressInput, { target: { value: 'addr-123-uuid' } });
-    
-    expect(addressInput).toHaveValue('addr-123-uuid');
+
+    await waitFor(() => {
+      expect(screen.getByText('Not assigned')).toBeInTheDocument();
+      expect(screen.getByText('42-A')).toBeInTheDocument();
+    });
   });
 
-  it('allows entering house number', () => {
+  it('filters addresses by search term', async () => {
     renderAddresses();
-    
-    const houseInput = screen.getByLabelText('House/Flat Number *');
-    fireEvent.change(houseInput, { target: { value: '42-A' } });
-    
-    expect(houseInput).toHaveValue('42-A');
+
+    await waitFor(() => {
+      expect(screen.getByText('House 12, Street 4')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText('Search by area, city, house number...'), {
+      target: { value: 'Flat 5' },
+    });
+
+    expect(screen.getByText('Flat 5, Block B')).toBeInTheDocument();
+    expect(screen.queryByText('House 12, Street 4')).not.toBeInTheDocument();
   });
 
-  it('submits form with valid data', async () => {
+  it('opens house number editor and assigns a number', async () => {
     mockAssignHouseNumber.mockResolvedValueOnce({ success: true });
-    
     renderAddresses();
-    
-    const addressInput = screen.getByLabelText('Address ID *');
-    const houseInput = screen.getByLabelText('House/Flat Number *');
-    
-    fireEvent.change(addressInput, { target: { value: 'addr-123' } });
-    fireEvent.change(houseInput, { target: { value: '42-A' } });
-    
-    const form = houseInput.closest('form');
-    if (form) fireEvent.submit(form);
-    
+
     await waitFor(() => {
-      expect(mockAssignHouseNumber).toHaveBeenCalledWith('addr-123', '42-A');
+      expect(screen.getByText('Not assigned')).toBeInTheDocument();
+    });
+
+    const editButtons = screen.getAllByTitle('Edit house number');
+    fireEvent.click(editButtons[0]);
+
+    const input = screen.getByPlaceholderText('e.g., 42-A');
+    fireEvent.change(input, { target: { value: '12-B' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(mockAssignHouseNumber).toHaveBeenCalledWith('addr-1', '12-B');
     });
   });
 
-  it('validates required fields before submission', () => {
+  it('shows empty state when no addresses match search', async () => {
+    mockGetAddresses.mockResolvedValueOnce({ addresses: [] });
     renderAddresses();
-    
-    const addressInput = screen.getByLabelText('Address ID *');
-    const houseInput = screen.getByLabelText('House/Flat Number *');
-    
-    // Both fields should be required
-    expect(addressInput).toHaveAttribute('required');
-    expect(houseInput).toHaveAttribute('required');
-  });
 
-  it('clears form after successful submission', async () => {
-    mockAssignHouseNumber.mockResolvedValueOnce({ success: true });
-    
-    renderAddresses();
-    
-    const addressInput = screen.getByLabelText('Address ID *');
-    const houseInput = screen.getByLabelText('House/Flat Number *');
-    
-    fireEvent.change(addressInput, { target: { value: 'addr-123' } });
-    fireEvent.change(houseInput, { target: { value: '42-A' } });
-    
-    const form = houseInput.closest('form');
-    if (form) fireEvent.submit(form);
-    
     await waitFor(() => {
-      expect(mockAssignHouseNumber).toHaveBeenCalled();
+      expect(screen.getByText('No Addresses Found')).toBeInTheDocument();
     });
   });
 
-  it('handles API error gracefully', async () => {
-    mockAssignHouseNumber.mockRejectedValueOnce({
-      response: { data: { message: 'Address not found' } },
-    });
-    
+  it('shows address summary footer', async () => {
     renderAddresses();
-    
-    const addressInput = screen.getByLabelText('Address ID *');
-    const houseInput = screen.getByLabelText('House/Flat Number *');
-    
-    fireEvent.change(addressInput, { target: { value: 'invalid-id' } });
-    fireEvent.change(houseInput, { target: { value: '42' } });
-    
-    const form = houseInput.closest('form');
-    if (form) fireEvent.submit(form);
-    
+
     await waitFor(() => {
-      expect(mockAssignHouseNumber).toHaveBeenCalled();
+      expect(screen.getByText(/Showing 2 addresses/)).toBeInTheDocument();
+      expect(screen.getByText(/1 with house numbers assigned/)).toBeInTheDocument();
     });
   });
 
-  it('renders assignment instructions', () => {
+  it('opens customer dropdown and lists customers', async () => {
     renderAddresses();
-    
-    expect(screen.getByText(/Enter the address ID and the house\/flat number to assign./)).toBeInTheDocument();
-  });
 
-  it('accepts various house number formats', () => {
-    const validFormats = ['42', '42-A', 'Flat 5', 'House 12', 'B-17', '101', 'Ground Floor'];
-    
-    renderAddresses();
-    const houseInput = screen.getByLabelText('House/Flat Number *');
-    
-    for (const format of validFormats) {
-      fireEvent.change(houseInput, { target: { value: format } });
-      expect(houseInput).toHaveValue(format);
-    }
-  });
+    fireEvent.click(screen.getByText('All Customers'));
 
-  it('displays loading state during submission', async () => {
-    mockAssignHouseNumber.mockImplementation(() => new Promise(() => {}));
-    
-    renderAddresses();
-    
-    const addressInput = screen.getByLabelText('Address ID *');
-    const houseInput = screen.getByLabelText('House/Flat Number *');
-    
-    fireEvent.change(addressInput, { target: { value: 'addr-123' } });
-    fireEvent.change(houseInput, { target: { value: '42-A' } });
-    
-    const form = houseInput.closest('form');
-    if (form) fireEvent.submit(form);
-    
     await waitFor(() => {
-      const button = screen.getByRole('button');
-      expect(button).toBeDisabled();
+      expect(screen.getByText('Ali Khan')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search customers...')).toBeInTheDocument();
     });
   });
 });
