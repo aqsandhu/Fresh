@@ -42,6 +42,11 @@ api.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`
     }
   }
+  // Let the browser set multipart boundary — a hard-coded Content-Type breaks
+  // multer parsing so door_picture never reaches req.file.
+  if (config.data instanceof FormData && config.headers) {
+    delete config.headers['Content-Type']
+  }
   return config
 })
 
@@ -416,6 +421,33 @@ export const addressesApi = {
 
   create: async (data: Record<string, any>): Promise<Address> => {
     const response = await api.post('/addresses', data)
+    const body = response.data
+    return body.data || body
+  },
+
+  /** Create address with optional door picture (multipart). */
+  createWithDoorPicture: async (
+    fields: Record<string, string | number | boolean>,
+    doorPicture: File
+  ): Promise<Address> => {
+    const formData = new FormData()
+    Object.entries(fields).forEach(([k, v]) => formData.append(k, String(v)))
+    formData.append('door_picture', doorPicture, doorPicture.name || 'door.jpg')
+    const response = await api.post('/addresses', formData)
+    const body = response.data
+    return body.data || body
+  },
+
+  /** Update address with optional door picture (multipart). */
+  updateWithDoorPicture: async (
+    id: string,
+    fields: Record<string, string | number | boolean>,
+    doorPicture: File
+  ): Promise<Address> => {
+    const formData = new FormData()
+    Object.entries(fields).forEach(([k, v]) => formData.append(k, String(v)))
+    formData.append('door_picture', doorPicture, doorPicture.name || 'door.jpg')
+    const response = await api.put(`/addresses/${id}`, formData)
     const body = response.data
     return body.data || body
   },

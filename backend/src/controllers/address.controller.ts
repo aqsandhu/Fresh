@@ -109,6 +109,13 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
 
   // Door picture optional at checkout; empty string satisfies legacy NOT NULL constraint.
   const door_picture_url = req.file?.url || '';
+  if (req.file && !door_picture_url) {
+    return errorResponse(
+      res,
+      'Door picture upload failed. Please try again or place the order without a door photo.',
+      400
+    );
+  }
 
   let zone_id = null;
   const hasLocation =
@@ -315,6 +322,13 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
   }
 
   // Update door picture if new file uploaded — Supabase URL on req.file.url.
+  if (req.file && !req.file.url) {
+    return errorResponse(
+      res,
+      'Door picture upload failed. Please try again or save without a door photo.',
+      400
+    );
+  }
   if (req.file?.url) {
     updates.push(`door_picture_url = $${paramIndex++}`);
     values.push(req.file.url);
