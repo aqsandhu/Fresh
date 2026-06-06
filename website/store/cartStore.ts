@@ -20,7 +20,11 @@ const persistActiveCityItems = (
 ): Pick<CartState, 'items' | 'cartsByCity' | 'activeCityId'> => {
   const cityId = state.activeCityId || getSelectedCityId()
   if (!cityId) {
-    return { items }
+    return {
+      items,
+      cartsByCity: state.cartsByCity,
+      activeCityId: state.activeCityId,
+    }
   }
   return {
     items,

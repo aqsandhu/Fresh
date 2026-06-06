@@ -7,7 +7,7 @@
 
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
-import { Application, Request, Response } from 'express';
+import { Application, Request, Response, NextFunction } from 'express';
 import logger from '../utils/logger';
 
 /**
@@ -340,6 +340,7 @@ verification. Optional \`x-idempotency-key\` header prevents duplicate processin
   apis: [
     './src/routes/*.ts',
     './src/controllers/*.ts',
+    './src/controllers/**/*.ts',
   ],
 };
 
@@ -352,15 +353,24 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
  * Setup Swagger UI in Express app
  */
 export const setupSwagger = (app: Application): void => {
+  // In production, gate the docs behind a password header. In non-production
+  // environments the docs remain open for convenience.
+  const swaggerGuard = (req: Request, res: Response, next: NextFunction) => {
+    if (process.env.NODE_ENV !== 'production') return next();
+    const pwd = req.headers['x-swagger-password'];
+    if (pwd && pwd === process.env.SWAGGER_PASSWORD) return next();
+    return res.status(401).json({ message: 'Unauthorized' });
+  };
+
   // Serve Swagger UI
-  app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  app.use('/api/docs', swaggerGuard, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'FreshBazar API Documentation',
   }));
 
   // Serve raw OpenAPI spec as JSON
-  app.get('/api/docs.json', (req: Request, res: Response) => {
+  app.get('/api/docs.json', swaggerGuard, (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/json');
     res.send(swaggerSpec);
   });

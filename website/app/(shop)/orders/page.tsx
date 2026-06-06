@@ -19,7 +19,7 @@ import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
-import { OrderStatus } from '@/types'
+import { OrderDisplayStatus } from '@/types'
 import { formatPriceShort, formatDate, getOrderStatusColor, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
 import { unitLabelShort, unitPriceCaption } from '@/lib/unitPricing'
 import { ordersApi } from '@/lib/api'
@@ -30,8 +30,8 @@ function resolveImg(path: string | null | undefined): string {
 }
 
 // Map backend status to website UI status
-function mapStatus(s: string): OrderStatus {
-  const map: Record<string, OrderStatus> = {
+function mapStatus(s: string): OrderDisplayStatus {
+  const map: Record<string, OrderDisplayStatus> = {
     'pending': 'received',
     'confirmed': 'received',
     'preparing': 'preparing',
@@ -47,14 +47,14 @@ function mapStatus(s: string): OrderStatus {
 interface MappedOrder {
   id: string
   orderNumber: string
-  status: OrderStatus
+  status: OrderDisplayStatus
   total: number
   createdAt: string
   items: { name: string; image: string; quantity: number; price: number; unit?: string }[]
   rider?: { name: string; phone: string }
 }
 
-const statusIcons: Record<OrderStatus, typeof Package> = {
+const statusIcons: Record<OrderDisplayStatus, typeof Package> = {
   'received': Clock,
   'preparing': ChefHat,
   'out-for-delivery': Truck,
@@ -81,8 +81,7 @@ export default function OrdersPage() {
   const loadOrders = async () => {
     try {
       const res = await ordersApi.getAll()
-      const payload = res.data || res
-      const rawOrders = payload.orders || (Array.isArray(payload) ? payload : [])
+      const rawOrders = Array.isArray(res) ? res : []
       
       const mapped: MappedOrder[] = rawOrders.map((o: any) => ({
         id: o.id,

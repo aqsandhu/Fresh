@@ -3,8 +3,6 @@
 // Tests: Add, remove, update quantity, clear, calculations, delivery charges
 // ============================================================================
 
-import { jest } from '@jest/globals';
-
 describe('Cart Store', () => {
   // Mock cart state and functions
   const createMockCartState = () => ({

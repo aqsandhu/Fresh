@@ -9,6 +9,15 @@
 export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider' | 'moderator';
 export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending';
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready_for_pickup' | 'out_for_delivery' | 'delivered' | 'cancelled' | 'refunded';
+
+/** UI-facing order status used on orders list + track pages (mapped from backend OrderStatus). */
+export type OrderDisplayStatus =
+  | 'received'
+  | 'preparing'
+  | 'out-for-delivery'
+  | 'delivered'
+  | 'cancelled'
+  | 'refunded';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
 export type PaymentMethod = 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'online';
 export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'pack';
@@ -38,22 +47,29 @@ export interface Product {
   price: number;
   sale_price?: number;
   unit: UnitType;
-  unit_quantity: number;
+  unit_quantity?: number;
   unitType?: string;
-  stock_quantity: number;
+  stock_quantity?: number;
   stockQuantity?: number;
+  /** UI convenience alias populated by mapBackendProduct. */
+  stock?: number;
   image_url?: string;
   image?: string;
   primaryImage?: string;
   images?: string[];
-  category_id: string;
+  category_id?: string;
   categoryId?: string;
-  is_featured: boolean;
+  is_featured?: boolean;
   isFeatured?: boolean;
-  is_active: boolean;
+  is_active?: boolean;
   isActive?: boolean;
   compareAtPrice?: number;
   inStock?: boolean;
+  /** UI badge: in stock and active. */
+  isFresh?: boolean;
+  rating?: number;
+  reviews?: number;
+  tags?: string[];
   chickenOnly?: boolean;
   isChickenOnly?: boolean;
   category?: string;
@@ -73,9 +89,12 @@ export interface Category {
   nameUr?: string;
   nameUrdu?: string;
   description?: string;
+  slug?: string;
   image_url?: string;
   imageUrl?: string;
-  is_active: boolean;
+  /** UI convenience alias populated by mapBackendCategory. */
+  image?: string;
+  is_active?: boolean;
   isActive?: boolean;
   icon?: string;
   displayOrder?: number;
@@ -141,6 +160,8 @@ export interface Order {
   scheduled_delivery_at?: string;
   slot_name?: string;
   slotName?: string;
+  slot_start?: string;
+  slot_end?: string;
   start_time?: string;
   startTime?: string;
   end_time?: string;

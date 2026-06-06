@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Rider, LoginCredentials } from '../types';
 import authService from '../services/auth.service';
+import { storeTokens, clearTokens, getStoredToken } from '../lib/secureTokens';
 
 interface AuthState {
   rider: Rider | null;
@@ -18,6 +19,8 @@ interface AuthState {
   setOnline: (online: boolean) => void;
   updateStats: (deliveries: number, earnings: number) => void;
   logout: () => void;
+  /** Loads the access token from SecureStore into memory on app start. */
+  hydrateAuth: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -34,6 +37,7 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authService.login(credentials);
+          await storeTokens(response.token, response.refreshToken);
           set({
             rider: response.rider,
             token: response.token,
@@ -74,6 +78,7 @@ export const useAuthStore = create<AuthState>()(
       },
       
       logout: () => {
+        clearTokens().catch(() => {});
         set({
           rider: null,
           token: null,
@@ -83,10 +88,23 @@ export const useAuthStore = create<AuthState>()(
           error: null,
         });
       },
+
+      hydrateAuth: async () => {
+        const token = await getStoredToken();
+        if (token) {
+          set({ token, isAuthenticated: true });
+        }
+      },
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      // Tokens live in SecureStore, not in the AsyncStorage-persisted blob.
+      partialize: (state) => ({
+        rider: state.rider,
+        isAuthenticated: state.isAuthenticated,
+        isOnline: state.isOnline,
+      }),
     }
   )
 );

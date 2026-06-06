@@ -1,7 +1,9 @@
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { getCurrentTabName, setPendingRedirect } from '../navigation/navigationUtils';
 import { API_BASE_URL, API_TIMEOUT } from '../utils/constants';
+import { getStoredToken } from '../lib/secureTokens';
+import { refreshAccessToken } from '../lib/tokenRefresh';
 
 class ApiService {
   private client: AxiosInstance;
@@ -18,7 +20,7 @@ class ApiService {
     // Request interceptor to add auth token
     this.client.interceptors.request.use(
       async (config) => {
-        const token = useAuthStore.getState().token;
+        const token = useAuthStore.getState().token || (await getStoredToken());
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
@@ -27,22 +29,44 @@ class ApiService {
       (error) => Promise.reject(error)
     );
 
-    // Response interceptor for error handling
+    // Response interceptor: try a token refresh + retry on 401 before logging out
     this.client.interceptors.response.use(
       (response) => response,
-      (error: AxiosError) => {
-        if (error.response?.status === 401) {
-          // Save current tab so user returns here after re-login
-          const tabName = getCurrentTabName();
-          if (tabName) {
-            setPendingRedirect(tabName);
+      async (error: AxiosError) => {
+        const originalRequest = error.config as InternalAxiosRequestConfig & {
+          _retried?: boolean;
+        };
+
+        if (error.response?.status === 401 && originalRequest && !originalRequest._retried) {
+          const isRefreshCall = originalRequest.url?.includes('/auth/refresh');
+          if (isRefreshCall) {
+            this.forceLogout();
+            return Promise.reject(error);
           }
-          // Token expired or invalid
-          useAuthStore.getState().logout();
+
+          originalRequest._retried = true;
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            originalRequest.headers = originalRequest.headers || {};
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            return this.client.request(originalRequest);
+          }
+
+          this.forceLogout();
         }
+
         return Promise.reject(error);
       }
     );
+  }
+
+  private forceLogout() {
+    // Save current tab so user returns here after re-login
+    const tabName = getCurrentTabName();
+    if (tabName) {
+      setPendingRedirect(tabName);
+    }
+    useAuthStore.getState().logout();
   }
 
   getClient(): AxiosInstance {

@@ -186,9 +186,9 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
             <span className="text-xs text-gray-500 italic">{typingUser} is typing...</span>
           )}
           {isConnected ? (
-            <Wifi className="w-4 h-4 text-green-500" title="Online" />
+            <Wifi className="w-4 h-4 text-green-500" aria-label="Online" />
           ) : (
-            <WifiOff className="w-4 h-4 text-gray-400" title="Offline" />
+            <WifiOff className="w-4 h-4 text-gray-400" aria-label="Offline" />
           )}
         </div>
       </div>

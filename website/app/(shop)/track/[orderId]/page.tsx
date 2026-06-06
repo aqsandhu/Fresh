@@ -24,7 +24,7 @@ import Button from '@/components/ui/Button'
 import Badge from '@/components/ui/Badge'
 import OrderChatBox from '@/components/ui/OrderChatBox'
 import dynamic from 'next/dynamic'
-import { OrderStatus } from '@/types'
+import { OrderDisplayStatus, ProductUnit } from '@/types'
 import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { unitLabelShort, unitPriceCaption } from '@/lib/unitPricing'
@@ -43,8 +43,8 @@ function resolveImg(path: string | null | undefined): string {
   return resolveImageUrl(path) || '/placeholder-product.jpg'
 }
 
-function mapStatus(s: string): OrderStatus {
-  const map: Record<string, OrderStatus> = {
+function mapStatus(s: string): OrderDisplayStatus {
+  const map: Record<string, OrderDisplayStatus> = {
     'pending': 'received',
     'confirmed': 'received',
     'preparing': 'preparing',
@@ -57,12 +57,18 @@ function mapStatus(s: string): OrderStatus {
   return map[s] || 'received'
 }
 
-const timelineSteps: { status: OrderStatus; label: string; icon: typeof Package }[] = [
+const timelineSteps: { status: OrderDisplayStatus; label: string; icon: typeof Package }[] = [
   { status: 'received', label: 'Order Received', icon: Package },
   { status: 'preparing', label: 'Preparing', icon: ChefHat },
   { status: 'out-for-delivery', label: 'Out for Delivery', icon: Truck },
   { status: 'delivered', label: 'Delivered', icon: CheckCircle },
 ]
+
+function parseOrderAmount(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const n = parseFloat(String(value ?? ''))
+  return Number.isFinite(n) ? n : 0
+}
 
 export default function TrackOrderPage() {
   const params = useParams()
@@ -75,7 +81,7 @@ export default function TrackOrderPage() {
     queryKey: ['order', orderId],
     queryFn: async () => {
       const response = await ordersApi.getById(orderId)
-      const raw = response.data || response
+      const raw = response
       const snapshot = raw.delivery_address_snapshot || {}
 
       // Raw slot times — formatted on the client via SlotTimeLabel (12h/24h)
@@ -100,9 +106,9 @@ export default function TrackOrderPage() {
         orderNumber: raw.order_number || raw.id,
         status: mapStatus(raw.status),
         createdAt: raw.placed_at || raw.created_at || '',
-        subtotal: parseFloat(raw.subtotal) || 0,
-        deliveryCharge: parseFloat(raw.delivery_charge) || 0,
-        total: parseFloat(raw.total_amount) || 0,
+        subtotal: parseOrderAmount(raw.subtotal),
+        deliveryCharge: parseOrderAmount(raw.delivery_charge),
+        total: parseOrderAmount(raw.total_amount),
         slotStart,
         slotEnd,
         slotFallback,
@@ -118,7 +124,7 @@ export default function TrackOrderPage() {
           },
           quantity: item.quantity || 1,
           price: parseFloat(item.unit_price) || 0,
-          unit: item.unit || 'full',
+          unit: (item.unit || 'full') as ProductUnit,
         })),
         rider: raw.rider_name ? {
           name: raw.rider_name,
@@ -324,7 +330,12 @@ export default function TrackOrderPage() {
             >
               <h2 className="text-xl font-semibold mb-4">Order Items</h2>
               <div className="space-y-4">
-                {order.items.map((item, index) => (
+                {order.items.map((item: {
+                  product: { name: string; image?: string; image_url?: string }
+                  quantity: number
+                  price: number
+                  unit?: ProductUnit
+                }, index: number) => (
                   <div key={index} className="flex items-center gap-4">
                     <div className="relative w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                       <img

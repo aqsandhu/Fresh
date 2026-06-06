@@ -23,6 +23,7 @@ class AuthService {
         todayEarnings: 0,
       },
       token: tokens.accessToken || tokens.access_token,
+      refreshToken: tokens.refreshToken || tokens.refresh_token || null,
     };
   }
 

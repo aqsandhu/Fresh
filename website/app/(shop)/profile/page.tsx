@@ -96,8 +96,7 @@ export default function ProfilePage() {
   const loadAddresses = async () => {
     try {
       const res = await addressesApi.getAll()
-      const raw = res.data || res
-      const list = Array.isArray(raw) ? raw : []
+      const list = Array.isArray(res) ? res : []
       setAddresses(list.map((a: any) => ({
         id: a.id,
         label: a.address_type || a.label || 'Address',

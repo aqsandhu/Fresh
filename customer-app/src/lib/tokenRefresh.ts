@@ -1,6 +1,10 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL, STORAGE_KEYS } from '@utils/constants';
+import { API_BASE_URL } from '@utils/constants';
+import {
+  getStoredToken,
+  getStoredRefreshToken,
+  storeTokens,
+} from '@/lib/secureTokens';
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -30,7 +34,7 @@ export async function refreshAccessToken(): Promise<string | null> {
 
   refreshPromise = (async () => {
     try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+      const stored = await getStoredRefreshToken();
       if (!stored) return null;
 
       const { data } = await axios.post(`${API_BASE_URL}/auth/refresh`, {
@@ -43,10 +47,7 @@ export async function refreshAccessToken(): Promise<string | null> {
       const refreshToken = tokens?.refreshToken || tokens?.refresh_token;
       if (!accessToken) return null;
 
-      await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, accessToken);
-      if (refreshToken) {
-        await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
-      }
+      await storeTokens(accessToken, refreshToken);
 
       const { useAuthStore } = require('@store/authStore');
       useAuthStore.setState({
@@ -68,7 +69,7 @@ export async function refreshAccessToken(): Promise<string | null> {
 }
 
 export async function getValidAccessToken(): Promise<string | null> {
-  const current = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+  const current = await getStoredToken();
   if (!tokenNeedsRefresh(current)) return current;
   return refreshAccessToken();
 }
