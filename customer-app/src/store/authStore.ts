@@ -4,6 +4,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, AuthState } from '@types';
 import { authService } from '@services/auth.service';
 import { STORAGE_KEYS } from '@utils/constants';
+import {
+  storeTokens,
+  setStoredToken,
+  clearTokens,
+} from '@/lib/secureTokens';
 
 interface AuthStore extends AuthState {
   // Actions
@@ -53,10 +58,7 @@ export const useAuthStore = create<AuthStore>()(
           const response = await authService.verifyLogin({ phone, code: otp });
           if (response.success && response.data) {
             const { user, tokens } = response.data;
-            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
-            if (tokens.refreshToken) {
-              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
-            }
+            await storeTokens(tokens.accessToken, tokens.refreshToken);
             await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
             set({
               user,
@@ -76,10 +78,7 @@ export const useAuthStore = create<AuthStore>()(
           const response = await authService.register({ phone, code, full_name: fullName, email, password: password || undefined });
           if (response.success && response.data) {
             const { user, tokens } = response.data;
-            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
-            if (tokens.refreshToken) {
-              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
-            }
+            await storeTokens(tokens.accessToken, tokens.refreshToken);
             await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
             set({
               user,
@@ -99,11 +98,8 @@ export const useAuthStore = create<AuthStore>()(
         } catch (error) {
           console.error('Logout error:', error);
         } finally {
-          await AsyncStorage.multiRemove([
-            STORAGE_KEYS.TOKEN,
-            STORAGE_KEYS.REFRESH_TOKEN,
-            STORAGE_KEYS.USER,
-          ]);
+          await clearTokens();
+          await AsyncStorage.removeItem(STORAGE_KEYS.USER);
           set({
             user: null,
             token: null,
@@ -127,9 +123,9 @@ export const useAuthStore = create<AuthStore>()(
       setToken: (token: string | null) => {
         set({ token });
         if (token) {
-          AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
+          setStoredToken(token);
         } else {
-          AsyncStorage.removeItem(STORAGE_KEYS.TOKEN);
+          clearTokens();
         }
       },
 
@@ -144,10 +140,7 @@ export const useAuthStore = create<AuthStore>()(
           const response = await authService.verifyPin(phone, pin);
           if (response.success && response.data) {
             const { user, tokens } = response.data;
-            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
-            if (tokens.refreshToken) {
-              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
-            }
+            await storeTokens(tokens.accessToken, tokens.refreshToken);
             await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
             set({
               user,
@@ -178,10 +171,7 @@ export const useAuthStore = create<AuthStore>()(
           const response = await authService.verifyLogin({ phone, code });
           if (response.success && response.data) {
             const { user, tokens } = response.data;
-            await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, tokens.accessToken);
-            if (tokens.refreshToken) {
-              await AsyncStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, tokens.refreshToken);
-            }
+            await storeTokens(tokens.accessToken, tokens.refreshToken);
             await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
             set({
               user,
@@ -202,7 +192,8 @@ export const useAuthStore = create<AuthStore>()(
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ user: state.user, token: state.token, isAuthenticated: state.isAuthenticated }),
+      // Token is kept in SecureStore, not in the AsyncStorage-persisted blob.
+      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
     }
   )
 );

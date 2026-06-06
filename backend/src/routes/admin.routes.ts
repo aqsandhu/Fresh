@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import * as authController from '../controllers/auth.controller';
-import * as adminController from '../controllers/admin.controller';
+import * as adminController from '../controllers/admin';
 import {
   authenticate,
   requireAdmin,

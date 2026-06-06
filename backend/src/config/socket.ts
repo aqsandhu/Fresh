@@ -9,6 +9,30 @@ import logger from '../utils/logger';
 
 let io: Server;
 
+/**
+ * Verifies that the authenticated socket user is allowed to access an order.
+ * A user may access an order if they are the customer (orders.user_id) or the
+ * assigned rider (riders.user_id via orders.rider_id). Admins bypass the check.
+ * Note: orders.rider_id references riders.id, NOT users.id — so we join through
+ * riders to compare against the authenticated user's id.
+ */
+const canAccessOrder = async (
+  orderId: string,
+  userId: string,
+  role?: string
+): Promise<boolean> => {
+  if (role === 'admin' || role === 'super_admin') return true;
+  if (!orderId || !userId) return false;
+  const { query } = require('./database');
+  const result = await query(
+    `SELECT o.id FROM orders o
+     LEFT JOIN riders r ON o.rider_id = r.id
+     WHERE o.id = $1 AND (o.user_id = $2 OR r.user_id = $2)`,
+    [orderId, userId]
+  );
+  return result.rows.length > 0;
+};
+
 export const initializeSocket = (httpServer: ReturnType<typeof createServer>) => {
   io = new Server(httpServer, {
     cors: {
@@ -50,6 +74,14 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
     // Handle chat messages
     socket.on('chat:send', async (data: { orderId: string; message: string }) => {
       try {
+        const allowed = await canAccessOrder(data.orderId, userId, role);
+        if (!allowed) {
+          logger.warn(
+            `Unauthorized chat:send by user ${userId} on order ${data.orderId}`
+          );
+          socket.emit('chat:error', { message: 'Not authorized for this order' });
+          return;
+        }
         const { query } = require('./database');
         const result = await query(
           `INSERT INTO order_messages (order_id, sender_type, sender_id, message)
@@ -87,7 +119,15 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
     );
 
     // Handle order tracking subscription
-    socket.on('order:subscribe', (orderId: string) => {
+    socket.on('order:subscribe', async (orderId: string) => {
+      const allowed = await canAccessOrder(orderId, userId, role);
+      if (!allowed) {
+        logger.warn(
+          `Unauthorized order:subscribe by user ${userId} on order ${orderId}`
+        );
+        socket.emit('order:error', { message: 'Not authorized for this order' });
+        return;
+      }
       socket.join(`order:${orderId}`);
       logger.debug(`Socket ${socket.id} subscribed to order:${orderId}`);
     });
@@ -103,6 +143,18 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
       async (data: { riderId: string; latitude: number; longitude: number }) => {
         try {
           const { query } = require('./database');
+          // data.riderId is riders.id — verify it belongs to the authenticated
+          // user before accepting a location update (prevents spoofing).
+          const ownership = await query(
+            `SELECT id FROM riders WHERE id = $1 AND user_id = $2`,
+            [data.riderId, userId]
+          );
+          if (ownership.rows.length === 0) {
+            logger.warn(
+              `Rider location spoof attempt by user ${userId} for rider ${data.riderId}`
+            );
+            return;
+          }
           await query(
             `UPDATE riders 
              SET current_location = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,

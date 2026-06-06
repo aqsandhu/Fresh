@@ -88,7 +88,7 @@ export default function ProductDetailPage() {
   const inCart = Boolean(cartItem)
 
   const handleAddToCart = () => {
-    if (!isFresh) return
+    if (!isFresh || !product) return
     addItem(product, quantity, selectedUnit)
     const suffix = unitLabelShort(selectedUnit)
     toast.success(

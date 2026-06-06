@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RootStackParamList } from '@types';
 import { COLORS, STORAGE_KEYS } from '@utils/constants';
 import { useAuthStore } from '@store';
+import { getStoredToken } from '@/lib/secureTokens';
 import { LoadingOverlay } from '@components';
 import { CityProvider, useCityContext } from '@/context/CityContext';
 
@@ -27,7 +28,7 @@ const RootNavigator: React.FC = () => {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+        const token = await getStoredToken();
         const userJson = await AsyncStorage.getItem(STORAGE_KEYS.USER);
         if (token && userJson) {
           setToken(token);

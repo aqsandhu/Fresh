@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, API_TIMEOUT, STORAGE_KEYS } from '@utils/constants';
 import { getCurrentTabName, setPendingRedirect } from '@navigation/navigationUtils';
 import { refreshAccessToken } from '@/lib/tokenRefresh';
+import { getStoredToken, clearTokens } from '@/lib/secureTokens';
 import { hydrateCachedCityId } from '@/lib/apiHelpers';
 
 hydrateCachedCityId();
@@ -18,7 +19,7 @@ const apiClient: AxiosInstance = axios.create({
 
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
-    const token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+    const token = await getStoredToken();
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -63,7 +64,8 @@ async function forceLogout() {
     setPendingRedirect(tabName);
   }
 
-  await AsyncStorage.multiRemove([STORAGE_KEYS.TOKEN, STORAGE_KEYS.REFRESH_TOKEN, STORAGE_KEYS.USER]);
+  await clearTokens();
+  await AsyncStorage.removeItem(STORAGE_KEYS.USER);
 
   const { useAuthStore } = require('@store/authStore');
   useAuthStore.setState({

@@ -1,4 +1,3 @@
-import { describe, it, expect } from 'vitest';
 import {
   getVegFruitSubtotal,
   calculateClientDeliveryCharge,
@@ -7,7 +6,7 @@ import {
 
 describe('deliveryRules', () => {
   it('counts fresh fruit slug toward veg/fruit minimum', () => {
-    expect(isVegOrFruitCategory('fruit')).toBe(true);
+    expect(isVegOrFruitCategory({ category: 'fruit', price: 250 })).toBe(true);
     expect(
       getVegFruitSubtotal([
         { product: { category: 'fruit', price: 250 }, quantity: 2 },
@@ -16,7 +15,7 @@ describe('deliveryRules', () => {
   });
 
   it('does not count dry-fruit toward free delivery (regression)', () => {
-    expect(isVegOrFruitCategory('dry-fruit')).toBe(false);
+    expect(isVegOrFruitCategory({ category: 'dry-fruit', price: 600 })).toBe(false);
     const items = [{ product: { category: 'dry-fruit', price: 600 }, quantity: 1 }];
     expect(getVegFruitSubtotal(items)).toBe(0);
     expect(calculateClientDeliveryCharge(items, 100, 500)).toBe(100);

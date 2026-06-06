@@ -152,7 +152,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                         /
                         {unit === 'full'
                           ? item.product.unit
-                          : unitSuffix.replace(/^\W+\s*/u, '')}
+                          : unitSuffix.replace(/^[\W_]+\s*/, '')}
                       </span>
                     </p>
                   </div>

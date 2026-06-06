@@ -170,7 +170,7 @@ export default function WishlistPage() {
                   <Button
                     size="sm"
                     onClick={() => addToCart(item.product)}
-                    disabled={item.product.stock === 0}
+                    disabled={!(item.product.inStock ?? (item.product.stock ?? item.product.stock_quantity ?? 0) > 0)}
                   >
                     <ShoppingCart className="w-4 h-4 mr-2" />
                     Add

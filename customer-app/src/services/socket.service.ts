@@ -1,7 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL } from '@utils/constants';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '@utils/constants';
+import { getStoredToken } from '@/lib/secureTokens';
 
 /**
  * SocketService - Manages Socket.IO connection for the customer app.
@@ -21,7 +20,7 @@ class SocketService {
   async connect() {
     if (this.socket?.connected) return;
 
-    const token = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+    const token = await getStoredToken();
     if (!token) {
       console.log('[Socket] No token found, skipping connection');
       return;
