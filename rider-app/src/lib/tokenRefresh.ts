@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { API_BASE_URL } from '../utils/constants';
 import { getStoredRefreshToken, storeTokens } from './secureTokens';
+import { notifyTokenRefreshed } from './sessionEvents';
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -27,9 +28,7 @@ export async function refreshAccessToken(): Promise<string | null> {
       if (!accessToken) return null;
 
       await storeTokens(accessToken, refreshToken);
-
-      const { useAuthStore } = require('../store/authStore');
-      useAuthStore.setState({ token: accessToken, isAuthenticated: true });
+      notifyTokenRefreshed(accessToken);
 
       return accessToken;
     } catch {

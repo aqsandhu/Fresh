@@ -6,7 +6,7 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../utils/response';
-import { emitChatMessage, emitOrderUpdate } from '../config/socket';
+import { emitChatMessage, emitOrderUpdate, emitToUser } from '../config/socket';
 import logger from '../utils/logger';
 
 /**
@@ -115,7 +115,6 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
   // Also emit a notification to the other party
   const notifyUserId = isRider ? order.user_id : order.rider_user_id;
   if (notifyUserId) {
-    const { emitToUser } = require('../config/socket');
     emitToUser(notifyUserId, 'chat:notification', {
       orderId,
       message: trimmedMessage,

@@ -5,6 +5,7 @@ import {
   getStoredRefreshToken,
   storeTokens,
 } from '@/lib/secureTokens';
+import { notifyTokenRefreshed } from '@/lib/sessionEvents';
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -48,12 +49,7 @@ export async function refreshAccessToken(): Promise<string | null> {
       if (!accessToken) return null;
 
       await storeTokens(accessToken, refreshToken);
-
-      const { useAuthStore } = require('@store/authStore');
-      useAuthStore.setState({
-        token: accessToken,
-        isAuthenticated: true,
-      });
+      notifyTokenRefreshed(accessToken);
 
       return accessToken;
     } catch {

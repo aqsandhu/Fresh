@@ -9,6 +9,7 @@ import {
   setStoredToken,
   clearTokens,
 } from '@/lib/secureTokens';
+import { registerSessionHandlers } from '@/lib/sessionEvents';
 
 interface AuthStore extends AuthState {
   // Actions
@@ -197,5 +198,19 @@ export const useAuthStore = create<AuthStore>()(
     }
   )
 );
+
+registerSessionHandlers({
+  onClear: () => {
+    useAuthStore.setState({
+      user: null,
+      token: null,
+      isAuthenticated: false,
+      isLoading: false,
+    });
+  },
+  onTokenUpdate: (token) => {
+    useAuthStore.setState({ token, isAuthenticated: true });
+  },
+});
 
 export default useAuthStore;

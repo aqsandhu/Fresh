@@ -5,6 +5,7 @@ import { getCurrentTabName, setPendingRedirect } from '@navigation/navigationUti
 import { refreshAccessToken } from '@/lib/tokenRefresh';
 import { getStoredToken, clearTokens } from '@/lib/secureTokens';
 import { hydrateCachedCityId } from '@/lib/apiHelpers';
+import { clearAppSession } from '@/lib/sessionEvents';
 
 hydrateCachedCityId();
 
@@ -66,14 +67,7 @@ async function forceLogout() {
 
   await clearTokens();
   await AsyncStorage.removeItem(STORAGE_KEYS.USER);
-
-  const { useAuthStore } = require('@store/authStore');
-  useAuthStore.setState({
-    user: null,
-    token: null,
-    isAuthenticated: false,
-    isLoading: false,
-  });
+  clearAppSession();
 }
 
 export class ApiError extends Error {

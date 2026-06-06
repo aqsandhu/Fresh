@@ -9,6 +9,7 @@ import { query } from './database';
 import logger from '../utils/logger';
 
 let pinColumnsCached: boolean | null = null;
+let ensurePinColumnsPromise: Promise<boolean> | null = null;
 
 function isMissingColumnError(error: unknown): boolean {
   const err = error as { code?: string; message?: string };
@@ -91,29 +92,38 @@ async function runAlterOnConnection(connectionString: string): Promise<boolean> 
 /** Try to add pin columns. Returns true when columns are present afterward. */
 export async function ensurePinColumns(): Promise<boolean> {
   if (await hasPinColumns()) return true;
+  if (ensurePinColumnsPromise) return ensurePinColumnsPromise;
 
-  const migrationUrl = getMigrationConnectionString();
-  if (!migrationUrl) {
-    logger.warn('PIN columns missing and no DATABASE_URL for migration');
-    return false;
-  }
+  ensurePinColumnsPromise = (async () => {
+    const migrationUrl = getMigrationConnectionString();
+    if (!migrationUrl) {
+      logger.warn('PIN columns missing and no DATABASE_URL for migration');
+      return false;
+    }
+
+    try {
+      await runAlterOnConnection(migrationUrl);
+      pinColumnsCached = null;
+      const ready = await hasPinColumns();
+      if (ready) {
+        logger.info('PIN auth columns added on users table');
+      } else {
+        logger.warn(
+          'PIN columns still missing after migration attempt — run database/migrations/01-add-pin-to-users.sql in Supabase SQL Editor'
+        );
+      }
+      return ready;
+    } catch (error: any) {
+      logger.warn('Could not add PIN columns automatically', { error: error?.message });
+      pinColumnsCached = false;
+      return false;
+    }
+  })();
 
   try {
-    await runAlterOnConnection(migrationUrl);
-    pinColumnsCached = null;
-    const ready = await hasPinColumns();
-    if (ready) {
-      logger.info('PIN auth columns added on users table');
-    } else {
-      logger.warn(
-        'PIN columns still missing after migration attempt — run database/migrations/01-add-pin-to-users.sql in Supabase SQL Editor'
-      );
-    }
-    return ready;
-  } catch (error: any) {
-    logger.warn('Could not add PIN columns automatically', { error: error?.message });
-    pinColumnsCached = false;
-    return false;
+    return await ensurePinColumnsPromise;
+  } finally {
+    ensurePinColumnsPromise = null;
   }
 }
 

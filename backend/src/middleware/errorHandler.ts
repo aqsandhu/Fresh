@@ -119,7 +119,7 @@ export const errorHandler = (
       path: req.path,
       method: req.method,
       statusCode,
-      userId: (req as any).user?.id,
+      userId: req.user?.id,
     });
   }
 
@@ -150,7 +150,7 @@ export const errorHandler = (
       statusCode,
       path: req.path,
       method: req.method,
-      userId: (req as any).user?.id,
+      userId: req.user?.id,
     });
   } else {
     logger.error('Error occurred', {

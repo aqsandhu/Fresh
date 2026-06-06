@@ -15,7 +15,8 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { CartStackParamList, Address, DeliverySlot, RootStackParamList } from '@types';
+import { CartStackParamList, RootStackParamList } from '@types';
+import { DeliverySlotWithCapacity } from '@services/order.service';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES } from '@utils/constants';
 import {
   formatCurrency,
@@ -38,7 +39,7 @@ import { orderService } from '@services/order.service';
 import apiClient from '@services/api';
 import { useCartStore } from '@store';
 import { getSlotAvailability } from '@/lib/timeSlots';
-import { getAddressTypeLabel } from '@/constants/addressTypes';
+import { formatAddressLine, addressTypeLabel } from '@/lib/addressDisplay';
 
 type DayTab = 'today' | 'tomorrow';
 
@@ -55,21 +56,6 @@ function getDisplayDate(day: DayTab): string {
   const dayNum = d.getDate();
   const month = d.toLocaleDateString('en-US', { month: 'short' });
   return `${weekday}, ${dayNum} ${month}`;
-}
-
-function formatAddressLine(addr: Address): string {
-  const parts = [
-    addr.writtenAddress || (addr as any).written_address,
-    addr.areaName || (addr as any).area_name,
-    addr.city,
-  ].filter(Boolean);
-  if (parts.length) return parts.join(', ');
-  return addr.fullAddress || (addr as any).fullAddress || '';
-}
-
-function addressTypeLabel(addr: Address): string {
-  const raw = (addr as any).label || (addr as any).address_type || (addr as any).addressType;
-  return getAddressTypeLabel(raw);
 }
 
 export const CheckoutScreen: React.FC = () => {
@@ -90,7 +76,7 @@ export const CheckoutScreen: React.FC = () => {
   const [newAddressValid, setNewAddressValid] = useState(false);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [activeDay, setActiveDay] = useState<DayTab>('today');
-  const [timeSlots, setTimeSlots] = useState<DeliverySlot[]>([]);
+  const [timeSlots, setTimeSlots] = useState<DeliverySlotWithCapacity[]>([]);
   const [selectedSlotId, setSelectedSlotId] = useState<string>('');
   const [loadingSlots, setLoadingSlots] = useState(true);
   const [serverSubtotal, setServerSubtotal] = useState<number | null>(null);
@@ -120,7 +106,7 @@ export const CheckoutScreen: React.FC = () => {
       const res = await addressService.getAddresses();
       const list = res.success ? res.data : [];
       const filtered = cityName
-        ? list.filter((a) => addressMatchesSelectedCity((a as any).city, cityName))
+        ? list.filter((a) => addressMatchesSelectedCity(a.city, cityName))
         : list;
       setAddresses(filtered);
       const def = filtered.find((a) => a.isDefault) || filtered[0];
@@ -258,7 +244,7 @@ export const CheckoutScreen: React.FC = () => {
     const selectedSlotForOrder = timeSlots.find((s) => s.id === selectedSlotId);
     if (
       selectedSlotForOrder &&
-      (((selectedSlotForOrder as any).available_slots ?? 0) <= 0 ||
+      ((selectedSlotForOrder.available_slots ?? 0) <= 0 ||
         getSlotAvailability(
           {
             id: selectedSlotForOrder.id,
@@ -511,12 +497,11 @@ export const CheckoutScreen: React.FC = () => {
           ) : (
             <View style={styles.slotGrid}>
               {timeSlots.map((slot) => {
-                const slotWithCapacity = slot as DeliverySlot & { available_slots?: number };
                 const availability = getSlotAvailability(
                   { id: slot.id, startTime: slot.startTime, endTime: slot.endTime },
                   activeDay
                 );
-                const availableSlots = slotWithCapacity.available_slots ?? 0;
+                const availableSlots = slot.available_slots ?? 0;
                 const disabled = availableSlots <= 0 || availability.unavailable;
                 const selected = selectedSlotId === slot.id;
                 const slotLabel = formatSlotTimeRange(slot.startTime, slot.endTime);
@@ -608,7 +593,7 @@ export const CheckoutScreen: React.FC = () => {
               const unitSuffix = unitLabelShort(unit);
               const linePrice = resolveLineUnitPrice(item);
               const caption = unitPriceCaption(unit);
-              const imageUri = item.product.images?.[0] || (item.product as any).image_url;
+              const imageUri = item.product.images?.[0] || item.product.imageUrl;
               return (
                 <View key={`${item.product.id}::${unit}`} style={styles.lineItem}>
                   <View style={styles.lineThumb}>
