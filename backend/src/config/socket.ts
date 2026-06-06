@@ -5,7 +5,10 @@
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 import { verifyAccessToken } from './jwt';
+import { query } from './database';
 import logger from '../utils/logger';
+
+const MAX_CHAT_MESSAGE_LENGTH = 2000;
 
 let io: Server;
 
@@ -23,7 +26,6 @@ const canAccessOrder = async (
 ): Promise<boolean> => {
   if (role === 'admin' || role === 'super_admin') return true;
   if (!orderId || !userId) return false;
-  const { query } = require('./database');
   const result = await query(
     `SELECT o.id FROM orders o
      LEFT JOIN riders r ON o.rider_id = r.id
@@ -82,11 +84,21 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
           socket.emit('chat:error', { message: 'Not authorized for this order' });
           return;
         }
-        const { query } = require('./database');
+        const message = data.message?.trim();
+        if (!message) {
+          socket.emit('chat:error', { message: 'Message cannot be empty' });
+          return;
+        }
+        if (message.length > MAX_CHAT_MESSAGE_LENGTH) {
+          socket.emit('chat:error', {
+            message: `Message must be at most ${MAX_CHAT_MESSAGE_LENGTH} characters`,
+          });
+          return;
+        }
         const result = await query(
           `INSERT INTO order_messages (order_id, sender_type, sender_id, message)
            VALUES ($1, $2, $3, $4) RETURNING id, message, sender_type, created_at`,
-          [data.orderId, role || 'customer', userId, data.message]
+          [data.orderId, role || 'customer', userId, message]
         );
         const newMessage = result.rows[0];
 
@@ -109,7 +121,9 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
     // Handle typing indicators
     socket.on(
       'chat:typing',
-      (data: { orderId: string; isTyping: boolean }) => {
+      async (data: { orderId: string; isTyping: boolean }) => {
+        const allowed = await canAccessOrder(data.orderId, userId, role);
+        if (!allowed) return;
         socket.to(`order:${data.orderId}`).emit('chat:typing', {
           orderId: data.orderId,
           isTyping: data.isTyping,
@@ -142,7 +156,6 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
       'rider:location',
       async (data: { riderId: string; latitude: number; longitude: number }) => {
         try {
-          const { query } = require('./database');
           // data.riderId is riders.id — verify it belongs to the authenticated
           // user before accepting a location update (prevents spoofing).
           const ownership = await query(
@@ -163,13 +176,23 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
              WHERE id = $3`,
             [data.longitude, data.latitude, data.riderId]
           );
-          // Broadcast to order room if rider has active orders
-          socket.to(`order:${data.riderId}`).emit('rider:location', {
+          const payload = {
             riderId: data.riderId,
             latitude: data.latitude,
             longitude: data.longitude,
             updatedAt: new Date().toISOString(),
-          });
+          };
+          // Broadcast to each active order room (rooms are keyed by order id).
+          const activeOrders = await query(
+            `SELECT id FROM orders
+             WHERE rider_id = $1
+               AND status IN ('confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery')
+               AND deleted_at IS NULL`,
+            [data.riderId]
+          );
+          for (const row of activeOrders.rows) {
+            io.to(`order:${row.id}`).emit('rider:location', payload);
+          }
         } catch (err: any) {
           logger.error('Error updating rider location:', err);
         }

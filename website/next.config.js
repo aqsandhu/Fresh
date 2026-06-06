@@ -8,6 +8,28 @@ const googleMapsKey = (
   ''
 ).trim();
 
+function buildImageRemotePatterns() {
+  const patterns = [
+    { protocol: 'https', hostname: '**.supabase.co' },
+    { protocol: 'http', hostname: 'localhost' },
+    { protocol: 'https', hostname: 'localhost' },
+  ];
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+  if (apiUrl) {
+    try {
+      const { hostname } = new URL(apiUrl);
+      if (hostname && hostname !== 'localhost') {
+        patterns.push({ protocol: 'https', hostname });
+      }
+    } catch {
+      // ignore invalid URL
+    }
+  }
+
+  return patterns;
+}
+
 const nextConfig = {
   env: {
     NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: googleMapsKey,
@@ -47,16 +69,7 @@ const nextConfig = {
     ignoreDuringBuilds: false,
   },
   images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-      {
-        protocol: 'http',
-        hostname: 'localhost',
-      },
-    ],
+    remotePatterns: buildImageRemotePatterns(),
   },
   async rewrites() {
     return [

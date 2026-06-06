@@ -176,13 +176,19 @@ app.use(`/${uploadDir}`, express.static(path.join(process.cwd(), uploadDir)));
 app.get('/health', async (req: Request, res: Response) => {
   const dbConnected = await testConnection().catch(() => false);
 
-  res.status(dbConnected ? 200 : 503).json({
+  const payload: Record<string, unknown> = {
     success: dbConnected,
     message: dbConnected ? 'Service is healthy' : 'Database connection failed',
     timestamp: new Date().toISOString(),
-    environment: NODE_ENV,
-    version: process.env.npm_package_version || '1.0.0',
-  });
+  };
+
+  // Avoid leaking deployment metadata on the public health endpoint.
+  if (NODE_ENV !== 'production') {
+    payload.environment = NODE_ENV;
+    payload.version = process.env.npm_package_version || '1.0.0';
+  }
+
+  res.status(dbConnected ? 200 : 503).json(payload);
 });
 
 // ============================================================================
