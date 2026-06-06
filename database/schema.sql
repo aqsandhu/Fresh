@@ -1962,8 +1962,10 @@ BEGIN
         v_zone_code := 'UNK';
     END IF;
     
-    -- Generate sequence for this zone
-    SELECT COALESCE(MAX(NULL::INTEGER), 0) + 1 INTO v_sequence
+    -- Generate sequence for this zone (numeric suffix after "ZONE-")
+    SELECT COALESCE(MAX(
+        CAST(NULLIF(SPLIT_PART(house_number, '-', 2), '') AS INTEGER)
+    ), 0) + 1 INTO v_sequence
     FROM addresses
     WHERE house_number LIKE v_zone_code || '-%';
     

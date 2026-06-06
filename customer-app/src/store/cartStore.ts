@@ -157,8 +157,13 @@ export const useCartStore = create<CartStore>()(
           });
 
           const items = get().items;
-          cartService.syncCartWithBackend(items).catch(() => {});
-          set({ lastSyncedAt: Date.now() });
+          cartService
+            .syncCartWithBackend(items)
+            .then((ok) => {
+              if (ok) set({ lastSyncedAt: Date.now(), syncError: null });
+              else set({ syncError: 'Failed to sync cart with server.' });
+            })
+            .catch(() => set({ syncError: 'Failed to sync cart with server.' }));
         } finally {
           set({ isLoading: false });
         }

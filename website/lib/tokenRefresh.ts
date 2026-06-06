@@ -63,9 +63,7 @@ export async function refreshWebsiteAccessToken(): Promise<string | null> {
     } catch {
       return null;
     } finally {
-      setTimeout(() => {
-        refreshPromise = null;
-      }, 0);
+      refreshPromise = null;
     }
   })();
 

@@ -35,9 +35,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     } catch {
       return null;
     } finally {
-      setTimeout(() => {
-        refreshPromise = null;
-      }, 0);
+      refreshPromise = null;
     }
   })();
 
