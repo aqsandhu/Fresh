@@ -11,7 +11,12 @@ import {
   getSocket,
   reconnectSocket,
 } from '@/lib/socket'
-import { getValidAccessToken, refreshWebsiteAccessToken } from '@/lib/tokenRefresh'
+import { usesHttpOnlyCookies } from '@/lib/authConfig'
+import {
+  ensureAuthSession,
+  getValidAccessToken,
+  refreshWebsiteAccessToken,
+} from '@/lib/tokenRefresh'
 
 function socketNotificationId(type: string, orderId?: string) {
   return `socket-${type}-${orderId || 'general'}-${Date.now()}`
@@ -135,8 +140,11 @@ export default function NotificationProvider({ children }: { children: React.Rea
     ]
 
     const setup = async () => {
-      const token = await getValidAccessToken()
-      if (cancelled || !token) return
+      const sessionOk = await ensureAuthSession()
+      if (cancelled || !sessionOk) return
+
+      const token = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
+      if (!usesHttpOnlyCookies() && !token) return
 
       const socket = connectSocket(token)
 
@@ -144,9 +152,10 @@ export default function NotificationProvider({ children }: { children: React.Rea
         if (!err.message.toLowerCase().includes('jwt') && !err.message.toLowerCase().includes('expired')) {
           return
         }
-        const fresh = await refreshWebsiteAccessToken()
-        if (fresh) {
-          reconnectSocket(fresh)
+        const refreshed = await refreshWebsiteAccessToken()
+        if (refreshed) {
+          const freshToken = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
+          reconnectSocket(freshToken)
         }
       }
 

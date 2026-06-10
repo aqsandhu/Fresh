@@ -67,23 +67,25 @@ export default function PinReauthGate({ thresholdMs = PIN_STALE_MS, children }: 
     try {
       const res = await authApi.verifyPin(user.phone, entered)
       const tokens = res.data?.tokens
-      if (tokens?.accessToken) {
-        useAuthStore.getState().setAuth(
-          {
-            id: user.id,
-            name: user.name,
-            phone: res.data?.user?.phone || user.phone,
-            email: user.email,
-            role: user.role,
-          },
-          {
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-          }
-        )
-      } else {
-        markPinVerified()
+      const authUser = {
+        id: user.id,
+        name: user.name,
+        phone: res.data?.user?.phone || user.phone,
+        email: user.email,
+        role: user.role,
       }
+      if (tokens?.accessToken) {
+        useAuthStore.getState().setAuth(authUser, {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
+        })
+      } else if (res.data?.user) {
+        useAuthStore.getState().setAuth(authUser, {
+          accessToken: '',
+          refreshToken: '',
+        })
+      }
+      markPinVerified()
       setStale(false)
       setPin('')
     } catch (err: any) {

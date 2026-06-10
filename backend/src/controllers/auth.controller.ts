@@ -21,8 +21,35 @@ import { isOtpBypassEnabled } from '../config/otpBypass';
 import { getPinStatusForPhone, ensurePinColumns, hasPinColumns } from '../config/pinAuth';
 import logger from '../utils/logger';
 import { loadAdminSession } from '../utils/adminSession';
+import {
+  setAuthCookies,
+  clearAuthCookies,
+  getRefreshTokenFromRequest,
+  stripTokensFromAuthData,
+} from '../utils/authCookies';
 
 const SALT_ROUNDS = 12;
+
+function attachAuthCookies(
+  res: Response,
+  tokens: { accessToken: string; refreshToken: string }
+): void {
+  setAuthCookies(res, tokens);
+}
+
+function authSuccess<T extends Record<string, unknown>>(
+  req: Request,
+  res: Response,
+  data: T,
+  message: string,
+  statusCode = 200
+): void {
+  if (statusCode === 201) {
+    createdResponse(res, stripTokensFromAuthData(req, data), message);
+    return;
+  }
+  successResponse(res, stripTokensFromAuthData(req, data), message, statusCode);
+}
 
 // ============================================================================
 // STEP 1: SEND OTP (for both login and register)
@@ -96,6 +123,7 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
 
   // Generate tokens
   const tokens = generateTokenPair(user.id, user.phone, user.role);
+  attachAuthCookies(res, tokens);
 
   // Update last login
   await query(
@@ -105,17 +133,22 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
 
   logger.info('User logged in via Firebase OTP', { userId: user.id, phone: user.phone });
 
-  successResponse(res, {
-    user: {
-      id: user.id,
-      phone: user.phone,
-      full_name: user.full_name,
-      email: user.email,
-      role: user.role,
-      is_phone_verified: true,
+  authSuccess(
+    req,
+    res,
+    {
+      user: {
+        id: user.id,
+        phone: user.phone,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        is_phone_verified: true,
+      },
+      tokens,
     },
-    tokens,
-  }, 'Login successful');
+    'Login successful'
+  );
 });
 
 // ============================================================================
@@ -132,56 +165,68 @@ export const verifyRegisterOtp = asyncHandler(async (req: Request, res: Response
 
   const normalizedPhone = tokenResult.phone!;
 
-  // Double-check user doesn't already exist
-  const existingUser = await query(
-    'SELECT id FROM users WHERE phone = $1 AND deleted_at IS NULL',
-    [normalizedPhone]
-  );
-  if (existingUser.rows.length > 0) {
-    return conflictResponse(res, 'User with this phone number already exists. Please login instead.');
-  }
-
-  // Check email uniqueness if provided
-  if (email) {
-    const existingEmail = await query(
-      'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
-      [email.toLowerCase()]
-    );
-    if (existingEmail.rows.length > 0) {
-      return conflictResponse(res, 'This email is already registered');
-    }
-  }
-
-  // Hash password (generate random one if not provided, since OTP already verified identity)
   const actualPassword = password || crypto.randomBytes(16).toString('hex') + 'Ab1';
   const passwordHash = await bcrypt.hash(actualPassword, SALT_ROUNDS);
 
-  // Create user with verified phone
-  const result = await query(
-    `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified, phone_verified_at, last_login_at, login_count)
-     VALUES ($1, $2, $3, $4, 'customer', TRUE, NOW(), NOW(), 1)
-     RETURNING id, phone, full_name, email, role, created_at`,
-    [normalizedPhone, full_name, email ? email.toLowerCase() : null, passwordHash]
-  );
+  let user;
+  try {
+    user = await withTransaction(async (client) => {
+      if (email) {
+        const existingEmail = await client.query(
+          'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
+          [email.toLowerCase()]
+        );
+        if (existingEmail.rows.length > 0) {
+          throw Object.assign(new Error('EMAIL_EXISTS'), { code: 'EMAIL_EXISTS' });
+        }
+      }
 
-  const user = result.rows[0];
+      const result = await client.query(
+        `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified, phone_verified_at, last_login_at, login_count)
+         VALUES ($1, $2, $3, $4, 'customer', TRUE, NOW(), NOW(), 1)
+         ON CONFLICT (phone) DO NOTHING
+         RETURNING id, phone, full_name, email, role, created_at`,
+        [normalizedPhone, full_name, email ? email.toLowerCase() : null, passwordHash]
+      );
 
-  // Generate tokens
+      if (result.rows.length === 0) {
+        throw Object.assign(new Error('PHONE_EXISTS'), { code: 'PHONE_EXISTS' });
+      }
+
+      return result.rows[0];
+    });
+  } catch (err: any) {
+    if (err?.code === 'EMAIL_EXISTS') {
+      return conflictResponse(res, 'This email is already registered');
+    }
+    if (err?.code === 'PHONE_EXISTS' || err?.code === '23505') {
+      return conflictResponse(res, 'User with this phone number already exists. Please login instead.');
+    }
+    throw err;
+  }
+
   const tokens = generateTokenPair(user.id, user.phone, user.role);
+  attachAuthCookies(res, tokens);
 
   logger.info('New user registered via Firebase OTP', { userId: user.id, phone: user.phone });
 
-  createdResponse(res, {
-    user: {
-      id: user.id,
-      phone: user.phone,
-      full_name: user.full_name,
-      email: user.email,
-      role: user.role,
-      is_phone_verified: true,
+  authSuccess(
+    req,
+    res,
+    {
+      user: {
+        id: user.id,
+        phone: user.phone,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        is_phone_verified: true,
+      },
+      tokens,
     },
-    tokens,
-  }, 'Account created successfully');
+    'Account created successfully',
+    201
+  );
 });
 
 // ============================================================================
@@ -218,6 +263,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const tokens = generateTokenPair(user.id, user.phone, user.role);
+  attachAuthCookies(res, tokens);
 
   await query(
     'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
@@ -226,17 +272,22 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 
   logger.info('User logged in via password', { userId: user.id, phone: user.phone });
 
-  successResponse(res, {
-    user: {
-      id: user.id,
-      phone: user.phone,
-      full_name: user.full_name,
-      email: user.email,
-      role: user.role,
-      is_phone_verified: user.is_phone_verified,
+  authSuccess(
+    req,
+    res,
+    {
+      user: {
+        id: user.id,
+        phone: user.phone,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        is_phone_verified: user.is_phone_verified,
+      },
+      tokens,
     },
-    tokens,
-  }, 'Login successful');
+    'Login successful'
+  );
 });
 
 // ============================================================================
@@ -244,58 +295,81 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 // POST /api/auth/register
 // ============================================================================
 export const register = asyncHandler(async (req: Request, res: Response) => {
+  if (process.env.LEGACY_PASSWORD_REGISTER !== 'true') {
+    return errorResponse(
+      res,
+      'Direct password registration is disabled. Please verify your phone with OTP.',
+      403
+    );
+  }
+
   const { phone, full_name, email, password } = req.body;
   const normalizedPhone = normalizePhoneNumber(phone);
-
-  const existingUser = await query(
-    'SELECT id FROM users WHERE phone = $1 AND deleted_at IS NULL',
-    [normalizedPhone]
-  );
-  if (existingUser.rows.length > 0) {
-    return conflictResponse(res, 'User with this phone number already exists');
-  }
-
-  if (email) {
-    const existingEmail = await query(
-      'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
-      [email.toLowerCase()]
-    );
-    if (existingEmail.rows.length > 0) {
-      return conflictResponse(res, 'User with this email already exists');
-    }
-  }
-
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-  const user = await withTransaction(async (client) => {
-    const result = await client.query(
-      `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified)
-       VALUES ($1, $2, $3, $4, 'customer', FALSE)
-       RETURNING id, phone, full_name, email, role, created_at`,
-      [normalizedPhone, full_name, email ? email.toLowerCase() : null, passwordHash]
-    );
-    const inserted = result.rows[0];
-    await client.query(
-      'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
-      [inserted.id]
-    );
-    return inserted;
-  });
+  let user;
+  try {
+    user = await withTransaction(async (client) => {
+      if (email) {
+        const existingEmail = await client.query(
+          'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
+          [email.toLowerCase()]
+        );
+        if (existingEmail.rows.length > 0) {
+          throw Object.assign(new Error('EMAIL_EXISTS'), { code: 'EMAIL_EXISTS' });
+        }
+      }
+
+      const result = await client.query(
+        `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified)
+         VALUES ($1, $2, $3, $4, 'customer', FALSE)
+         ON CONFLICT (phone) DO NOTHING
+         RETURNING id, phone, full_name, email, role, created_at`,
+        [normalizedPhone, full_name, email ? email.toLowerCase() : null, passwordHash]
+      );
+
+      if (result.rows.length === 0) {
+        throw Object.assign(new Error('PHONE_EXISTS'), { code: 'PHONE_EXISTS' });
+      }
+
+      const inserted = result.rows[0];
+      await client.query(
+        'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
+        [inserted.id]
+      );
+      return inserted;
+    });
+  } catch (err: any) {
+    if (err?.code === 'EMAIL_EXISTS') {
+      return conflictResponse(res, 'User with this email already exists');
+    }
+    if (err?.code === 'PHONE_EXISTS' || err?.code === '23505') {
+      return conflictResponse(res, 'User with this phone number already exists');
+    }
+    throw err;
+  }
 
   const tokens = generateTokenPair(user.id, user.phone, user.role);
+  attachAuthCookies(res, tokens);
 
   logger.info('New user registered (legacy)', { userId: user.id, phone: user.phone });
 
-  createdResponse(res, {
-    user: {
-      id: user.id,
-      phone: user.phone,
-      full_name: user.full_name,
-      email: user.email,
-      role: user.role,
+  authSuccess(
+    req,
+    res,
+    {
+      user: {
+        id: user.id,
+        phone: user.phone,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+      },
+      tokens,
     },
-    tokens,
-  }, 'User registered successfully');
+    'User registered successfully',
+    201
+  );
 });
 
 /**
@@ -303,15 +377,14 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
  * POST /api/auth/refresh
  */
 export const refreshToken = asyncHandler(async (req: Request, res: Response) => {
-  const refreshToken = req.body.refreshToken || req.body.refresh_token;
+  const refreshTokenValue = getRefreshTokenFromRequest(req);
 
-  if (!refreshToken) {
+  if (!refreshTokenValue) {
     return unauthorizedResponse(res, 'Refresh token required');
   }
 
   try {
-    // Verify refresh token
-    const decoded = verifyRefreshToken(refreshToken);
+    const decoded = verifyRefreshToken(refreshTokenValue);
 
     // Check if user still exists and is active
     const result = await query(
@@ -331,8 +404,9 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
 
     // Generate new token pair
     const tokens = generateTokenPair(user.id, user.phone, user.role);
+    attachAuthCookies(res, tokens);
 
-    successResponse(res, { tokens }, 'Token refreshed successfully');
+    authSuccess(req, res, { tokens }, 'Token refreshed successfully');
   } catch (error: any) {
     if (error.name === 'TokenExpiredError') {
       return unauthorizedResponse(res, 'Refresh token expired');
@@ -356,6 +430,7 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
     logger.info('User logged out', { userId: req.user.userId });
   }
 
+  clearAuthCookies(res);
   successResponse(res, null, 'Logout successful');
 });
 
@@ -591,6 +666,7 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const tokens = generateTokenPair(user.id, user.phone, user.role);
+  attachAuthCookies(res, tokens);
 
   await query(
     'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
@@ -598,7 +674,8 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   );
 
   logger.info('PIN login OK', { userId: user.id });
-  successResponse(
+  authSuccess(
+    req,
     res,
     {
       user: {
@@ -776,10 +853,9 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
-  // Generate tokens
   const tokens = generateTokenPair(user.id, user.phone, user.role);
+  attachAuthCookies(res, tokens);
 
-  // Update last login
   await query(
     'UPDATE users SET last_login_at = NOW(), login_count = login_count + 1 WHERE id = $1',
     [user.id]

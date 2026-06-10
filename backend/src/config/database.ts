@@ -129,4 +129,22 @@ export const closePool = async (): Promise<void> => {
   logger.info('Database pool closed');
 };
 
+/** Warn at startup if PostGIS is missing (location features need it). */
+export const ensureDatabaseExtensions = async (): Promise<void> => {
+  try {
+    const result = await query<{ ok: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM pg_extension WHERE extname = 'postgis'
+       ) AS ok`
+    );
+    if (!result.rows[0]?.ok) {
+      logger.warn(
+        'PostGIS extension is not installed. Run CREATE EXTENSION postgis; before applying schema.sql location features.'
+      );
+    }
+  } catch (err) {
+    logger.warn('Could not verify PostGIS extension', { err });
+  }
+};
+
 export default pool;

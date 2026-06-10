@@ -2,6 +2,8 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { usesHttpOnlyCookies } from '@/lib/authConfig'
+import { clearTokens, storeTokens } from '@/lib/secureTokens'
 import { setLastPhone } from '@/lib/phoneStorage'
 import { CartState, Product, ProductUnit } from '@/types'
 import { calculateClientDeliveryCharge } from '@/lib/deliveryRules'
@@ -279,16 +281,17 @@ export const useAuthStore = create<AuthState>()(
       setHasHydrated: (h) => set({ hasHydrated: h }),
       setAuth: (user, tokens) => {
         if (typeof window !== 'undefined') {
-          localStorage.setItem('token', tokens.accessToken)
-          localStorage.setItem('refreshToken', tokens.refreshToken)
+          if (!usesHttpOnlyCookies()) {
+            storeTokens(tokens.accessToken, tokens.refreshToken)
+          }
           setLastPhone(user.phone)
         }
         const now = Date.now()
         set({
           user,
           isAuthenticated: true,
-          accessToken: tokens.accessToken,
-          refreshToken: tokens.refreshToken,
+          accessToken: usesHttpOnlyCookies() ? null : tokens.accessToken,
+          refreshToken: usesHttpOnlyCookies() ? null : tokens.refreshToken,
           lastActiveAt: now,
           pinVerifiedAt: now,
         })
@@ -296,8 +299,7 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       logout: () => {
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('token')
-          localStorage.removeItem('refreshToken')
+          clearTokens()
         }
         set({
           user: null,
@@ -313,6 +315,12 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'freshbazar-auth',
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+        lastActiveAt: state.lastActiveAt,
+        pinVerifiedAt: state.pinVerifiedAt,
+      }),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true)
       },

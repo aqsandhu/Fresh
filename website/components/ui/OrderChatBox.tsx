@@ -3,9 +3,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, MessageCircle, Loader2, Wifi, WifiOff } from 'lucide-react'
 import { chatApi } from '@/lib/api'
+import { useAuthStore } from '@/store/cartStore'
+import { usesHttpOnlyCookies } from '@/lib/authConfig'
+import { getValidAccessToken } from '@/lib/tokenRefresh'
 import {
   connectSocket,
-  disconnectSocket,
   subscribeToOrder,
   unsubscribeFromOrder,
   sendChatMessage,
@@ -36,15 +38,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
   const [typingUser, setTypingUser] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const tokenRef = useRef<string>('')
-
-  // Get token from localStorage
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token')
-    if (storedToken) {
-      tokenRef.current = storedToken
-    }
-  }, [])
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   // Fetch initial messages via REST
   const fetchMessages = useCallback(async () => {
@@ -60,50 +54,52 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     }
   }, [orderId])
 
-  // Setup socket for real-time chat
   useEffect(() => {
     fetchMessages()
 
-    if (!tokenRef.current) return
+    if (!isAuthenticated) return
 
-    // Connect socket
-    const socket = connectSocket(tokenRef.current)
+    let cancelled = false
+    let checkConnection: ReturnType<typeof setInterval> | null = null
 
-    // Subscribe to order room
-    subscribeToOrder(orderId, (data: any) => {
-      console.log('[OrderChatBox] Order update:', data)
-    })
-
-    // Listen for incoming messages
     const handleIncomingMessage = (data: Message) => {
       setMessages((prev) => {
-        // Avoid duplicates
         if (prev.some((m) => m.id === data.id)) return prev
         return [...prev, data]
       })
     }
-    onChatMessage(handleIncomingMessage)
 
-    // Listen for typing indicators
     const handleTypingEvent = (data: { orderId: string; isTyping: boolean; userId?: string }) => {
       if (data.orderId === orderId) {
         setTypingUser(data.isTyping ? 'Rider' : null)
       }
     }
-    onTyping(handleTypingEvent)
 
-    // Connection status
-    const checkConnection = setInterval(() => {
-      setIsConnected(socket.connected)
-    }, 3000)
+    const setupSocket = async () => {
+      const token = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
+      if (!usesHttpOnlyCookies() && !token) return
+      if (cancelled) return
+
+      const socket = connectSocket(token)
+
+      subscribeToOrder(orderId, () => {})
+      onChatMessage(handleIncomingMessage)
+      onTyping(handleTypingEvent)
+
+      checkConnection = setInterval(() => {
+        setIsConnected(socket.connected)
+      }, 3000)
+    }
+
+    setupSocket()
 
     return () => {
+      cancelled = true
       unsubscribeFromOrder(orderId)
       offChatMessage(handleIncomingMessage)
-      // Cleanup handled by disconnect on unmount of parent
-      clearInterval(checkConnection)
+      if (checkConnection) clearInterval(checkConnection)
     }
-  }, [orderId, fetchMessages])
+  }, [orderId, fetchMessages, isAuthenticated])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -128,8 +124,8 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     }
     setMessages((prev) => [...prev, optimisticMsg])
 
-    // Send via socket if connected, else fallback to REST
-    const socket = connectSocket(tokenRef.current)
+    const token = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
+    const socket = connectSocket(token)
     if (socket.connected) {
       sendChatMessage(orderId, text)
       setSending(false)
@@ -150,26 +146,28 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     }
   }
 
-  // Handle typing indicator with debounce
   const handleTypingChange = (text: string) => {
     setNewMessage(text)
 
-    const socket = connectSocket(tokenRef.current)
-    if (!socket.connected) return
+    const runTyping = async () => {
+      const token = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
+      const socket = connectSocket(token)
+      if (!socket.connected) return
 
-    if (text.length > 0) {
-      emitTyping(orderId, true)
+      if (text.length > 0) {
+        emitTyping(orderId, true)
+      }
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
+      }
+
+      typingTimeoutRef.current = setTimeout(() => {
+        emitTyping(orderId, false)
+      }, 2000)
     }
 
-    // Clear previous timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
-    }
-
-    // Stop typing after 2 seconds of inactivity
-    typingTimeoutRef.current = setTimeout(() => {
-      emitTyping(orderId, false)
-    }, 2000)
+    void runTyping()
   }
 
   const formatTime = (dateStr: string) => {

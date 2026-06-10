@@ -48,6 +48,7 @@ export {
 // Rate limiting
 export {
   apiRateLimiter,
+  initRateLimiterStore,
   authRateLimiter,
   registerRateLimiter,
   passwordResetRateLimiter,
