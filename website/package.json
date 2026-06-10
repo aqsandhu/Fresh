@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@freshbazar/core-auth": "workspace:*",
     "@freshbazar/shared-types": "workspace:*",
     "@hookform/resolvers": "^3.3.4",
     "@tanstack/react-query": "^5.18.1",

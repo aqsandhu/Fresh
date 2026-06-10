@@ -1,0 +1,22 @@
+{
+  "name": "@freshbazar/core-auth",
+  "version": "1.0.0",
+  "description": "Shared auth session utilities for FreshBazar client apps",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.6.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "files": [
+    "dist"
+  ]
+}

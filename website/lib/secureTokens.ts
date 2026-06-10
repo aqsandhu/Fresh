@@ -1,34 +1,35 @@
+import {
+  clearBrowserTokens,
+  createBrowserSessionTokenStorage,
+  readBrowserAccessToken,
+  readBrowserRefreshToken,
+  writeBrowserTokens,
+  type BrowserSessionStorageOptions,
+} from '@freshbazar/core-auth';
 import { usesHttpOnlyCookies } from '@/lib/authConfig';
 
-const ACCESS_KEY = 'freshbazar_token';
-const REFRESH_KEY = 'freshbazar_refresh_token';
+const BROWSER_STORAGE_OPTIONS: BrowserSessionStorageOptions = {
+  accessKey: 'freshbazar_token',
+  refreshKey: 'freshbazar_refresh_token',
+  isStorageEnabled: () => !usesHttpOnlyCookies(),
+  legacyLocalStorageKeys: ['token', 'refreshToken'],
+};
+
+export const tokenStorage = createBrowserSessionTokenStorage(BROWSER_STORAGE_OPTIONS);
 
 /** Legacy dev fallback only — not used when HttpOnly cookies are enabled. */
 export function getAccessToken(): string | null {
-  if (usesHttpOnlyCookies()) return null;
-  if (typeof window === 'undefined') return null;
-  return sessionStorage.getItem(ACCESS_KEY);
+  return readBrowserAccessToken(BROWSER_STORAGE_OPTIONS);
 }
 
 export function getRefreshToken(): string | null {
-  if (usesHttpOnlyCookies()) return null;
-  if (typeof window === 'undefined') return null;
-  return sessionStorage.getItem(REFRESH_KEY);
+  return readBrowserRefreshToken(BROWSER_STORAGE_OPTIONS);
 }
 
 export function storeTokens(accessToken: string, refreshToken?: string | null): void {
-  if (usesHttpOnlyCookies()) return;
-  if (typeof window === 'undefined') return;
-  sessionStorage.setItem(ACCESS_KEY, accessToken);
-  if (refreshToken) {
-    sessionStorage.setItem(REFRESH_KEY, refreshToken);
-  }
+  writeBrowserTokens(BROWSER_STORAGE_OPTIONS, accessToken, refreshToken);
 }
 
 export function clearTokens(): void {
-  if (typeof window === 'undefined') return;
-  sessionStorage.removeItem(ACCESS_KEY);
-  sessionStorage.removeItem(REFRESH_KEY);
-  localStorage.removeItem('token');
-  localStorage.removeItem('refreshToken');
+  clearBrowserTokens(BROWSER_STORAGE_OPTIONS);
 }

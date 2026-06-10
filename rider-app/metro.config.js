@@ -20,9 +20,12 @@ config.resolver.nodeModulesPaths = [
 
 // Watch the shared packages for changes during development
 config.watchFolders = [
-  path.resolve(__dirname),
-  path.resolve(__dirname, '../packages/shared-types'),
+  path.resolve(__dirname, '..'),
+  path.resolve(__dirname, '../packages'),
 ];
+
+config.resolver.unstable_enableSymlinks = true;
+config.resolver.unstable_enablePackageExports = true;
 
 // Ensure symlinks are resolved properly
 config.resolver.disableHierarchicalLookup = false;

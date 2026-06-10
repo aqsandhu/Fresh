@@ -277,6 +277,9 @@ importers:
       '@expo/vector-icons':
         specifier: ^15.1.1
         version: 15.1.1(expo-font@14.0.12(expo@54.0.35(@babel/core@7.29.7)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@freshbazar/core-auth':
+        specifier: workspace:*
+        version: link:../packages/core-auth
       '@freshbazar/shared-types':
         specifier: workspace:*
         version: link:../packages/shared-types
@@ -411,6 +414,16 @@ importers:
         specifier: ~5.9.2
         version: 5.9.3
 
+  packages/core-auth:
+    dependencies:
+      axios:
+        specifier: ^1.6.5
+        version: 1.16.1
+    devDependencies:
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+
   packages/shared-types:
     devDependencies:
       typescript:
@@ -422,6 +435,9 @@ importers:
       '@expo/vector-icons':
         specifier: ^15.1.1
         version: 15.1.1(expo-font@14.0.12(expo@54.0.35(@babel/core@7.29.7)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@freshbazar/core-auth':
+        specifier: workspace:*
+        version: link:../packages/core-auth
       '@freshbazar/shared-types':
         specifier: workspace:*
         version: link:../packages/shared-types
@@ -531,6 +547,9 @@ importers:
 
   website:
     dependencies:
+      '@freshbazar/core-auth':
+        specifier: workspace:*
+        version: link:../packages/core-auth
       '@freshbazar/shared-types':
         specifier: workspace:*
         version: link:../packages/shared-types
