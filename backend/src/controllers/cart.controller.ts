@@ -9,7 +9,7 @@ import { successResponse, notFoundResponse, errorResponse } from '../utils/respo
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
 import logger from '../utils/logger';
-import { buildCartResponse } from '../utils/cartResponse';
+import { buildCartResponse, loadCartSnapshotFromClient } from '../utils/cartResponse';
 
 /**
  * Get or create cart for user
@@ -186,27 +186,10 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
       );
     }
 
-    const updatedCart = await client.query('SELECT * FROM carts WHERE id = $1', [cart.id]);
-    const updatedItems = await client.query(
-      `SELECT ci.id, ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
-              p.name_en, p.name_ur, p.primary_image
-       FROM cart_items ci JOIN products p ON ci.product_id = p.id
-       WHERE ci.cart_id = $1`,
-      [cart.id]
-    );
-    return { cart: updatedCart.rows[0], items: updatedItems.rows };
+    return loadCartSnapshotFromClient(client, cart.id);
   });
 
-  successResponse(res, {
-    cart: {
-      id: transactionResult.cart.id,
-      subtotal: parseFloat(transactionResult.cart.subtotal),
-      delivery_charge: parseFloat(transactionResult.cart.delivery_charge),
-      total_amount: parseFloat(transactionResult.cart.total_amount),
-      item_count: transactionResult.cart.item_count,
-    },
-    items: transactionResult.items,
-  }, 'Item added to cart successfully');
+  successResponse(res, transactionResult, 'Item added to cart successfully');
 });
 
 /**
@@ -225,8 +208,7 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Quantity must be at least 1', 400);
   }
 
-  const cartId = await withTransaction(async (client) => {
-    // Get cart item
+  const transactionResult = await withTransaction(async (client) => {
     const itemResult = await client.query(
       `SELECT ci.*, c.user_id 
        FROM cart_items ci
@@ -241,7 +223,6 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
 
     const item = itemResult.rows[0];
 
-    // Verify ownership
     if (item.user_id !== req.user!.id) {
       throw new Error('Unauthorized');
     }
@@ -272,11 +253,10 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
       [quantity, unitPrice, itemId]
     );
 
-    return item.cart_id as string;
+    return loadCartSnapshotFromClient(client, item.cart_id);
   });
 
-  const response = await buildCartResponse(cartId);
-  successResponse(res, response, 'Cart item updated successfully');
+  successResponse(res, transactionResult, 'Cart item updated successfully');
 });
 
 /**
@@ -290,7 +270,7 @@ export const removeFromCart = asyncHandler(async (req: Request, res: Response) =
 
   const { itemId } = req.params;
 
-  const cartId = await withTransaction(async (client) => {
+  const transactionResult = await withTransaction(async (client) => {
     const itemResult = await client.query(
       `SELECT ci.*, c.user_id 
        FROM cart_items ci
@@ -310,11 +290,10 @@ export const removeFromCart = asyncHandler(async (req: Request, res: Response) =
     }
 
     await client.query('DELETE FROM cart_items WHERE id = $1', [itemId]);
-    return item.cart_id as string;
+    return loadCartSnapshotFromClient(client, item.cart_id);
   });
 
-  const response = await buildCartResponse(cartId);
-  successResponse(res, response, 'Item removed from cart successfully');
+  successResponse(res, transactionResult, 'Item removed from cart successfully');
 });
 
 /**

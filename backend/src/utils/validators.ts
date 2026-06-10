@@ -2,6 +2,8 @@
 // VALIDATION HELPERS
 // ============================================================================
 
+import crypto from 'crypto';
+
 // Pakistani phone number validation
 export const isValidPakistaniPhone = (phone: string): boolean => {
   // Remove all non-digit characters except +
@@ -14,20 +16,30 @@ export const isValidPakistaniPhone = (phone: string): boolean => {
 
 // Normalize Pakistani phone number
 export const normalizePhoneNumber = (phone: string): string => {
-  // Remove all non-digit characters
+  if (!phone || typeof phone !== 'string') {
+    throw new Error('Phone number is required');
+  }
+
   let cleaned = phone.replace(/\D/g, '');
-  
-  // If starts with 0, replace with +92
+
+  if (cleaned.length < 10) {
+    throw new Error('Invalid phone number');
+  }
+
   if (cleaned.startsWith('0')) {
     cleaned = '92' + cleaned.substring(1);
   }
-  
-  // If doesn't start with 92, add it
+
   if (!cleaned.startsWith('92')) {
     cleaned = '92' + cleaned;
   }
-  
-  return '+' + cleaned;
+
+  const normalized = '+' + cleaned;
+  if (!isValidPakistaniPhone(normalized)) {
+    throw new Error('Invalid Pakistani phone number');
+  }
+
+  return normalized;
 };
 
 // Email validation
@@ -129,20 +141,22 @@ export const isValidFileSize = (size: number): boolean => {
   return size <= maxSize;
 };
 
+function secureRandomSuffix(bytes = 3): string {
+  return crypto.randomBytes(bytes).toString('hex').toUpperCase();
+}
+
 // Order number generation
 export const generateOrderNumber = (): string => {
   const date = new Date();
   const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
-  return `ORD-${dateStr}-${random}`;
+  return `ORD-${dateStr}-${secureRandomSuffix(3)}`;
 };
 
 // Atta request number generation
 export const generateAttaRequestNumber = (): string => {
   const date = new Date();
   const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
-  const random = Math.floor(Math.random() * 1000000).toString().padStart(6, '0');
-  return `ATTA-${dateStr}-${random}`;
+  return `ATTA-${dateStr}-${secureRandomSuffix(3)}`;
 };
 
 // Slug generation

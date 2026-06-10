@@ -123,6 +123,18 @@ COMMENT ON TABLE users IS 'Customer accounts with phone-based authentication';
 COMMENT ON COLUMN users.phone IS 'Primary identifier - Pakistani phone number format';
 COMMENT ON COLUMN users.device_tokens IS 'Array of FCM tokens for push notifications';
 
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
+CREATE INDEX idx_refresh_tokens_active ON refresh_tokens(token_hash) WHERE revoked_at IS NULL;
+
 -- ============================================================================
 -- 2. RIDERS TABLE
 -- ============================================================================

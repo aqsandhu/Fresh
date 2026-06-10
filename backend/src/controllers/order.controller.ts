@@ -10,6 +10,7 @@ import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deli
 import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
+import { normalizePhoneNumber } from '../utils/validators';
 
 /**
  * Get user's orders
@@ -166,9 +167,39 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
   successResponse(res, order, 'Order retrieved successfully');
 });
 
+function buildTrackingPayload(order: Record<string, unknown>) {
+  const timeline = [
+    { status: 'pending', label: 'Order Placed', time: order.placed_at, completed: true },
+    { status: 'confirmed', label: 'Order Confirmed', time: order.confirmed_at, completed: !!order.confirmed_at },
+    { status: 'preparing', label: 'Being Prepared', time: order.preparing_at, completed: !!order.preparing_at },
+    { status: 'ready_for_pickup', label: 'Ready for Pickup', time: order.ready_at, completed: !!order.ready_at },
+    { status: 'out_for_delivery', label: 'Out for Delivery', time: order.out_for_delivery_at, completed: !!order.out_for_delivery_at },
+    { status: 'delivered', label: 'Delivered', time: order.delivered_at, completed: !!order.delivered_at },
+  ];
+
+  return {
+    order: {
+      id: order.id,
+      order_number: order.order_number,
+      status: order.status,
+      delivery_address: order.delivery_address,
+    },
+    timeline,
+    rider: order.rider_id && order.status === 'out_for_delivery' ? {
+      id: order.rider_id,
+      name: order.rider_name,
+      location: order.rider_latitude ? {
+        latitude: order.rider_latitude,
+        longitude: order.rider_longitude,
+        updated_at: order.rider_location_updated_at,
+      } : null,
+    } : null,
+  };
+}
+
 /**
- * Track order status
- * GET /api/orders/:id/track
+ * Track order status (authenticated — owner or staff only)
+ * GET /api/orders/track/:id
  */
 export const trackOrder = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -197,35 +228,60 @@ export const trackOrder = asyncHandler(async (req: Request, res: Response) => {
 
   const order = result.rows[0];
 
-  // Build tracking timeline
-  const timeline = [
-    { status: 'pending', label: 'Order Placed', time: order.placed_at, completed: true },
-    { status: 'confirmed', label: 'Order Confirmed', time: order.confirmed_at, completed: !!order.confirmed_at },
-    { status: 'preparing', label: 'Being Prepared', time: order.preparing_at, completed: !!order.preparing_at },
-    { status: 'ready_for_pickup', label: 'Ready for Pickup', time: order.ready_at, completed: !!order.ready_at },
-    { status: 'out_for_delivery', label: 'Out for Delivery', time: order.out_for_delivery_at, completed: !!order.out_for_delivery_at },
-    { status: 'delivered', label: 'Delivered', time: order.delivered_at, completed: !!order.delivered_at },
-  ];
+  if (req.user) {
+    const isOwner = req.user.id === order.user_id;
+    const isStaff = ['admin', 'super_admin', 'rider'].includes(req.user.role);
+    if (!isOwner && !isStaff) {
+      return errorResponse(res, 'You can only track your own orders', 403);
+    }
+  }
 
-  successResponse(res, {
-    order: {
-      id: order.id,
-      order_number: order.order_number,
-      status: order.status,
-      delivery_address: order.delivery_address,
-    },
-    timeline,
-    // Only show rider location to customer when order is out for delivery (not after delivery)
-    rider: order.rider_id && order.status === 'out_for_delivery' ? {
-      id: order.rider_id,
-      name: order.rider_name,
-      location: order.rider_latitude ? {
-        latitude: order.rider_latitude,
-        longitude: order.rider_longitude,
-        updated_at: order.rider_location_updated_at,
-      } : null,
-    } : null,
-  }, 'Order tracking information retrieved');
+  successResponse(res, buildTrackingPayload(order), 'Order tracking information retrieved');
+});
+
+/**
+ * Public order tracking with order number + phone verification
+ * GET /api/orders/track/public/:orderNumber?phone=03XXXXXXXXX
+ */
+export const trackOrderPublic = asyncHandler(async (req: Request, res: Response) => {
+  const { orderNumber } = req.params;
+  const phone = String(req.query.phone || '');
+
+  if (!phone) {
+    return errorResponse(res, 'Phone number is required for tracking', 400);
+  }
+
+  let normalizedPhone: string;
+  try {
+    normalizedPhone = normalizePhoneNumber(phone);
+  } catch {
+    return errorResponse(res, 'Invalid phone number', 400);
+  }
+
+  const result = await query(
+    `SELECT 
+      o.id, o.order_number, o.status,
+      o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
+      o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
+      o.delivery_address_snapshot->>'written_address' as delivery_address,
+      o.user_id,
+      r.id as rider_id, ru.full_name as rider_name,
+      ST_X(r.current_location::geometry) as rider_longitude,
+      ST_Y(r.current_location::geometry) as rider_latitude,
+      r.location_updated_at as rider_location_updated_at
+    FROM orders o
+    JOIN users u ON o.user_id = u.id
+    LEFT JOIN riders r ON o.rider_id = r.id
+    LEFT JOIN users ru ON r.user_id = ru.id
+    WHERE o.order_number = $1 AND u.phone = $2 AND o.deleted_at IS NULL`,
+    [orderNumber, normalizedPhone]
+  );
+
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Order not found');
+  }
+
+  successResponse(res, buildTrackingPayload(result.rows[0]), 'Order tracking information retrieved');
 });
 
 /**

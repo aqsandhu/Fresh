@@ -138,41 +138,27 @@ export const requireRider = authorize('rider', 'admin', 'super_admin');
 // Customer authorization middleware
 export const requireCustomer = authorize('customer', 'admin', 'super_admin');
 
-// Optional authentication (doesn't fail if no token)
-export const optionalAuth = async (
+// Optional authentication (doesn't fail if no token) — JWT claims only.
+export const optionalAuth = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
-): Promise<void> => {
+): void => {
   try {
     const token = extractToken(req);
-    
+
     if (!token) {
       return next();
     }
-    
+
     const decoded = verifyAccessToken(token);
-    
-    const userResult = await query(
-      `SELECT id, phone, role, status, full_name 
-       FROM users 
-       WHERE id = $1 AND status = 'active'`,
-      [decoded.userId]
-    );
-    
-    if (userResult.rows.length > 0) {
-      const user = userResult.rows[0];
-      req.user = {
-        ...decoded,
-        id: user.id,
-        full_name: user.full_name,
-        status: user.status,
-      };
-    }
-    
+    req.user = {
+      ...decoded,
+      id: decoded.userId,
+    };
+
     next();
   } catch {
-    // Silently continue without user
     next();
   }
 };

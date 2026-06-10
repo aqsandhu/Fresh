@@ -37,6 +37,18 @@ type DbClient = Pick<PoolClient, 'query'>;
 const runQuery = (client: DbClient | undefined, text: string, params?: unknown[]) =>
   client ? client.query(text, params) : query(text, params);
 
+async function getFreshCartSubtotal(cartId: string, client?: DbClient): Promise<number> {
+  const result = await runQuery(
+    client,
+    `SELECT COALESCE(SUM(ci.quantity * p.price), 0) AS fresh_subtotal
+       FROM cart_items ci
+       JOIN products p ON ci.product_id = p.id
+      WHERE ci.cart_id = $1`,
+    [cartId]
+  );
+  return parseFloat(result.rows[0]?.fresh_subtotal || '0');
+}
+
 const getDeliverySettings = async (
   client?: DbClient
 ): Promise<{ baseCharge: number; freeThreshold: number }> => {
@@ -86,15 +98,13 @@ export const calculateDeliveryCharge = async (
   client?: PoolClient
 ): Promise<DeliveryChargeResult> => {
   try {
-    const cartResult = await runQuery(
+    const cartExists = await runQuery(
       client,
-      `SELECT c.subtotal
-         FROM carts c
-        WHERE c.id = $1`,
+      `SELECT id FROM carts WHERE id = $1`,
       [cartId]
     );
 
-    if (cartResult.rows.length === 0) {
+    if (cartExists.rows.length === 0) {
       return {
         delivery_charge: 0,
         rule_applied: 'EMPTY_CART',
@@ -103,7 +113,7 @@ export const calculateDeliveryCharge = async (
       };
     }
 
-    const subtotal = parseFloat(cartResult.rows[0].subtotal || '0');
+    const subtotal = await getFreshCartSubtotal(cartId, client);
     if (subtotal <= 0) {
       return {
         delivery_charge: 0,
