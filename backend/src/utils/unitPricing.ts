@@ -58,3 +58,20 @@ export function resolveUnitPrice(
       return base;
   }
 }
+
+/** Live line unit price from products — used in SQL subtotal (never stale cart_items). */
+export const FRESH_CART_LINE_UNIT_PRICE_SQL = `
+  CASE COALESCE(ci.unit, 'full')
+    WHEN 'half_kg' THEN COALESCE(p.half_kg_price, p.price * 0.5)
+    WHEN 'quarter_kg' THEN COALESCE(p.quarter_kg_price, p.price * 0.25)
+    WHEN 'half_dozen' THEN COALESCE(p.half_dozen_price, p.price * 0.5)
+    ELSE p.price
+  END
+`;
+
+export const FRESH_CART_SUBTOTAL_SQL = `
+  SELECT COALESCE(SUM(ci.quantity * (${FRESH_CART_LINE_UNIT_PRICE_SQL})), 0) AS fresh_subtotal
+    FROM cart_items ci
+    JOIN products p ON ci.product_id = p.id
+   WHERE ci.cart_id = $1
+`;

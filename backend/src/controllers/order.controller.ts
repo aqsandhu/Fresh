@@ -7,7 +7,7 @@ import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
-import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
+import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 import { normalizePhoneNumber } from '../utils/validators';
@@ -371,7 +371,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         `SELECT price, half_kg_price, quarter_kg_price, half_dozen_price,
                 stock_status, is_active, name_en
            FROM products
-          WHERE id = $1`,
+          WHERE id = $1
+          FOR UPDATE`,
         [item.product_id]
       );
 
@@ -421,13 +422,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     );
     const deliveryChargeRuleId = ruleResult.rows[0]?.id;
 
-    // Fresh subtotal from live cart line prices (unit_price refreshed above).
-    const freshSubtotalResult = await client.query(
-      `SELECT COALESCE(SUM(ci.quantity * ci.unit_price), 0) AS fresh_subtotal
-         FROM cart_items ci
-        WHERE ci.cart_id = $1`,
-      [cart.id]
-    );
+    // Fresh subtotal from live products table (JOIN), not cached carts.subtotal.
+    const freshSubtotalResult = await client.query(FRESH_CART_SUBTOTAL_SQL, [cart.id]);
     const subtotal = parseFloat(
       freshSubtotalResult.rows[0]?.fresh_subtotal || '0'
     );
