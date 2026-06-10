@@ -9,7 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, CommonActions } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { CartStackParamList } from '@types';
+import { CartStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button } from '@components';
 
@@ -25,7 +25,7 @@ export const OrderConfirmationScreen: React.FC = () => {
     // Disable hardware back button; allow programmatic navigation via canLeave ref
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
       if (canLeave.current) return;
-      e.preventDefault();
+      (e as { preventDefault?: () => void }).preventDefault?.();
     });
     return unsubscribe;
   }, [navigation]);

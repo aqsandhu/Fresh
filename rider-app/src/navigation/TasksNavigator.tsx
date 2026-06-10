@@ -9,9 +9,10 @@ const Stack = createNativeStackNavigator<TasksStackParamList>();
 const TasksNavigator = () => {
   return (
     <Stack.Navigator
+      id="TasksStack"
       screenOptions={{
         headerShown: false,
-        cardStyle: { backgroundColor: '#fff' },
+        contentStyle: { backgroundColor: '#fff' },
       }}
     >
       <Stack.Screen name="TasksList" component={TasksListScreen} />

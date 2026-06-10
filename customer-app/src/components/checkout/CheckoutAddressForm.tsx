@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { Address } from '@types';
+import { Address } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button, Input } from '@components';
 import { DoorPhotoCropModal } from '@components/common/DoorPhotoCropModal';

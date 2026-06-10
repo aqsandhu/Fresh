@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { OrdersStackParamList, Order, RootStackParamList } from '@types';
+import { OrdersStackParamList, Order, RootStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatCurrency, formatDate, getStatusColor } from '@utils/helpers';
 import { ErrorView, EmptyState, SkeletonList, Button } from '@components';

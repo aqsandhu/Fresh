@@ -1,5 +1,5 @@
 import apiClient, { handleApiError } from './api';
-import { ApiResponse, Category, StoreProduct, Banner, PaginatedResponse } from '@types';
+import { ApiResponse, Category, StoreProduct, Banner, PaginatedResponse } from '@app-types';
 import { API_BASE_URL } from '@utils/constants';
 import { withCityParams, getCachedCityId } from '@/lib/apiHelpers';
 

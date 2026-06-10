@@ -59,38 +59,7 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
   const { language } = useSettingsStore();
   const { rider } = useAuthStore();
 
-  // Load task on mount
-  useEffect(() => {
-    loadTask();
-  }, [taskId]);
-
-  // Setup socket for real-time updates when task is loaded
-  useEffect(() => {
-    if (!task?.orderId) return;
-
-    const setupSocket = () => {
-      socketService.connect();
-      socketService.subscribeToOrder(task.orderId, (data: any) => {
-        console.log('[TaskDetail] Order update:', data);
-        loadTask();
-      });
-
-      // Listen for new assignments
-      socketService.onNewAssignment((data: any) => {
-        console.log('[TaskDetail] New assignment:', data);
-        loadTask();
-      });
-    };
-
-    setupSocket();
-
-    return () => {
-      socketService.unsubscribeFromOrder(task.orderId);
-      socketService.off('rider:new_assignment');
-    };
-  }, [task?.orderId, loadTask]);
-
-  const loadTask = async () => {
+  const loadTask = useCallback(async () => {
     try {
       setIsLoading(true);
       const taskData = await fetchTaskById(taskId);
@@ -104,7 +73,34 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [taskId, fetchTaskById, language]);
+
+  useEffect(() => {
+    loadTask();
+  }, [loadTask]);
+
+  useEffect(() => {
+    if (!task?.orderId) return;
+
+    const orderId = task.orderId;
+    const handleOrderUpdate = (data: unknown) => {
+      console.log('[TaskDetail] Order update:', data);
+      loadTask();
+    };
+    const handleNewAssignment = (data: unknown) => {
+      console.log('[TaskDetail] New assignment:', data);
+      loadTask();
+    };
+
+    socketService.connect();
+    socketService.subscribeToOrder(orderId, handleOrderUpdate);
+    socketService.onNewAssignment(handleNewAssignment);
+
+    return () => {
+      socketService.unsubscribeFromOrder(orderId, handleOrderUpdate);
+      socketService.off('rider:new_assignment');
+    };
+  }, [task?.orderId, loadTask]);
 
   // Handle navigate to location
   const handleNavigate = useCallback(() => {
@@ -417,7 +413,7 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
               size={20}
               color={COLORS.primary}
             />
-            <Text style={styles.typeText}>{getTaskTypeLabel(task.type, language)}</Text>
+            <Text style={styles.typeText}>{getTaskTypeLabel(task.type ?? '', language)}</Text>
           </View>
           <View
             style={[

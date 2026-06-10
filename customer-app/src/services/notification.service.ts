@@ -1,7 +1,7 @@
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import apiClient from './api';
-import { ApiResponse, Notification } from '@types';
+import { ApiResponse, Notification } from '@app-types';
 import { supportsRemotePush } from '@/lib/expoRuntime';
 
 type NotificationsModule = typeof import('expo-notifications');
@@ -21,6 +21,8 @@ function getNotifications(): NotificationsModule | null {
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
       }),
     });
     handlerConfigured = true;

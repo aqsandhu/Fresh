@@ -89,7 +89,7 @@ export default function Header() {
     })
   }, [selectedCityId])
   const searchInputRef = useRef<HTMLInputElement>(null)
-  const searchDebounceRef = useRef<NodeJS.Timeout>()
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const searchAreaRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)

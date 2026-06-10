@@ -20,7 +20,7 @@ import { formatCurrency } from '@utils/helpers';
 import { useCityContext } from '@/context/CityContext';
 import { useAuthStore, useCartStore, useNotificationStore, useCartUiStore } from '@store';
 import { productService } from '@services/product.service';
-import { Category, StoreProduct } from '@types';
+import { Category, StoreProduct } from '@app-types';
 import { BrandLogo } from '@components/BrandLogo';
 
 interface BannerSettings {

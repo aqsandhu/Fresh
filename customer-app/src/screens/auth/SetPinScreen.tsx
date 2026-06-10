@@ -12,7 +12,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Toast from 'react-native-toast-message';
-import { AuthStackParamList, RootStackParamList } from '@types';
+import { AuthStackParamList, RootStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { finishAuthRedirect } from '@utils/authRedirect';
 import PinInput from '@components/auth/PinInput';

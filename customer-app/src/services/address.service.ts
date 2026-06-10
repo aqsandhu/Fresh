@@ -1,5 +1,5 @@
 import apiClient, { handleApiError } from './api';
-import { ApiResponse, Address } from '@types';
+import { ApiResponse, Address } from '@app-types';
 import { API_BASE_URL } from '@utils/constants';
 import { pickString } from '@freshbazar/shared-types';
 

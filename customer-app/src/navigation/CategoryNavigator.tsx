@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { CategoryStackParamList } from '@types';
+import { CategoryStackParamList } from '@app-types';
 import { CategoriesListScreen, CategoryProductsScreen, ProductDetailScreen } from '@screens';
 
 const Stack = createNativeStackNavigator<CategoryStackParamList>();
@@ -8,6 +8,7 @@ const Stack = createNativeStackNavigator<CategoryStackParamList>();
 export const CategoryNavigator: React.FC = () => {
   return (
     <Stack.Navigator
+      id="CategoryStack"
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',

@@ -12,14 +12,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { ProfileStackParamList, Notification, NotificationType } from '@types';
+import { ProfileStackParamList, Notification, NotificationType } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { formatDateTime, getRelativeTime } from '@utils/helpers';
 import { EmptyState, ErrorView, LoadingOverlay } from '@components';
 import { useNotificationStore } from '@store';
 import { notificationService } from '@services/notification.service';
 
-const getNotificationIcon = (type: NotificationType): string => {
+const getNotificationIcon = (type: NotificationType | string): string => {
   switch (type) {
     case 'order_update':
       return 'shopping-bag';
@@ -34,7 +34,7 @@ const getNotificationIcon = (type: NotificationType): string => {
   }
 };
 
-const getNotificationColor = (type: NotificationType): string => {
+const getNotificationColor = (type: NotificationType | string): string => {
   switch (type) {
     case 'order_update':
       return COLORS.primary;
@@ -149,7 +149,7 @@ export const NotificationsScreen: React.FC = () => {
         </View>
         
         <View style={styles.content}>
-          <View style={styles.header}>
+          <View style={styles.cardHeader}>
             <Text style={[styles.title, !item.isRead && styles.unreadTitle]}>
               {item.title}
             </Text>
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: SPACING.md,
   },
-  header: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: SPACING.xs,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { HomeStackParamList } from '@types';
+import { HomeStackParamList } from '@app-types';
 import { HomeScreen, SearchScreen } from '@screens';
 import { ProductDetailScreen, CategoryProductsScreen } from '@screens';
 
@@ -9,6 +9,7 @@ const Stack = createNativeStackNavigator<HomeStackParamList>();
 export const HomeNavigator: React.FC = () => {
   return (
     <Stack.Navigator
+      id="HomeStack"
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',

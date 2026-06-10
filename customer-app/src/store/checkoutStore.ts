@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Address, DeliverySlot } from '@types';
+import { Address, DeliverySlot } from '@app-types';
 
 interface CheckoutState {
   // Selected items for checkout

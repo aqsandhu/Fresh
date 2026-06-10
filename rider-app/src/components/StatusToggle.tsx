@@ -83,7 +83,7 @@ const StatusToggle: React.FC<StatusToggleProps> = ({
             <ActivityIndicator size="small" color={COLORS.white} />
           ) : (
             <MaterialCommunityIcons
-              name={getStatusIcon()}
+              name={getStatusIcon() as keyof typeof MaterialCommunityIcons.glyphMap}
               size={20}
               color={COLORS.white}
             />

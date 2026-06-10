@@ -20,7 +20,7 @@ import { useNavigation } from '@react-navigation/native';
 
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import { ShopStackParamList, StoreProduct } from '@types';
+import { ShopStackParamList, StoreProduct } from '@app-types';
 
 import { COLORS, SPACING } from '@utils/constants';
 

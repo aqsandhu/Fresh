@@ -34,7 +34,7 @@ export const Input: React.FC<InputProps> = ({
       <View style={[styles.inputContainer, error && styles.inputError]}>
         {leftIcon && <View style={styles.leftIcon}>{leftIcon}</View>}
         <TextInput
-          style={[styles.input, leftIcon && styles.inputWithLeftIcon, rightIcon && styles.inputWithRightIcon, style]}
+          style={[styles.input, !!leftIcon && styles.inputWithLeftIcon, !!rightIcon && styles.inputWithRightIcon, style]}
           placeholderTextColor={COLORS.gray400}
           {...textInputProps}
         />

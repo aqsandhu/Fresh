@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
-import { AuthStackParamList, RootStackParamList } from '@types';
+import { AuthStackParamList, RootStackParamList } from '@app-types';
 import { COLORS, SPACING, VALIDATION, ERROR_MESSAGES } from '@utils/constants';
 import { isOtpBypassEnabled, otpBypassHint } from '@utils/otpBypass';
 import { finishAuthRedirect } from '@utils/authRedirect';

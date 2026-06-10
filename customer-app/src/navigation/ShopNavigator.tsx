@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ShopStackParamList } from '@types';
+import { ShopStackParamList } from '@app-types';
 import {
   ProductsScreen,
   CategoriesListScreen,
@@ -14,6 +14,7 @@ const Stack = createNativeStackNavigator<ShopStackParamList>();
 export const ShopNavigator: React.FC = () => {
   return (
     <Stack.Navigator
+      id="ShopStack"
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',

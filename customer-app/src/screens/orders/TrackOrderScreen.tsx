@@ -13,7 +13,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline } from 'react-native-maps';
-import { OrdersStackParamList, OrderStatus } from '@types';
+import { OrdersStackParamList, OrderStatus } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatDateTime, getStatusColor } from '@utils/helpers';
 import { ErrorView, LoadingOverlay } from '@components';

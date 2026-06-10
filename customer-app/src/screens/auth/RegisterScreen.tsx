@@ -15,7 +15,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Toast from 'react-native-toast-message';
-import { AuthStackParamList, RootStackParamList } from '@types';
+import { AuthStackParamList, RootStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, VALIDATION } from '@utils/constants';
 import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint } from '@utils/otpBypass';
 import { finishAuthRedirect } from '@utils/authRedirect';

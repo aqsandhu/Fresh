@@ -1,5 +1,5 @@
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '@types';
+import { RootStackParamList } from '@app-types';
 
 /** Post-auth navigation — mirrors website `redirect` query param handling. */
 export function finishAuthRedirect(

@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { ProfileStackParamList } from '@types';
+import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, VALIDATION } from '@utils/constants';
 import { Button, Input, LoadingOverlay } from '@components';
 import { useAuthStore } from '@store';

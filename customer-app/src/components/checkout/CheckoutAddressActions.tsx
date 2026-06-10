@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { Address } from '@types';
+import { Address } from '@app-types';
 import { COLORS, SPACING } from '@utils/constants';
 import { addressService } from '@services/address.service';
 import {

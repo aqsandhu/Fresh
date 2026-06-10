@@ -1,6 +1,6 @@
 import apiClient, { handleApiError } from './api';
 import { API_BASE_URL } from '@utils/constants';
-import { ApiResponse, Order, OrderItem, OrderStatus, DeliverySlot, PaginatedResponse, Address, Rider } from '@types';
+import { ApiResponse, Order, OrderItem, OrderStatus, DeliverySlot, PaginatedResponse, Address, Rider } from '@app-types';
 import { withCityParams, getCachedCityId } from '@/lib/apiHelpers';
 
 const BACKEND_URL = API_BASE_URL.replace('/api', '');

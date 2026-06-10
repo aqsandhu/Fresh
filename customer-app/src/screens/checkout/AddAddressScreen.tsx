@@ -16,7 +16,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { CartStackParamList } from '@types';
+import { CartStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
 import { Button, Input, LoadingOverlay } from '@components';
 import { DoorPhotoCropModal } from '@components/common/DoorPhotoCropModal';

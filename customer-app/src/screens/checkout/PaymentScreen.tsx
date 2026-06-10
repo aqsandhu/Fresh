@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { CartStackParamList } from '@types';
+import { CartStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES } from '@utils/constants';
 import { formatCurrency } from '@utils/helpers';
 import { Button, LoadingOverlay } from '@components';

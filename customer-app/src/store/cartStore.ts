@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ProductUnit, StoreCartItem, StoreProduct } from '@types';
+import { ProductUnit, StoreCartItem, StoreProduct } from '@app-types';
 import { priceForUnit, resolveLineUnitPrice } from '@/lib/unitPricing';
 import { getSelectedCityId } from '@/lib/cityStorage';
 import { withCityParams } from '@/lib/apiHelpers';
@@ -18,7 +18,11 @@ const persistActiveCityItems = (
 ): Pick<CartStore, 'items' | 'cartsByCity' | 'activeCityId'> => {
   const cityId = state.activeCityId;
   if (!cityId) {
-    return { items };
+    return {
+      items,
+      cartsByCity: state.cartsByCity,
+      activeCityId: state.activeCityId,
+    };
   }
   return {
     items,

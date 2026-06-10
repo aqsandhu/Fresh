@@ -180,6 +180,9 @@ class TaskService {
     if (!response.success) {
       throw new Error(response.message || 'Failed to fetch today stats');
     }
+    if (!response.data) {
+      throw new Error('No stats data returned');
+    }
     return response.data;
   }
 
@@ -187,6 +190,9 @@ class TaskService {
     const response = await apiService.get<ApiResponse<RiderStatsData>>('/rider/stats');
     if (!response.success) {
       throw new Error(response.message || 'Failed to fetch rider stats');
+    }
+    if (!response.data) {
+      throw new Error('No rider stats returned');
     }
     return response.data;
   }
@@ -240,6 +246,9 @@ class TaskService {
     if (!response.success) {
       throw new Error(response.message || 'Failed to upload proof');
     }
+    if (!response.data?.url) {
+      throw new Error('No proof URL returned');
+    }
     return response.data.url;
   }
 
@@ -261,6 +270,9 @@ class TaskService {
     if (!response.success) {
       throw new Error(response.message || 'Failed to request call');
     }
+    if (!response.data) {
+      throw new Error('No call request data returned');
+    }
     return response.data;
   }
 
@@ -275,6 +287,9 @@ class TaskService {
     );
     if (!response.success) {
       throw new Error(response.message || 'Failed to pin location');
+    }
+    if (!response.data) {
+      throw new Error('No location data returned');
     }
     return response.data;
   }
@@ -293,6 +308,9 @@ class TaskService {
     );
     if (!response.success) {
       throw new Error(response.message || 'Failed to upload door picture');
+    }
+    if (!response.data) {
+      throw new Error('No door picture URL returned');
     }
     return response.data;
   }

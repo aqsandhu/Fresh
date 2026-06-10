@@ -1,9 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ProductUnit, StoreCartItem, StoreProduct } from '@types';
+import { ProductUnit, StoreCartItem, StoreProduct } from '@app-types';
 import { STORAGE_KEYS } from '@utils/constants';
 import { getStoredToken } from '@/lib/secureTokens';
 import apiClient, { handleApiError } from './api';
-import { ApiResponse } from '@types';
+import { ApiResponse } from '@app-types';
 
 const lineKey = (productId: string, unit: ProductUnit = 'full') =>
   `${productId}::${unit}`;

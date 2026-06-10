@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { ProfileStackParamList } from '@types';
+import { ProfileStackParamList } from '@app-types';
 import {
   ProfileScreen,
   EditProfileScreen,
@@ -24,6 +24,7 @@ const Stack = createNativeStackNavigator<ProfileStackParamList>();
 export const ProfileNavigator: React.FC = () => {
   return (
     <Stack.Navigator
+      id="ProfileStack"
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',
