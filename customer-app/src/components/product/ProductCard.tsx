@@ -4,7 +4,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { truncateText, formatCurrency } from '@utils/helpers';
 import { ProductPrice } from './ProductPrice';
-import { ProductUnit, StoreProduct } from '@types';
+import { ProductUnit, StoreProduct } from '@app-types';
 import { useCartStore } from '@store';
 import { getUnitOptions, getUnitPickerDisplayLabel, UNIT_PICKER_CHIP } from '@/lib/unitPricing';
 

@@ -1,4 +1,4 @@
-ï»¿import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { CartStackParamList, DeliverySlot } from '@types';
+import { CartStackParamList, DeliverySlot } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES } from '@utils/constants';
 import { formatCurrency, getVegFruitSubtotal, calculateDeliveryCharge as calcDelivery } from '@utils/helpers';
 import { Button, ErrorView, LoadingOverlay } from '@components';
@@ -127,7 +127,7 @@ export const TimeSlotScreen: React.FC = () => {
 
     setPlacing(true);
 
-    // Locally-saved addresses have a "local_" prefix â€” not a valid UUID.
+    // Locally-saved addresses have a "local_" prefix — not a valid UUID.
     // Try to sync to the server and use the returned server ID.
     let finalAddressId = selectedAddress.id;
     if (selectedAddress.id.startsWith('local_')) {
@@ -360,7 +360,7 @@ export const TimeSlotScreen: React.FC = () => {
           )}
           {deliveryCharge === 0 && !selectedSlot?.isFreeDelivery && (
             <Text style={styles.freeNote}>
-              Free delivery â€” Rs. {vegFruitSubtotal} in vegetables/fruits qualifies.
+              Free delivery — Rs. {vegFruitSubtotal} in vegetables/fruits qualifies.
             </Text>
           )}
           {deliveryCharge > 0 && (

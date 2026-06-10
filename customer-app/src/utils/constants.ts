@@ -75,6 +75,7 @@ export const COLORS = {
   primaryLighter: '#f0fdf4',
   primary50: '#f0fdf4',
   primary100: '#dcfce7',
+  primary200: '#bbf7d0',
   primary500: '#22c55e',
   primary600: '#16a34a',
   primary700: '#15803d',

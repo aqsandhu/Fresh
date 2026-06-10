@@ -15,6 +15,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
+    name: config.name ?? 'FreshBazar',
+    slug: config.slug ?? 'freshbazar',
     extra: {
       ...config.extra,
       googleMapsApiKey: googleMapsKey,

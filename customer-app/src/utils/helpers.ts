@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import type { ProductUnit } from '@app-types';
 import { COLORS, DELIVERY } from './constants';
 
 // Format currency (Pakistani Rupees)
@@ -130,7 +131,11 @@ const toDeliveryLines = (items: CartLineInput[]): DeliveryCartLine[] =>
       price: Number(it.product?.price) || 0,
     },
     quantity: it.quantity,
-    unitPrice: resolveLineUnitPrice(it),
+    unitPrice: resolveLineUnitPrice({
+      product: it.product,
+      unit: it.unit as ProductUnit | undefined,
+      unitPrice: it.unitPrice,
+    }),
   }));
 
 export const getVegFruitSubtotal = (items: CartLineInput[]): number =>
@@ -222,7 +227,7 @@ export const debounce = <T extends (...args: any[]) => any>(
   func: T,
   wait: number
 ): ((...args: Parameters<T>) => void) => {
-  let timeout: NodeJS.Timeout;
+  let timeout: ReturnType<typeof setTimeout>;
   return (...args: Parameters<T>) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);

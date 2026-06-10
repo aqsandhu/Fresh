@@ -12,7 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { ShopStackParamList, ProductUnit, StoreProduct } from '@types';
+import { ShopStackParamList, ProductUnit, StoreProduct } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import {
   ErrorView,

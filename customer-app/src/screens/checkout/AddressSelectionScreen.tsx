@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { CartStackParamList, Address } from '@types';
+import { CartStackParamList, Address } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, STORAGE_KEYS } from '@utils/constants';
 import { Button, ErrorView, EmptyState } from '@components';
 import { addressService } from '@services/address.service';

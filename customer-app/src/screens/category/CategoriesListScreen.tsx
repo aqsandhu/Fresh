@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { CategoryStackParamList, Category, ShopStackParamList } from '@types';
+import { CategoryStackParamList, Category, ShopStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { ErrorView, SkeletonList } from '@components';
 import { productService } from '@services/product.service';

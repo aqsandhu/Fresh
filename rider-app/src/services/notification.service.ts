@@ -10,6 +10,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -230,9 +232,9 @@ class NotificationService {
     type: string;
     data: Record<string, any>;
   } {
-    const data = notification.request.content.data || {};
+    const data = (notification.request.content.data || {}) as Record<string, unknown>;
     return {
-      type: data.type || 'unknown',
+      type: typeof data.type === 'string' ? data.type : 'unknown',
       data,
     };
   }

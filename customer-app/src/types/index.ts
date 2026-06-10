@@ -1,17 +1,94 @@
 // ============================================================================
-// Customer App Types — Re-exports from @freshbazar/shared-types + RN-specific
+// Customer App Types — UI-facing shapes (maps from backend in services)
 // ============================================================================
 
-// Re-export ALL shared types (single source of truth)
-export * from '@freshbazar/shared-types';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 
-// ============================================================================
-// Website-synced client types (storefront / cart — mirrors website/types)
-// ============================================================================
+// Re-export enums / helpers that do not conflict with app UI types
+export type {
+  UserRole,
+  UserStatus,
+  NotificationType,
+  AttaRequestStatus,
+  WheatQuality,
+  FlourType,
+  SlotStatus,
+} from '@freshbazar/shared-types';
 
 export type ProductUnit = 'full' | 'half_kg' | 'quarter_kg' | 'half_dozen';
 
-/** Product shape used across customer app UI (maps from backend like website). */
+export type OrderStatus =
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'ready_for_pickup'
+  | 'out_for_delivery'
+  | 'out-for-delivery'
+  | 'delivered'
+  | 'cancelled'
+  | 'refunded';
+
+export type PaymentStatus = 'pending' | 'paid' | 'completed' | 'failed' | 'refunded';
+export type PaymentMethod = 'cash' | 'card' | 'wallet' | 'cod' | 'easypaisa' | 'jazzcash' | 'online';
+
+export interface ApiResponse<T = unknown> {
+  success: boolean;
+  message?: string;
+  data?: T;
+  error?: unknown;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface User {
+  id: string;
+  phone: string;
+  fullName?: string;
+  full_name?: string;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+  avatar?: string;
+  role?: string;
+  status?: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  nameEn?: string;
+  nameUr?: string;
+  nameUrdu?: string;
+  slug?: string;
+  image?: string;
+  imageUrl?: string;
+  icon?: string;
+  color?: string;
+  productCount?: number;
+  isActive?: boolean;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  nameEn?: string;
+  nameUr?: string;
+  nameUrdu?: string;
+  price: number;
+  unit: string;
+  inStock: boolean;
+  images?: string[];
+  imageUrl?: string;
+  categoryId?: string;
+  // Wishlist items may omit categoryId until mapped to StoreProduct
+}
+
 export interface StoreProduct {
   id: string;
   name: string;
@@ -20,8 +97,8 @@ export interface StoreProduct {
   price: number;
   originalPrice?: number;
   unit: string;
-  images: string[];
-  categoryId: string;
+  images?: string[];
+  categoryId?: string;
   categoryName?: string;
   categorySlug?: string;
   inStock: boolean;
@@ -30,7 +107,6 @@ export interface StoreProduct {
   reviewCount?: number;
   isFeatured?: boolean;
   tags?: string[];
-  /** Legacy single-image field from some API responses */
   imageUrl?: string;
   halfKgPrice?: number | null;
   quarterKgPrice?: number | null;
@@ -45,25 +121,119 @@ export interface StoreCartItem {
   unitPrice?: number;
 }
 
-// ============================================================================
-// React Native-specific Types (NOT in shared-types — mobile only)
-// ============================================================================
-
-/** Auth state for React Native Zustand store */
-export interface AuthState {
-  user: import('@freshbazar/shared-types').User | null;
-  token: string | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
+export interface Address {
+  id: string;
+  userId: string;
+  label?: string;
+  fullAddress?: string;
+  writtenAddress?: string;
+  houseNumber?: string;
+  landmark?: string;
+  areaName?: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
+  doorImage?: string;
+  doorPictureUrl?: string;
+  addressType?: string;
+  isDefault: boolean;
+  isVerified?: boolean;
+  location?: { lat: number; lng: number };
+  createdAt: string;
+  updatedAt?: string;
 }
 
-/** Cart state for React Native Zustand store */
-export interface CartState {
-  items: StoreCartItem[];
-  isLoading: boolean;
+export interface DeliverySlot {
+  id: string;
+  date?: string;
+  startTime: string;
+  endTime: string;
+  label?: string;
+  available?: boolean;
+  slotName?: string;
+  maxOrders?: number;
+  bookedOrders?: number;
+  status?: string;
+  isFreeDeliverySlot?: boolean;
+  isFreeDelivery?: boolean;
+  isExpressSlot?: boolean;
+  isExpress?: boolean;
+  available_slots?: number;
 }
 
-/** Banner shown in the customer home screen */
+export interface OrderItem {
+  id: string;
+  productId?: string;
+  productName: string;
+  productImage?: string;
+  quantity: number;
+  price: number;
+  unitPrice?: number;
+  totalPrice?: number;
+  unit?: string;
+}
+
+export interface Rider {
+  id: string;
+  name?: string;
+  fullName?: string;
+  phone?: string;
+  currentLocation?: { latitude: number; longitude: number };
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  userId: string;
+  cityId?: string;
+  cityName?: string;
+  addressId?: string;
+  items?: OrderItem[];
+  status: OrderStatus;
+  subtotal: number;
+  deliveryCharge: number;
+  discount?: number;
+  total: number;
+  totalAmount?: number;
+  address?: Address;
+  deliverySlot?: DeliverySlot;
+  paymentMethod: PaymentMethod | string;
+  paymentStatus: PaymentStatus | string;
+  rider?: Rider;
+  createdAt: string;
+  estimatedDelivery?: string;
+  deliveredAt?: string;
+}
+
+export interface AttaRequest {
+  id: string;
+  userId: string;
+  requestNumber?: string;
+  wheatWeight?: number;
+  wheatQuantityKg?: number;
+  pickupAddress?: Address;
+  preferredSlot?: DeliverySlot;
+  status: import('@freshbazar/shared-types').AttaRequestStatus | string;
+  pricePerKg?: number;
+  totalPrice?: number;
+  totalAmount?: number;
+  notes?: string;
+  createdAt: string;
+  estimatedCompletion?: string;
+  completedAt?: string;
+}
+
+export interface Notification {
+  id: string;
+  userId?: string;
+  type: import('@freshbazar/shared-types').NotificationType | string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  data?: Record<string, unknown>;
+}
+
 export interface Banner {
   id: string;
   image: string;
@@ -74,18 +244,27 @@ export interface Banner {
   isActive: boolean;
 }
 
-/** Delivery slot alias used by the customer app */
-export type DeliverySlot = import('@freshbazar/shared-types').TimeSlot;
+export interface AuthState {
+  user: User | null;
+  token: string | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+}
+
+export interface CartState {
+  items: StoreCartItem[];
+  isLoading: boolean;
+}
 
 // ============================================================================
-// React Navigation Param Lists (RN-specific)
+// React Navigation Param Lists
 // ============================================================================
 
 export type RootStackParamList = {
   SelectCity: undefined;
-  Main: undefined;
-  Auth: undefined;
-  CartFlow: undefined;
+  Main: NavigatorScreenParams<MainTabParamList> | undefined;
+  Auth: NavigatorScreenParams<AuthStackParamList> | undefined;
+  CartFlow: NavigatorScreenParams<CartStackParamList> | undefined;
 };
 
 export type AuthStackParamList = {
@@ -115,11 +294,11 @@ export type AuthStackParamList = {
 };
 
 export type MainTabParamList = {
-  Home: undefined;
-  Shop: undefined;
-  Cart: undefined;
-  Orders: undefined;
-  Profile: undefined;
+  Home: NavigatorScreenParams<HomeStackParamList> | undefined;
+  Shop: NavigatorScreenParams<ShopStackParamList> | undefined;
+  Cart: NavigatorScreenParams<CartTabStackParamList> | undefined;
+  Orders: NavigatorScreenParams<OrdersStackParamList> | undefined;
+  Profile: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 
 export type HomeStackParamList = {
@@ -147,6 +326,9 @@ export type CartTabStackParamList = {
 export type CartStackParamList = {
   Checkout: undefined;
   AddAddress: { addressId?: string; returnTo?: 'checkout' | 'addresses' } | undefined;
+  AddressSelection: undefined;
+  TimeSlot: undefined;
+  Payment: undefined;
   OrderConfirmation: { orderId: string; slotLabel?: string; slotDate?: string };
 };
 

@@ -1,4 +1,4 @@
-import { Address } from '@types';
+import { Address } from '@app-types';
 import { getAddressTypeLabel } from '@/constants/addressTypes';
 
 /** Address fields normalized by address.service (camelCase). */

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { CartStackParamList } from '@types';
+import { CartStackParamList } from '@app-types';
 import PinReauthGate from '@components/auth/PinReauthGate';
 import {
   CheckoutScreen,
@@ -19,6 +19,7 @@ const CheckoutWithGate: React.FC = () => (
 export const CartNavigator: React.FC = () => {
   return (
     <Stack.Navigator
+      id="CartStack"
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',

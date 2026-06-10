@@ -1,5 +1,5 @@
 import apiClient, { handleApiError } from './api';
-import { ApiResponse, AttaRequest, AttaRequestStatus, DeliverySlot, PaginatedResponse, Address } from '@types';
+import { ApiResponse, AttaRequest, AttaRequestStatus, DeliverySlot, PaginatedResponse, Address } from '@app-types';
 
 export interface CreateAttaRequest {
   addressId: string;

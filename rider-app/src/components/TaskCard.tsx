@@ -115,7 +115,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </View>
           <View>
             <Text style={[styles.typeText, { color: taskColor }]}>
-              {getTaskTypeLabel(task.type, language)}
+              {getTaskTypeLabel(task.type ?? '', language)}
             </Text>
             <Text style={styles.orderId}>
               #{task.orderId || task.attaRequestId}
@@ -161,7 +161,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
         {task.distance && (
           <View style={styles.footerItem}>
             <MaterialCommunityIcons name="map-marker-distance" size={16} color={COLORS.gray500} />
-            <Text style={styles.footerText}>{formatDistance(parseFloat(task.distance))}</Text>
+            <Text style={styles.footerText}>{formatDistance(task.distance)}</Text>
           </View>
         )}
         {task.estimatedTime && (

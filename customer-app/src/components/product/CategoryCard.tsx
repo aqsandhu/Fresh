@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons, MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { Category } from '@types';
+import { Category } from '@app-types';
 
 interface CategoryCardProps {
   category: Category;

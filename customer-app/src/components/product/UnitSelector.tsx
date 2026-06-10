@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { ProductUnit, StoreProduct } from '@types';
+import { ProductUnit, StoreProduct } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { formatCurrency } from '@utils/helpers';
 import { getUnitOptions, getUnitPickerDisplayLabel, UNIT_PICKER_CHIP } from '@/lib/unitPricing';

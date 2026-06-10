@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { View, StyleSheet, ViewStyle, DimensionValue } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -39,7 +39,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
   });
 
   return (
-    <View style={[styles.container, { width, height, borderRadius }, style]}>
+    <View style={[styles.container, { width: width as DimensionValue, height, borderRadius }, style]}>
       <Animated.View style={[styles.shimmer, animatedStyle]} />
     </View>
   );

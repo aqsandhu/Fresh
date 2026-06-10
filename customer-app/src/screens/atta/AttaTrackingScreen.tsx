@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { ProfileStackParamList, AttaRequest, AttaRequestStatus } from '@types';
+import { ProfileStackParamList, AttaRequest, AttaRequestStatus } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ATTA_STATUS_MESSAGES } from '@utils/constants';
 import { formatCurrency, formatDateTime } from '@utils/helpers';
 import { ErrorView, LoadingOverlay } from '@components';
@@ -57,8 +57,8 @@ export const AttaTrackingScreen: React.FC = () => {
     loadRequest();
   }, [loadRequest]);
 
-  const getStatusIndex = (status: AttaRequestStatus) => {
-    return statusOrder.indexOf(status);
+  const getStatusIndex = (status: AttaRequestStatus | string) => {
+    return statusOrder.indexOf(status as AttaRequestStatus);
   };
 
   const currentStatusIndex = request ? getStatusIndex(request.status) : -1;

@@ -14,7 +14,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { AuthStackParamList, RootStackParamList } from '@types';
+import { AuthStackParamList, RootStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button, LoadingOverlay } from '@components';
 import AuthShell from '@components/auth/AuthShell';

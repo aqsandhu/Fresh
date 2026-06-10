@@ -4,7 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import Toast from 'react-native-toast-message';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { RootStackParamList } from '@types';
+import { RootStackParamList } from '@app-types';
 import { COLORS, STORAGE_KEYS } from '@utils/constants';
 import { useAuthStore } from '@store';
 import { getStoredToken } from '@/lib/secureTokens';
@@ -70,6 +70,7 @@ const RootNavigator: React.FC = () => {
     <>
       <StatusBar style="dark" backgroundColor={COLORS.white} />
       <Stack.Navigator
+        id="RootStack"
         screenOptions={{ headerShown: false }}
         initialRouteName={selectedCityId ? 'Main' : 'SelectCity'}
       >

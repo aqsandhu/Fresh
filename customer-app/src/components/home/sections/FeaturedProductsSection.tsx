@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { StoreProduct } from '@types';
+import { StoreProduct } from '@app-types';
 import { COLORS, SPACING } from '@utils/constants';
 import { ProductCard } from '@components';
 

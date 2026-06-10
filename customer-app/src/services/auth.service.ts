@@ -1,5 +1,5 @@
 import apiClient, { handleApiError } from './api';
-import { ApiResponse, User } from '@types';
+import { ApiResponse, User } from '@app-types';
 
 export interface SendOtpRequest {
   phone: string;

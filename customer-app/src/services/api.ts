@@ -47,8 +47,10 @@ apiClient.interceptors.response.use(
       originalRequest._retried = true;
       const newToken = await refreshAccessToken();
       if (newToken) {
-        originalRequest.headers = originalRequest.headers || {};
-        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        originalRequest.headers = {
+          ...(originalRequest.headers as Record<string, string> | undefined),
+          Authorization: `Bearer ${newToken}`,
+        } as typeof originalRequest.headers;
         return apiClient.request(originalRequest);
       }
 

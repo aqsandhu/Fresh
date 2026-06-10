@@ -1,6 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { AuthStackParamList } from '@types';
+import { AuthStackParamList } from '@app-types';
 import { LoginScreen, OTPScreen, RegisterScreen, SetPinScreen } from '@screens';
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -8,6 +8,7 @@ const Stack = createNativeStackNavigator<AuthStackParamList>();
 export const AuthNavigator: React.FC = () => {
   return (
     <Stack.Navigator
+      id="AuthStack"
       screenOptions={{
         headerShown: false,
         animation: 'slide_from_right',

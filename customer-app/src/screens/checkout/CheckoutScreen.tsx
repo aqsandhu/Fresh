@@ -15,7 +15,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { CartStackParamList, RootStackParamList } from '@types';
+import { Address, CartStackParamList, RootStackParamList } from '@app-types';
 import { DeliverySlotWithCapacity } from '@services/order.service';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES } from '@utils/constants';
 import {

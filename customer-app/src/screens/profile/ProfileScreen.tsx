@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
-import { ProfileStackParamList, RootStackParamList, Address } from '@types';
+import { ProfileStackParamList, RootStackParamList, Address } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { formatPhoneNumber, getInitials } from '@utils/helpers';
 import { useAuthStore } from '@store';

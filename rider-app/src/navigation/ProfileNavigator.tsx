@@ -10,6 +10,7 @@ const Stack = createNativeStackNavigator<ProfileStackParamList>();
 const ProfileNavigator = () => {
   return (
     <Stack.Navigator
+      id="ProfileStack"
       screenOptions={{
         headerShown: false,
         contentStyle: { backgroundColor: '#fff' },

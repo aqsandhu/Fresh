@@ -6,7 +6,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import { MaterialIcons } from '@expo/vector-icons';
 
-import { MainTabParamList } from '@types';
+import { MainTabParamList } from '@app-types';
 
 import { COLORS } from '@utils/constants';
 
@@ -91,7 +91,7 @@ export const TabNavigator: React.FC = () => {
     <View style={styles.wrap}>
 
       <Tab.Navigator
-
+        id="MainTabs"
         screenOptions={{
 
           headerShown: false,

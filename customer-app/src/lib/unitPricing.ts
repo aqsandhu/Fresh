@@ -1,4 +1,4 @@
-import type { ProductUnit, StoreProduct } from '@types';
+import type { ProductUnit, StoreProduct } from '@app-types';
 
 export interface UnitOption {
   unit: ProductUnit;

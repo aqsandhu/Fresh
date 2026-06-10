@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { Banner } from '@types';
+import { Banner } from '@app-types';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const BANNER_WIDTH = SCREEN_WIDTH - SPACING.lg * 2;
@@ -29,7 +29,7 @@ export const BannerCarousel: React.FC<BannerCarouselProps> = ({
 }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-  const autoPlayRef = useRef<NodeJS.Timeout | null>(null);
+  const autoPlayRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (autoPlay && banners.length > 1) {

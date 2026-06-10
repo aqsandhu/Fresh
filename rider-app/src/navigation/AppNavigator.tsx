@@ -47,6 +47,7 @@ const TabIcon = ({ name, focused }: { name: string; focused: boolean }) => (
 // Main Tab Navigator
 const MainTabNavigator = () => (
   <Tab.Navigator
+    id="MainTabs"
     screenOptions={{
       headerShown: false,
       tabBarStyle: styles.tabBar,
@@ -81,7 +82,7 @@ const MainTabNavigator = () => (
 
 // Auth Navigator
 const AuthNavigator = () => (
-  <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+  <AuthStack.Navigator id="AuthStack" screenOptions={{ headerShown: false }}>
     <AuthStack.Screen name="Login" component={LoginScreen} />
   </AuthStack.Navigator>
 );
@@ -103,7 +104,7 @@ const MainNavigator = () => {
   }, [isOnline]);
 
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MainTabs" component={MainTabNavigator} />
       <Stack.Screen
         name="TaskDetail"

@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { RootStackParamList, StoreCartItem } from '@types';
+import { RootStackParamList, StoreCartItem } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { formatCurrency, getDeliveryHint } from '@utils/helpers';
 import { resolveLineUnitPrice, unitLabelShort, unitPriceCaption } from '@/lib/unitPricing';

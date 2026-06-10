@@ -3,7 +3,7 @@ import { ScrollView, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { HomeStackParamList, Category, StoreProduct } from '@types';
+import { HomeStackParamList, Category, StoreProduct } from '@app-types';
 import { COLORS, SPACING } from '@utils/constants';
 import { useTabBarMetrics } from '@/lib/tabBarMetrics';
 import { ErrorView } from '@components';
@@ -68,7 +68,7 @@ export const HomeScreen: React.FC = () => {
   };
 
   const goToShop = (screen: 'ProductsMain' | 'CategoriesList' = 'ProductsMain') => {
-    navigation.getParent()?.navigate('Shop' as never, { screen } as never);
+    (navigation.getParent() as { navigate: (name: string, params?: object) => void } | undefined)?.navigate('Shop', { screen });
   };
 
   if (error && !loading) {
@@ -89,7 +89,7 @@ export const HomeScreen: React.FC = () => {
         <HeroSection
           onShopNow={() => goToShop('ProductsMain')}
           onAttaChakki={() =>
-            navigation.getParent()?.navigate('Profile' as never, { screen: 'AttaChakkiMain' } as never)
+            (navigation.getParent() as { navigate: (name: string, params?: object) => void } | undefined)?.navigate('Profile', { screen: 'AttaChakkiMain' })
           }
         />
         <CategoriesSection

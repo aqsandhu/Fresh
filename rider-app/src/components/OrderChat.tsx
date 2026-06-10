@@ -44,9 +44,11 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, senderType, orderStatus 
   // Fetch initial messages via REST
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await api.get(`/chat/${orderId}`);
-      if (res.data?.success) {
-        setMessages(res.data.data.messages || []);
+      const res = await api.get<{ success?: boolean; data?: { messages?: Message[] } }>(
+        `/chat/${orderId}`
+      );
+      if (res?.success) {
+        setMessages(res.data?.messages || []);
       }
     } catch (e) {
       // silent
@@ -127,10 +129,12 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, senderType, orderStatus 
     } else {
       // Fallback to REST API
       try {
-        const res = await api.post(`/chat/${orderId}`, { message: text });
-        if (res.data?.success) {
+        const res = await api.post<{ success?: boolean; data?: Message }>(`/chat/${orderId}`, {
+          message: text,
+        });
+        if (res?.success && res.data) {
           setMessages((prev) =>
-            prev.map((m) => (m.id === optimisticMsg.id ? res.data.data : m))
+            prev.map((m) => (m.id === optimisticMsg.id ? res.data! : m))
           );
         }
       } catch (e) {
