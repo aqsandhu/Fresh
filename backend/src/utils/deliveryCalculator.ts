@@ -18,6 +18,7 @@ import { PoolClient } from 'pg';
 import { query } from '../config/database';
 import { DeliveryChargeResult } from '../types';
 import logger from './logger';
+import { FRESH_CART_LINE_UNIT_PRICE_SQL, FRESH_CART_SUBTOTAL_SQL } from './unitPricing';
 
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
 const ENV_FREE_DELIVERY_MIN_AMOUNT = parseFloat(process.env.FREE_DELIVERY_MIN_AMOUNT || '500');
@@ -38,13 +39,7 @@ const runQuery = (client: DbClient | undefined, text: string, params?: unknown[]
   client ? client.query(text, params) : query(text, params);
 
 async function getFreshCartSubtotal(cartId: string, client?: DbClient): Promise<number> {
-  const result = await runQuery(
-    client,
-    `SELECT COALESCE(SUM(ci.quantity * ci.unit_price), 0) AS fresh_subtotal
-       FROM cart_items ci
-      WHERE ci.cart_id = $1`,
-    [cartId]
-  );
+  const result = await runQuery(client, FRESH_CART_SUBTOTAL_SQL, [cartId]);
   return parseFloat(result.rows[0]?.fresh_subtotal || '0');
 }
 
@@ -72,7 +67,7 @@ const getDeliverySettings = async (
 async function getVegFruitSubtotal(cartId: string, client?: DbClient): Promise<number> {
   const result = await runQuery(
     client,
-    `SELECT COALESCE(SUM(ci.total_price), 0) AS veg_fruit_total
+    `SELECT COALESCE(SUM(ci.quantity * (${FRESH_CART_LINE_UNIT_PRICE_SQL})), 0) AS veg_fruit_total
        FROM cart_items ci
        JOIN products p ON ci.product_id = p.id
        JOIN categories cat ON p.category_id = cat.id
