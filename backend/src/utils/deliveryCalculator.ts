@@ -40,9 +40,8 @@ const runQuery = (client: DbClient | undefined, text: string, params?: unknown[]
 async function getFreshCartSubtotal(cartId: string, client?: DbClient): Promise<number> {
   const result = await runQuery(
     client,
-    `SELECT COALESCE(SUM(ci.quantity * p.price), 0) AS fresh_subtotal
+    `SELECT COALESCE(SUM(ci.quantity * ci.unit_price), 0) AS fresh_subtotal
        FROM cart_items ci
-       JOIN products p ON ci.product_id = p.id
       WHERE ci.cart_id = $1`,
     [cartId]
   );
@@ -194,7 +193,7 @@ export const updateCartDeliveryCharge = async (
   await query(
     `UPDATE carts 
      SET delivery_charge = $1, 
-         total_amount = subtotal + $1 - discount_amount - coupon_discount,
+         total_amount = subtotal + $1 - discount_amount - coupon_discount + COALESCE(tax_amount, 0),
          updated_at = NOW()
      WHERE id = $2`,
     [deliveryCharge, cartId]

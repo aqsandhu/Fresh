@@ -394,7 +394,7 @@ export const removeCoupon = asyncHandler(async (req: Request, res: Response) => 
   await query(
     `UPDATE carts 
      SET coupon_code = NULL, coupon_discount = 0, 
-         total_amount = subtotal + delivery_charge - discount_amount,
+         total_amount = subtotal + delivery_charge - discount_amount - coupon_discount + COALESCE(tax_amount, 0),
          updated_at = NOW()
      WHERE id = $1`,
     [cart.id]
