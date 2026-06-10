@@ -168,38 +168,36 @@ export const verifyRegisterOtp = asyncHandler(async (req: Request, res: Response
   const actualPassword = password || crypto.randomBytes(16).toString('hex') + 'Ab1';
   const passwordHash = await bcrypt.hash(actualPassword, SALT_ROUNDS);
 
+  // Fast UX pre-check — try/catch on INSERT is the actual race-condition safety net.
+  const existingPhone = await query(
+    'SELECT id FROM users WHERE phone = $1 AND deleted_at IS NULL',
+    [normalizedPhone]
+  );
+  if (existingPhone.rows.length > 0) {
+    return conflictResponse(res, 'User with this phone number already exists. Please login instead.');
+  }
+
   let user;
   try {
-    user = await withTransaction(async (client) => {
-      if (email) {
-        const existingEmail = await client.query(
-          'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
-          [email.toLowerCase()]
-        );
-        if (existingEmail.rows.length > 0) {
-          throw Object.assign(new Error('EMAIL_EXISTS'), { code: 'EMAIL_EXISTS' });
-        }
-      }
-
-      const result = await client.query(
-        `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified, phone_verified_at, last_login_at, login_count)
-         VALUES ($1, $2, $3, $4, 'customer', TRUE, NOW(), NOW(), 1)
-         ON CONFLICT (phone) DO NOTHING
-         RETURNING id, phone, full_name, email, role, created_at`,
-        [normalizedPhone, full_name, email ? email.toLowerCase() : null, passwordHash]
+    if (email) {
+      const existingEmail = await query(
+        'SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL',
+        [email.toLowerCase()]
       );
-
-      if (result.rows.length === 0) {
-        throw Object.assign(new Error('PHONE_EXISTS'), { code: 'PHONE_EXISTS' });
+      if (existingEmail.rows.length > 0) {
+        return conflictResponse(res, 'This email is already registered');
       }
-
-      return result.rows[0];
-    });
-  } catch (err: any) {
-    if (err?.code === 'EMAIL_EXISTS') {
-      return conflictResponse(res, 'This email is already registered');
     }
-    if (err?.code === 'PHONE_EXISTS' || err?.code === '23505') {
+
+    const result = await query(
+      `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified, phone_verified_at, last_login_at, login_count)
+       VALUES ($1, $2, $3, $4, 'customer', TRUE, NOW(), NOW(), 1)
+       RETURNING id, phone, full_name, email, role, created_at`,
+      [normalizedPhone, full_name, email ? email.toLowerCase() : null, passwordHash]
+    );
+    user = result.rows[0];
+  } catch (err: any) {
+    if (err?.code === '23505') {
       return conflictResponse(res, 'User with this phone number already exists. Please login instead.');
     }
     throw err;
