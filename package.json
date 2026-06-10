@@ -21,7 +21,12 @@
   },
   "pnpm": {
     "overrides": {
-      "@types/react": "~19.1.10"
+      "@types/react": "~19.1.10",
+      "freshbazar-website>@types/react": "18.3.29",
+      "freshbazar-admin>@types/react": "18.3.29",
+      "@react-navigation/native>@types/react": "~19.1.10",
+      "@react-navigation/bottom-tabs>@types/react": "~19.1.10",
+      "@react-navigation/native-stack>@types/react": "~19.1.10"
     }
   }
 }
