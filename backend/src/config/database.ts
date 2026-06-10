@@ -97,9 +97,25 @@ export const withTransaction = async <T>(
   }
 };
 
-// Get a client from the pool
+/**
+ * Prefer `withTransaction` for multi-step work. If you must use a raw client,
+ * release it in a `finally` block — leaked clients exhaust the pool.
+ * @deprecated Use `withTransaction` or `withReleasedClient` instead.
+ */
 export const getClient = async (): Promise<PoolClient> => {
   return await pool.connect();
+};
+
+/** Runs a callback with a pooled client that is always released. */
+export const withReleasedClient = async <T>(
+  callback: (client: PoolClient) => Promise<T>
+): Promise<T> => {
+  const client = await pool.connect();
+  try {
+    return await callback(client);
+  } finally {
+    client.release();
+  }
 };
 
 // Test database connection with retries

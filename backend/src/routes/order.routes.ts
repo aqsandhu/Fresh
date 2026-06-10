@@ -18,8 +18,7 @@ const router = Router();
 // Time slots (public)
 router.get('/time-slots', orderController.getTimeSlots);
 
-// SECURITY FIX: Track order now requires authentication to prevent data exposure
-// If public tracking is needed, implement a separate endpoint with limited data
+router.get('/track/public/:orderNumber', orderController.trackOrderPublic);
 router.get('/track/:id', authenticate, orderController.trackOrder);
 
 // Protected routes

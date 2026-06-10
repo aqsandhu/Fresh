@@ -177,10 +177,8 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
     return notFoundResponse(res, 'Product not found');
   }
 
-  // Increment view count
-  await query(
-    'UPDATE products SET view_count = view_count + 1 WHERE id = $1',
-    [id]
+  query('UPDATE products SET view_count = view_count + 1 WHERE id = $1', [id]).catch(
+    () => undefined
   );
 
   successResponse(res, result.rows[0], 'Product retrieved successfully');
@@ -227,11 +225,10 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
     return notFoundResponse(res, 'Product not found');
   }
 
-  // Increment view count
-  await query(
+  query(
     'UPDATE products SET view_count = view_count + 1 WHERE id = $1',
     [result.rows[0].id]
-  );
+  ).catch(() => undefined);
 
   successResponse(res, result.rows[0], 'Product retrieved successfully');
 });

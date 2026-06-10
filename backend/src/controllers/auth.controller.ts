@@ -6,7 +6,13 @@ import crypto from 'crypto';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../config/database';
-import { generateTokenPair, generateAdminTokenPair, verifyRefreshToken } from '../config/jwt';
+import { verifyRefreshToken } from '../config/jwt';
+import { issueTokenPair, issueAdminTokenPair, rotateRefreshToken } from '../utils/authTokens';
+import {
+  isRefreshTokenAllowed,
+  revokeRefreshToken,
+  revokeAllUserRefreshTokens,
+} from '../services/refreshToken.service';
 import { asyncHandler } from '../middleware';
 import {
   successResponse,
@@ -122,7 +128,7 @@ export const verifyLoginOtp = asyncHandler(async (req: Request, res: Response) =
   }
 
   // Generate tokens
-  const tokens = generateTokenPair(user.id, user.phone, user.role);
+  const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);
 
   // Update last login
@@ -198,12 +204,16 @@ export const verifyRegisterOtp = asyncHandler(async (req: Request, res: Response
     user = result.rows[0];
   } catch (err: any) {
     if (err?.code === '23505') {
+      const constraint = String(err?.constraint || '');
+      if (constraint.includes('email')) {
+        return conflictResponse(res, 'This email is already registered');
+      }
       return conflictResponse(res, 'User with this phone number already exists. Please login instead.');
     }
     throw err;
   }
 
-  const tokens = generateTokenPair(user.id, user.phone, user.role);
+  const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);
 
   logger.info('New user registered via Firebase OTP', { userId: user.id, phone: user.phone });
@@ -260,7 +270,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     return unauthorizedResponse(res, 'Invalid phone number or password');
   }
 
-  const tokens = generateTokenPair(user.id, user.phone, user.role);
+  const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);
 
   await query(
@@ -347,7 +357,7 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
     throw err;
   }
 
-  const tokens = generateTokenPair(user.id, user.phone, user.role);
+  const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);
 
   logger.info('New user registered (legacy)', { userId: user.id, phone: user.phone });
@@ -384,7 +394,10 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
   try {
     const decoded = verifyRefreshToken(refreshTokenValue);
 
-    // Check if user still exists and is active
+    if (!(await isRefreshTokenAllowed(refreshTokenValue))) {
+      return unauthorizedResponse(res, 'Refresh token revoked');
+    }
+
     const result = await query(
       'SELECT id, phone, role, status FROM users WHERE id = $1',
       [decoded.userId]
@@ -400,8 +413,12 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
       return unauthorizedResponse(res, 'Account is not active');
     }
 
-    // Generate new token pair
-    const tokens = generateTokenPair(user.id, user.phone, user.role);
+    const tokens = await rotateRefreshToken(
+      user.id,
+      user.phone,
+      user.role,
+      refreshTokenValue
+    );
     attachAuthCookies(res, tokens);
 
     authSuccess(req, res, { tokens }, 'Token refreshed successfully');
@@ -421,9 +438,14 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
  * POST /api/auth/logout
  */
 export const logout = asyncHandler(async (req: Request, res: Response) => {
-  // In a stateless JWT setup, logout is handled client-side
-  // Here we can add token to blacklist if using Redis
-  
+  const refreshTokenValue = getRefreshTokenFromRequest(req);
+  if (refreshTokenValue) {
+    await revokeRefreshToken(refreshTokenValue);
+  }
+  if (req.user?.id) {
+    await revokeAllUserRefreshTokens(req.user.id);
+  }
+
   if (req.user) {
     logger.info('User logged out', { userId: req.user.userId });
   }
@@ -663,7 +685,7 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
 
-  const tokens = generateTokenPair(user.id, user.phone, user.role);
+  const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);
 
   await query(
@@ -768,7 +790,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Generate tokens (8h access for admin panel — see ADMIN_JWT_EXPIRES_IN)
-  const tokens = generateAdminTokenPair(user.id, user.phone, user.role);
+  const tokens = await issueAdminTokenPair(user.id, user.phone, user.role);
 
   // Update last login
   await query(
@@ -851,7 +873,7 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
-  const tokens = generateTokenPair(user.id, user.phone, user.role);
+  const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);
 
   await query(
