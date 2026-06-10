@@ -16,7 +16,7 @@ process.env.JWT_REFRESH_EXPIRES_IN = '7d';
 jest.mock('../config/database', () => ({
   query: jest.fn(),
   withTransaction: jest.fn((cb: any) => cb({ query: jest.fn() })),
-  getClient: jest.fn(),
+  withClient: jest.fn((fn: any) => fn({ query: jest.fn() })),
   testConnection: jest.fn().mockResolvedValue(true),
   closePool: jest.fn(),
 }));

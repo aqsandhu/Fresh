@@ -421,11 +421,10 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     );
     const deliveryChargeRuleId = ruleResult.rows[0]?.id;
 
-    // Re-fetch current prices for all cart items (prevent stale price bug)
+    // Fresh subtotal from live cart line prices (unit_price refreshed above).
     const freshSubtotalResult = await client.query(
-      `SELECT COALESCE(SUM(p.price * ci.quantity), 0) AS fresh_subtotal
+      `SELECT COALESCE(SUM(ci.quantity * ci.unit_price), 0) AS fresh_subtotal
          FROM cart_items ci
-         JOIN products p ON ci.product_id = p.id
         WHERE ci.cart_id = $1`,
       [cart.id]
     );
@@ -516,12 +515,13 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
                   ELSE 'active'::product_status
                 END,
                 updated_at = NOW()
-          WHERE id = $2 AND stock_quantity >= $1`,
+          WHERE id = $2 AND stock_quantity >= $1
+          RETURNING id`,
         [stockDeduction, item.product_id]
       );
 
       if (stockUpdate.rowCount === 0) {
-        throw new Error(`Out of stock: ${product.name_en}`);
+        throw new Error(`Insufficient stock for product ${item.product_id}`);
       }
 
       // Update product order count

@@ -410,6 +410,7 @@ CREATE TABLE carts (
     subtotal DECIMAL(10,2) DEFAULT 0.00,
     discount_amount DECIMAL(10,2) DEFAULT 0.00,
     delivery_charge DECIMAL(10,2) DEFAULT 0.00,
+    tax_amount DECIMAL(10,2) DEFAULT 0.00,
     total_amount DECIMAL(10,2) DEFAULT 0.00,
     
     -- Applied promotions
