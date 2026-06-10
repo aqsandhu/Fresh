@@ -109,7 +109,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     ? rawUnit
     : 'full';
 
-  const cartId = await withTransaction(async (client) => {
+  const transactionResult = await withTransaction(async (client) => {
     // Get or create cart
     let cartResult = await client.query(
       `SELECT * FROM carts 
@@ -186,11 +186,27 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
       );
     }
 
-    return cart.id as string;
+    const updatedCart = await client.query('SELECT * FROM carts WHERE id = $1', [cart.id]);
+    const updatedItems = await client.query(
+      `SELECT ci.id, ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
+              p.name_en, p.name_ur, p.primary_image
+       FROM cart_items ci JOIN products p ON ci.product_id = p.id
+       WHERE ci.cart_id = $1`,
+      [cart.id]
+    );
+    return { cart: updatedCart.rows[0], items: updatedItems.rows };
   });
 
-  const response = await buildCartResponse(cartId);
-  successResponse(res, response, 'Item added to cart successfully');
+  successResponse(res, {
+    cart: {
+      id: transactionResult.cart.id,
+      subtotal: parseFloat(transactionResult.cart.subtotal),
+      delivery_charge: parseFloat(transactionResult.cart.delivery_charge),
+      total_amount: parseFloat(transactionResult.cart.total_amount),
+      item_count: transactionResult.cart.item_count,
+    },
+    items: transactionResult.items,
+  }, 'Item added to cart successfully');
 });
 
 /**

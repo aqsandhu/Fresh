@@ -6,6 +6,7 @@ import { Router } from 'express';
 import * as authController from '../controllers/auth.controller';
 import {
   authenticate,
+  verifyUserActive,
   authRateLimiter,
   registerRateLimiter,
   validate,
@@ -87,7 +88,7 @@ router.post(
 // ── Protected routes ────────────────────────────────────────────────────
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);
-router.put('/profile', authenticate, authController.updateProfile);
+router.put('/profile', authenticate, verifyUserActive, authController.updateProfile);
 router.put('/change-password', authenticate, validate(authSchemas.changePassword), authController.changePassword);
 
 export default router;

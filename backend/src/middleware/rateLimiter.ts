@@ -3,8 +3,9 @@
 // ============================================================================
 
 import rateLimit from 'express-rate-limit';
+import RedisStore, { type RedisReply, type SendCommandFn } from 'rate-limit-redis';
+import Redis from 'ioredis';
 import { Request, Response } from 'express';
-import { getRedisClient } from '../config/redis';
 import logger from '../utils/logger';
 
 const isDev = process.env.NODE_ENV !== 'production';
@@ -14,40 +15,36 @@ const MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || (isDev ? '1
 const AUTH_WINDOW_MS = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000');
 const AUTH_MAX_REQUESTS = parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || (isDev ? '1000' : '50'));
 
+const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL) : null;
+
+const authRedisStore = redis
+  ? new RedisStore({
+      sendCommand: ((...args: string[]) =>
+        redis.call(...(args as [string, ...string[]]))) as SendCommandFn,
+    })
+  : undefined;
+
 function skipInDev(req: Request): boolean {
   if (!isDev) return false;
   const ip = req.ip || req.socket.remoteAddress || '';
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
 }
 
-function buildStore() {
-  const redis = getRedisClient();
-  if (!redis) return undefined;
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const RedisStore = require('rate-limit-redis').default;
-    return new RedisStore({
-      sendCommand: (...args: string[]) => redis.call(...args),
-    });
-  } catch (err) {
-    logger.warn('rate-limit-redis unavailable — using in-memory store', { err });
-    return undefined;
-  }
-}
-
-const sharedStore = buildStore();
-const storeOptions = sharedStore ? { store: sharedStore } : {};
-
 export async function initRateLimiterStore(): Promise<void> {
-  getRedisClient();
+  if (redis) {
+    try {
+      await redis.ping();
+      logger.info('Redis connected for auth/register rate limiting');
+    } catch (err) {
+      logger.warn('Redis ping failed — auth/register limiters fall back to in-memory', { err });
+    }
+  }
 }
 
 export const apiRateLimiter = rateLimit({
   windowMs: WINDOW_MS,
   max: MAX_REQUESTS,
   skip: skipInDev,
-  ...storeOptions,
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later',
@@ -67,7 +64,7 @@ export const authRateLimiter = rateLimit({
   windowMs: AUTH_WINDOW_MS,
   max: AUTH_MAX_REQUESTS,
   skip: skipInDev,
-  ...storeOptions,
+  store: authRedisStore,
   message: {
     success: false,
     message: 'Too many authentication attempts, please try again after 15 minutes',
@@ -88,7 +85,7 @@ export const registerRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: isDev ? 100 : 3,
   skip: skipInDev,
-  ...storeOptions,
+  store: authRedisStore,
   message: {
     success: false,
     message: 'Too many registration attempts from this IP, please try again later',
@@ -101,7 +98,6 @@ export const passwordResetRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: isDev ? 100 : 3,
   skip: skipInDev,
-  ...storeOptions,
   message: {
     success: false,
     message: 'Too many password reset attempts, please try again later',
@@ -114,7 +110,6 @@ export const adminRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 1000 : 30,
   skip: skipInDev,
-  ...storeOptions,
   message: {
     success: false,
     message: 'Too many admin actions, please slow down',
@@ -127,7 +122,6 @@ export const riderLocationRateLimiter = rateLimit({
   windowMs: 10 * 1000,
   max: isDev ? 100 : 1,
   skip: skipInDev,
-  ...storeOptions,
   message: {
     success: false,
     message: 'Location updates too frequent',
@@ -140,7 +134,6 @@ export const orderRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 100 : 5,
   skip: skipInDev,
-  ...storeOptions,
   message: {
     success: false,
     message: 'Too many order attempts, please try again later',
@@ -153,7 +146,6 @@ export const webhookRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 1000 : 100,
   skip: skipInDev,
-  ...storeOptions,
   message: {
     success: false,
     message: 'Webhook rate limit exceeded',
@@ -170,7 +162,6 @@ export const createRateLimiter = (
   return rateLimit({
     windowMs,
     max,
-    ...storeOptions,
     message: {
       success: false,
       message,

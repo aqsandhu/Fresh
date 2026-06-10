@@ -241,8 +241,8 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
  * GET /api/products/featured/list
  */
 export const getFeaturedProducts = asyncHandler(async (req: Request, res: Response) => {
-  const requested = parseInt((req.query.limit as string) || '500', 10);
-  const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 500) : 500;
+  const requested = parseInt((req.query.limit as string) || '20', 10);
+  const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 100) : 20;
   const publicCityId = await resolvePublicCityId(req);
 
   let sql = `
