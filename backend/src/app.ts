@@ -87,6 +87,16 @@ function isOriginAllowed(origin: string): boolean {
   return allowedOrigins.some((o) => o === normalized || o === origin);
 }
 
+// In dev we no longer reflect every origin — that combined with
+// CORS_CREDENTIALS=true would be a real XSRF-style risk if a developer
+// accidentally used a prod-flavoured config locally. Instead, dev allows
+// the configured allowlist *plus* localhost/127.0.0.1 on any port.
+const DEV_LOCALHOST = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+
+function isDevLocalhost(origin: string): boolean {
+  return NODE_ENV !== 'production' && DEV_LOCALHOST.test(origin);
+}
+
 logger.info(
   `CORS: ${allowAnyOrigin ? 'allowing any origin (*)' : `allowed origins = ${allowedOrigins.join(', ')}`}`
 );
@@ -99,7 +109,7 @@ const corsOptions = {
       return;
     }
 
-    if (allowAnyOrigin || isOriginAllowed(origin) || NODE_ENV === 'development') {
+    if (allowAnyOrigin || isOriginAllowed(origin) || isDevLocalhost(origin)) {
       callback(null, true);
     } else {
       logger.warn(`CORS blocked origin: ${origin}`, {

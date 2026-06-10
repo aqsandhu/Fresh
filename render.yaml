@@ -48,10 +48,17 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      # Short-lived access token + rotating refresh. The 7d/30d values that
+      # used to live here defeated the JWT hardening — a leaked access token
+      # gave a week of full access and a leaked refresh gave a month.
       - key: JWT_EXPIRES_IN
-        value: 7d
+        value: 15m
       - key: JWT_REFRESH_EXPIRES_IN
-        value: 30d
+        value: 7d
+      - key: ADMIN_JWT_EXPIRES_IN
+        value: 15m
+      - key: ADMIN_JWT_REFRESH_EXPIRES_IN
+        value: 8h
       - key: UPLOAD_DIR
         value: uploads
       - key: MAX_FILE_SIZE
