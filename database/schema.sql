@@ -1246,6 +1246,9 @@ CREATE INDEX idx_orders_source ON orders(source);
 CREATE INDEX idx_orders_whatsapp ON orders(whatsapp_order_id) WHERE whatsapp_order_id IS NOT NULL;
 CREATE INDEX idx_orders_address ON orders(address_id);
 CREATE INDEX idx_orders_status_date ON orders(status, placed_at);
+CREATE INDEX idx_orders_city_status ON orders(city_id, status) WHERE deleted_at IS NULL;
+CREATE INDEX idx_orders_city_placed ON orders(city_id, placed_at DESC) WHERE deleted_at IS NULL;
+CREATE INDEX idx_orders_status_city_placed ON orders(status, city_id, placed_at DESC) WHERE deleted_at IS NULL;
 
 -- Order items indexes
 CREATE INDEX idx_order_items_order ON order_items(order_id);

@@ -11,9 +11,10 @@
 // `free-delivery threshold` is configured by admin via site_settings
 // (`delivery_free_delivery_threshold`).
 //
-// NOTE: Chicken/meat/grocery/etc. NEVER trigger free delivery on their own.
-// The customer must have at least `threshold` worth of vegetables + fruits.
+// NOTE: Categories that count toward free delivery are controlled by admin via
+// `categories.qualifies_for_free_delivery` (not hardcoded slugs).
 
+import { PoolClient } from 'pg';
 import { query } from '../config/database';
 import { DeliveryChargeResult } from '../types';
 import logger from './logger';
@@ -21,23 +22,17 @@ import logger from './logger';
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
 const ENV_FREE_DELIVERY_MIN_AMOUNT = parseFloat(process.env.FREE_DELIVERY_MIN_AMOUNT || '500');
 
-// Slugs that count toward the free-delivery threshold. Kept permissive on
-// purpose so legacy categories ("sabzi", "fruit", "fresh-vegetables", etc.)
-// in production still qualify; mirrored in website/lib/deliveryRules.ts and
-// customer-app/src/utils/helpers.ts.
-const VEG_FRUIT_SLUGS = [
-  'vegetables',
-  'fruits',
-  'sabzi',
-  'fruit',
-  'vegetable',
-  'fresh-vegetables',
-  'fresh-fruits',
-];
+type DbClient = Pick<PoolClient, 'query'>;
 
-const getDeliverySettings = async (): Promise<{ baseCharge: number; freeThreshold: number }> => {
+const runQuery = (client: DbClient | undefined, text: string, params?: unknown[]) =>
+  client ? client.query(text, params) : query(text, params);
+
+const getDeliverySettings = async (
+  client?: DbClient
+): Promise<{ baseCharge: number; freeThreshold: number }> => {
   try {
-    const result = await query(
+    const result = await runQuery(
+      client,
       `SELECT key, value FROM site_settings WHERE key IN ('delivery_base_charge', 'delivery_free_delivery_threshold')`
     );
     let baseCharge = ENV_DEFAULT_DELIVERY_CHARGE;
@@ -52,29 +47,17 @@ const getDeliverySettings = async (): Promise<{ baseCharge: number; freeThreshol
   }
 };
 
-/**
- * Sum of cart items whose category counts as "vegetables/fruits".
- *
- * We deliberately match BOTH on the slug allowlist AND on a relaxed
- * category-name pattern (LOWER(name_en) starts with "vegetable" or
- * "fruit", or equals "sabzi"). This handles production stores that
- * named their categories slightly differently from the seed data.
- */
-async function getVegFruitSubtotal(cartId: string): Promise<number> {
-  const result = await query(
+/** Sum of cart items in categories flagged for free-delivery threshold. */
+async function getVegFruitSubtotal(cartId: string, client?: DbClient): Promise<number> {
+  const result = await runQuery(
+    client,
     `SELECT COALESCE(SUM(ci.total_price), 0) AS veg_fruit_total
        FROM cart_items ci
        JOIN products p ON ci.product_id = p.id
        JOIN categories cat ON p.category_id = cat.id
       WHERE ci.cart_id = $1
-        AND (
-          LOWER(cat.slug) = ANY($2::text[])
-          OR LOWER(cat.name_en) LIKE 'vegetable%'
-          OR LOWER(cat.name_en) LIKE 'fruit%'
-          OR LOWER(cat.name_en) = 'sabzi'
-          OR LOWER(cat.name_en) = 'phal'
-        )`,
-    [cartId, VEG_FRUIT_SLUGS]
+        AND cat.qualifies_for_free_delivery = TRUE`,
+    [cartId]
   );
   return parseFloat(result.rows[0]?.veg_fruit_total || '0');
 }
@@ -82,10 +65,12 @@ async function getVegFruitSubtotal(cartId: string): Promise<number> {
 export const calculateDeliveryCharge = async (
   cartId: string,
   timeSlotId?: string,
-  _orderTime: Date = new Date()
+  _orderTime: Date = new Date(),
+  client?: PoolClient
 ): Promise<DeliveryChargeResult> => {
   try {
-    const cartResult = await query(
+    const cartResult = await runQuery(
+      client,
       `SELECT c.subtotal
          FROM carts c
         WHERE c.id = $1`,
@@ -111,11 +96,12 @@ export const calculateDeliveryCharge = async (
       };
     }
 
-    const { baseCharge, freeThreshold } = await getDeliverySettings();
+    const { baseCharge, freeThreshold } = await getDeliverySettings(client);
 
     // Rule 1: Free-delivery time slot wins regardless of cart amount.
     if (timeSlotId) {
-      const slotResult = await query(
+      const slotResult = await runQuery(
+        client,
         'SELECT is_free_delivery_slot, slot_name FROM time_slots WHERE id = $1',
         [timeSlotId]
       );
@@ -131,7 +117,7 @@ export const calculateDeliveryCharge = async (
     }
 
     // Rule 2: Vegetables + fruits subtotal meets the threshold.
-    const vegFruitSubtotal = await getVegFruitSubtotal(cartId);
+    const vegFruitSubtotal = await getVegFruitSubtotal(cartId, client);
     if (vegFruitSubtotal >= freeThreshold) {
       return {
         delivery_charge: 0,
