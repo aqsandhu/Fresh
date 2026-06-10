@@ -6,6 +6,7 @@ import { Router } from 'express';
 import * as orderController from '../controllers/order.controller';
 import {
   authenticate,
+  verifyUserActive,
   orderRateLimiter,
   validate,
   orderSchemas,
@@ -28,6 +29,7 @@ router.get('/', orderController.getOrders);
 router.get('/:id', orderController.getOrderById);
 router.post(
   '/',
+  verifyUserActive,
   orderRateLimiter,
   validate(orderSchemas.create),
   orderController.createOrder

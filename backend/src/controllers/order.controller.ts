@@ -366,14 +366,16 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     const deliveryChargeRuleId = ruleResult.rows[0]?.id;
 
     // Re-fetch current prices for all cart items (prevent stale price bug)
-    const freshSubtotal = await client.query(
+    const freshSubtotalResult = await client.query(
       `SELECT COALESCE(SUM(p.price * ci.quantity), 0) AS fresh_subtotal
          FROM cart_items ci
          JOIN products p ON ci.product_id = p.id
         WHERE ci.cart_id = $1`,
       [cart.id]
     );
-    const subtotal = parseFloat(freshSubtotal.rows[0]?.fresh_subtotal || '0');
+    const subtotal = parseFloat(
+      freshSubtotalResult.rows[0]?.fresh_subtotal || '0'
+    );
     const discountAmount = parseFloat(refreshedCart.discount_amount);
     const couponDiscount = parseFloat(refreshedCart.coupon_discount);
     const totalAmount = subtotal + deliveryCharge - discountAmount - couponDiscount;

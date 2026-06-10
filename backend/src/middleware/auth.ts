@@ -38,44 +38,26 @@ const extractToken = (req: Request): string | null => {
   return null;
 };
 
-// Verify JWT token middleware
-export const authenticate = async (
+// Verify JWT token middleware — uses JWT claims only (no DB roundtrip).
+export const authenticate = (
   req: Request,
   res: Response,
   next: NextFunction
-): Promise<void> => {
+): void => {
   try {
     const token = extractToken(req);
-    
+
     if (!token) {
       throw new UnauthorizedError('Access token required');
     }
-    
-    // Verify token
+
     const decoded = verifyAccessToken(token);
-    
-    // Check if user exists and is active
-    const userResult = await query(
-      `SELECT id, phone, role, status, full_name 
-       FROM users 
-       WHERE id = $1 AND status = 'active'`,
-      [decoded.userId]
-    );
-    
-    if (userResult.rows.length === 0) {
-      throw new UnauthorizedError('User not found or inactive');
-    }
-    
-    const user = userResult.rows[0];
-    
-    // Attach user to request
+
     req.user = {
       ...decoded,
-      id: user.id,
-      full_name: user.full_name,
-      status: user.status,
+      id: decoded.userId,
     };
-    
+
     next();
   } catch (error: any) {
     if (error instanceof UnauthorizedError) {
@@ -88,6 +70,42 @@ export const authenticate = async (
       logger.error('Authentication error:', error);
       next(new UnauthorizedError('Authentication failed'));
     }
+  }
+};
+
+/** DB active-user check for sensitive routes (orders, profile, payments). */
+export const verifyUserActive = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    const userResult = await query(
+      `SELECT id, phone, role, status, full_name
+       FROM users
+       WHERE id = $1 AND status = 'active'`,
+      [req.user.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new UnauthorizedError('User not found or inactive');
+    }
+
+    const user = userResult.rows[0];
+    req.user = {
+      ...req.user,
+      id: user.id,
+      full_name: user.full_name,
+      status: user.status,
+    };
+
+    next();
+  } catch (error) {
+    next(error);
   }
 };
 
