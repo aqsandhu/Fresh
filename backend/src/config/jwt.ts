@@ -68,9 +68,14 @@ const { secret: jwtSecret, refreshSecret: jwtRefreshSecret } = validateSecrets()
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
-/** Admin panel sessions — longer-lived access token (env override supported). */
-const ADMIN_JWT_EXPIRES_IN = process.env.ADMIN_JWT_EXPIRES_IN || '8h';
-const ADMIN_JWT_REFRESH_EXPIRES_IN = process.env.ADMIN_JWT_REFRESH_EXPIRES_IN || '30d';
+/**
+ * Admin panel sessions — short-lived access tokens.
+ * Was previously 8h/30d, which gave demoted/suspended admins a long window
+ * before role/permission changes took effect. Defaults are tightened; refresh
+ * + the verifyAdminActive DB recheck make UX seamless.
+ */
+const ADMIN_JWT_EXPIRES_IN = process.env.ADMIN_JWT_EXPIRES_IN || '15m';
+const ADMIN_JWT_REFRESH_EXPIRES_IN = process.env.ADMIN_JWT_REFRESH_EXPIRES_IN || '8h';
 
 // Generate access token
 export const generateAccessToken = (

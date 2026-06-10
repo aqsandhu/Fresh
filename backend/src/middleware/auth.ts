@@ -73,6 +73,52 @@ export const authenticate = (
   }
 };
 
+/**
+ * DB active-admin check. Use on admin routes that perform writes or read
+ * sensitive data so that a demoted/suspended admin loses access immediately,
+ * without waiting for the JWT to expire.
+ */
+export const verifyAdminActive = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    const result = await query(
+      `SELECT id, role, status
+         FROM users
+        WHERE id = $1 AND deleted_at IS NULL`,
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      throw new UnauthorizedError('Admin account not found');
+    }
+
+    const dbUser = result.rows[0];
+
+    if (dbUser.status !== 'active') {
+      throw new ForbiddenError('Admin account is not active');
+    }
+
+    if (!['admin', 'super_admin'].includes(dbUser.role)) {
+      throw new ForbiddenError('Admin role revoked');
+    }
+
+    // Token-claim role may be stale (e.g. super_admin demoted to admin) —
+    // trust the DB for downstream permission resolution.
+    req.user.role = dbUser.role;
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
 /** DB active-user check for sensitive routes (orders, profile, payments). */
 export const verifyUserActive = async (
   req: Request,

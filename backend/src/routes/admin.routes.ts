@@ -8,6 +8,7 @@ import * as adminController from '../controllers/admin';
 import {
   authenticate,
   requireAdmin,
+  verifyAdminActive,
   adminRateLimiter,
   authRateLimiter,
   validate,
@@ -28,9 +29,12 @@ const router = Router();
 // Admin login (public but rate limited) - SECURITY FIX: Add password validation
 router.post('/login', authRateLimiter, validate(adminSchemas.adminLogin), authController.adminLogin);
 
-// All admin routes require authentication and admin role
+// All admin routes require authentication and admin role.
+// verifyAdminActive re-checks the DB so that demotion/suspension takes effect
+// immediately instead of waiting for the JWT to expire.
 router.use(authenticate);
 router.use(requireAdmin);
+router.use(verifyAdminActive);
 router.use(attachAdminPermissions);
 router.use(attachCityScope);
 router.use(enforceAdminPermissions);
