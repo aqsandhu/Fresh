@@ -34,6 +34,9 @@ export type DeliveryCartLine = {
     category_slug?: string;
     categoryName?: string;
     category_name?: string;
+    /** From API / categories.qualifies_for_free_delivery — preferred over slug heuristics. */
+    qualifiesForFreeDelivery?: boolean;
+    qualifies_for_free_delivery?: boolean;
     price: number;
   };
   quantity: number;
@@ -58,10 +61,24 @@ function isNonVegFruitSlug(slug: string): boolean {
   );
 }
 
+function categoryQualifiesForFreeDelivery(product: DeliveryCartLine['product']): boolean | null {
+  if (product.qualifiesForFreeDelivery === true || product.qualifies_for_free_delivery === true) {
+    return true;
+  }
+  if (product.qualifiesForFreeDelivery === false || product.qualifies_for_free_delivery === false) {
+    return false;
+  }
+  return null;
+}
+
 /**
- * True only for fresh vegetables / fruits categories (slug-based, same as website cart).
+ * True when the product's category counts toward the free-delivery threshold.
+ * Uses admin-controlled `qualifies_for_free_delivery` when present; falls back to slug heuristics for legacy carts.
  */
 export function isVegOrFruitProduct(product: DeliveryCartLine['product']): boolean {
+  const dbFlag = categoryQualifiesForFreeDelivery(product);
+  if (dbFlag !== null) return dbFlag;
+
   const slug = normalizeSlug(product);
   if (!slug || isNonVegFruitSlug(slug)) return false;
   return (VEG_FRUIT_CATEGORY_SLUGS as readonly string[]).includes(slug);

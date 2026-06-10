@@ -7,7 +7,7 @@ import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
-import { stockUnitsNeeded } from '../utils/unitPricing';
+import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
@@ -304,8 +304,53 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       orderCityId = productCity.rows[0]?.city_id || null;
     }
 
-    // Calculate delivery charge
-    const deliveryChargeResult = await calculateDeliveryCharge(cart.id, time_slot_id);
+    // Re-fetch current product prices — never trust stale cart_items.unit_price.
+    for (const item of cartItemsResult.rows) {
+      const priceResult = await client.query(
+        `SELECT price, half_kg_price, quarter_kg_price, half_dozen_price,
+                stock_status, is_active, name_en
+           FROM products
+          WHERE id = $1`,
+        [item.product_id]
+      );
+
+      if (priceResult.rows.length === 0) {
+        throw new Error(`Product unavailable: ${item.product_id}`);
+      }
+
+      const product = priceResult.rows[0];
+      if (!product.is_active) {
+        throw new Error(`Product unavailable: ${product.name_en}`);
+      }
+      if (product.stock_status === 'out_of_stock') {
+        throw new Error(`Out of stock: ${product.name_en}`);
+      }
+
+      const freshUnitPrice = resolveUnitPrice(product, item.unit);
+      await client.query(
+        `UPDATE cart_items
+            SET unit_price = $1, updated_at = NOW()
+          WHERE id = $2`,
+        [freshUnitPrice, item.id]
+      );
+
+      item.unit_price = freshUnitPrice;
+      item.total_price = freshUnitPrice * item.quantity;
+    }
+
+    const refreshedCartResult = await client.query(
+      'SELECT * FROM carts WHERE id = $1',
+      [cart.id]
+    );
+    const refreshedCart = refreshedCartResult.rows[0];
+
+    // Calculate delivery charge using transaction-visible cart totals.
+    const deliveryChargeResult = await calculateDeliveryCharge(
+      cart.id,
+      time_slot_id,
+      new Date(),
+      client
+    );
     const deliveryCharge = deliveryChargeResult.delivery_charge;
 
     // Get delivery charge rule ID
@@ -315,10 +360,10 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     );
     const deliveryChargeRuleId = ruleResult.rows[0]?.id;
 
-    // Calculate totals
-    const subtotal = parseFloat(cart.subtotal);
-    const discountAmount = parseFloat(cart.discount_amount);
-    const couponDiscount = parseFloat(cart.coupon_discount);
+    // Calculate totals from freshly updated cart
+    const subtotal = parseFloat(refreshedCart.subtotal);
+    const discountAmount = parseFloat(refreshedCart.discount_amount);
+    const couponDiscount = parseFloat(refreshedCart.coupon_discount);
     const totalAmount = subtotal + deliveryCharge - discountAmount - couponDiscount;
 
     // Create order
@@ -366,22 +411,20 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
     // Create order items and decrement stock
     for (const item of cartItemsResult.rows) {
-      // Get product details with stock check (FOR UPDATE to prevent race conditions)
       const productResult = await client.query(
-        'SELECT name_en, primary_image, sku, stock_quantity, stock_status FROM products WHERE id = $1 FOR UPDATE',
+        `SELECT name_en, primary_image, sku, stock_quantity, stock_status
+           FROM products WHERE id = $1 FOR UPDATE`,
         [item.product_id]
       );
-      
+
       if (productResult.rows.length === 0) {
         throw new Error(`Product not found: ${item.product_id}`);
       }
-      
+
       const product = productResult.rows[0];
       const stockDeduction = stockUnitsNeeded(item.quantity, item.unit);
-
-      if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockDeduction) {
-        throw new Error(`Insufficient stock for product: ${product.name_en}. Available: ${product.stock_quantity}, Requested: ${stockDeduction}`);
-      }
+      const unitPrice = parseFloat(String(item.unit_price));
+      const totalPrice = unitPrice * item.quantity;
 
       await client.query(
         `INSERT INTO order_items (
@@ -390,23 +433,26 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           order.id, item.product_id, product.name_en, product.primary_image, product.sku,
-          item.unit_price, item.quantity, item.total_price, item.weight_kg || null,
+          unitPrice, item.quantity, totalPrice, item.weight_kg || null,
           item.unit || 'full',
         ]
       );
 
-      // CRITICAL FIX: Decrement stock quantity to prevent overselling
-      await client.query(
-        `UPDATE products 
-         SET stock_quantity = stock_quantity - $1,
-             stock_status = CASE 
-               WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status
-               ELSE 'active'::product_status
-             END,
-             updated_at = NOW()
-         WHERE id = $2`,
+      const stockUpdate = await client.query(
+        `UPDATE products
+            SET stock_quantity = stock_quantity - $1,
+                stock_status = CASE
+                  WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status
+                  ELSE 'active'::product_status
+                END,
+                updated_at = NOW()
+          WHERE id = $2 AND stock_quantity >= $1`,
         [stockDeduction, item.product_id]
       );
+
+      if (stockUpdate.rowCount === 0) {
+        throw new Error(`Out of stock: ${product.name_en}`);
+      }
 
       // Update product order count
       await client.query(
