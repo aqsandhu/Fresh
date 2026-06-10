@@ -63,6 +63,7 @@ router.post(
 // subsequent login + sensitive re-auth. Falls back to OTP if PIN forgotten.
 router.get(
   '/pin-status',
+  authRateLimiter, // prevent phone-number enumeration
   validate(authSchemas.pinStatus, 'query'),
   authController.pinStatus
 );

@@ -1,8 +1,12 @@
 // ============================================================================
 // ADMIN PERMISSION ENFORCEMENT
 // Loads the signed-in admin's effective permission codes and blocks requests
-// that fall outside their assigned role. Super-admins and legacy admins (no
-// custom role) retain full access.
+// that fall outside their assigned role.
+//
+// SECURITY MODEL — DEFAULT DENY:
+//   • super_admin  → ['*']  (full access)
+//   • role with no permissions or no admin_role_id → []  (no access)
+//   • unmapped routes → DENY (unless explicitly allowlisted as "any admin")
 // ============================================================================
 
 import { Request, Response, NextFunction } from 'express';
@@ -35,7 +39,8 @@ async function loadPermissions(userId: string, role: string): Promise<string[]> 
   );
 
   const row = result.rows[0];
-  if (!row?.admin_role_id) return ['*'];
+  // SECURITY FIX: role-less admin → no access (was: full access "god mode")
+  if (!row) return [];
   return row.permissions || [];
 }
 
@@ -58,12 +63,22 @@ function hasAny(perms: string[], codes: string[]): boolean {
   return codes.some((c) => perms.includes(c));
 }
 
-/** Map admin API paths + HTTP method → required permission codes (any match). */
+// Sentinel: route is allowlisted for any authenticated admin (no perm required).
+const ANY_ADMIN: string[] = ['__ANY_ADMIN__'];
+
+/**
+ * Map admin API method+path → required permission codes.
+ * Returns ANY_ADMIN for routes any admin can access (e.g. /me, /profile).
+ * Returns null for paths that are NOT mapped — default deny.
+ */
 function resolveRequiredPermissions(method: string, path: string): string[] | null {
   const m = method.toUpperCase();
   const p = path.split('?')[0];
 
-  if (p === '/me') return null;
+  // ── Any-admin routes (profile/session/token) ──────────────────────────
+  if (p === '/me') return ANY_ADMIN;
+  if (p === '/profile') return ANY_ADMIN;
+  if (p.includes('verify-token') || p.includes('change-password')) return ANY_ADMIN;
 
   if (p === '/dashboard') {
     return ['orders.view', 'products.view', 'customers.view', 'settings.view', 'settings.update'];
@@ -87,7 +102,7 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
   }
   if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
   if (p.startsWith('/cities')) {
-    if (m === 'GET') return null; // any admin needs city list for header switcher
+    if (m === 'GET') return ANY_ADMIN; // city list needed by header switcher
     return ['settings.cities.manage', 'settings.update'];
   }
   if (p.startsWith('/delivery-zones')) {
@@ -125,12 +140,12 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
   if (p.startsWith('/site-settings/brand')) {
     return m === 'GET'
       ? ['settings.brand.view', 'settings.view', 'settings.update']
-      : null;
+      : ['settings.brand.update', 'settings.update'];
   }
   if (p.startsWith('/site-settings/favicon')) {
     return m === 'GET'
       ? ['settings.favicon.view', 'settings.view', 'settings.update']
-      : null;
+      : ['settings.favicon.update', 'settings.update'];
   }
   if (
     p.startsWith('/site-settings/banner') ||
@@ -147,15 +162,7 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
   }
   if (p.startsWith('/reports')) return ['orders.view'];
 
-  // Profile / token / password — any authenticated admin
-  if (
-    p.includes('verify-token') ||
-    p === '/profile' ||
-    p.includes('change-password')
-  ) {
-    return null;
-  }
-
+  // Unmapped — default deny.
   return null;
 }
 
@@ -164,11 +171,20 @@ export const enforceAdminPermissions = (
   _res: Response,
   next: NextFunction
 ): void => {
-  const perms = req.adminPermissions || ['*'];
+  const perms = req.adminPermissions ?? [];
   if (perms.includes('*')) return next();
 
   const required = resolveRequiredPermissions(req.method, req.path);
-  if (!required) return next();
+
+  // Default deny for unmapped routes.
+  if (required === null) {
+    return next(
+      new ForbiddenError('You do not have permission to perform this action')
+    );
+  }
+
+  // Allowlisted for any authenticated admin.
+  if (required === ANY_ADMIN) return next();
 
   if (hasAny(perms, required)) return next();
 

@@ -17,12 +17,31 @@ const AUTH_MAX_REQUESTS = parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || (
 
 const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL) : null;
 
-const authRedisStore = redis
-  ? new RedisStore({
-      sendCommand: ((...args: string[]) =>
-        redis.call(...(args as [string, ...string[]]))) as SendCommandFn,
-    })
-  : undefined;
+/**
+ * Build a Redis-backed store with a per-limiter prefix so different limiters
+ * don't share a counter. Falls back to in-memory when REDIS_URL isn't set.
+ *
+ * SECURITY FIX: previously only authRedisStore existed. Order, admin,
+ * password-reset, etc. were per-instance in-memory limits — easily reset by
+ * a restart and trivially bypassed across multiple instances.
+ */
+function makeStore(prefix: string) {
+  if (!redis) return undefined;
+  return new RedisStore({
+    prefix: `rl:${prefix}:`,
+    sendCommand: ((...args: string[]) =>
+      redis.call(...(args as [string, ...string[]]))) as SendCommandFn,
+  });
+}
+
+const authRedisStore = makeStore('auth');
+const registerRedisStore = makeStore('register');
+const apiRedisStore = makeStore('api');
+const adminRedisStore = makeStore('admin');
+const orderRedisStore = makeStore('order');
+const webhookRedisStore = makeStore('webhook');
+const passwordResetRedisStore = makeStore('pwreset');
+const riderLocationRedisStore = makeStore('riderloc');
 
 function skipInDev(req: Request): boolean {
   if (!isDev) return false;
@@ -45,6 +64,7 @@ export const apiRateLimiter = rateLimit({
   windowMs: WINDOW_MS,
   max: MAX_REQUESTS,
   skip: skipInDev,
+  store: apiRedisStore,
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later',
@@ -85,7 +105,7 @@ export const registerRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: isDev ? 100 : 3,
   skip: skipInDev,
-  store: authRedisStore,
+  store: registerRedisStore,
   message: {
     success: false,
     message: 'Too many registration attempts from this IP, please try again later',
@@ -98,6 +118,7 @@ export const passwordResetRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: isDev ? 100 : 3,
   skip: skipInDev,
+  store: passwordResetRedisStore,
   message: {
     success: false,
     message: 'Too many password reset attempts, please try again later',
@@ -110,6 +131,7 @@ export const adminRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 1000 : 30,
   skip: skipInDev,
+  store: adminRedisStore,
   message: {
     success: false,
     message: 'Too many admin actions, please slow down',
@@ -122,6 +144,7 @@ export const riderLocationRateLimiter = rateLimit({
   windowMs: 10 * 1000,
   max: isDev ? 100 : 1,
   skip: skipInDev,
+  store: riderLocationRedisStore,
   message: {
     success: false,
     message: 'Location updates too frequent',
@@ -134,6 +157,7 @@ export const orderRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 100 : 5,
   skip: skipInDev,
+  store: orderRedisStore,
   message: {
     success: false,
     message: 'Too many order attempts, please try again later',
@@ -146,6 +170,7 @@ export const webhookRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 1000 : 100,
   skip: skipInDev,
+  store: webhookRedisStore,
   message: {
     success: false,
     message: 'Webhook rate limit exceeded',

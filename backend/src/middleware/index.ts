@@ -23,6 +23,7 @@ export {
 export {
   authenticate,
   verifyUserActive,
+  verifyAdminActive,
   authorize,
   requireAdmin,
   requireSuperAdmin,

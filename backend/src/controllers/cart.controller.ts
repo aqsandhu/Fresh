@@ -4,7 +4,12 @@
 
 import { Request, Response } from 'express';
 import { query, withTransaction } from '../config/database';
-import { asyncHandler } from '../middleware';
+import {
+  asyncHandler,
+  BadRequestError,
+  NotFoundError,
+  ForbiddenError,
+} from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
@@ -142,7 +147,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     );
 
     if (productResult.rows.length === 0) {
-      throw new Error('Product not found or inactive');
+      throw new NotFoundError('Product not found or inactive');
     }
 
     const product = productResult.rows[0];
@@ -151,7 +156,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
 
     // Check stock (kg/dozen units, not cart line count)
     if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
-      throw new Error('Insufficient stock');
+      throw new BadRequestError('Insufficient stock');
     }
 
     // Check if item already exists in cart (same product AND same unit).
@@ -168,7 +173,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
       const totalStockNeeded = stockUnitsNeeded(newQuantity, unit);
 
       if (product.stock_quantity < totalStockNeeded) {
-        throw new Error('Insufficient stock for requested quantity');
+        throw new BadRequestError('Insufficient stock for requested quantity');
       }
 
       await client.query(
@@ -218,13 +223,13 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     );
 
     if (itemResult.rows.length === 0) {
-      throw new Error('Cart item not found');
+      throw new NotFoundError('Cart item not found');
     }
 
     const item = itemResult.rows[0];
 
     if (item.user_id !== req.user!.id) {
-      throw new Error('Unauthorized');
+      throw new ForbiddenError('You do not have permission to modify this cart item');
     }
 
     const productResult = await client.query(
@@ -235,7 +240,7 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     );
 
     if (productResult.rows.length === 0) {
-      throw new Error('Product not found');
+      throw new NotFoundError('Product not found');
     }
 
     const product = productResult.rows[0];
@@ -243,7 +248,7 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     const stockNeeded = stockUnitsNeeded(quantity, item.unit);
 
     if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
-      throw new Error('Insufficient stock');
+      throw new BadRequestError('Insufficient stock');
     }
 
     await client.query(
@@ -280,13 +285,13 @@ export const removeFromCart = asyncHandler(async (req: Request, res: Response) =
     );
 
     if (itemResult.rows.length === 0) {
-      throw new Error('Cart item not found');
+      throw new NotFoundError('Cart item not found');
     }
 
     const item = itemResult.rows[0];
 
     if (item.user_id !== req.user!.id) {
-      throw new Error('Unauthorized');
+      throw new ForbiddenError('You do not have permission to modify this cart item');
     }
 
     await client.query('DELETE FROM cart_items WHERE id = $1', [itemId]);
@@ -367,17 +372,16 @@ export const calculateCartDeliveryCharge = asyncHandler(async (req: Request, res
 /**
  * Apply coupon code
  * POST /api/cart/apply-coupon
+ *
+ * NOTE: coupon redemption is not yet implemented. Returns 501 to make this
+ * explicit rather than masquerading as an "invalid coupon" error. Remove
+ * this endpoint (and the UI entry point) once the feature is built.
  */
 export const applyCoupon = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
     return errorResponse(res, 'Authentication required', 401);
   }
-
-  const { coupon_code } = req.body;
-
-  // TODO: Implement coupon validation logic
-  // For now, return error
-  return errorResponse(res, 'Invalid or expired coupon code', 400);
+  return errorResponse(res, 'Coupons are not yet available', 501);
 });
 
 /**

@@ -39,77 +39,100 @@ CREATE INDEX idx_webhook_logs_created_at ON webhook_logs(created_at DESC);
 
 import { Request, Response } from 'express';
 import crypto from 'crypto';
-import { query } from '../config/database';
+import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, errorResponse } from '../utils/response';
+import { stockUnitsNeeded } from '../utils/unitPricing';
 import logger from '../utils/logger';
 
+// Allowed forward transitions for order status. Anything not in this map is
+// treated as a no-op / rejected so external webhooks can't jump an order from
+// `pending` to `delivered` or revive a cancelled one.
+const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['preparing', 'cancelled'],
+  preparing: ['ready_for_pickup', 'cancelled'],
+  ready_for_pickup: ['out_for_delivery', 'cancelled'],
+  out_for_delivery: ['delivered', 'cancelled'],
+  delivered: ['refunded'],
+  cancelled: [],
+  refunded: [],
+};
+
+function isValidOrderTransition(from: string, to: string): boolean {
+  if (from === to) return true;
+  return ORDER_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
 /**
- * Check if a webhook has already been processed.
- * Uses either idempotency_key (if provided by client) or
- * a composite key of order_id + status + source for duplicate detection.
+ * Atomically claim a webhook for processing.
+ *
+ * SECURITY FIX: the previous SELECT-then-INSERT pattern was a TOCTOU race —
+ * two identical webhooks arriving in parallel could both pass the SELECT and
+ * both get processed (double payment, double refund, double stock restore).
+ *
+ * This helper uses INSERT ... ON CONFLICT DO NOTHING against a unique
+ * idempotency key so exactly one caller wins the claim per (key, source).
+ *
+ * Required schema (one of these is enough — both is fine):
+ *   CREATE UNIQUE INDEX IF NOT EXISTS webhook_logs_idem_uidx
+ *     ON webhook_logs (source, idempotency_key)
+ *     WHERE idempotency_key IS NOT NULL;
  */
-const checkDuplicateWebhook = async (
+const claimWebhook = async (
   webhookType: string,
   payload: any,
   source: string | string[] | undefined,
-  idempotencyKey?: string
-): Promise<{ isDuplicate: boolean; logId?: string; existingResponse?: any }> => {
+  idempotencyKey: string,
+  orderId?: string | null
+): Promise<{ claimed: boolean; logId: string; existingResponse?: any }> => {
   const sourceStr = source ? String(source) : 'unknown';
+  const effectiveOrderId = orderId || payload?.order_id || null;
 
-  // Strategy 1: Check by explicit idempotency key (most reliable)
-  if (idempotencyKey) {
+  try {
+    const inserted = await query(
+      `INSERT INTO webhook_logs (webhook_type, idempotency_key, source, order_id, payload, status)
+       VALUES ($1, $2, $3, $4, $5, 'received')
+       ON CONFLICT (source, idempotency_key) DO NOTHING
+       RETURNING id`,
+      [webhookType, idempotencyKey, sourceStr, effectiveOrderId, JSON.stringify(payload)]
+    );
+
+    if ((inserted.rowCount ?? 0) > 0) {
+      return { claimed: true, logId: inserted.rows[0].id };
+    }
+
     const existing = await query(
-      `SELECT id, status, response_body FROM webhook_logs
-       WHERE idempotency_key = $1 AND source = $2`,
+      `SELECT id, response_body FROM webhook_logs
+        WHERE idempotency_key = $1 AND source = $2
+        ORDER BY created_at DESC
+        LIMIT 1`,
       [idempotencyKey, sourceStr]
     );
     if (existing.rows.length > 0) {
-      logger.info('Duplicate webhook detected by idempotency key', {
+      logger.info('Duplicate webhook (atomic claim lost)', {
+        webhookType,
+        source: sourceStr,
         idempotencyKey,
-        source: sourceStr,
-        logId: existing.rows[0].id,
       });
       return {
-        isDuplicate: true,
+        claimed: false,
         logId: existing.rows[0].id,
         existingResponse: existing.rows[0].response_body,
       };
     }
+    return { claimed: false, logId: 'unknown' };
+  } catch (error) {
+    logger.error('claimWebhook failed', { error, webhookType, source: sourceStr });
+    // Fail closed — caller should reject if we couldn't claim.
+    return { claimed: false, logId: 'unknown' };
   }
-
-  // Strategy 2: Check by composite key (order_id + status + source)
-  const orderId = payload.order_id || null;
-  const status = payload.status || null;
-
-  if (orderId && status) {
-    const existing = await query(
-      `SELECT id, status, response_body FROM webhook_logs
-       WHERE order_id = $1 AND source = $2 AND response_body->>'status' = $3
-       AND created_at > NOW() - INTERVAL '24 hours'`,
-      [orderId, sourceStr, status]
-    );
-    if (existing.rows.length > 0) {
-      logger.info('Duplicate webhook detected by composite key', {
-        orderId,
-        status,
-        source: sourceStr,
-        logId: existing.rows[0].id,
-      });
-      return {
-        isDuplicate: true,
-        logId: existing.rows[0].id,
-        existingResponse: existing.rows[0].response_body,
-      };
-    }
-  }
-
-  return { isDuplicate: false };
 };
 
 /**
- * Log a webhook attempt to the database.
- * Returns the log entry ID for later status updates.
+ * Best-effort logging for webhooks that don't carry an idempotency key
+ * (rider location ping, sms delivery confirmation). Returns the row id so
+ * the caller can later attach a final status/response.
  */
 const logWebhookAttempt = async (
   webhookType: string,
@@ -131,10 +154,24 @@ const logWebhookAttempt = async (
     );
     return result.rows[0].id;
   } catch (error) {
-    // Non-fatal: Log the error but don't fail the webhook
     logger.error('Failed to log webhook attempt (non-fatal)', { error, webhookType, source: sourceStr });
     return 'unknown';
   }
+};
+
+/**
+ * Derive a stable idempotency key for webhooks where the upstream provider
+ * didn't send one. Falls back to a content hash so retries with the exact
+ * same payload are still deduped.
+ */
+const deriveIdempotencyKey = (
+  explicit: string | undefined,
+  webhookType: string,
+  payload: any
+): string => {
+  if (explicit) return explicit.slice(0, 255);
+  const hash = crypto.createHash('sha256').update(JSON.stringify(payload || {})).digest('hex');
+  return `${webhookType}:${hash}`;
 };
 
 /**
@@ -167,74 +204,126 @@ const updateWebhookLog = async (
  * payment providers, etc.) to update order status
  */
 export const orderStatusWebhook = asyncHandler(async (req: Request, res: Response) => {
-  const idempotencyKey = req.headers['x-idempotency-key'] as string | undefined;
   const source = req.headers['x-webhook-source'];
 
-  // Log the attempt first
-  const logId = await logWebhookAttempt('order_status', req.body, source, 'received', idempotencyKey);
-
-  // Verify webhook signature
+  // Signature first — never trust payload before HMAC verification.
   const signature = req.headers['x-webhook-signature'] as string | undefined;
   if (!verifyWebhookSignature(req.body, signature, source)) {
-    await updateWebhookLog(logId, 'failed', { error: 'Invalid webhook signature' });
     return errorResponse(res, 'Invalid webhook signature', 401);
   }
 
-  const { order_id, status, metadata } = req.body;
+  const { order_id, status } = req.body;
 
   if (!order_id || !status) {
-    await updateWebhookLog(logId, 'failed', { error: 'Order ID and status are required' });
     return errorResponse(res, 'Order ID and status are required', 400);
   }
 
-  // Validate status
+  // Validate status against the order_status enum.
   const validStatuses = [
     'pending', 'confirmed', 'preparing', 'ready_for_pickup',
     'out_for_delivery', 'delivered', 'cancelled', 'refunded'
   ];
-
   if (!validStatuses.includes(status)) {
-    await updateWebhookLog(logId, 'failed', { error: 'Invalid status' });
     return errorResponse(res, 'Invalid status', 400);
   }
 
-  // Check for duplicate webhook (idempotency check)
-  const duplicateCheck = await checkDuplicateWebhook('order_status', req.body, source, idempotencyKey);
-  if (duplicateCheck.isDuplicate) {
-    await updateWebhookLog(logId, 'duplicate', { message: 'Already processed' });
-    logger.info('Duplicate order status webhook ignored', { orderId: order_id, status, source });
+  // Atomic idempotency claim — losing the race short-circuits the rest.
+  const idempotencyKey = deriveIdempotencyKey(
+    req.headers['x-idempotency-key'] as string | undefined,
+    'order_status',
+    req.body
+  );
+  const claim = await claimWebhook('order_status', req.body, source, idempotencyKey, order_id);
+  if (!claim.claimed) {
     return successResponse(res, { alreadyProcessed: true }, 'Already processed');
   }
+  const logId = claim.logId;
 
-  // Update order status
-  const result = await query(
-    `UPDATE orders
-     SET status = $1, updated_at = NOW()
-     WHERE id = $2
-     RETURNING id, order_number, status`,
-    [status, order_id]
-  );
+  try {
+    const responseBody = await withTransaction(async (client) => {
+      const orderResult = await client.query(
+        `SELECT id, order_number, status, time_slot_id
+           FROM orders
+          WHERE id = $1 AND deleted_at IS NULL
+          FOR UPDATE`,
+        [order_id]
+      );
 
-  if (result.rows.length === 0) {
-    await updateWebhookLog(logId, 'failed', { error: 'Order not found' });
-    return errorResponse(res, 'Order not found', 404);
+      if (orderResult.rows.length === 0) {
+        throw Object.assign(new Error('Order not found'), { http: 404 });
+      }
+
+      const order = orderResult.rows[0];
+
+      if (!isValidOrderTransition(order.status, status)) {
+        throw Object.assign(
+          new Error(`Invalid transition: ${order.status} → ${status}`),
+          { http: 409 }
+        );
+      }
+
+      // Set the appropriate timestamp column alongside the status change.
+      const timestampField =
+        status === 'confirmed' ? 'confirmed_at' :
+        status === 'preparing' ? 'preparing_at' :
+        status === 'ready_for_pickup' ? 'ready_at' :
+        status === 'out_for_delivery' ? 'out_for_delivery_at' :
+        status === 'delivered' ? 'delivered_at' :
+        status === 'cancelled' ? 'cancelled_at' : null;
+
+      const updateSql = timestampField
+        ? `UPDATE orders SET status = $1, ${timestampField} = NOW(), updated_at = NOW()
+              WHERE id = $2 RETURNING id, order_number, status`
+        : `UPDATE orders SET status = $1, updated_at = NOW()
+              WHERE id = $2 RETURNING id, order_number, status`;
+
+      const updated = await client.query(updateSql, [status, order_id]);
+
+      // Mirror cancellation side-effects (stock + time slot capacity) so a
+      // webhook-driven cancel matches the customer-driven cancelOrder path.
+      if (status === 'cancelled' && order.status !== 'cancelled') {
+        if (order.time_slot_id) {
+          await client.query(
+            'UPDATE time_slots SET booked_orders = GREATEST(0, booked_orders - 1) WHERE id = $1',
+            [order.time_slot_id]
+          );
+        }
+
+        const items = await client.query(
+          'SELECT product_id, quantity, unit FROM order_items WHERE order_id = $1',
+          [order_id]
+        );
+        for (const item of items.rows) {
+          const restoreAmount = stockUnitsNeeded(item.quantity, item.unit);
+          await client.query(
+            `UPDATE products
+                SET stock_quantity = stock_quantity + $1,
+                    stock_status = CASE
+                      WHEN stock_quantity + $1 > 0 THEN 'active'::product_status
+                      ELSE 'out_of_stock'::product_status
+                    END,
+                    updated_at = NOW()
+              WHERE id = $2`,
+            [restoreAmount, item.product_id]
+          );
+        }
+      }
+
+      return {
+        order_id: updated.rows[0].id,
+        order_number: updated.rows[0].order_number,
+        status: updated.rows[0].status,
+      };
+    });
+
+    await updateWebhookLog(logId, 'processed', responseBody);
+    logger.info('Order status updated via webhook', { orderId: order_id, status, source: source || 'unknown' });
+    return successResponse(res, responseBody, 'Order status updated successfully');
+  } catch (err: any) {
+    await updateWebhookLog(logId, 'failed', { error: err?.message || 'unknown' });
+    const code = err?.http || 400;
+    return errorResponse(res, err?.message || 'Webhook failed', code);
   }
-
-  const responseBody = {
-    order_id: result.rows[0].id,
-    order_number: result.rows[0].order_number,
-    status: result.rows[0].status,
-  };
-
-  await updateWebhookLog(logId, 'processed', responseBody);
-
-  logger.info('Order status updated via webhook', {
-    orderId: order_id,
-    status,
-    source: source || 'unknown'
-  });
-
-  successResponse(res, responseBody, 'Order status updated successfully');
 });
 
 /**
@@ -244,16 +333,11 @@ export const orderStatusWebhook = asyncHandler(async (req: Request, res: Respons
  * Called by payment providers (EasyPaisa, JazzCash, etc.)
  */
 export const paymentWebhook = asyncHandler(async (req: Request, res: Response) => {
-  const idempotencyKey = req.headers['x-idempotency-key'] as string | undefined;
   const source = req.headers['x-webhook-source'];
 
-  // Log the attempt first
-  const logId = await logWebhookAttempt('payment', req.body, source, 'received', idempotencyKey);
-
-  // Verify webhook signature
+  // Signature first.
   const signature = req.headers['x-webhook-signature'] as string | undefined;
   if (!verifyWebhookSignature(req.body, signature, source)) {
-    await updateWebhookLog(logId, 'failed', { error: 'Invalid webhook signature' });
     return errorResponse(res, 'Invalid webhook signature', 401);
   }
 
@@ -262,56 +346,111 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
     transaction_id,
     amount,
     status,
-    payment_method,
     gateway_response,
   } = req.body;
 
   if (!order_id || !transaction_id || !status) {
-    await updateWebhookLog(logId, 'failed', { error: 'Missing required fields' });
     return errorResponse(res, 'Missing required fields', 400);
   }
 
-  // Check for duplicate webhook (idempotency check)
-  const duplicateCheck = await checkDuplicateWebhook('payment', req.body, source, idempotencyKey);
-  if (duplicateCheck.isDuplicate) {
-    await updateWebhookLog(logId, 'duplicate', { message: 'Already processed' });
-    logger.info('Duplicate payment webhook ignored', { orderId: order_id, transactionId: transaction_id });
+  const validPaymentStatuses = ['pending', 'completed', 'failed', 'refunded'];
+  if (!validPaymentStatuses.includes(status)) {
+    return errorResponse(res, 'Invalid payment status', 400);
+  }
+
+  // Atomic idempotency claim.
+  const idempotencyKey = deriveIdempotencyKey(
+    req.headers['x-idempotency-key'] as string | undefined,
+    'payment',
+    req.body
+  );
+  const claim = await claimWebhook('payment', req.body, source, idempotencyKey, order_id);
+  if (!claim.claimed) {
     return successResponse(res, { alreadyProcessed: true }, 'Already processed');
   }
+  const logId = claim.logId;
 
-  // Update payment record
-  await query(
-    `UPDATE payments
-     SET status = $1,
-         transaction_id = $2,
-         gateway_response = $3,
-         updated_at = NOW()
-     WHERE order_id = $4`,
-    [status, transaction_id, JSON.stringify(gateway_response), order_id]
-  );
+  try {
+    const responseBody = await withTransaction(async (client) => {
+      const orderResult = await client.query(
+        `SELECT id, total_amount, payment_status
+           FROM orders
+          WHERE id = $1 AND deleted_at IS NULL
+          FOR UPDATE`,
+        [order_id]
+      );
 
-  // Update order payment status
-  if (status === 'completed') {
-    await query(
-      `UPDATE orders
-       SET payment_status = 'completed',
-           paid_amount = $1,
-           updated_at = NOW()
-       WHERE id = $2`,
-      [amount, order_id]
-    );
+      if (orderResult.rows.length === 0) {
+        throw Object.assign(new Error('Order not found'), { http: 404 });
+      }
+
+      const order = orderResult.rows[0];
+      const orderTotal = Number(order.total_amount);
+      const paidAmount = Number(amount);
+
+      // SECURITY FIX: never trust gateway-provided amount blindly. Require it
+      // to match the order total within a small rounding tolerance before we
+      // mark the order as fully paid.
+      if (status === 'completed') {
+        if (!Number.isFinite(paidAmount)) {
+          throw Object.assign(new Error('Invalid payment amount'), { http: 400 });
+        }
+        if (Math.abs(paidAmount - orderTotal) > 0.01) {
+          throw Object.assign(
+            new Error(
+              `Payment amount mismatch: gateway=${paidAmount} order_total=${orderTotal}`
+            ),
+            { http: 409 }
+          );
+        }
+      }
+
+      await client.query(
+        `UPDATE payments
+            SET status = $1,
+                transaction_id = $2,
+                gateway_response = $3,
+                updated_at = NOW()
+          WHERE order_id = $4`,
+        [status, transaction_id, JSON.stringify(gateway_response || {}), order_id]
+      );
+
+      if (status === 'completed') {
+        await client.query(
+          `UPDATE orders
+              SET payment_status = 'completed',
+                  paid_amount = $1,
+                  updated_at = NOW()
+            WHERE id = $2`,
+          [paidAmount, order_id]
+        );
+      } else if (status === 'failed') {
+        await client.query(
+          `UPDATE orders SET payment_status = 'failed', updated_at = NOW() WHERE id = $1`,
+          [order_id]
+        );
+      } else if (status === 'refunded') {
+        await client.query(
+          `UPDATE orders SET payment_status = 'refunded', updated_at = NOW() WHERE id = $1`,
+          [order_id]
+        );
+      }
+
+      return { order_id, transaction_id, status };
+    });
+
+    await updateWebhookLog(logId, 'processed', responseBody);
+    logger.info('Payment status updated via webhook', {
+      orderId: order_id,
+      transactionId: transaction_id,
+      status,
+    });
+    return successResponse(res, responseBody, 'Payment status updated successfully');
+  } catch (err: any) {
+    await updateWebhookLog(logId, 'failed', { error: err?.message || 'unknown' });
+    const code = err?.http || 400;
+    return errorResponse(res, err?.message || 'Webhook failed', code);
   }
-
-  const responseBody = { order_id, transaction_id, status };
-  await updateWebhookLog(logId, 'processed', responseBody);
-
-  logger.info('Payment status updated via webhook', {
-    orderId: order_id,
-    transactionId: transaction_id,
-    status
-  });
-
-  successResponse(res, responseBody, 'Payment status updated successfully');
 });
 
 /**
@@ -321,66 +460,88 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
  * Called by SMS gateway to confirm message delivery
  */
 export const smsWebhook = asyncHandler(async (req: Request, res: Response) => {
-  const idempotencyKey = req.headers['x-idempotency-key'] as string | undefined;
   const source = req.headers['x-webhook-source'];
 
-  // Log the attempt (SMS webhooks are lower risk, but still logged)
-  const logId = await logWebhookAttempt('sms', req.body, source, 'received', idempotencyKey);
-
   const { message_id, status, delivered_at } = req.body;
-
   if (!message_id) {
-    await updateWebhookLog(logId, 'failed', { error: 'message_id is required' });
     return errorResponse(res, 'message_id is required', 400);
   }
 
-  // Check for duplicate
-  const duplicateCheck = await checkDuplicateWebhook('sms', req.body, source, idempotencyKey);
-  if (duplicateCheck.isDuplicate) {
-    await updateWebhookLog(logId, 'duplicate', { message: 'Already processed' });
+  const idempotencyKey = deriveIdempotencyKey(
+    req.headers['x-idempotency-key'] as string | undefined,
+    'sms',
+    req.body
+  );
+  const claim = await claimWebhook('sms', req.body, source, idempotencyKey);
+  if (!claim.claimed) {
     return successResponse(res, { alreadyProcessed: true }, 'Already processed');
   }
+  const logId = claim.logId;
 
-  // Update notification record
   await query(
     `UPDATE notifications
-     SET delivered_at = $1,
-         updated_at = NOW()
-     WHERE id = $2`,
+        SET delivered_at = $1,
+            updated_at = NOW()
+      WHERE id = $2`,
     [delivered_at || new Date(), message_id]
   );
 
   await updateWebhookLog(logId, 'processed', { message_id, status });
-
   logger.info('SMS delivery confirmed', { messageId: message_id, status });
-
   successResponse(res, null, 'SMS status recorded');
 });
 
 /**
- * Rider location update from mobile app
+ * Rider location update from third-party telemetry (e.g. fleet GPS).
  * POST /api/webhooks/rider-location
+ *
+ * SECURITY FIX: this endpoint was previously unauthenticated, so any caller
+ * could spoof a rider's live location and feed customers fake tracking.
+ * It now requires the same HMAC signature as other webhooks. Mobile-app
+ * driver updates already use the authenticated PUT /api/rider/location route.
  */
 export const riderLocationWebhook = asyncHandler(async (req: Request, res: Response) => {
   const source = req.headers['x-webhook-source'];
-  const { rider_id, latitude, longitude, timestamp } = req.body;
+  const signature = req.headers['x-webhook-signature'] as string | undefined;
 
-  if (!rider_id || !latitude || !longitude) {
-    return errorResponse(res, 'Missing required fields', 400);
+  const logId = await logWebhookAttempt('rider_location', req.body, source, 'received');
+
+  if (!verifyWebhookSignature(req.body, signature, source)) {
+    await updateWebhookLog(logId, 'failed', { error: 'Invalid webhook signature' });
+    return errorResponse(res, 'Invalid webhook signature', 401);
   }
 
-  // Log the attempt (fire-and-forget, no idempotency check needed for location updates)
-  await logWebhookAttempt('rider_location', req.body, source, 'processed', undefined, undefined);
+  const { rider_id, latitude, longitude, timestamp } = req.body;
 
-  await query(
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+
+  if (!rider_id || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    await updateWebhookLog(logId, 'failed', { error: 'Missing or invalid fields' });
+    return errorResponse(res, 'Missing or invalid fields', 400);
+  }
+
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    await updateWebhookLog(logId, 'failed', { error: 'Coordinates out of range' });
+    return errorResponse(res, 'Coordinates out of range', 400);
+  }
+
+  const updateResult = await query(
     `UPDATE riders
      SET current_location = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
          location_updated_at = $3,
          updated_at = NOW()
-     WHERE id = $4`,
-    [longitude, latitude, timestamp || new Date(), rider_id]
+     WHERE id = $4
+     RETURNING id`,
+    [lng, lat, timestamp || new Date(), rider_id]
   );
 
+  if (updateResult.rowCount === 0) {
+    await updateWebhookLog(logId, 'failed', { error: 'Rider not found' });
+    return errorResponse(res, 'Rider not found', 404);
+  }
+
+  await updateWebhookLog(logId, 'processed', { rider_id });
   successResponse(res, null, 'Location updated');
 });
 

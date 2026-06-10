@@ -501,9 +501,10 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
   }
 
   if (email !== undefined) {
-    // Check if email is already taken
+    // Email uniqueness must ignore soft-deleted users so a recycled address
+    // doesn't appear to be taken forever.
     const existingEmail = await query(
-      'SELECT id FROM users WHERE email = $1 AND id != $2',
+      'SELECT id FROM users WHERE email = $1 AND id != $2 AND deleted_at IS NULL',
       [email.toLowerCase(), req.user.userId]
     );
     if (existingEmail.rows.length > 0) {
@@ -562,6 +563,17 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
 
   const user = userResult.rows[0];
 
+  // OTP-only accounts (registered via Firebase OTP without ever setting a
+  // password) have password_hash = NULL. They must use the OTP flow instead
+  // of attempting a "change password".
+  if (!user.password_hash) {
+    return errorResponse(
+      res,
+      'This account uses OTP login. Set a password via the reset flow first.',
+      400
+    );
+  }
+
   // Verify current password
   const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
 
@@ -594,6 +606,60 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
 
 const PIN_BCRYPT_ROUNDS = 10;
 
+// ── Per-account PIN brute-force lockout ───────────────────────────────
+// A 4-digit PIN is only 10,000 combinations, so a botnet can defeat an
+// IP-based limiter trivially. We track failed attempts per phone and lock
+// the account for an exponentially increasing window after each round of
+// 5 failures, regardless of the source IP.
+const PIN_FAIL_THRESHOLD = 5;
+const PIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
+const PIN_LOCKOUT_BASE_MS = 15 * 60 * 1000;
+const PIN_LOCKOUT_MAX_MS = 24 * 60 * 60 * 1000;
+
+interface PinLockoutEntry {
+  fails: number;
+  firstFailAt: number;
+  lockedUntil: number;
+  totalRounds: number;
+}
+
+const pinLockouts = new Map<string, PinLockoutEntry>();
+
+function getPinLockoutState(phone: string): PinLockoutEntry {
+  const now = Date.now();
+  const entry = pinLockouts.get(phone);
+  if (!entry) return { fails: 0, firstFailAt: 0, lockedUntil: 0, totalRounds: 0 };
+  if (entry.lockedUntil && entry.lockedUntil > now) return entry;
+  if (entry.firstFailAt && now - entry.firstFailAt > PIN_FAIL_WINDOW_MS) {
+    pinLockouts.delete(phone);
+    return { fails: 0, firstFailAt: 0, lockedUntil: 0, totalRounds: 0 };
+  }
+  return entry;
+}
+
+function registerPinFailure(phone: string): { lockedUntil: number; fails: number } {
+  const now = Date.now();
+  const current = getPinLockoutState(phone);
+  const fails = current.fails + 1;
+  let lockedUntil = 0;
+  let totalRounds = current.totalRounds;
+  if (fails >= PIN_FAIL_THRESHOLD) {
+    totalRounds += 1;
+    lockedUntil = now + Math.min(PIN_LOCKOUT_BASE_MS * 2 ** (totalRounds - 1), PIN_LOCKOUT_MAX_MS);
+  }
+  pinLockouts.set(phone, {
+    fails: lockedUntil ? 0 : fails,
+    firstFailAt: current.firstFailAt || now,
+    lockedUntil,
+    totalRounds,
+  });
+  return { lockedUntil, fails };
+}
+
+function clearPinFailures(phone: string): void {
+  pinLockouts.delete(phone);
+}
+
 /**
  * GET /api/auth/pin-status?phone=+92...
  * Lets the login UI decide whether to show "Enter PIN" or fall through to OTP.
@@ -610,7 +676,13 @@ export const pinStatus = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const status = await getPinStatusForPhone(normalizedPhone);
-  return successResponse(res, status, 'OK');
+  // SECURITY FIX: do NOT leak full_name to an unauthenticated caller. The
+  // client only needs to know which auth flow to render.
+  return successResponse(
+    res,
+    { exists: status.exists, hasPin: status.hasPin },
+    'OK'
+  );
 });
 
 /**
@@ -655,6 +727,18 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   const { phone, pin } = req.body as { phone: string; pin: string };
   const normalizedPhone = normalizePhoneNumber(phone);
 
+  // Per-account lockout takes priority over any per-IP limit.
+  const lockState = getPinLockoutState(normalizedPhone);
+  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+    const retryAfter = Math.ceil((lockState.lockedUntil - Date.now()) / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    return errorResponse(
+      res,
+      'Too many failed PIN attempts. Try again later or reset your PIN.',
+      429
+    );
+  }
+
   await ensurePinColumns();
   if (!(await hasPinColumns())) {
     return unauthorizedResponse(res, 'Invalid phone or PIN');
@@ -668,8 +752,9 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   );
 
   if (result.rows.length === 0 || !result.rows[0].pin_hash) {
-    // Return the same error for "no user" and "no PIN set" so an attacker
-    // can't enumerate which phones are registered.
+    // Same error for "no user" and "no PIN set" — prevents phone enumeration.
+    // We still count a failure so attackers can't probe phones for free.
+    registerPinFailure(normalizedPhone);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
 
@@ -681,9 +766,22 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
 
   const valid = await bcrypt.compare(pin, user.pin_hash);
   if (!valid) {
-    logger.warn('PIN verify failed', { userId: user.id });
+    const { lockedUntil } = registerPinFailure(normalizedPhone);
+    logger.warn('PIN verify failed', { userId: user.id, lockedUntil });
+    if (lockedUntil) {
+      const retryAfter = Math.ceil((lockedUntil - Date.now()) / 1000);
+      res.setHeader('Retry-After', String(retryAfter));
+      return errorResponse(
+        res,
+        'Too many failed PIN attempts. Try again later or reset your PIN.',
+        429
+      );
+    }
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
+
+  // Successful login resets the failure counter.
+  clearPinFailures(normalizedPhone);
 
   const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);
@@ -750,6 +848,9 @@ export const resetPinConfirm = asyncHandler(async (req: Request, res: Response) 
     [pinHash, userRow.rows[0].id]
   );
 
+  // After a successful OTP-backed reset, clear the brute-force counter.
+  clearPinFailures(normalizedPhone);
+
   logger.info('PIN reset via OTP', { userId: userRow.rows[0].id });
   successResponse(res, { ok: true }, 'PIN reset successfully');
 });
@@ -770,7 +871,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
     `SELECT u.id, u.phone, u.full_name, u.email, u.password_hash, u.role, u.status, u.admin_role_id
      FROM users u
      JOIN admins a ON u.id = a.user_id
-     WHERE u.phone = $1 AND u.role IN ('admin', 'super_admin')`,
+     WHERE u.phone = $1 AND u.role IN ('admin', 'super_admin') AND u.deleted_at IS NULL`,
     [normalizedPhone]
   );
 
@@ -787,6 +888,12 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   if (!isPasswordValid) {
     logger.warn('Admin login failed: password mismatch', { userId: user.id, phone: user.phone });
     return unauthorizedResponse(res, 'Invalid credentials');
+  }
+
+  // SECURITY FIX: enforce account status (was missing — suspended admins could log in).
+  if (user.status !== 'active') {
+    logger.warn('Admin login blocked: account not active', { userId: user.id, status: user.status });
+    return unauthorizedResponse(res, 'Account is not active. Please contact support.');
   }
 
   // Generate tokens (8h access for admin panel — see ADMIN_JWT_EXPIRES_IN)
@@ -851,7 +958,7 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
             r.id as rider_id, r.status as rider_status, r.verification_status
      FROM users u
      JOIN riders r ON u.id = r.user_id
-     WHERE u.phone = $1 AND u.role = 'rider'`,
+     WHERE u.phone = $1 AND u.role = 'rider' AND u.deleted_at IS NULL`,
     [normalizedPhone]
   );
 
@@ -860,6 +967,10 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const user = result.rows[0];
+
+  if (user.status !== 'active') {
+    return unauthorizedResponse(res, 'Account is not active. Please contact support.');
+  }
 
   // Check rider verification status
   if (user.verification_status !== 'verified') {

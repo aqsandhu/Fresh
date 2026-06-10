@@ -4,7 +4,12 @@
 
 import { Request, Response } from 'express';
 import { query, withTransaction } from '../config/database';
-import { asyncHandler } from '../middleware';
+import {
+  asyncHandler,
+  BadRequestError,
+  NotFoundError,
+  ConflictError,
+} from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
@@ -313,7 +318,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     );
 
     if (cartResult.rows.length === 0) {
-      throw new Error('Cart not found');
+      throw new NotFoundError('Cart not found');
     }
 
     const cart = cartResult.rows[0];
@@ -325,7 +330,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     );
 
     if (cartItemsResult.rows.length === 0) {
-      throw new Error('Cart is empty');
+      throw new BadRequestError('Cart is empty');
     }
 
     // Get address
@@ -338,7 +343,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     );
 
     if (addressResult.rows.length === 0) {
-      throw new Error('Address not found');
+      throw new NotFoundError('Address not found');
     }
 
     const address = addressResult.rows[0];
@@ -377,15 +382,15 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       );
 
       if (priceResult.rows.length === 0) {
-        throw new Error(`Product unavailable: ${item.product_id}`);
+        throw new BadRequestError(`Product unavailable: ${item.product_id}`);
       }
 
       const product = priceResult.rows[0];
       if (!product.is_active) {
-        throw new Error(`Product unavailable: ${product.name_en}`);
+        throw new BadRequestError(`Product unavailable: ${product.name_en}`);
       }
       if (product.stock_status === 'out_of_stock') {
-        throw new Error(`Out of stock: ${product.name_en}`);
+        throw new BadRequestError(`Out of stock: ${product.name_en}`);
       }
 
       const freshUnitPrice = resolveUnitPrice(product, item.unit);
@@ -427,9 +432,24 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     const subtotal = parseFloat(
       freshSubtotalResult.rows[0]?.fresh_subtotal || '0'
     );
-    const discountAmount = parseFloat(refreshedCart.discount_amount);
-    const couponDiscount = parseFloat(refreshedCart.coupon_discount);
-    const totalAmount = subtotal + deliveryCharge - discountAmount - couponDiscount;
+    // Discount/coupon are server-controlled in this codebase (no client
+    // payload paths set them), but clamp anyway to avoid any future surface
+    // where a corrupt cart row could produce a negative total.
+    const rawDiscount = parseFloat(refreshedCart.discount_amount) || 0;
+    const rawCoupon = parseFloat(refreshedCart.coupon_discount) || 0;
+    const safeDiscount = Math.max(0, rawDiscount);
+    const safeCoupon = Math.max(0, rawCoupon);
+    const totalDeductible = Math.min(safeDiscount + safeCoupon, subtotal);
+    const discountAmount = totalDeductible > 0
+      ? safeDiscount * (totalDeductible / (safeDiscount + safeCoupon || 1))
+      : 0;
+    const couponDiscount = totalDeductible > 0
+      ? safeCoupon * (totalDeductible / (safeDiscount + safeCoupon || 1))
+      : 0;
+    const totalAmount = Math.max(
+      0,
+      subtotal + deliveryCharge - discountAmount - couponDiscount
+    );
 
     // Create order
     const orderResult = await client.query(
@@ -483,7 +503,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       );
 
       if (productResult.rows.length === 0) {
-        throw new Error(`Product not found: ${item.product_id}`);
+        throw new NotFoundError(`Product not found: ${item.product_id}`);
       }
 
       const product = productResult.rows[0];
@@ -517,7 +537,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       );
 
       if (stockUpdate.rowCount === 0) {
-        throw new Error(`Insufficient stock for product ${item.product_id}`);
+        throw new ConflictError(`Insufficient stock for product ${item.product_id}`);
       }
 
       // Update product order count
@@ -541,12 +561,22 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       );
     }
 
-    // Update time slot booked orders
+    // Atomically claim a time-slot seat — prevents overbooking under
+    // concurrent checkouts. If max_orders is NULL the slot has no cap.
     if (time_slot_id) {
-      await client.query(
-        'UPDATE time_slots SET booked_orders = booked_orders + 1 WHERE id = $1',
+      const slotClaim = await client.query(
+        `UPDATE time_slots
+            SET booked_orders = booked_orders + 1
+          WHERE id = $1
+            AND (max_orders IS NULL OR booked_orders < max_orders)
+          RETURNING id`,
         [time_slot_id]
       );
+      if (slotClaim.rowCount === 0) {
+        throw new ConflictError(
+          'Selected time slot is fully booked. Please pick another slot.'
+        );
+      }
     }
 
     return order;
@@ -602,25 +632,27 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     );
 
     if (orderResult.rows.length === 0) {
-      throw new Error('Order not found');
+      throw new NotFoundError('Order not found');
     }
 
     const order = orderResult.rows[0];
 
     // Check if order can be cancelled based on status
     if (['delivered', 'cancelled', 'out_for_delivery'].includes(order.status)) {
-      throw new Error(`Order cannot be cancelled in ${order.status} status`);
+      throw new ConflictError(`Order cannot be cancelled in ${order.status} status`);
     }
 
-    // CRITICAL FIX: Add cancellation timing validation
-    // Orders can only be cancelled within 30 minutes of placement or before confirmation
+    // Orders can only be cancelled within 30 minutes of placement (or any
+    // time while still pending).
     const placedAt = new Date(order.placed_at);
     const now = new Date();
     const minutesSincePlacement = (now.getTime() - placedAt.getTime()) / (1000 * 60);
     const CANCELLATION_WINDOW_MINUTES = 30;
-    
+
     if (order.status !== 'pending' && minutesSincePlacement > CANCELLATION_WINDOW_MINUTES) {
-      throw new Error(`Order can only be cancelled within ${CANCELLATION_WINDOW_MINUTES} minutes of placement`);
+      throw new BadRequestError(
+        `Order can only be cancelled within ${CANCELLATION_WINDOW_MINUTES} minutes of placement`
+      );
     }
 
     // Update order status
@@ -691,8 +723,17 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
 export const getTimeSlots = asyncHandler(async (req: Request, res: Response) => {
   const { date } = req.query;
 
-  // Get day of week (0 = Sunday, 6 = Saturday)
-  const targetDate = date ? new Date(date as string) : new Date();
+  // Get day of week (0 = Sunday, 6 = Saturday). Reject malformed dates so
+  // they don't silently produce NaN and return zero slots.
+  let targetDate: Date;
+  if (typeof date === 'string' && date.length > 0) {
+    targetDate = new Date(date);
+    if (Number.isNaN(targetDate.getTime())) {
+      return errorResponse(res, 'Invalid date format', 400);
+    }
+  } else {
+    targetDate = new Date();
+  }
   const dayOfWeek = targetDate.getDay();
 
   const result = await query(

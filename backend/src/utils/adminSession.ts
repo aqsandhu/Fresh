@@ -35,7 +35,7 @@ export async function resolveAdminPermissions(
   );
 
   const permissions: string[] = permResult.rows[0]?.permissions || [];
-  if (permissions.length === 0 && !adminRoleId) return ['*'];
+  // SECURITY: role-less admin → no access. Was previously ['*'] (god mode).
   return permissions;
 }
 
