@@ -5,6 +5,7 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
@@ -33,11 +34,14 @@ import { ensureAddressColumns } from './config/addressSchema';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
+  initRateLimiterStore,
   errorHandler,
   notFoundHandler,
   handleUnhandledRejection,
   handleUncaughtException,
 } from './middleware';
+import { getAllowedOrigins } from './utils/corsOrigins';
+import { ensureDatabaseExtensions } from './config/database';
 
 // Import routes
 import routes from './routes';
@@ -75,19 +79,7 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// CORS configuration — comma-separated front-end URLs in CORS_ORIGIN.
-// Optional CORS_EXTRA_ORIGINS adds more without replacing the main list.
-function parseOrigins(raw: string | undefined): string[] {
-  return (raw || '')
-    .split(',')
-    .map((o) => o.trim().replace(/\/$/, ''))
-    .filter(Boolean);
-}
-
-const allowedOrigins = [
-  ...parseOrigins(process.env.CORS_ORIGIN || 'http://localhost:3000'),
-  ...parseOrigins(process.env.CORS_EXTRA_ORIGINS),
-];
+const allowedOrigins = getAllowedOrigins();
 const allowAnyOrigin = allowedOrigins.includes('*');
 
 function isOriginAllowed(origin: string): boolean {
@@ -118,7 +110,13 @@ const corsOptions = {
   },
   credentials: process.env.CORS_CREDENTIALS === 'true',
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-City-Id'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'X-City-Id',
+    'X-Client-Platform',
+  ],
 };
 
 app.use(cors(corsOptions));
@@ -129,6 +127,9 @@ app.use(cors(corsOptions));
 
 // Parse JSON bodies
 app.use(express.json({ limit: '10mb' }));
+
+// Parse cookies (HttpOnly auth tokens for browser clients)
+app.use(cookieParser());
 
 // Parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -233,6 +234,7 @@ const startServer = async () => {
       logger.warn('  postgresql://postgres:PASSWORD@PROJECT_ID.pooler.supabase.com:6543/postgres');
       // Continue starting server - don't exit
     } else {
+      await ensureDatabaseExtensions();
       await ensurePinColumns();
       await ensureAddressColumns();
       // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars are set.
@@ -247,6 +249,8 @@ const startServer = async () => {
 
     // Ensure Supabase Storage bucket exists (creates "uploads" if missing)
     await ensureStorageBucket();
+
+    await initRateLimiterStore();
 
     // Initialize Socket.IO
     initializeSocket(httpServer);
@@ -271,6 +275,7 @@ const startServer = async () => {
         const connected = await testConnection(1, 0);
         if (connected) {
           logger.info('Database connection established after startup!');
+          await ensureDatabaseExtensions();
           await ensurePinColumns();
           await ensureAddressColumns();
         } else {

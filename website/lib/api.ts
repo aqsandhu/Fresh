@@ -3,9 +3,13 @@ import { Product, Category, Order, Address, User, AttaChakkiRequest } from '@/ty
 import { getSelectedCityId } from '@/lib/cityStorage'
 import { useAuthStore } from '@/store/cartStore'
 import { refreshWebsiteAccessToken } from '@/lib/tokenRefresh'
+import { usesHttpOnlyCookies } from '@/lib/authConfig'
+import { clearTokens, getAccessToken } from '@/lib/secureTokens'
 
 function redirectToLogin() {
+  clearTokens()
   useAuthStore.getState().logout()
+  if (typeof window === 'undefined') return
   const currentPath = window.location.pathname
   if (currentPath !== '/login' && !currentPath.startsWith('/register')) {
     window.location.href = `/login?redirect=${encodeURIComponent(currentPath)}`
@@ -29,15 +33,18 @@ if (typeof window !== 'undefined' && !process.env.NEXT_PUBLIC_API_URL) {
 
 const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// Request interceptor to add auth token
 api.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token')
+  config.headers = config.headers || {}
+  config.headers['X-Client-Platform'] = 'website'
+
+  if (typeof window !== 'undefined' && !usesHttpOnlyCookies()) {
+    const token = getAccessToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -66,10 +73,15 @@ api.interceptors.response.use(
       }
 
       original._retried = true
-      const newToken = await refreshWebsiteAccessToken()
-      if (newToken) {
-        original.headers = original.headers || {}
-        original.headers.Authorization = `Bearer ${newToken}`
+      const refreshed = await refreshWebsiteAccessToken()
+      if (refreshed) {
+        if (!usesHttpOnlyCookies()) {
+          const newToken = getAccessToken()
+          if (newToken) {
+            original.headers = original.headers || {}
+            original.headers.Authorization = `Bearer ${newToken}`
+          }
+        }
         return api.request(original)
       }
 

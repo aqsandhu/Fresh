@@ -66,23 +66,34 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
 
   const result = await query(ordersSql, params);
 
-  // Get order items for each order
-  const ordersWithItems = await Promise.all(
-    result.rows.map(async (order) => {
-      const itemsResult = await query(
-        `SELECT 
-          oi.id, oi.product_id, oi.product_name, oi.product_image, oi.product_sku,
-          oi.unit_price, oi.quantity, oi.total_price, oi.weight_kg, oi.status, oi.unit
-        FROM order_items oi
-        WHERE oi.order_id = $1`,
-        [order.id]
-      );
-      return {
-        ...order,
-        items: itemsResult.rows,
-      };
-    })
-  );
+  const orderIds = result.rows.map((order) => order.id);
+  const itemsByOrderId: Record<string, Record<string, unknown>[]> = {};
+
+  if (orderIds.length > 0) {
+    const itemsResult = await query(
+      `SELECT 
+        oi.order_id,
+        oi.id, oi.product_id, oi.product_name, oi.product_image, oi.product_sku,
+        oi.unit_price, oi.quantity, oi.total_price, oi.weight_kg, oi.status, oi.unit
+      FROM order_items oi
+      WHERE oi.order_id = ANY($1::uuid[])
+      ORDER BY oi.created_at ASC`,
+      [orderIds]
+    );
+
+    for (const item of itemsResult.rows) {
+      const { order_id, ...itemFields } = item;
+      if (!itemsByOrderId[order_id]) {
+        itemsByOrderId[order_id] = [];
+      }
+      itemsByOrderId[order_id].push(itemFields);
+    }
+  }
+
+  const ordersWithItems = result.rows.map((order) => ({
+    ...order,
+    items: itemsByOrderId[order.id] || [],
+  }));
 
   successResponse(res, {
     orders: ordersWithItems,

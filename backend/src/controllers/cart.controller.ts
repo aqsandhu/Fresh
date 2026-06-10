@@ -9,6 +9,7 @@ import { successResponse, notFoundResponse, errorResponse } from '../utils/respo
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
 import logger from '../utils/logger';
+import { buildCartResponse } from '../utils/cartResponse';
 
 /**
  * Get or create cart for user
@@ -108,7 +109,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     ? rawUnit
     : 'full';
 
-  await withTransaction(async (client) => {
+  const cartId = await withTransaction(async (client) => {
     // Get or create cart
     let cartResult = await client.query(
       `SELECT * FROM carts 
@@ -185,51 +186,11 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
       );
     }
 
-    // Get updated cart
-    const updatedCartResult = await client.query(
-      'SELECT * FROM carts WHERE id = $1',
-      [cart.id]
-    );
-
-    // Get cart items
-    const itemsResult = await client.query(
-      `SELECT 
-        ci.id, ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
-        p.name_en, p.name_ur, p.primary_image
-      FROM cart_items ci
-      JOIN products p ON ci.product_id = p.id
-      WHERE ci.cart_id = $1`,
-      [cart.id]
-    );
-
-    return {
-      cart: updatedCartResult.rows[0],
-      items: itemsResult.rows,
-    };
+    return cart.id as string;
   });
 
-  // Get fresh cart data
-  const cart = await getOrCreateCart(req.user.id);
-  const itemsResult = await query(
-    `SELECT 
-      ci.id, ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
-      p.name_en, p.name_ur, p.primary_image
-    FROM cart_items ci
-    JOIN products p ON ci.product_id = p.id
-    WHERE ci.cart_id = $1`,
-    [cart.id]
-  );
-
-  successResponse(res, {
-    cart: {
-      id: cart.id,
-      subtotal: parseFloat(cart.subtotal),
-      delivery_charge: parseFloat(cart.delivery_charge),
-      total_amount: parseFloat(cart.total_amount),
-      item_count: cart.item_count,
-    },
-    items: itemsResult.rows,
-  }, 'Item added to cart successfully');
+  const response = await buildCartResponse(cartId);
+  successResponse(res, response, 'Item added to cart successfully');
 });
 
 /**
@@ -248,7 +209,7 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Quantity must be at least 1', 400);
   }
 
-  await withTransaction(async (client) => {
+  const cartId = await withTransaction(async (client) => {
     // Get cart item
     const itemResult = await client.query(
       `SELECT ci.*, c.user_id 
@@ -269,9 +230,10 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
       throw new Error('Unauthorized');
     }
 
-    // Check product stock
     const productResult = await client.query(
-      'SELECT stock_quantity, stock_status FROM products WHERE id = $1',
+      `SELECT id, price, half_kg_price, quarter_kg_price, half_dozen_price,
+              stock_quantity, stock_status, unit_value, unit_type
+       FROM products WHERE id = $1`,
       [item.product_id]
     );
 
@@ -280,43 +242,25 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     }
 
     const product = productResult.rows[0];
+    const unitPrice = resolveUnitPrice(product, item.unit);
     const stockNeeded = stockUnitsNeeded(quantity, item.unit);
 
     if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
       throw new Error('Insufficient stock');
     }
 
-    // Update quantity
     await client.query(
       `UPDATE cart_items 
-       SET quantity = $1, updated_at = NOW()
-       WHERE id = $2`,
-      [quantity, itemId]
+       SET quantity = $1, unit_price = $2, updated_at = NOW()
+       WHERE id = $3`,
+      [quantity, unitPrice, itemId]
     );
+
+    return item.cart_id as string;
   });
 
-  // Return updated cart
-  const cart = await getOrCreateCart(req.user.id);
-  const itemsResult = await query(
-    `SELECT 
-      ci.id, ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
-      p.name_en, p.name_ur, p.primary_image
-    FROM cart_items ci
-    JOIN products p ON ci.product_id = p.id
-    WHERE ci.cart_id = $1`,
-    [cart.id]
-  );
-
-  successResponse(res, {
-    cart: {
-      id: cart.id,
-      subtotal: parseFloat(cart.subtotal),
-      delivery_charge: parseFloat(cart.delivery_charge),
-      total_amount: parseFloat(cart.total_amount),
-      item_count: cart.item_count,
-    },
-    items: itemsResult.rows,
-  }, 'Cart item updated successfully');
+  const response = await buildCartResponse(cartId);
+  successResponse(res, response, 'Cart item updated successfully');
 });
 
 /**
@@ -330,8 +274,7 @@ export const removeFromCart = asyncHandler(async (req: Request, res: Response) =
 
   const { itemId } = req.params;
 
-  await withTransaction(async (client) => {
-    // Get cart item
+  const cartId = await withTransaction(async (client) => {
     const itemResult = await client.query(
       `SELECT ci.*, c.user_id 
        FROM cart_items ci
@@ -346,37 +289,16 @@ export const removeFromCart = asyncHandler(async (req: Request, res: Response) =
 
     const item = itemResult.rows[0];
 
-    // Verify ownership
     if (item.user_id !== req.user!.id) {
       throw new Error('Unauthorized');
     }
 
-    // Delete item
     await client.query('DELETE FROM cart_items WHERE id = $1', [itemId]);
+    return item.cart_id as string;
   });
 
-  // Return updated cart
-  const cart = await getOrCreateCart(req.user.id);
-  const itemsResult = await query(
-    `SELECT 
-      ci.id, ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
-      p.name_en, p.name_ur, p.primary_image
-    FROM cart_items ci
-    JOIN products p ON ci.product_id = p.id
-    WHERE ci.cart_id = $1`,
-    [cart.id]
-  );
-
-  successResponse(res, {
-    cart: {
-      id: cart.id,
-      subtotal: parseFloat(cart.subtotal),
-      delivery_charge: parseFloat(cart.delivery_charge),
-      total_amount: parseFloat(cart.total_amount),
-      item_count: cart.item_count,
-    },
-    items: itemsResult.rows,
-  }, 'Item removed from cart successfully');
+  const response = await buildCartResponse(cartId);
+  successResponse(res, response, 'Item removed from cart successfully');
 });
 
 /**

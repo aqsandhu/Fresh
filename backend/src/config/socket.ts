@@ -7,17 +7,28 @@ import { createServer } from 'http';
 import { verifyAccessToken } from './jwt';
 import { query } from './database';
 import logger from '../utils/logger';
+import { getAllowedOrigins } from '../utils/corsOrigins';
+import { parseCookieHeader } from '../utils/authCookies';
+import { SocketEventRateLimiter } from '../utils/socketRateLimit';
 
 const MAX_CHAT_MESSAGE_LENGTH = 2000;
+const chatRateLimiter = new SocketEventRateLimiter(30, 60_000);
+const locationRateLimiter = new SocketEventRateLimiter(6, 10_000);
+const typingRateLimiter = new SocketEventRateLimiter(20, 10_000);
 
 let io: Server;
 
+type ChatSenderType = 'customer' | 'rider' | 'admin';
+
+function mapChatSenderType(role?: string): ChatSenderType | null {
+  if (role === 'rider') return 'rider';
+  if (role === 'admin' || role === 'super_admin') return 'admin';
+  if (role === 'customer') return 'customer';
+  return null;
+}
+
 /**
  * Verifies that the authenticated socket user is allowed to access an order.
- * A user may access an order if they are the customer (orders.user_id) or the
- * assigned rider (riders.user_id via orders.rider_id). Admins bypass the check.
- * Note: orders.rider_id references riders.id, NOT users.id — so we join through
- * riders to compare against the authenticated user's id.
  */
 const canAccessOrder = async (
   orderId: string,
@@ -35,22 +46,39 @@ const canAccessOrder = async (
   return result.rows.length > 0;
 };
 
+function extractSocketToken(socket: {
+  handshake: {
+    auth?: { token?: string };
+    headers: { authorization?: string; cookie?: string };
+  };
+}): string | undefined {
+  const fromAuth = socket.handshake.auth?.token;
+  if (fromAuth) return fromAuth;
+
+  const authHeader = socket.handshake.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.substring(7);
+  }
+
+  const cookies = parseCookieHeader(socket.handshake.headers.cookie);
+  return cookies.token;
+}
+
 export const initializeSocket = (httpServer: ReturnType<typeof createServer>) => {
+  const allowedOrigins = getAllowedOrigins();
+
   io = new Server(httpServer, {
     cors: {
-      origin: (process.env.CORS_ORIGIN || 'http://localhost:3000').split(','),
+      origin: allowedOrigins,
       credentials: true,
     },
     pingTimeout: 60000,
     pingInterval: 25000,
   });
 
-  // Auth middleware - verify JWT token from handshake
   io.use(async (socket, next) => {
     try {
-      const token =
-        socket.handshake.auth.token ||
-        socket.handshake.headers.authorization?.replace('Bearer ', '');
+      const token = extractSocketToken(socket);
       if (!token) throw new Error('Authentication required');
       const decoded = verifyAccessToken(token);
       socket.data.user = decoded;
@@ -68,14 +96,17 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
       `Socket connected: ${socket.id}, user: ${userId}, role: ${role}`
     );
 
-    // Join user-specific room for targeted messages
     socket.join(`user:${userId}`);
     if (role === 'rider') socket.join('riders');
     if (role === 'admin' || role === 'super_admin') socket.join('admins');
 
-    // Handle chat messages
     socket.on('chat:send', async (data: { orderId: string; message: string }) => {
       try {
+        if (!chatRateLimiter.allow(socket.id, 'chat:send')) {
+          socket.emit('chat:error', { message: 'Too many messages — please slow down' });
+          return;
+        }
+
         const allowed = await canAccessOrder(data.orderId, userId, role);
         if (!allowed) {
           logger.warn(
@@ -84,6 +115,13 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
           socket.emit('chat:error', { message: 'Not authorized for this order' });
           return;
         }
+
+        const senderType = mapChatSenderType(role);
+        if (!senderType) {
+          socket.emit('chat:error', { message: 'Invalid sender role' });
+          return;
+        }
+
         const message = data.message?.trim();
         if (!message) {
           socket.emit('chat:error', { message: 'Message cannot be empty' });
@@ -95,14 +133,14 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
           });
           return;
         }
+
         const result = await query(
           `INSERT INTO order_messages (order_id, sender_type, sender_id, message)
            VALUES ($1, $2, $3, $4) RETURNING id, message, sender_type, created_at`,
-          [data.orderId, role || 'customer', userId, message]
+          [data.orderId, senderType, userId, message]
         );
         const newMessage = result.rows[0];
 
-        // Fetch sender name
         const senderResult = await query(
           `SELECT full_name FROM users WHERE id = $1`,
           [userId]
@@ -110,7 +148,6 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
         newMessage.sender_name =
           senderResult.rows[0]?.full_name || 'Unknown';
 
-        // Broadcast to all in the order room
         io.to(`order:${data.orderId}`).emit('chat:message', newMessage);
       } catch (err: any) {
         logger.error('Error handling chat:send:', err);
@@ -118,10 +155,10 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
       }
     });
 
-    // Handle typing indicators
     socket.on(
       'chat:typing',
       async (data: { orderId: string; isTyping: boolean }) => {
+        if (!typingRateLimiter.allow(socket.id, 'chat:typing')) return;
         const allowed = await canAccessOrder(data.orderId, userId, role);
         if (!allowed) return;
         socket.to(`order:${data.orderId}`).emit('chat:typing', {
@@ -132,7 +169,6 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
       }
     );
 
-    // Handle order tracking subscription
     socket.on('order:subscribe', async (orderId: string) => {
       const allowed = await canAccessOrder(orderId, userId, role);
       if (!allowed) {
@@ -151,13 +187,14 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
       logger.debug(`Socket ${socket.id} unsubscribed from order:${orderId}`);
     });
 
-    // Handle rider location updates (from rider app)
     socket.on(
       'rider:location',
       async (data: { riderId: string; latitude: number; longitude: number }) => {
         try {
-          // data.riderId is riders.id — verify it belongs to the authenticated
-          // user before accepting a location update (prevents spoofing).
+          if (!locationRateLimiter.allow(socket.id, 'rider:location')) {
+            return;
+          }
+
           const ownership = await query(
             `SELECT id FROM riders WHERE id = $1 AND user_id = $2`,
             [data.riderId, userId]
@@ -182,7 +219,6 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
             longitude: data.longitude,
             updatedAt: new Date().toISOString(),
           };
-          // Broadcast to each active order room (rooms are keyed by order id).
           const activeOrders = await query(
             `SELECT id FROM orders
              WHERE rider_id = $1
@@ -200,6 +236,9 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
     );
 
     socket.on('disconnect', (reason) => {
+      chatRateLimiter.cleanup(socket.id);
+      locationRateLimiter.cleanup(socket.id);
+      typingRateLimiter.cleanup(socket.id);
       logger.info(`Socket disconnected: ${socket.id}, reason: ${reason}`);
     });
   });
@@ -212,7 +251,6 @@ export const getIO = () => {
   return io;
 };
 
-// Helper to emit to specific order room
 export const emitOrderUpdate = (orderId: string, data: any) => {
   try {
     getIO().to(`order:${orderId}`).emit('order:update', data);
@@ -221,7 +259,6 @@ export const emitOrderUpdate = (orderId: string, data: any) => {
   }
 };
 
-// Helper to emit chat message to order room
 export const emitChatMessage = (orderId: string, message: any) => {
   try {
     getIO().to(`order:${orderId}`).emit('chat:message', message);
@@ -230,7 +267,6 @@ export const emitChatMessage = (orderId: string, message: any) => {
   }
 };
 
-// Helper to emit to specific user
 export const emitToUser = (userId: string, event: string, data: any) => {
   try {
     getIO().to(`user:${userId}`).emit(event, data);
@@ -239,7 +275,6 @@ export const emitToUser = (userId: string, event: string, data: any) => {
   }
 };
 
-// Helper to emit to all admins
 export const emitToAdmins = (event: string, data: any) => {
   try {
     getIO().to('admins').emit(event, data);
@@ -248,7 +283,6 @@ export const emitToAdmins = (event: string, data: any) => {
   }
 };
 
-// Helper to emit to all riders
 export const emitToRiders = (event: string, data: any) => {
   try {
     getIO().to('riders').emit(event, data);

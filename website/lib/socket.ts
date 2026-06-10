@@ -1,13 +1,18 @@
 import { io, Socket } from 'socket.io-client';
+import { usesHttpOnlyCookies } from '@/lib/authConfig';
 
 let socket: Socket | null = null;
 
 /**
- * Connect to Socket.IO server with authentication token
+ * Connect to Socket.IO — HttpOnly cookie auth when enabled (no JS token).
  */
-export const connectSocket = (token: string): Socket => {
+export const connectSocket = (token?: string | null): Socket => {
+  const useCookies = usesHttpOnlyCookies();
+  const authToken = useCookies ? undefined : token || undefined;
+
   if (socket) {
-    socket.auth = { token };
+    if (authToken) socket.auth = { token: authToken };
+    else if (useCookies) socket.auth = {};
     if (!socket.connected) {
       socket.connect();
     }
@@ -17,7 +22,8 @@ export const connectSocket = (token: string): Socket => {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
 
   socket = io(baseUrl, {
-    auth: { token },
+    withCredentials: true,
+    ...(authToken ? { auth: { token: authToken } } : {}),
     transports: ['websocket'],
     reconnection: true,
     reconnectionAttempts: 5,
@@ -39,12 +45,12 @@ export const connectSocket = (token: string): Socket => {
   return socket;
 };
 
-/**
- * Update auth token and reconnect the socket
- */
-export const reconnectSocket = (token: string): Socket => {
+export const reconnectSocket = (token?: string | null): Socket => {
   if (socket) {
-    socket.auth = { token };
+    const useCookies = usesHttpOnlyCookies();
+    const authToken = useCookies ? undefined : token || undefined;
+    if (authToken) socket.auth = { token: authToken };
+    else if (useCookies) socket.auth = {};
     if (socket.connected) {
       socket.disconnect();
     }
@@ -54,35 +60,20 @@ export const reconnectSocket = (token: string): Socket => {
   return connectSocket(token);
 };
 
-/**
- * Disconnect from Socket.IO server
- */
 export const disconnectSocket = () => {
   socket?.disconnect();
   socket = null;
 };
 
-/**
- * Get the current socket instance
- */
 export const getSocket = (): Socket | null => socket;
 
-/**
- * Check if socket is connected
- */
 export const isSocketConnected = (): boolean => socket?.connected ?? false;
 
-/**
- * Subscribe to order updates
- */
 export const subscribeToOrder = (orderId: string, callback: (data: any) => void) => {
   socket?.emit('order:subscribe', orderId);
   socket?.on('order:update', callback);
 };
 
-/**
- * Unsubscribe from order updates
- */
 export const unsubscribeFromOrder = (orderId: string, callback?: (data: any) => void) => {
   socket?.emit('order:unsubscribe', orderId);
   if (callback) {
@@ -92,23 +83,14 @@ export const unsubscribeFromOrder = (orderId: string, callback?: (data: any) => 
   }
 };
 
-/**
- * Send a chat message via socket
- */
 export const sendChatMessage = (orderId: string, message: string) => {
   socket?.emit('chat:send', { orderId, message });
 };
 
-/**
- * Listen for chat messages
- */
 export const onChatMessage = (callback: (data: any) => void) => {
   socket?.on('chat:message', callback);
 };
 
-/**
- * Remove chat message listener
- */
 export const offChatMessage = (callback?: (data: any) => void) => {
   if (callback) {
     socket?.off('chat:message', callback);
@@ -117,16 +99,10 @@ export const offChatMessage = (callback?: (data: any) => void) => {
   }
 };
 
-/**
- * Listen for typing indicators
- */
 export const onTyping = (callback: (data: { orderId: string; isTyping: boolean; userId?: string }) => void) => {
   socket?.on('chat:typing', callback);
 };
 
-/**
- * Send typing indicator
- */
 export const emitTyping = (orderId: string, isTyping: boolean) => {
   socket?.emit('chat:typing', { orderId, isTyping });
 };

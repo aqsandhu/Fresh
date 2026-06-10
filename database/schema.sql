@@ -8,6 +8,9 @@
 -- ============================================================================
 
 -- Enable required extensions
+-- NOTE: PostGIS is NOT bundled with plain PostgreSQL. Supabase includes it;
+-- self-hosted Postgres needs `apt install postgresql-XX-postgis-3` (or equivalent)
+-- before this line will succeed. The API logs a startup warning if it is missing.
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "postgis";  -- For geolocation support
 
