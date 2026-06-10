@@ -66,34 +66,39 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
 
   const result = await query(ordersSql, params);
 
-  const orderIds = result.rows.map((order) => order.id);
-  const itemsByOrderId: Record<string, Record<string, unknown>[]> = {};
+  // Batch fetch all order items in ONE query (fix N+1)
+  const orderIds = result.rows.map((o) => o.id);
+  let ordersWithItems;
 
-  if (orderIds.length > 0) {
-    const itemsResult = await query(
-      `SELECT 
-        oi.order_id,
-        oi.id, oi.product_id, oi.product_name, oi.product_image, oi.product_sku,
-        oi.unit_price, oi.quantity, oi.total_price, oi.weight_kg, oi.status, oi.unit
+  if (orderIds.length === 0) {
+    ordersWithItems = [];
+  } else {
+    const placeholders = orderIds.map((_, i) => `$${i + 1}`).join(', ');
+    const allItemsResult = await query(
+      `SELECT
+        oi.id, oi.order_id, oi.product_id, oi.product_name, oi.product_image,
+        oi.product_sku, oi.unit_price, oi.quantity, oi.total_price,
+        oi.weight_kg, oi.status, oi.unit
       FROM order_items oi
-      WHERE oi.order_id = ANY($1::uuid[])
+      WHERE oi.order_id IN (${placeholders})
       ORDER BY oi.created_at ASC`,
-      [orderIds]
+      orderIds
     );
 
-    for (const item of itemsResult.rows) {
+    const itemsByOrderId: Record<string, Record<string, unknown>[]> = {};
+    for (const item of allItemsResult.rows) {
       const { order_id, ...itemFields } = item;
       if (!itemsByOrderId[order_id]) {
         itemsByOrderId[order_id] = [];
       }
       itemsByOrderId[order_id].push(itemFields);
     }
-  }
 
-  const ordersWithItems = result.rows.map((order) => ({
-    ...order,
-    items: itemsByOrderId[order.id] || [],
-  }));
+    ordersWithItems = result.rows.map((order) => ({
+      ...order,
+      items: itemsByOrderId[order.id] || [],
+    }));
+  }
 
   successResponse(res, {
     orders: ordersWithItems,
@@ -360,8 +365,15 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     );
     const deliveryChargeRuleId = ruleResult.rows[0]?.id;
 
-    // Calculate totals from freshly updated cart
-    const subtotal = parseFloat(refreshedCart.subtotal);
+    // Re-fetch current prices for all cart items (prevent stale price bug)
+    const freshSubtotal = await client.query(
+      `SELECT COALESCE(SUM(p.price * ci.quantity), 0) AS fresh_subtotal
+         FROM cart_items ci
+         JOIN products p ON ci.product_id = p.id
+        WHERE ci.cart_id = $1`,
+      [cart.id]
+    );
+    const subtotal = parseFloat(freshSubtotal.rows[0]?.fresh_subtotal || '0');
     const discountAmount = parseFloat(refreshedCart.discount_amount);
     const couponDiscount = parseFloat(refreshedCart.coupon_discount);
     const totalAmount = subtotal + deliveryCharge - discountAmount - couponDiscount;

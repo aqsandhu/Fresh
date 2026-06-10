@@ -22,6 +22,16 @@ import logger from './logger';
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
 const ENV_FREE_DELIVERY_MIN_AMOUNT = parseFloat(process.env.FREE_DELIVERY_MIN_AMOUNT || '500');
 
+const VEG_FRUIT_SLUGS = [
+  'vegetables',
+  'fruits',
+  'sabzi',
+  'fruit',
+  'vegetable',
+  'fresh-vegetables',
+  'fresh-fruits',
+];
+
 type DbClient = Pick<PoolClient, 'query'>;
 
 const runQuery = (client: DbClient | undefined, text: string, params?: unknown[]) =>
@@ -47,7 +57,7 @@ const getDeliverySettings = async (
   }
 };
 
-/** Sum of cart items in categories flagged for free-delivery threshold. */
+/** Sum of cart items in categories that count toward free-delivery threshold. */
 async function getVegFruitSubtotal(cartId: string, client?: DbClient): Promise<number> {
   const result = await runQuery(
     client,
@@ -56,8 +66,15 @@ async function getVegFruitSubtotal(cartId: string, client?: DbClient): Promise<n
        JOIN products p ON ci.product_id = p.id
        JOIN categories cat ON p.category_id = cat.id
       WHERE ci.cart_id = $1
-        AND cat.qualifies_for_free_delivery = TRUE`,
-    [cartId]
+        AND (
+          cat.qualifies_for_free_delivery = TRUE
+          OR LOWER(cat.slug) = ANY($2::text[])
+          OR LOWER(cat.name_en) LIKE 'vegetable%'
+          OR LOWER(cat.name_en) LIKE 'fruit%'
+          OR LOWER(cat.name_en) = 'sabzi'
+          OR LOWER(cat.name_en) = 'phal'
+        )`,
+    [cartId, VEG_FRUIT_SLUGS]
   );
   return parseFloat(result.rows[0]?.veg_fruit_total || '0');
 }
