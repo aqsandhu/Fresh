@@ -9,6 +9,7 @@ import { CartState, Product, ProductUnit } from '@/types'
 import { calculateClientDeliveryCharge } from '@/lib/deliveryRules'
 import { getSelectedCityId } from '@/lib/cityStorage'
 import { priceForUnit, resolveLineUnitPrice } from '@/lib/unitPricing'
+import { getApiBaseUrl } from '@/lib/apiBase'
 
 // A cart line is uniquely identified by (productId, unit) — the same product
 // can appear twice (e.g., 1 kg + half kg).
@@ -40,8 +41,7 @@ const DEFAULT_FREE_THRESHOLD = 500
 
 async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThreshold: number }> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'
-    const res = await fetch(`${baseUrl}/site-settings/delivery`)
+    const res = await fetch(`${getApiBaseUrl()}/site-settings/delivery`)
     const json = await res.json()
     const data = json?.data || json
     return {

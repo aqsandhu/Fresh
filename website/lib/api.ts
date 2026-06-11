@@ -5,6 +5,7 @@ import { useAuthStore } from '@/store/cartStore'
 import { refreshWebsiteAccessToken } from '@/lib/tokenRefresh'
 import { usesHttpOnlyCookies } from '@/lib/authConfig'
 import { clearTokens, getAccessToken } from '@/lib/secureTokens'
+import { ABSOLUTE_API_URL, getApiBaseUrl } from '@/lib/apiBase'
 
 function redirectToLogin() {
   clearTokens()
@@ -22,14 +23,9 @@ function withCityParams<T extends Record<string, unknown>>(params?: T): T & { ci
   return { ...(params || {}), city_id: cityId } as T & { city_id?: string }
 }
 
-// IMPORTANT: Set NEXT_PUBLIC_API_URL in production to point to the live backend.
-// e.g., NEXT_PUBLIC_API_URL=https://api.freshbazar.pk/api
-// The localhost fallback is for development only.
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api'
-
-if (typeof window !== 'undefined' && !process.env.NEXT_PUBLIC_API_URL) {
-  console.warn('[Fresh Bazar Website] NEXT_PUBLIC_API_URL is not set. Falling back to localhost:3000. Set this env var in production!')
-}
+// Browser → same-origin '/api' (proxied to the backend by the rewrites);
+// server → absolute backend URL. See lib/apiBase.ts for why.
+const API_BASE_URL = getApiBaseUrl()
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -98,7 +94,9 @@ api.interceptors.response.use(
 // DATA MAPPING: Backend snake_case → Website types
 // ============================================================================
 
-const BACKEND_URL = API_BASE_URL.replace('/api', '')
+// Image URLs need the real backend host — the '/api' rewrite doesn't cover
+// /uploads, so a relative base would 404 on Vercel.
+const BACKEND_URL = ABSOLUTE_API_URL.replace('/api', '')
 
 // Resolve a stored image reference to a full URL the browser can load. Returns
 // `undefined` (NOT a fake placeholder path) when there is no image, so cards

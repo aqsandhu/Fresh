@@ -1,11 +1,9 @@
 import { resolveGoogleMapsApiKey, setRuntimeGoogleMapsApiKey } from './googleMaps'
+import { getApiBaseUrl } from './apiBase'
 
 let googleMapsLoader: Promise<any> | null = null
 
-const API_BASE =
-  typeof process !== 'undefined' && process.env.NEXT_PUBLIC_API_URL
-    ? process.env.NEXT_PUBLIC_API_URL
-    : 'https://freshbazar-backend.onrender.com/api'
+const API_BASE = getApiBaseUrl()
 
 /** Optional server-side key (Render env) — browser Maps keys are public anyway. */
 export async function fetchGoogleMapsApiKey(): Promise<string> {

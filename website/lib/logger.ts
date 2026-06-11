@@ -4,6 +4,8 @@
  * Includes user context, timestamps, and error stack traces.
  */
 
+import { getApiBaseUrl } from '@/lib/apiBase';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 interface LogContext {
@@ -36,7 +38,7 @@ const FLUSH_INTERVAL_MS = 30000;
 // Detect development mode
 const IS_DEVELOPMENT = process.env.NODE_ENV === 'development';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+const API_BASE_URL = getApiBaseUrl();
 
 class Logger {
   private queue: LogEntry[] = [];
