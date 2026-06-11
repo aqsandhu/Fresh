@@ -72,10 +72,19 @@ const nextConfig = {
     remotePatterns: buildImageRemotePatterns(),
   },
   async rewrites() {
+    const backend = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
     return [
+      // Everything under /api EXCEPT /api/auth/* is proxied straight to the
+      // backend. Auth is deliberately excluded so it falls through to the
+      // app/api/auth/[...path] Route Handler — a Vercel rewrite to an external
+      // host DROPS the upstream Set-Cookie header, so the session cookies never
+      // reach the browser and login falls into an endless PIN re-prompt loop.
+      // The Route Handler re-emits those cookies first-party. Non-auth calls
+      // only READ the cookie (request direction, which the rewrite forwards
+      // fine), so they keep using this fast path.
       {
-        source: '/api/:path*',
-        destination: (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api') + '/:path*',
+        source: '/api/:path((?!auth/).*)',
+        destination: backend + '/:path',
       },
     ];
   },
