@@ -101,6 +101,23 @@ logger.info(
   `CORS: ${allowAnyOrigin ? 'allowing any origin (*)' : `allowed origins = ${allowedOrigins.join(', ')}`}`
 );
 
+// First-party clients (website, customer-app, admin) authenticate with HttpOnly
+// cookies, so the browser sends credentialed requests (withCredentials: true).
+// In that mode the browser DISCARDS the response unless it carries
+// `Access-Control-Allow-Credentials: true` — even on a 200. A missing
+// CORS_CREDENTIALS env therefore silently broke every cross-origin call (e.g.
+// the website showed no cities though the API returned them).
+//
+// Default credentials ON for an explicit allowlist; force OFF for a wildcard
+// origin (`*` + credentials is invalid per spec and an XSRF risk). An explicit
+// env value always wins.
+const corsCredentials =
+  process.env.CORS_CREDENTIALS !== undefined
+    ? process.env.CORS_CREDENTIALS === 'true'
+    : !allowAnyOrigin;
+
+logger.info(`CORS credentials: ${corsCredentials ? 'enabled' : 'disabled'}`);
+
 const corsOptions = {
   origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
     // Allow requests with no origin (mobile apps, curl, server-to-server).
@@ -118,7 +135,7 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: process.env.CORS_CREDENTIALS === 'true',
+  credentials: corsCredentials,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',

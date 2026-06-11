@@ -5,8 +5,11 @@ import {
 import { useAuthStore } from '@/store/cartStore';
 import { usesHttpOnlyCookies } from '@/lib/authConfig';
 import { clearTokens, getAccessToken, getRefreshToken, tokenStorage } from '@/lib/secureTokens';
+import { getApiBaseUrl } from '@/lib/apiBase';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+// Same-origin '/api' in the browser so the refresh cookie (SameSite=Lax,
+// path=/api/auth/refresh) is actually sent. See lib/apiBase.ts.
+const API_BASE_URL = getApiBaseUrl();
 
 function handleRefreshFailed(): void {
   clearTokens();

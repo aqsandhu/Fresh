@@ -17,8 +17,18 @@ function cookieOptions(maxAgeMs: number, path = '/') {
 const ACCESS_MAX_AGE_MS = 15 * 60 * 1000;
 const REFRESH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+// The website assumes HttpOnly-cookie auth in production (see
+// website/lib/authConfig.ts), so cookies must default ON there — otherwise a
+// missing env var silently breaks login. Explicit env always wins:
+// AUTH_HTTPONLY_COOKIES (specific) over CORS_CREDENTIALS (general).
 export function shouldUseAuthCookies(): boolean {
-  return process.env.CORS_CREDENTIALS === 'true' || process.env.AUTH_HTTPONLY_COOKIES === 'true';
+  if (process.env.AUTH_HTTPONLY_COOKIES !== undefined) {
+    return process.env.AUTH_HTTPONLY_COOKIES === 'true';
+  }
+  if (process.env.CORS_CREDENTIALS !== undefined) {
+    return process.env.CORS_CREDENTIALS === 'true';
+  }
+  return process.env.NODE_ENV === 'production';
 }
 
 export function setAuthCookies(
