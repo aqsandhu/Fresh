@@ -27,8 +27,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build shared types
-        run: pnpm --filter @freshbazar/shared-types build
+      - name: Build shared packages
+        run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
 
       - name: Type check all packages
         run: pnpm -r typecheck

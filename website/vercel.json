@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "cd .. && pnpm --filter @freshbazar/shared-types build && pnpm --filter freshbazar-website run build",
+  "buildCommand": "cd .. && pnpm turbo run build --filter=freshbazar-website",
   "framework": "nextjs",
   "installCommand": "cd .. && pnpm install --frozen-lockfile",
   "env": {

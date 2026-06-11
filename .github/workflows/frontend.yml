@@ -21,7 +21,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install
-      - run: pnpm --filter @freshbazar/shared-types build
+      - run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
       - run: pnpm --filter freshbazar-admin typecheck
       - run: pnpm --filter freshbazar-admin test
       - run: pnpm --filter freshbazar-admin build
@@ -42,7 +42,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install
-      - run: pnpm --filter @freshbazar/shared-types build
+      - run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
       - run: pnpm --filter freshbazar-website typecheck
       - run: pnpm --filter freshbazar-website test
       - run: pnpm --filter freshbazar-website build
@@ -63,7 +63,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install
-      - run: pnpm --filter @freshbazar/shared-types build
+      - run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
       - run: pnpm --filter @freshbazar/customer-app test
       - run: pnpm --filter @freshbazar/rider-app test
 
@@ -81,7 +81,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install
-      - run: pnpm --filter @freshbazar/shared-types build
+      - run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
       - run: pnpm --filter freshbazar-website build
       - name: Deploy to Vercel
         uses: vercel/action-deploy@v1
@@ -105,7 +105,7 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
       - run: pnpm install
-      - run: pnpm --filter @freshbazar/shared-types build
+      - run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
       - run: pnpm --filter freshbazar-admin build
       - name: Deploy to Netlify
         uses: nwtgck/actions-netlify@v3.0
