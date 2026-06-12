@@ -6,6 +6,7 @@
     "noImplicitAny": false,
     "baseUrl": ".",
     "paths": {
+      "react": ["./node_modules/@types/react"],
       "@/*": ["src/*"],
       "@components": ["src/components/index.ts"],
       "@components/*": ["src/components/*"],

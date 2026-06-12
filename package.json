@@ -26,7 +26,10 @@
       "freshbazar-admin>@types/react": "18.3.29",
       "@react-navigation/native>@types/react": "~19.1.10",
       "@react-navigation/bottom-tabs>@types/react": "~19.1.10",
-      "@react-navigation/native-stack>@types/react": "~19.1.10"
+      "@react-navigation/native-stack>@types/react": "~19.1.10",
+      "@react-navigation/core>@types/react": "~19.1.10",
+      "@react-navigation/elements>@types/react": "~19.1.10",
+      "@react-navigation/routers>@types/react": "~19.1.10"
     }
   }
 }
