@@ -12,7 +12,7 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
-import { query, withTransaction } from '../config/database';
+import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import logger from '../utils/logger';

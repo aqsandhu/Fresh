@@ -84,36 +84,50 @@ const SLIP_PRINT_STYLES = `
   }
 `;
 
+/**
+ * HTML-escape every customer-controlled string before it is interpolated into
+ * the print-slip markup. Without this, a customer named `<img onerror=...>`
+ * would execute script in the admin's print window (stored XSS).
+ */
+function esc(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildOrderSlipHtml(order: Order): string {
   const phoneLine = order.showCustomerPhone
-    ? `<div class="row"><span>${formatPhoneNumber(order.customerPhone)}</span></div>`
+    ? `<div class="row"><span>${esc(formatPhoneNumber(order.customerPhone))}</span></div>`
     : `<div class="row"><span style="font-style:italic;color:#666;">Phone Number is Hidden</span></div>`;
 
   return `
     <div class="header">
       <h1>FreshBazar</h1>
       <p>Fresh Grocery Delivery</p>
-      <p style="font-weight:bold;font-size:13px;">Order: ${order.orderNumber}</p>
-      <p>${new Date(order.placedAt).toLocaleString('en-PK')}</p>
+      <p style="font-weight:bold;font-size:13px;">Order: ${esc(order.orderNumber)}</p>
+      <p>${esc(new Date(order.placedAt).toLocaleString('en-PK'))}</p>
     </div>
     <div class="section">
       <div class="section-title">Customer</div>
-      <div class="row"><span>${order.customerName}</span></div>
+      <div class="row"><span>${esc(order.customerName)}</span></div>
       ${phoneLine}
-      ${order.customerEmail ? `<div class="row"><span>${order.customerEmail}</span></div>` : ''}
+      ${order.customerEmail ? `<div class="row"><span>${esc(order.customerEmail)}</span></div>` : ''}
     </div>
     ${order.deliveryAddressSnapshot ? `
     <div class="section">
       <div class="section-title">Delivery Address</div>
-      ${order.deliveryAddressSnapshot.houseNumber ? `<div><strong>House #: ${order.deliveryAddressSnapshot.houseNumber}</strong></div>` : ''}
-      <div>${order.deliveryAddressSnapshot.writtenAddress || ''}</div>
-      ${order.deliveryAddressSnapshot.landmark ? `<div>Landmark: ${order.deliveryAddressSnapshot.landmark}</div>` : ''}
-      <div>${[order.deliveryAddressSnapshot.areaName, order.deliveryAddressSnapshot.city].filter(Boolean).join(', ')}</div>
+      ${order.deliveryAddressSnapshot.houseNumber ? `<div><strong>House #: ${esc(order.deliveryAddressSnapshot.houseNumber)}</strong></div>` : ''}
+      <div>${esc(order.deliveryAddressSnapshot.writtenAddress || '')}</div>
+      ${order.deliveryAddressSnapshot.landmark ? `<div>Landmark: ${esc(order.deliveryAddressSnapshot.landmark)}</div>` : ''}
+      <div>${esc([order.deliveryAddressSnapshot.areaName, order.deliveryAddressSnapshot.city].filter(Boolean).join(', '))}</div>
     </div>` : ''}
     ${order.slotName ? `
     <div class="section">
       <div class="section-title">Delivery Time Slot</div>
-      <div>${order.slotName}</div>
+      <div>${esc(order.slotName)}</div>
     </div>` : ''}
     <div class="section">
       <div class="section-title">Items</div>
@@ -121,8 +135,8 @@ function buildOrderSlipHtml(order: Order): string {
         <thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Total</th></tr></thead>
         <tbody>
           ${(order.items || []).map(item => {
-            const unitSuffix = item.unit && item.unit !== 'full' ? ` (${unitLabelShort(item.unit)})` : '';
-            return `<tr><td>${item.productName}${unitSuffix}</td><td class="right">${item.quantity}</td><td class="right">Rs.${Number(item.unitPrice).toFixed(0)}</td><td class="right">Rs.${Number(item.totalPrice).toFixed(0)}</td></tr>`;
+            const unitSuffix = item.unit && item.unit !== 'full' ? ` (${esc(unitLabelShort(item.unit))})` : '';
+            return `<tr><td>${esc(item.productName)}${unitSuffix}</td><td class="right">${Number(item.quantity)}</td><td class="right">Rs.${Number(item.unitPrice).toFixed(0)}</td><td class="right">Rs.${Number(item.totalPrice).toFixed(0)}</td></tr>`;
           }).join('')}
         </tbody>
       </table>
@@ -134,10 +148,10 @@ function buildOrderSlipHtml(order: Order): string {
       <div class="total-row grand-total"><span>Total</span><span>Rs.${Number(order.totalAmount).toFixed(0)}</span></div>
     </div>
     <div class="section" style="margin-top:8px;">
-      <div class="total-row"><span>Payment</span><span>${order.paymentMethod === 'cash_on_delivery' ? 'Cash on Delivery' : order.paymentMethod}</span></div>
-      <div class="total-row"><span>Status</span><span>${formatOrderStatus(order.status)}</span></div>
+      <div class="total-row"><span>Payment</span><span>${esc(order.paymentMethod === 'cash_on_delivery' ? 'Cash on Delivery' : order.paymentMethod)}</span></div>
+      <div class="total-row"><span>Status</span><span>${esc(formatOrderStatus(order.status))}</span></div>
     </div>
-    ${order.customerNotes ? `<div class="section"><div class="section-title">Customer Notes</div><div>${order.customerNotes}</div></div>` : ''}
+    ${order.customerNotes ? `<div class="section"><div class="section-title">Customer Notes</div><div>${esc(order.customerNotes)}</div></div>` : ''}
     <div class="footer">
       <p>Thank you for shopping with FreshBazar!</p>
     </div>

@@ -35,7 +35,12 @@ router.get('/tasks/:id', riderController.getTaskDetails);
 router.put('/tasks/:id/accept', riderController.acceptTask);
 router.post('/tasks/:id/accept', riderController.acceptTask);
 router.put('/tasks/:id/pickup', riderController.confirmPickup);
-router.patch('/tasks/:id/status', riderController.confirmPickup);
+router.patch(
+  '/tasks/:id/status',
+  validate(riderSchemas.updateTaskStatus),
+  riderController.updateTaskStatus
+);
+router.post('/tasks/:id/cancel', riderController.cancelTaskByRider);
 router.put('/tasks/:id/deliver', riderController.confirmDelivery);
 router.post('/tasks/:id/deliver', riderController.confirmDelivery);
 router.put('/tasks/:id/pin-location', riderController.pinLocation);

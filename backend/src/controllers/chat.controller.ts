@@ -6,7 +6,7 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../utils/response';
-import { emitChatMessage, emitOrderUpdate, emitToUser } from '../config/socket';
+import { emitChatMessage, emitToUser } from '../config/socket';
 import logger from '../utils/logger';
 
 /**

@@ -1,59 +1,23 @@
 // ============================================================================
-// ADMIN CONTROLLER
+// ADMIN CONTROLLER — orders, whatsapp orders, atta requests
 // ============================================================================
 
 import { Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
-import { successResponse, notFoundResponse, errorResponse, createdResponse, paginatedResponse } from '../../utils/response';
-import { generateSlug, normalizePhoneNumber } from '../../utils/validators';
+import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../../config/socket';
-import { deleteFileFromStorage } from '../../config/storage';
 import logger from '../../utils/logger';
 import {
   resolveCityScope,
-  cityIdClause,
   orderCityClause,
-  customerCityExistsClause,
-  orderCityMatchSql,
-  addressCityMatchSql,
-  addressCityWhereClause,
-  requireCityScope,
+  orderInScope,
 } from '../../utils/cityScope';
-import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
 import {
   isValidOrderTransition,
   restoreOrderInventory,
   ORDER_STATUS_TIMESTAMPS,
 } from '../../utils/orderStatus';
-import {
-  fetchBannerSettings,
-  upsertBannerSettings,
-  fetchWhatsAppOrderSettings,
-  fetchWhatsAppOrderSettingsAll,
-  upsertWhatsAppOrderSettings,
-  upsertWhatsAppOrderSettingsBulk,
-  upsertGlobalSiteSetting,
-  fetchBrandLogoSettings,
-  deleteBrandLogoFromStorage,
-  clearBrandLogoSettings,
-  BRAND_LOGO_URL_KEY,
-  BRAND_LOGO_STORAGE_PATH_KEY,
-  fetchBrandFaviconSettings,
-  deleteBrandFaviconFromStorage,
-  clearBrandFaviconSettings,
-  BRAND_FAVICON_URL_KEY,
-  BRAND_FAVICON_STORAGE_PATH_KEY,
-} from '../../utils/siteSettings';
-import { loadAdminSession } from '../../utils/adminSession';
-
-const SALT_ROUNDS = 12;
-
-/**
- * Current admin session (fresh permissions from DB)
- * GET /api/admin/me
- */
 
 export const getAllOrders = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
@@ -166,6 +130,12 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
 export const getOrderDetails = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
+  // City isolation: scoped admins only see their own city's orders by ID too.
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) {
+    return notFoundResponse(res, 'Order not found');
+  }
+
   const orderResult = await query(
     `SELECT 
       o.*,
@@ -215,6 +185,11 @@ export const getOrderDetails = asyncHandler(async (req: Request, res: Response) 
 export const updateOrderStatus = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status, reason } = req.body;
+
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) {
+    return notFoundResponse(res, 'Order not found');
+  }
 
   // Transaction + row lock: the transition check, the status flip and the
   // cancel side-effects (stock/slot restore) must be atomic — same contract
@@ -308,8 +283,16 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
 export const markPaymentReceived = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  // Guard the state machine: a cancelled/refunded order must never flip to
-  // delivered+paid (that resurrected dead orders and inflated revenue).
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) {
+    return notFoundResponse(res, 'Order not found');
+  }
+
+  // Deliberate COD fast-path OUTSIDE the strict state machine: collecting
+  // cash implies the order reached the customer, so any live status may jump
+  // straight to delivered+paid. The only hard guard is below — a
+  // cancelled/refunded order must never flip to delivered (that resurrected
+  // dead orders and inflated revenue).
   const result = await query(
     `UPDATE orders
      SET payment_status = 'completed',
@@ -375,6 +358,11 @@ export const togglePhoneVisibility = asyncHandler(async (req: Request, res: Resp
   const { id } = req.params;
   const { show_customer_phone } = req.body;
 
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) {
+    return notFoundResponse(res, 'Order not found');
+  }
+
   const result = await query(
     `UPDATE orders SET show_customer_phone = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL RETURNING *`,
     [show_customer_phone, id]
@@ -397,6 +385,11 @@ export const togglePhoneVisibility = asyncHandler(async (req: Request, res: Resp
 export const assignRider = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { rider_id } = req.body;
+
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) {
+    return notFoundResponse(res, 'Order not found');
+  }
 
   // Check if rider exists and is verified (allow busy riders for multiple orders)
   const riderResult = await query(
@@ -442,7 +435,10 @@ export const assignRider = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  // Update order: assign rider and set status to out_for_delivery
+  // Deliberate fast-path outside the strict state machine: assigning a rider
+  // implies the order is on its way, so any live status (pending/confirmed/
+  // preparing/ready) jumps straight to out_for_delivery. Dead orders are
+  // rejected above.
   const result = await query(
     `UPDATE orders 
      SET rider_id = $1, 
@@ -607,15 +603,29 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
   const timestampColumn = ORDER_STATUS_TIMESTAMPS[status];
   const timestampValue = timestampColumn ? `, ${timestampColumn} = NOW()` : '';
 
+  // City isolation: scoped admins can only bulk-update their city's orders.
+  const scope = await resolveCityScope(req);
+  const lockParams: unknown[] = [order_ids];
+  let scopeSql = '';
+  if (!scope.unrestricted && scope.cityId && scope.cityName && scope.dbReady) {
+    lockParams.push(scope.cityId, scope.cityName);
+    scopeSql = ` AND (
+      o.city_id = $2
+      OR LOWER(COALESCE(addr.city, '')) = LOWER($3)
+      OR LOWER(COALESCE(o.delivery_address_snapshot->>'city', '')) = LOWER($3)
+    )`;
+  }
+
   // Per-order transition validation + cancel side-effects, atomically.
   // Orders whose current status can't legally move to the target are skipped
   // (and reported back) instead of being force-jumped.
   const { updatedRows, skipped } = await withTransaction(async (client) => {
     const lockResult = await client.query(
-      `SELECT id, status, time_slot_id FROM orders
-        WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
-        FOR UPDATE`,
-      [order_ids]
+      `SELECT o.id, o.status, o.time_slot_id FROM orders o
+        LEFT JOIN addresses addr ON o.address_id = addr.id
+        WHERE o.id = ANY($1::uuid[]) AND o.deleted_at IS NULL${scopeSql}
+        FOR UPDATE OF o`,
+      lockParams
     );
 
     const allowed: any[] = [];

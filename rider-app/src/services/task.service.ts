@@ -172,6 +172,10 @@ class TaskService {
     if (!response.success) {
       throw new Error(response.message || 'Failed to cancel task');
     }
+    // Backend returns the raw updated row; re-fetch for the full joined shape.
+    if (!response.data) {
+      return this.getTaskById(taskId);
+    }
     return mapTask(response.data);
   }
 

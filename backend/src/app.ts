@@ -2,7 +2,7 @@
 // FRESH BAZAR DELIVERY PLATFORM - MAIN APPLICATION
 // ============================================================================
 
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application, Request, Response } from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';

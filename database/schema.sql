@@ -445,23 +445,28 @@ CREATE TABLE cart_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     cart_id UUID NOT NULL REFERENCES carts(id) ON DELETE CASCADE,
     product_id UUID NOT NULL REFERENCES products(id),
-    
+
     -- Quantity
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     unit_price DECIMAL(10,2) NOT NULL,
-    
+
+    -- Which unit fraction the customer is buying: full | half_kg | quarter_kg
+    -- | half_dozen (kept in sync with migration 03).
+    unit VARCHAR(20) DEFAULT 'full',
+
     -- Calculated
     total_price DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
     weight_kg DECIMAL(8,3),
-    
+
     -- Notes
     special_instructions TEXT,
-    
+
     -- Timestamps
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    UNIQUE(cart_id, product_id)
+
+    -- Same product may appear once per unit (1 kg line + half-kg line).
+    CONSTRAINT cart_items_cart_product_unit_key UNIQUE (cart_id, product_id, unit)
 );
 
 COMMENT ON TABLE cart_items IS 'Individual items in a shopping cart';
@@ -667,27 +672,33 @@ COMMENT ON COLUMN orders.whatsapp_order_id IS 'Links order to originating WhatsA
 CREATE TABLE order_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    product_id UUID NOT NULL REFERENCES products(id),
-    
+    -- NULL after a permanent product delete — display fields are snapshotted
+    -- below so order history survives the catalog row (migration 19).
+    product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+
     -- Product snapshot
     product_name VARCHAR(255) NOT NULL,
     product_image TEXT,
     product_sku VARCHAR(100),
-    
+
     -- Pricing
     unit_price DECIMAL(10,2) NOT NULL,
     quantity INTEGER NOT NULL CHECK (quantity > 0),
     total_price DECIMAL(10,2) NOT NULL,
-    
+
+    -- Which unit fraction was sold: full | half_kg | quarter_kg | half_dozen
+    -- (kept in sync with migration 03).
+    unit VARCHAR(20) DEFAULT 'full',
+
     -- Weight tracking
     weight_kg DECIMAL(8,3),
-    
+
     -- Status
     status VARCHAR(50) DEFAULT 'pending',  -- pending, packed, delivered, returned
-    
+
     -- Special instructions
     special_instructions TEXT,
-    
+
     -- Timestamps
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()

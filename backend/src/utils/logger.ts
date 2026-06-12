@@ -3,15 +3,11 @@
 // ============================================================================
 
 import winston from 'winston';
-import path from 'path';
 
 // Log level from environment
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 const LOG_FILE = process.env.LOG_FILE || 'logs/app.log';
 const NODE_ENV = process.env.NODE_ENV || 'development';
-
-// Create logs directory if it doesn't exist
-const logsDir = path.dirname(LOG_FILE);
 
 // Custom format for console output
 const consoleFormat = winston.format.combine(

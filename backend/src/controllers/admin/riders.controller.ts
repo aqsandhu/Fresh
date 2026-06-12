@@ -1,54 +1,21 @@
 // ============================================================================
-// ADMIN CONTROLLER
+// ADMIN CONTROLLER — riders
 // ============================================================================
 
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
-import { successResponse, notFoundResponse, errorResponse, createdResponse, paginatedResponse } from '../../utils/response';
-import { generateSlug, normalizePhoneNumber } from '../../utils/validators';
-import { emitOrderUpdate, emitToUser, emitToAdmins } from '../../config/socket';
-import { deleteFileFromStorage } from '../../config/storage';
+import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
+import { normalizePhoneNumber } from '../../utils/validators';
 import logger from '../../utils/logger';
 import {
   resolveCityScope,
   cityIdClause,
-  orderCityClause,
-  customerCityExistsClause,
-  orderCityMatchSql,
-  addressCityMatchSql,
-  addressCityWhereClause,
   requireCityScope,
 } from '../../utils/cityScope';
-import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
-import {
-  fetchBannerSettings,
-  upsertBannerSettings,
-  fetchWhatsAppOrderSettings,
-  fetchWhatsAppOrderSettingsAll,
-  upsertWhatsAppOrderSettings,
-  upsertWhatsAppOrderSettingsBulk,
-  upsertGlobalSiteSetting,
-  fetchBrandLogoSettings,
-  deleteBrandLogoFromStorage,
-  clearBrandLogoSettings,
-  BRAND_LOGO_URL_KEY,
-  BRAND_LOGO_STORAGE_PATH_KEY,
-  fetchBrandFaviconSettings,
-  deleteBrandFaviconFromStorage,
-  clearBrandFaviconSettings,
-  BRAND_FAVICON_URL_KEY,
-  BRAND_FAVICON_STORAGE_PATH_KEY,
-} from '../../utils/siteSettings';
-import { loadAdminSession } from '../../utils/adminSession';
 
 const SALT_ROUNDS = 12;
-
-/**
- * Current admin session (fresh permissions from DB)
- * GET /api/admin/me
- */
 
 export const getRiders = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
@@ -165,7 +132,9 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
       );
       const user = userRes.rows[0];
 
-      // Create rider
+      // Create rider — admin-created riders are verified immediately; CNIC
+      // images are uploaded later (NULL, not a placeholder string that would
+      // render as a broken image URL).
       const riderRes = await client.query(
         `INSERT INTO riders (
           user_id, cnic, vehicle_type, vehicle_number,
@@ -174,7 +143,7 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
           bank_account_title, bank_account_number, bank_name,
           cnic_front_image, cnic_back_image,
           verification_status, created_by, city_id
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending','pending','verified',$11,$12)
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,NULL,'verified',$11,$12)
          RETURNING *`,
         [
           user.id, cnic, vehicle_type, vehicle_number,

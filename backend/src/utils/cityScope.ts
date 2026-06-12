@@ -241,6 +241,37 @@ export function requireCityScope(scope: CityScope): string | null {
   return null;
 }
 
+/**
+ * May a (possibly city-scoped) admin touch a catalog row that belongs to
+ * rowCityId? Unrestricted admins always pass; scoped admins only their city.
+ * Used by by-ID read/update/delete endpoints — list endpoints filter in SQL.
+ */
+export function cityRowInScope(scope: CityScope, rowCityId: string | null): boolean {
+  if (scope.unrestricted || !scope.cityId || !scope.dbReady) return true;
+  return rowCityId === scope.cityId;
+}
+
+/**
+ * Same triple-condition city match the order LIST endpoints use (city_id OR
+ * address city OR snapshot city), applied to a single order for by-ID routes.
+ */
+export async function orderInScope(scope: CityScope, orderId: string): Promise<boolean> {
+  if (scope.unrestricted || !scope.cityId || !scope.cityName || !scope.dbReady) return true;
+  const r = await query(
+    `SELECT 1 FROM orders o
+       LEFT JOIN addresses addr ON o.address_id = addr.id
+      WHERE o.id = $1
+        AND (
+          o.city_id = $2
+          OR LOWER(COALESCE(addr.city, '')) = LOWER($3)
+          OR LOWER(COALESCE(o.delivery_address_snapshot->>'city', '')) = LOWER($3)
+        )
+      LIMIT 1`,
+    [orderId, scope.cityId, scope.cityName]
+  );
+  return r.rows.length > 0;
+}
+
 /** Public catalog + banner: resolve city from query string. */
 export async function resolvePublicCityId(req: Request): Promise<string | null> {
   const cityId = typeof req.query.city_id === 'string' ? req.query.city_id.trim() : null;

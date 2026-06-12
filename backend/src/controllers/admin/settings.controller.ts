@@ -1,27 +1,13 @@
 // ============================================================================
-// ADMIN CONTROLLER
+// ADMIN CONTROLLER — site settings, cities, delivery zones, time slots
 // ============================================================================
 
 import { Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
-import { successResponse, notFoundResponse, errorResponse, createdResponse, paginatedResponse } from '../../utils/response';
-import { generateSlug, normalizePhoneNumber } from '../../utils/validators';
-import { emitOrderUpdate, emitToUser, emitToAdmins } from '../../config/socket';
-import { deleteFileFromStorage } from '../../config/storage';
+import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
 import logger from '../../utils/logger';
-import {
-  resolveCityScope,
-  cityIdClause,
-  orderCityClause,
-  customerCityExistsClause,
-  orderCityMatchSql,
-  addressCityMatchSql,
-  addressCityWhereClause,
-  requireCityScope,
-} from '../../utils/cityScope';
-import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
+import { resolveCityScope } from '../../utils/cityScope';
 import {
   fetchBannerSettings,
   upsertBannerSettings,
@@ -41,14 +27,6 @@ import {
   BRAND_FAVICON_URL_KEY,
   BRAND_FAVICON_STORAGE_PATH_KEY,
 } from '../../utils/siteSettings';
-import { loadAdminSession } from '../../utils/adminSession';
-
-const SALT_ROUNDS = 12;
-
-/**
- * Current admin session (fresh permissions from DB)
- * GET /api/admin/me
- */
 
 export const getBrandLogoSettings = asyncHandler(async (req: Request, res: Response) => {
   const brand = await fetchBrandLogoSettings();

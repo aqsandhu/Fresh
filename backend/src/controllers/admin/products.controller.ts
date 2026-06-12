@@ -1,54 +1,21 @@
 // ============================================================================
-// ADMIN CONTROLLER
+// ADMIN CONTROLLER — products & categories
 // ============================================================================
 
 import { Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse, paginatedResponse } from '../../utils/response';
-import { generateSlug, normalizePhoneNumber } from '../../utils/validators';
-import { emitOrderUpdate, emitToUser, emitToAdmins } from '../../config/socket';
+import { generateSlug } from '../../utils/validators';
 import { deleteFileFromStorage } from '../../config/storage';
 import logger from '../../utils/logger';
 import {
   resolveCityScope,
   cityIdClause,
-  orderCityClause,
-  customerCityExistsClause,
-  orderCityMatchSql,
-  addressCityMatchSql,
-  addressCityWhereClause,
+  cityRowInScope,
   requireCityScope,
 } from '../../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
-import {
-  fetchBannerSettings,
-  upsertBannerSettings,
-  fetchWhatsAppOrderSettings,
-  fetchWhatsAppOrderSettingsAll,
-  upsertWhatsAppOrderSettings,
-  upsertWhatsAppOrderSettingsBulk,
-  upsertGlobalSiteSetting,
-  fetchBrandLogoSettings,
-  deleteBrandLogoFromStorage,
-  clearBrandLogoSettings,
-  BRAND_LOGO_URL_KEY,
-  BRAND_LOGO_STORAGE_PATH_KEY,
-  fetchBrandFaviconSettings,
-  deleteBrandFaviconFromStorage,
-  clearBrandFaviconSettings,
-  BRAND_FAVICON_URL_KEY,
-  BRAND_FAVICON_STORAGE_PATH_KEY,
-} from '../../utils/siteSettings';
-import { loadAdminSession } from '../../utils/adminSession';
-
-const SALT_ROUNDS = 12;
-
-/**
- * Current admin session (fresh permissions from DB)
- * GET /api/admin/me
- */
 
 export const getAdminProducts = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
@@ -109,6 +76,7 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
 
 export const getAdminProductById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const scope = await resolveCityScope(req);
   const result = await query(
     `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
@@ -118,13 +86,15 @@ export const getAdminProductById = asyncHandler(async (req: Request, res: Respon
       p.stock_status, p.track_inventory, p.primary_image, p.images,
       p.short_description, p.description_ur, p.description_en,
       p.attributes, p.meta_title, p.meta_description, p.tags,
-      p.is_active, p.is_featured, p.is_new_arrival,
+      p.is_active, p.is_featured, p.is_new_arrival, p.city_id,
       p.view_count, p.order_count, p.created_at, p.updated_at
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.id = $1`, [id]
   );
-  if (result.rows.length === 0) return notFoundResponse(res, 'Product not found');
+  if (result.rows.length === 0 || !cityRowInScope(scope, result.rows[0].city_id)) {
+    return notFoundResponse(res, 'Product not found');
+  }
   successResponse(res, result.rows[0], 'Product retrieved successfully');
 });
 
@@ -230,6 +200,14 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   const { id } = req.params;
   const updates = req.body;
 
+  // City isolation: a scoped admin may only edit products in their own city.
+  const scope = await resolveCityScope(req);
+  const existing = await query('SELECT city_id FROM products WHERE id = $1', [id]);
+  if (existing.rows.length === 0 || !cityRowInScope(scope, existing.rows[0].city_id)) {
+    return notFoundResponse(res, 'Product not found');
+  }
+  const productCityId = existing.rows[0].city_id;
+
   // Build update query
   const allowedFields = [
     'name_ur', 'name_en', 'category_id', 'subcategory_id',
@@ -284,9 +262,18 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     return errorResponse(res, 'No valid fields to update', 400);
   }
 
-  // If name_en is being updated, update slug too
+  // If name_en is being updated, update slug too — same per-city collision
+  // check as createProduct, so a duplicate name is a clean 409 instead of a
+  // unique-constraint 500.
   if (updates.name_en) {
     const newSlug = generateSlug(updates.name_en);
+    const slugClash = await query(
+      'SELECT id FROM products WHERE slug = $1 AND city_id IS NOT DISTINCT FROM $2 AND id != $3',
+      [newSlug, productCityId, id]
+    );
+    if (slugClash.rows.length > 0) {
+      return errorResponse(res, 'Product with similar name already exists', 409);
+    }
     setClauses.push(`slug = $${paramIndex++}`);
     values.push(newSlug);
   }
@@ -313,61 +300,57 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
  * Delete product
  * DELETE /api/admin/products/:id              -> permanent delete (default)
  * DELETE /api/admin/products/:id?soft=true    -> soft delete (is_active = FALSE)
- * DELETE /api/admin/products/:id?hard=true    -> permanent delete (explicit)
  *
- * Soft is the default so an accidental click doesn't lose the product
- * permanently. Hard delete also removes referenced images from Supabase
- * Storage and is blocked if the product is referenced by any order_items
- * (would orphan order history).
+ * Permanent delete removes the product row and its Supabase images. Order
+ * history is preserved: order_items keeps its own snapshot (product_name,
+ * product_image, prices) and order_items.product_id is set to NULL by the
+ * FK (migration 19) — past orders keep showing the item exactly as sold.
  */
 
 export const deleteProduct = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const soft = req.query.soft === 'true' || req.query.soft === '1';
-  const hard = !soft || req.query.hard === 'true' || req.query.hard === '1';
 
-  if (!hard) {
-    const result = await query(
-      'UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1 RETURNING id',
+  // City isolation: a scoped admin may only delete products in their own city.
+  const scope = await resolveCityScope(req);
+  const existing = await query(
+    'SELECT city_id, primary_image, images FROM products WHERE id = $1',
+    [id]
+  );
+  if (existing.rows.length === 0 || !cityRowInScope(scope, existing.rows[0].city_id)) {
+    return notFoundResponse(res, 'Product not found');
+  }
+
+  if (soft) {
+    await query(
+      'UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1',
       [id]
     );
-    if (result.rows.length === 0) return errorResponse(res, 'Product not found', 404);
     logger.info('Product soft-deleted', { productId: id, deletedBy: req.user?.id });
     return successResponse(res, null, 'Product deactivated');
   }
 
-  // Permanent delete — blocked only when the product appears in past orders.
-  const orderUse = await query(
-    'SELECT COUNT(*)::int AS cnt FROM order_items WHERE product_id = $1',
-    [id]
-  );
-  if (orderUse.rows[0].cnt > 0) {
-    return errorResponse(
-      res,
-      'This product is in past orders. Deactivate it instead — permanent delete would break order history.',
-      400
-    );
-  }
-
-  const imgRows = await query<{ primary_image: string | null; images: string[] | null }>(
-    'SELECT primary_image, images FROM products WHERE id = $1',
-    [id]
-  );
-  if (imgRows.rows.length === 0) return errorResponse(res, 'Product not found', 404);
-
   // cart_items also reference products — remove those rows first or the
   // DELETE fails with an FK error that looked like "delete didn't work".
+  // order_items rows survive: their product_id FK is ON DELETE SET NULL.
   await withTransaction(async (client) => {
     await client.query('DELETE FROM cart_items WHERE product_id = $1', [id]);
     await client.query('DELETE FROM products WHERE id = $1', [id]);
   });
 
   const allUrls = [
-    ...(imgRows.rows[0].primary_image ? [imgRows.rows[0].primary_image] : []),
-    ...(imgRows.rows[0].images ?? []),
+    ...(existing.rows[0].primary_image ? [existing.rows[0].primary_image] : []),
+    ...(existing.rows[0].images ?? []),
   ];
   for (const url of allUrls) {
-    const m = url.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/);
+    // Keep any image that an order snapshot still points at — deleting it
+    // would blank the picture on historical orders.
+    const inOrders = await query(
+      'SELECT 1 FROM order_items WHERE product_image = $1 LIMIT 1',
+      [url]
+    );
+    if (inOrders.rows.length > 0) continue;
+    const m = String(url).match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/);
     if (m) await deleteFileFromStorage(m[1]);
   }
 
@@ -382,11 +365,15 @@ export const deleteProduct = asyncHandler(async (req: Request, res: Response) =>
 
 export const toggleProductActive = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const scope = await resolveCityScope(req);
+  const existing = await query('SELECT city_id FROM products WHERE id = $1', [id]);
+  if (existing.rows.length === 0 || !cityRowInScope(scope, existing.rows[0].city_id)) {
+    return notFoundResponse(res, 'Product not found');
+  }
   const result = await query(
     'UPDATE products SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1 RETURNING id, is_active',
     [id]
   );
-  if (result.rows.length === 0) return errorResponse(res, 'Product not found', 404);
   successResponse(res, result.rows[0], `Product ${result.rows[0].is_active ? 'activated' : 'deactivated'}`);
 });
 
@@ -407,15 +394,27 @@ export const moveProductsCategory = asyncHandler(async (req: Request, res: Respo
   }
   if (!category_id) return errorResponse(res, 'category_id is required', 400);
 
-  const cat = await query('SELECT id, is_active FROM categories WHERE id = $1', [category_id]);
-  if (cat.rows.length === 0) return errorResponse(res, 'Target category not found', 404);
+  const scope = await resolveCityScope(req);
+
+  const cat = await query('SELECT id, is_active, city_id FROM categories WHERE id = $1', [category_id]);
+  if (cat.rows.length === 0 || !cityRowInScope(scope, cat.rows[0].city_id)) {
+    return errorResponse(res, 'Target category not found', 404);
+  }
   if (cat.rows[0].is_active === false) {
     return errorResponse(res, 'Target category is inactive — activate it before moving products into it', 400);
   }
 
+  // City isolation: the UPDATE itself is scoped so a city admin can't move
+  // another city's products even by guessing IDs.
+  const params: unknown[] = [category_id, product_ids];
+  let scopeSql = '';
+  if (!scope.unrestricted && scope.cityId && scope.dbReady) {
+    params.push(scope.cityId);
+    scopeSql = ' AND city_id = $3';
+  }
   const result = await query(
-    'UPDATE products SET category_id = $1, updated_at = NOW() WHERE id = ANY($2::uuid[]) RETURNING id',
-    [category_id, product_ids]
+    `UPDATE products SET category_id = $1, updated_at = NOW() WHERE id = ANY($2::uuid[])${scopeSql} RETURNING id`,
+    params
   );
 
   logger.info('Products moved to category', {
@@ -540,6 +539,13 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
   const { id } = req.params;
   const updates = req.body;
 
+  // City isolation: a scoped admin may only edit categories in their own city.
+  const scope = await resolveCityScope(req);
+  const existingCat = await query('SELECT city_id FROM categories WHERE id = $1', [id]);
+  if (existingCat.rows.length === 0 || !cityRowInScope(scope, existingCat.rows[0].city_id)) {
+    return notFoundResponse(res, 'Category not found');
+  }
+
   // Field name mapping from camelCase (frontend) to snake_case (database)
   const fieldMapping: Record<string, string> = {
     'nameEn': 'name_en',
@@ -625,6 +631,11 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
 
 export const toggleCategoryActive = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const scope = await resolveCityScope(req);
+  const existingCat = await query('SELECT city_id FROM categories WHERE id = $1', [id]);
+  if (existingCat.rows.length === 0 || !cityRowInScope(scope, existingCat.rows[0].city_id)) {
+    return notFoundResponse(res, 'Category not found');
+  }
   const result = await query(
     'UPDATE categories SET is_active = NOT is_active, updated_at = NOW() WHERE id = $1 RETURNING id, is_active',
     [id]
@@ -645,8 +656,9 @@ export const toggleCategoryActive = asyncHandler(async (req: Request, res: Respo
 export const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  const categoryCheck = await query('SELECT id FROM categories WHERE id = $1', [id]);
-  if (categoryCheck.rows.length === 0) {
+  const scope = await resolveCityScope(req);
+  const categoryCheck = await query('SELECT id, city_id FROM categories WHERE id = $1', [id]);
+  if (categoryCheck.rows.length === 0 || !cityRowInScope(scope, categoryCheck.rows[0].city_id)) {
     return notFoundResponse(res, 'Category not found');
   }
 
@@ -672,25 +684,10 @@ export const deleteCategory = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Cannot delete category with subcategories. Please delete subcategories first.', 400);
   }
 
-  // Inactive products still block deletion if they appear in past orders.
-  const inOrdersResult = await query(
-    `SELECT COUNT(DISTINCT p.id)::int AS cnt
-     FROM products p
-     JOIN order_items oi ON oi.product_id = p.id
-     WHERE p.category_id = $1`,
-    [id]
-  );
-  if (inOrdersResult.rows[0].cnt > 0) {
-    return errorResponse(
-      res,
-      'Cannot delete category: some products in this category are referenced by past orders. Move those products to another category first.',
-      400
-    );
-  }
-
   // Clean up inactive products (and their cart rows) so the category FK
   // doesn't prevent deletion — this is what admins expect when the UI shows
-  // "0 products".
+  // "0 products". Order history is safe: order_items snapshots the product
+  // and its product_id FK is ON DELETE SET NULL (migration 19).
   await withTransaction(async (client) => {
     await client.query(
       `DELETE FROM cart_items
