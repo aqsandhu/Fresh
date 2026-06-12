@@ -17,13 +17,16 @@ const navItems = [
 
 export default function MobileNav() {
   const pathname = usePathname()
-  if (pathname.startsWith('/select-city')) {
-    return null
-  }
   const { getTotalItems } = useCartStore()
   const [hasMounted, setHasMounted] = useState(false)
   useEffect(() => { setHasMounted(true) }, [])
   const cartItemCount = hasMounted ? getTotalItems() : 0
+
+  // Early return must come AFTER every hook — bailing out before them changes
+  // the hook count between renders (rules-of-hooks).
+  if (pathname.startsWith('/select-city')) {
+    return null
+  }
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 lg:hidden">

@@ -198,6 +198,86 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
+ * Atomically replace the server cart with the client's cart.
+ * POST /api/cart/sync   Body: { items: [{ product_id, quantity, unit? }] }
+ *
+ * Replaces the old client-side "DELETE /cart/clear + N × POST /cart/add"
+ * loop, which was slow (N+1 round-trips) and non-atomic: a failure mid-loop
+ * left a half-synced cart on the server right before order placement.
+ * Pricing stays server-resolved — the client only sends product/quantity/unit.
+ */
+export const syncCart = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    return errorResponse(res, 'Authentication required', 401);
+  }
+
+  const items = req.body.items as Array<{
+    product_id: string;
+    quantity: number;
+    unit?: string;
+  }>;
+
+  const transactionResult = await withTransaction(async (client) => {
+    let cartResult = await client.query(
+      `SELECT * FROM carts
+       WHERE user_id = $1 AND status = 'active'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [req.user!.id]
+    );
+
+    if (cartResult.rows.length === 0) {
+      cartResult = await client.query(
+        `INSERT INTO carts (user_id, status, expires_at)
+         VALUES ($1, 'active', NOW() + INTERVAL '7 days')
+         RETURNING *`,
+        [req.user!.id]
+      );
+    }
+
+    const cart = cartResult.rows[0];
+
+    await client.query('DELETE FROM cart_items WHERE cart_id = $1', [cart.id]);
+
+    for (const item of items) {
+      const unit = ['full', 'half_kg', 'quarter_kg', 'half_dozen'].includes(item.unit || '')
+        ? item.unit!
+        : 'full';
+
+      const productResult = await client.query(
+        `SELECT id, name_en, price, half_kg_price, quarter_kg_price, half_dozen_price,
+                stock_quantity, stock_status
+           FROM products
+          WHERE id = $1 AND is_active = TRUE`,
+        [item.product_id]
+      );
+
+      if (productResult.rows.length === 0) {
+        throw new NotFoundError(`Product not found or inactive: ${item.product_id}`);
+      }
+
+      const product = productResult.rows[0];
+      const stockNeeded = stockUnitsNeeded(item.quantity, unit);
+
+      if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
+        throw new BadRequestError(`Insufficient stock: ${product.name_en}`);
+      }
+
+      const unitPrice = resolveUnitPrice(product, unit);
+      await client.query(
+        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, unit)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [cart.id, item.product_id, item.quantity, unitPrice, unit]
+      );
+    }
+
+    return loadCartSnapshotFromClient(client, cart.id);
+  });
+
+  successResponse(res, transactionResult, 'Cart synced successfully');
+});
+
+/**
  * Update cart item quantity
  * PUT /api/cart/update/:itemId
  */

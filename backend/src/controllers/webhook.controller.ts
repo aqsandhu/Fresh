@@ -422,6 +422,13 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
 export const smsWebhook = asyncHandler(async (req: Request, res: Response) => {
   const source = req.headers['x-webhook-source'];
 
+  // Same HMAC contract as every other webhook — this was the only one that
+  // skipped it, leaving an unauthenticated write into notifications.
+  const signature = req.headers['x-webhook-signature'] as string | undefined;
+  if (!verifyWebhookSignature(req, signature, source)) {
+    return errorResponse(res, 'Invalid webhook signature', 401);
+  }
+
   const { message_id, status, delivered_at } = req.body;
   if (!message_id) {
     return errorResponse(res, 'message_id is required', 400);

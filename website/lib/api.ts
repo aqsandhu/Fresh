@@ -397,14 +397,21 @@ export const ordersApi = {
     return body.data || body
   },
 
-  reorder: async (orderId: string) => {
-    const response = await api.post(`/orders/${orderId}/reorder`)
+  cancel: async (orderId: string, reason?: string) => {
+    const response = await api.put(`/orders/${orderId}/cancel`, { reason: reason || 'Cancelled by customer' })
     return response.data
   },
+}
 
-  cancel: async (orderId: string, reason?: string) => {
-    const response = await api.put(`/orders/${orderId}/cancel`, { cancellation_reason: reason || 'Cancelled by customer' })
-    return response.data
+// Cart API
+export const cartApi = {
+  /**
+   * Atomically replace the server cart with the local cart in ONE request.
+   * Returns the server cart snapshot (server-priced).
+   */
+  sync: async (items: Array<{ product_id: string; quantity: number; unit?: string }>) => {
+    const response = await api.post('/cart/sync', { items })
+    return response.data?.data || response.data
   },
 }
 
@@ -510,20 +517,6 @@ export const attaChakkiApi = {
     const response = await api.get(`/atta-requests/${id}`)
     const body = response.data
     return body.data || body
-  },
-}
-
-// Upload API
-export const uploadApi = {
-  uploadImage: async (file: File): Promise<string> => {
-    const formData = new FormData()
-    formData.append('image', file)
-    const response = await api.post('/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
-    return response.data.url
   },
 }
 

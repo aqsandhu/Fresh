@@ -444,16 +444,19 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
  * POST /api/auth/logout
  */
 export const logout = asyncHandler(async (req: Request, res: Response) => {
+  // Default: revoke ONLY this session's refresh token. Logging out of one
+  // device must not kill the user's other devices — pass { all: true } for
+  // an explicit "log out everywhere".
   const refreshTokenValue = getRefreshTokenFromRequest(req);
   if (refreshTokenValue) {
     await revokeRefreshToken(refreshTokenValue);
   }
-  if (req.user?.id) {
+  if (req.body?.all === true && req.user?.id) {
     await revokeAllUserRefreshTokens(req.user.id);
   }
 
   if (req.user) {
-    logger.info('User logged out', { userId: req.user.userId });
+    logger.info('User logged out', { userId: req.user.userId, all: req.body?.all === true });
   }
 
   clearAuthCookies(res);
@@ -612,6 +615,10 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
     'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
     [newPasswordHash, req.user.userId]
   );
+
+  // A password change invalidates every other session — if the password was
+  // changed because it leaked, stolen refresh tokens must die with it.
+  await revokeAllUserRefreshTokens(req.user.userId);
 
   logger.info('Password changed', { userId: req.user.userId });
 
@@ -818,7 +825,7 @@ export const resetPinConfirm = asyncHandler(async (req: Request, res: Response) 
   );
 
   // After a successful OTP-backed reset, clear the brute-force counter.
-  clearPinFailures(normalizedPhone);
+  await clearPinFailures(normalizedPhone);
 
   logger.info('PIN reset via OTP', { userId: userRow.rows[0].id });
   successResponse(res, { ok: true }, 'PIN reset successfully');

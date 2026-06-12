@@ -33,9 +33,6 @@ import BrandLogo from '@/components/ui/BrandLogo'
 
 export default function Header() {
   const pathname = usePathname()
-  if (pathname?.startsWith('/select-city')) {
-    return null
-  }
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [isCartOpen, setIsCartOpen] = useState(false)
@@ -216,6 +213,13 @@ export default function Header() {
   const handleResultClick = () => {
     setIsSearchOpen(false)
     setSearchQuery('')
+  }
+
+  // The early return must come AFTER every hook — bailing out before them
+  // changes the hook count between renders and corrupts React state when
+  // navigating to/from /select-city (rules-of-hooks).
+  if (pathname?.startsWith('/select-city')) {
+    return null
   }
 
   return (

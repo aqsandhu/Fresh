@@ -49,3 +49,6 @@ Thumbs.db
 *.key
 *.mobileprovision
 *.orig.*
+
+# Vite dep-optimizer cache (build artifact — never commit)
+.vite/

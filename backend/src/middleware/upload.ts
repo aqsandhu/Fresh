@@ -14,6 +14,7 @@
 import multer from 'multer';
 import { Request, Response, NextFunction } from 'express';
 import { uploadFileToStorage, isStorageConfigured } from '../config/storage';
+import { BadRequestError } from './errorHandler';
 import logger from '../utils/logger';
 
 // Allowed file types
@@ -47,6 +48,47 @@ const upload = multer({
 });
 
 // ----------------------------------------------------------------------------
+// Magic-byte sniffing. The multer fileFilter above only sees the
+// client-declared mimetype, which an attacker controls freely — an .exe
+// renamed to photo.jpg sails through. Verify the actual buffer signature
+// before anything is pushed to public storage.
+// ----------------------------------------------------------------------------
+
+/** Detect the real image type from the file's leading bytes. */
+export function sniffImageMime(buffer: Buffer): string | null {
+  if (!buffer || buffer.length < 12) return null;
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+  ) {
+    return 'image/png';
+  }
+  // WebP: "RIFF" .... "WEBP"
+  if (
+    buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+    buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  return null;
+}
+
+function assertRealImage(file: Express.Multer.File): void {
+  const sniffed = sniffImageMime(file.buffer);
+  if (!sniffed || !ALLOWED_FILE_TYPES.includes(sniffed)) {
+    throw new BadRequestError(
+      `File "${file.originalname || file.fieldname}" is not a valid image (content does not match an allowed image format)`
+    );
+  }
+}
+
+// ----------------------------------------------------------------------------
 // Augment Express's Multer.File so TypeScript knows about our `url` and
 // `storagePath` additions populated by the post-multer middleware below.
 // ----------------------------------------------------------------------------
@@ -73,6 +115,17 @@ function pushFilesToStorage(folder: string) {
     try {
       // No upload happened — pass through.
       if (!req.file && !req.files) return next();
+
+      // Content check BEFORE any storage write — declared mimetype already
+      // passed the filter; now the bytes must match an allowed image format.
+      if (req.file) assertRealImage(req.file);
+      if (Array.isArray(req.files)) {
+        req.files.forEach(assertRealImage);
+      } else if (req.files && typeof req.files === 'object') {
+        for (const arr of Object.values(req.files as Record<string, Express.Multer.File[]>)) {
+          arr.forEach(assertRealImage);
+        }
+      }
 
       // Skip silently if Supabase isn't configured (dev / fallback). The
       // file buffer will simply not be persisted; downstream code that

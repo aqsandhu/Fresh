@@ -98,10 +98,19 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
   const countResult = await query(`SELECT COUNT(*) ${sql}`, params);
   const total = parseInt(countResult.rows[0].count);
 
-  // Build sort clause - SECURITY FIX: Whitelist validation for both field and order
-  const allowedSortFields = ['created_at', 'price', 'name_en', 'popularity', 'view_count'];
+  // Build sort clause — map each allowed sortBy value to a REAL column.
+  // ("popularity" used to be interpolated verbatim; products has no such
+  // column, so any sortBy=popularity request was a guaranteed SQL 500.)
+  const SORT_COLUMNS: Record<string, string> = {
+    created_at: 'created_at',
+    price: 'price',
+    name_en: 'name_en',
+    name: 'name_en',
+    popularity: 'order_count',
+    view_count: 'view_count',
+  };
   const allowedSortOrders = ['asc', 'desc'];
-  const sortField = allowedSortFields.includes(sortBy as string) ? sortBy : 'created_at';
+  const sortField = SORT_COLUMNS[sortBy as string] || 'created_at';
   const order = allowedSortOrders.includes((sortOrder as string)?.toLowerCase()) ? (sortOrder as string).toUpperCase() : 'DESC';
 
   // Get products

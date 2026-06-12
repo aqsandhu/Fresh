@@ -8,6 +8,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    // Strip console/debugger from production bundles — dev keeps full
+    // console.error diagnostics, but none of it ships to operators.
+    esbuild: mode === 'production' ? { drop: ['console', 'debugger'] } : undefined,
     define: {
       'process.env.VITE_API_URL': JSON.stringify(apiUrl),
       'process.env.VITE_AUTH_COOKIES': JSON.stringify(env.VITE_AUTH_COOKIES || 'false'),

@@ -6,11 +6,12 @@
 
 import { jest } from '@jest/globals';
 import request from 'supertest';
-import { query } from '@/config/database';
+import { query, withTransaction } from '@/config/database';
 import cartRoutes from '@/routes/cart.routes';
 import { buildApp, signAccessToken } from './helpers';
 
 const mockQuery = query as jest.MockedFunction<typeof query>;
+const mockWithTransaction = withTransaction as jest.MockedFunction<typeof withTransaction>;
 const app = buildApp('/api/cart', cartRoutes);
 
 function ok<T>(rows: T[], command = 'SELECT'): any {
@@ -92,5 +93,166 @@ describe('POST /api/cart/add', () => {
 
     expect(res.status).toBe(422);
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/cart/sync', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('rejects an unauthenticated sync with 401', async () => {
+    const res = await request(app)
+      .post('/api/cart/sync')
+      .send({ items: [{ product_id: VALID_PRODUCT, quantity: 1 }] });
+    expect(res.status).toBe(401);
+  });
+
+  it('rejects an empty items array with 422 before touching the DB', async () => {
+    const res = await request(app)
+      .post('/api/cart/sync')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ items: [] });
+
+    expect(res.status).toBe(422);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-UUID product_id with 422', async () => {
+    const res = await request(app)
+      .post('/api/cart/sync')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ items: [{ product_id: 'nope', quantity: 1 }] });
+
+    expect(res.status).toBe(422);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('rejects an oversized cart (>100 lines) with 422', async () => {
+    const items = Array.from({ length: 101 }, () => ({
+      product_id: VALID_PRODUCT,
+      quantity: 1,
+    }));
+    const res = await request(app)
+      .post('/api/cart/sync')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ items });
+
+    expect(res.status).toBe(422);
+  });
+
+  it('replaces the cart atomically inside ONE transaction and returns the snapshot', async () => {
+    const clientQuery = jest.fn<any>((sql: string) => {
+      const text = String(sql);
+      if (text.includes('FROM carts') && text.includes("status = 'active'")) {
+        return Promise.resolve(ok([{ id: 'cart-1', user_id: 'user-1', status: 'active' }]));
+      }
+      if (text.startsWith('DELETE FROM cart_items')) {
+        return Promise.resolve(ok([], 'DELETE'));
+      }
+      if (text.includes('FROM products')) {
+        return Promise.resolve(
+          ok([
+            {
+              id: VALID_PRODUCT,
+              name_en: 'Tomatoes',
+              price: '100',
+              half_kg_price: null,
+              quarter_kg_price: null,
+              half_dozen_price: null,
+              stock_quantity: 50,
+              stock_status: 'active',
+            },
+          ])
+        );
+      }
+      if (text.includes('INSERT INTO cart_items')) {
+        return Promise.resolve(ok([], 'INSERT'));
+      }
+      if (text.includes('SELECT * FROM carts WHERE id')) {
+        return Promise.resolve(
+          ok([
+            {
+              id: 'cart-1',
+              subtotal: '150',
+              discount_amount: '0',
+              delivery_charge: '0',
+              total_amount: '150',
+              coupon_code: null,
+              coupon_discount: '0',
+              item_count: 1,
+              total_weight_kg: '0',
+              expires_at: null,
+            },
+          ])
+        );
+      }
+      // cart items snapshot
+      return Promise.resolve(
+        ok([
+          {
+            id: 'item-1',
+            product_id: VALID_PRODUCT,
+            quantity: 1,
+            unit_price: '50',
+            total_price: '50',
+            unit: 'half_kg',
+          },
+        ])
+      );
+    });
+
+    mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
+
+    const res = await request(app)
+      .post('/api/cart/sync')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ items: [{ product_id: VALID_PRODUCT, quantity: 1, unit: 'half_kg' }] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.cart.id).toBe('cart-1');
+    expect(res.body.data.items).toHaveLength(1);
+    // Whole replace happened within a single transaction.
+    expect(mockWithTransaction).toHaveBeenCalledTimes(1);
+    // Server resolved the half_kg price itself (100 * 0.5) — client never sent a price.
+    const insertCall = clientQuery.mock.calls.find((c: any[]) =>
+      String(c[0]).includes('INSERT INTO cart_items')
+    );
+    expect((insertCall![1] as any[])[3]).toBe(50);
+  });
+
+  it('rejects the whole sync when any product is out of stock', async () => {
+    const clientQuery = jest.fn<any>((sql: string) => {
+      const text = String(sql);
+      if (text.includes('FROM carts')) {
+        return Promise.resolve(ok([{ id: 'cart-1', user_id: 'user-1', status: 'active' }]));
+      }
+      if (text.startsWith('DELETE FROM cart_items')) {
+        return Promise.resolve(ok([], 'DELETE'));
+      }
+      if (text.includes('FROM products')) {
+        return Promise.resolve(
+          ok([
+            {
+              id: VALID_PRODUCT,
+              name_en: 'Tomatoes',
+              price: '100',
+              stock_quantity: 0,
+              stock_status: 'out_of_stock',
+            },
+          ])
+        );
+      }
+      return Promise.resolve(ok([]));
+    });
+
+    mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
+
+    const res = await request(app)
+      .post('/api/cart/sync')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ items: [{ product_id: VALID_PRODUCT, quantity: 2 }] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain('Insufficient stock');
   });
 });

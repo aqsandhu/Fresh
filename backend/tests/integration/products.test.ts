@@ -78,3 +78,33 @@ describe('GET /api/products/:id', () => {
     expect(res.body.success).toBe(false);
   });
 });
+
+describe('GET /api/products sort mapping', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('maps sortBy=popularity to the real order_count column (was a guaranteed SQL 500)', async () => {
+    mockQuery
+      .mockResolvedValueOnce(ok([{ count: '1' }]))
+      .mockResolvedValueOnce(ok([{ id: 'p1', name_en: 'Apples', price: '150' }]));
+
+    const res = await request(app).get('/api/products?sortBy=popularity');
+
+    expect(res.status).toBe(200);
+    const listSql = String(mockQuery.mock.calls[1][0]);
+    expect(listSql).toContain('ORDER BY p.order_count');
+    expect(listSql).not.toContain('p.popularity');
+  });
+
+  it('falls back to created_at for unknown sortBy values', async () => {
+    mockQuery
+      .mockResolvedValueOnce(ok([{ count: '0' }]))
+      .mockResolvedValueOnce(ok([]));
+
+    const res = await request(app).get('/api/products?sortBy=name');
+
+    expect(res.status).toBe(200);
+    const listSql = String(mockQuery.mock.calls[1][0]);
+    // `name` maps to the real name_en column.
+    expect(listSql).toContain('ORDER BY p.name_en');
+  });
+});

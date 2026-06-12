@@ -29,7 +29,7 @@ import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { resolveLineUnitPrice, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
 import { getSlotAvailability } from '@/lib/timeSlots'
-import { addressesApi, settingsApi } from '@/lib/api'
+import { addressesApi, settingsApi, cartApi } from '@/lib/api'
 import api from '@/lib/api'
 import AddressActions from '@/components/checkout/AddressActions'
 import AddressForm, {
@@ -112,16 +112,16 @@ function CheckoutPage() {
   const syncCartToServer = useCallback(async () => {
     if (!isAuthenticated || items.length === 0 || cartSynced) return
     try {
-      try { await api.delete('/cart/clear') } catch { /* empty is fine */ }
-      for (const item of items) {
-        await api.post('/cart/add', {
+      // ONE atomic request — replaces the old clear + per-item POST loop
+      // (slow, and a mid-loop failure left a half-synced server cart).
+      const snapshot = await cartApi.sync(
+        items.map((item) => ({
           product_id: item.product.id,
           quantity: item.quantity,
           unit: item.unit || 'full',
-        })
-      }
-      const cartRes = await api.get('/cart')
-      const cart = cartRes.data?.data?.cart || cartRes.data?.cart
+        }))
+      )
+      const cart = snapshot?.cart
       if (cart?.subtotal != null) {
         setServerSubtotal(parseFloat(String(cart.subtotal)))
       }
@@ -287,17 +287,15 @@ function CheckoutPage() {
     setIsPlacingOrder(true)
     try {
       // Make sure the server-side cart still has our items (the user could
-      // have changed cart contents on a different tab). We do this here only
-      // — once, right before placing the order — so slot changes don't
-      // trigger this slow operation.
-      try { await api.delete('/cart/clear') } catch { /* ok if empty */ }
-      for (const item of items) {
-        await api.post('/cart/add', {
+      // have changed cart contents on a different tab). One atomic sync,
+      // right before placing the order — slot changes never trigger this.
+      await cartApi.sync(
+        items.map((item) => ({
           product_id: item.product.id,
           quantity: item.quantity,
           unit: item.unit || 'full',
-        })
-      }
+        }))
+      )
 
       const orderPayload: Record<string, string> = {
         address_id: addressIdToUse,

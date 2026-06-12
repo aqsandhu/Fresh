@@ -68,8 +68,34 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: false,
   },
+  // Strip console.* from production bundles (console.error kept — it's the
+  // only signal left when something breaks on a user's device).
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? { exclude: ['error'] } : false,
+  },
   images: {
     remotePatterns: buildImageRemotePatterns(),
+  },
+  // Baseline security headers. A full Content-Security-Policy is deliberately
+  // NOT set here: Firebase Auth + Google Maps + Next inline runtime need a
+  // carefully tested allowlist, and an untested CSP breaks login outright.
+  // Roll CSP out separately behind staging verification.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(self), microphone=(), geolocation=(self), payment=()',
+          },
+        ],
+      },
+    ];
   },
   async rewrites() {
     const backend = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';

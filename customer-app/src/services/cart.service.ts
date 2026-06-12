@@ -104,17 +104,15 @@ class CartService {
     this.syncInProgress = true;
 
     try {
-      await apiClient.delete('/cart/clear').catch(() => {});
-
-      for (const item of cart) {
-        await apiClient
-          .post('/cart/add', {
-            product_id: item.product.id,
-            quantity: item.quantity,
-            unit: item.unit || 'full',
-          })
-          .catch(() => {});
-      }
+      // Atomic replace in ONE request — the old clear + per-item POST loop
+      // was slow and could leave a half-synced server cart on failure.
+      await apiClient.post('/cart/sync', {
+        items: cart.map((item) => ({
+          product_id: item.product.id,
+          quantity: item.quantity,
+          unit: item.unit || 'full',
+        })),
+      });
       return true;
     } catch {
       return false;
