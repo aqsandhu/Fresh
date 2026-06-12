@@ -11,7 +11,7 @@ import {
   ConflictError,
 } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
-import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
+import { calculateDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
 import { restoreOrderInventory } from '../utils/orderStatus';
 import { hasOrderCouponColumns } from '../config/orderSchema';
@@ -344,6 +344,13 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     if (cartItemsResult.rows.length === 0) {
       throw new BadRequestError('Cart is empty');
     }
+
+    // Lock-ordering: both FOR UPDATE loops below must lock products in a
+    // deterministic order, or two concurrent checkouts holding the same
+    // products in opposite order can deadlock.
+    cartItemsResult.rows.sort((a, b) =>
+      String(a.product_id).localeCompare(String(b.product_id))
+    );
 
     // Get address
     const addressResult = await client.query(

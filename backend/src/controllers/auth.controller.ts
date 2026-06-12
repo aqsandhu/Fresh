@@ -858,6 +858,12 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
 
   const user = result.rows[0];
 
+  // OTP-only accounts have password_hash = NULL — bcrypt.compare would throw.
+  if (!user.password_hash) {
+    logger.warn('Admin login failed: account has no password set', { userId: user.id });
+    return unauthorizedResponse(res, 'Invalid credentials');
+  }
+
   // Verify password
   const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
@@ -957,6 +963,11 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
   // Check rider verification status
   if (user.verification_status !== 'verified') {
     return unauthorizedResponse(res, 'Rider account is not verified yet');
+  }
+
+  // OTP-only accounts have password_hash = NULL — bcrypt.compare would throw.
+  if (!user.password_hash) {
+    return unauthorizedResponse(res, 'Invalid credentials');
   }
 
   // Verify password

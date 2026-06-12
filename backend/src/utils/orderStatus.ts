@@ -69,6 +69,9 @@ export async function restoreOrderInventory(
   );
 
   for (const item of items.rows) {
+    // product_id is NULL when the product was permanently deleted — nothing
+    // to restore stock into.
+    if (!item.product_id) continue;
     const restoreAmount = stockUnitsNeeded(item.quantity, item.unit);
     await client.query(
       `UPDATE products

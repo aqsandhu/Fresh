@@ -3,9 +3,11 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
-import { query } from '../config/database';
+import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
+import { isValidOrderTransition } from '../utils/orderStatus';
+import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
 /**
@@ -369,24 +371,36 @@ export const acceptTask = asyncHandler(async (req: Request, res: Response) => {
 
   const riderId = riderResult.rows[0].id;
 
+  // Accepting only stamps accepted_at — the task stays 'assigned' until the
+  // rider actually starts (pickup flips it to in_progress). COALESCE keeps a
+  // double-tap from moving the original acceptance time.
   const result = await query(
-    `UPDATE rider_tasks 
-     SET status = 'assigned', accepted_at = NOW(), updated_at = NOW()
+    `UPDATE rider_tasks
+     SET accepted_at = COALESCE(accepted_at, NOW()), updated_at = NOW()
      WHERE id = $1 AND rider_id = $2 AND status = 'assigned'
      RETURNING *`,
     [id, riderId]
   );
 
   if (result.rows.length === 0) {
-    return notFoundResponse(res, 'Task not found or already accepted');
+    return notFoundResponse(res, 'Task not found or already started');
   }
 
   successResponse(res, result.rows[0], 'Task accepted successfully');
 });
 
+async function resolveRiderId(userId: string): Promise<string | null> {
+  const riderResult = await query('SELECT id FROM riders WHERE user_id = $1', [userId]);
+  return riderResult.rows[0]?.id || null;
+}
+
 /**
  * Confirm pickup
  * PUT /api/rider/tasks/:id/pickup
+ *
+ * Transactional: locks the task and its order so the order status flip goes
+ * through the shared state machine — a cancelled order can no longer be
+ * dragged to out_for_delivery, and a second tap is a no-op.
  */
 export const confirmPickup = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
@@ -396,53 +410,75 @@ export const confirmPickup = asyncHandler(async (req: Request, res: Response) =>
   const { id } = req.params;
   const { notes } = req.body;
 
-  // Get rider ID
-  const riderResult = await query(
-    'SELECT id FROM riders WHERE user_id = $1',
-    [req.user.id]
-  );
-
-  if (riderResult.rows.length === 0) {
+  const riderId = await resolveRiderId(req.user.id);
+  if (!riderId) {
     return notFoundResponse(res, 'Rider not found');
   }
 
-  const riderId = riderResult.rows[0].id;
+  try {
+    await withTransaction(async (client) => {
+      const taskResult = await client.query(
+        'SELECT * FROM rider_tasks WHERE id = $1 AND rider_id = $2 FOR UPDATE',
+        [id, riderId]
+      );
+      if (taskResult.rows.length === 0) {
+        throw Object.assign(new Error('Task not found'), { http: 404 });
+      }
+      const task = taskResult.rows[0];
 
-  // Get task details
-  const taskResult = await query(
-    'SELECT * FROM rider_tasks WHERE id = $1 AND rider_id = $2',
-    [id, riderId]
-  );
+      if (!['assigned', 'in_progress'].includes(task.status)) {
+        throw Object.assign(
+          new Error(`Task is already ${task.status}`),
+          { http: 409 }
+        );
+      }
 
-  if (taskResult.rows.length === 0) {
-    return notFoundResponse(res, 'Task not found');
-  }
+      await client.query(
+        `UPDATE rider_tasks
+         SET status = 'in_progress', started_at = COALESCE(started_at, NOW()),
+             notes = COALESCE($1, notes), updated_at = NOW()
+         WHERE id = $2`,
+        [notes, id]
+      );
 
-  const task = taskResult.rows[0];
-
-  // Update task
-  await query(
-    `UPDATE rider_tasks 
-     SET status = 'in_progress', started_at = NOW(), notes = COALESCE($1, notes), updated_at = NOW()
-     WHERE id = $2`,
-    [notes, id]
-  );
-
-  // Update related order or atta request
-  if (task.order_id) {
-    await query(
-      `UPDATE orders 
-       SET status = 'out_for_delivery', out_for_delivery_at = NOW(), updated_at = NOW()
-       WHERE id = $1`,
-      [task.order_id]
-    );
-  } else if (task.atta_request_id) {
-    await query(
-      `UPDATE atta_requests 
-       SET status = 'picked_up', picked_up_at = NOW(), updated_at = NOW()
-       WHERE id = $1`,
-      [task.atta_request_id]
-    );
+      if (task.order_id) {
+        const orderResult = await client.query(
+          'SELECT id, status FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+          [task.order_id]
+        );
+        const order = orderResult.rows[0];
+        if (!order) {
+          throw Object.assign(new Error('Order not found'), { http: 404 });
+        }
+        // Already out for delivery (e.g. set at assignment) — nothing to do.
+        if (order.status !== 'out_for_delivery') {
+          if (!isValidOrderTransition(order.status, 'out_for_delivery')) {
+            throw Object.assign(
+              new Error(`Order is ${order.status} and cannot be picked up`),
+              { http: 409 }
+            );
+          }
+          await client.query(
+            `UPDATE orders
+             SET status = 'out_for_delivery',
+                 out_for_delivery_at = COALESCE(out_for_delivery_at, NOW()),
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [task.order_id]
+          );
+        }
+      } else if (task.atta_request_id) {
+        await client.query(
+          `UPDATE atta_requests
+           SET status = 'picked_up', picked_up_at = COALESCE(picked_up_at, NOW()), updated_at = NOW()
+           WHERE id = $1`,
+          [task.atta_request_id]
+        );
+      }
+    });
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
   }
 
   successResponse(res, null, 'Pickup confirmed successfully');
@@ -451,6 +487,10 @@ export const confirmPickup = asyncHandler(async (req: Request, res: Response) =>
 /**
  * Confirm delivery
  * PUT /api/rider/tasks/:id/deliver
+ *
+ * Transactional, same contract as the admin/webhook paths: the order must
+ * legally transition to delivered, and rider total_deliveries increments
+ * exactly once (guarded by the task's completed flip under the row lock).
  */
 export const confirmDelivery = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
@@ -460,64 +500,211 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
   const { id } = req.params;
   const { notes } = req.body;
 
-  // Get rider ID
-  const riderResult = await query(
-    'SELECT id FROM riders WHERE user_id = $1',
-    [req.user.id]
-  );
-
-  if (riderResult.rows.length === 0) {
+  const riderId = await resolveRiderId(req.user.id);
+  if (!riderId) {
     return notFoundResponse(res, 'Rider not found');
   }
 
-  const riderId = riderResult.rows[0].id;
+  let deliveredOrder: { id: string; order_number: string; user_id: string } | null = null;
 
-  // Get task details
-  const taskResult = await query(
-    'SELECT * FROM rider_tasks WHERE id = $1 AND rider_id = $2',
-    [id, riderId]
-  );
+  try {
+    await withTransaction(async (client) => {
+      const taskResult = await client.query(
+        'SELECT * FROM rider_tasks WHERE id = $1 AND rider_id = $2 FOR UPDATE',
+        [id, riderId]
+      );
+      if (taskResult.rows.length === 0) {
+        throw Object.assign(new Error('Task not found'), { http: 404 });
+      }
+      const task = taskResult.rows[0];
 
-  if (taskResult.rows.length === 0) {
-    return notFoundResponse(res, 'Task not found');
+      if (!['assigned', 'in_progress'].includes(task.status)) {
+        throw Object.assign(
+          new Error(`Task is already ${task.status}`),
+          { http: 409 }
+        );
+      }
+
+      if (task.order_id) {
+        const orderResult = await client.query(
+          'SELECT id, order_number, status, user_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+          [task.order_id]
+        );
+        const order = orderResult.rows[0];
+        if (!order) {
+          throw Object.assign(new Error('Order not found'), { http: 404 });
+        }
+        if (order.status !== 'delivered') {
+          if (!isValidOrderTransition(order.status, 'delivered')) {
+            throw Object.assign(
+              new Error(`Order is ${order.status} and cannot be delivered`),
+              { http: 409 }
+            );
+          }
+          await client.query(
+            `UPDATE orders
+             SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()),
+                 delivered_by = $1, updated_at = NOW()
+             WHERE id = $2`,
+            [riderId, task.order_id]
+          );
+          deliveredOrder = { id: order.id, order_number: order.order_number, user_id: order.user_id };
+        }
+
+        // The task row is locked and was not completed — exactly one caller
+        // gets here per task, so the counter can't double-increment.
+        await client.query(
+          `UPDATE riders
+           SET total_deliveries = total_deliveries + 1, status = 'available', updated_at = NOW()
+           WHERE id = $1`,
+          [riderId]
+        );
+      } else if (task.atta_request_id) {
+        await client.query(
+          `UPDATE atta_requests
+           SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW()
+           WHERE id = $1`,
+          [task.atta_request_id]
+        );
+      }
+
+      await client.query(
+        `UPDATE rider_tasks
+         SET status = 'completed', completed_at = COALESCE(completed_at, NOW()),
+             notes = COALESCE($1, notes), updated_at = NOW()
+         WHERE id = $2`,
+        [notes, id]
+      );
+    });
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
   }
 
-  const task = taskResult.rows[0];
-
-  // Update task
-  await query(
-    `UPDATE rider_tasks 
-     SET status = 'completed', completed_at = NOW(), notes = COALESCE($1, notes), updated_at = NOW()
-     WHERE id = $2`,
-    [notes, id]
-  );
-
-  // Update related order or atta request
-  if (task.order_id) {
-    await query(
-      `UPDATE orders 
-       SET status = 'delivered', delivered_at = NOW(), delivered_by = $1, updated_at = NOW()
-       WHERE id = $2`,
-      [riderId, task.order_id]
-    );
-
-    // Update rider stats
-    await query(
-      `UPDATE riders 
-       SET total_deliveries = total_deliveries + 1, status = 'available', updated_at = NOW()
-       WHERE id = $1`,
-      [riderId]
-    );
-  } else if (task.atta_request_id) {
-    await query(
-      `UPDATE atta_requests 
-       SET status = 'delivered', delivered_at = NOW(), updated_at = NOW()
-       WHERE id = $1`,
-      [task.atta_request_id]
-    );
+  if (deliveredOrder) {
+    const order = deliveredOrder as { id: string; order_number: string; user_id: string };
+    emitOrderUpdate(order.id, {
+      orderId: order.id,
+      status: 'delivered',
+      message: `Order #${order.order_number} has been delivered`,
+    });
+    emitToUser(order.user_id, 'order:delivered', {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      message: `Your order #${order.order_number} has been delivered!`,
+    });
   }
 
   successResponse(res, null, 'Delivery confirmed successfully');
+});
+
+/**
+ * Mark a task as failed (rider could not complete it).
+ * Shared by PATCH /tasks/:id/status { status: 'failed' } and
+ * POST /tasks/:id/cancel { reason }.
+ *
+ * The order is deliberately left untouched — failing a delivery is an
+ * operational event for the admin to resolve (reassign or cancel), not an
+ * order-state change the rider is allowed to make.
+ */
+async function failTask(
+  riderId: string,
+  taskId: string,
+  notes: string | null
+): Promise<{ task: any }> {
+  return withTransaction(async (client) => {
+    const taskResult = await client.query(
+      'SELECT * FROM rider_tasks WHERE id = $1 AND rider_id = $2 FOR UPDATE',
+      [taskId, riderId]
+    );
+    if (taskResult.rows.length === 0) {
+      throw Object.assign(new Error('Task not found'), { http: 404 });
+    }
+    const task = taskResult.rows[0];
+    if (!['assigned', 'in_progress'].includes(task.status)) {
+      throw Object.assign(new Error(`Task is already ${task.status}`), { http: 409 });
+    }
+
+    const updated = await client.query(
+      `UPDATE rider_tasks
+       SET status = 'failed', completed_at = NOW(), notes = COALESCE($1, notes), updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [notes, taskId]
+    );
+
+    await client.query(
+      `UPDATE riders SET status = 'available', updated_at = NOW() WHERE id = $1`,
+      [riderId]
+    );
+
+    return { task: { ...updated.rows[0], order_id: task.order_id } };
+  });
+}
+
+/**
+ * Update task status — dispatcher used by the mobile app.
+ * PATCH /api/rider/tasks/:id/status   Body: { status, notes? }
+ *   in_progress → pickup flow, completed → delivery flow, failed → fail task.
+ */
+export const updateTaskStatus = asyncHandler(async (req: Request, res: Response) => {
+  const { status } = req.body as { status: 'in_progress' | 'completed' | 'failed' };
+
+  if (status === 'in_progress') return confirmPickup(req, res, () => undefined);
+  if (status === 'completed') return confirmDelivery(req, res, () => undefined);
+
+  // status === 'failed'
+  if (!req.user) return errorResponse(res, 'Authentication required', 401);
+  const riderId = await resolveRiderId(req.user.id);
+  if (!riderId) return notFoundResponse(res, 'Rider not found');
+
+  try {
+    const { task } = await failTask(riderId, req.params.id, req.body?.notes || null);
+    if (task.order_id) {
+      emitToAdmins('rider:task_failed', {
+        taskId: task.id,
+        orderId: task.order_id,
+        riderId,
+        notes: task.notes,
+        message: 'A delivery task was marked failed by the rider',
+      });
+    }
+    logger.warn('Rider task failed', { taskId: req.params.id, riderId });
+    successResponse(res, task, 'Task marked as failed');
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
+  }
+});
+
+/**
+ * Cancel (fail) a task with a reason — used by the rider app's Cancel action.
+ * POST /api/rider/tasks/:id/cancel   Body: { reason }
+ */
+export const cancelTaskByRider = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) return errorResponse(res, 'Authentication required', 401);
+
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 500) : null;
+  const riderId = await resolveRiderId(req.user.id);
+  if (!riderId) return notFoundResponse(res, 'Rider not found');
+
+  try {
+    const { task } = await failTask(riderId, req.params.id, reason);
+    if (task.order_id) {
+      emitToAdmins('rider:task_failed', {
+        taskId: task.id,
+        orderId: task.order_id,
+        riderId,
+        notes: reason,
+        message: 'A delivery task was cancelled by the rider',
+      });
+    }
+    logger.warn('Rider cancelled task', { taskId: req.params.id, riderId, reason });
+    successResponse(res, task, 'Task cancelled');
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
+  }
 });
 
 /**
@@ -545,7 +732,7 @@ export const requestCall = asyncHandler(async (req: Request, res: Response) => {
 
   // Verify rider is assigned to this order
   const orderResult = await query(
-    `SELECT o.id, o.rider_id, u.phone as customer_phone
+    `SELECT o.id, o.rider_id, o.show_customer_phone, u.phone as customer_phone
      FROM orders o
      JOIN users u ON o.user_id = u.id
      WHERE o.id = $1 AND o.rider_id = $2`,
@@ -558,27 +745,35 @@ export const requestCall = asyncHandler(async (req: Request, res: Response) => {
 
   const order = orderResult.rows[0];
 
-  // Generate virtual number (in production, integrate with telephony service)
-  const virtualNumber = `+92${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+  // No telephony/number-masking integration exists, so the only honest
+  // behaviour is to respect the admin's phone-visibility flag: reveal the
+  // real number when the admin allowed it, otherwise refuse — never hand
+  // out a fake "virtual number" that dials nowhere.
+  if (!order.show_customer_phone) {
+    return errorResponse(
+      res,
+      'Customer phone is hidden for this order. Ask the admin to enable phone visibility.',
+      403
+    );
+  }
 
-  // Create call request
   const callResult = await query(
     `INSERT INTO call_requests (rider_id, order_id, virtual_number, status)
      VALUES ($1, $2, $3, 'requested')
      RETURNING *`,
-    [riderId, order_id, virtualNumber]
+    [riderId, order_id, order.customer_phone]
   );
 
-  logger.info('Call request created', { 
-    callRequestId: callResult.rows[0].id, 
-    riderId, 
-    orderId: order_id 
+  logger.info('Call request created', {
+    callRequestId: callResult.rows[0].id,
+    riderId,
+    orderId: order_id
   });
 
   successResponse(res, {
     call_request_id: callResult.rows[0].id,
-    virtual_number: virtualNumber,
-    message: 'Call request created. Dial the virtual number to connect with customer.',
+    virtual_number: order.customer_phone,
+    message: 'Dial the number to connect with the customer.',
   }, 'Call request created successfully');
 });
 

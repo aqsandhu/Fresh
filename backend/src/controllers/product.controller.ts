@@ -115,10 +115,10 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
 
   // Get products
   const productsSql = `
-    SELECT 
+    SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
-      p.subcategory_id, p.price, p.compare_at_price, p.cost_price,
+      p.subcategory_id, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.stock_status,
       p.primary_image, p.images, p.short_description,
@@ -160,7 +160,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
       c.slug as category_slug, c.qualifies_for_free_delivery,
       c.minimum_order_for_free_delivery,
       p.subcategory_id, sc.name_en as subcategory_name,
-      p.price, p.compare_at_price, p.cost_price,
+      p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory,
@@ -208,7 +208,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
       c.slug as category_slug, c.qualifies_for_free_delivery,
       c.minimum_order_for_free_delivery,
       p.subcategory_id, sc.name_en as subcategory_name,
-      p.price, p.compare_at_price, p.cost_price,
+      p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory,

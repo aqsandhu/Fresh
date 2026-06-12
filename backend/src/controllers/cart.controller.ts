@@ -10,11 +10,10 @@ import {
   NotFoundError,
   ForbiddenError,
 } from '../middleware';
-import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
+import { successResponse, errorResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
-import logger from '../utils/logger';
-import { buildCartResponse, loadCartSnapshotFromClient } from '../utils/cartResponse';
+import { loadCartSnapshotFromClient } from '../utils/cartResponse';
 
 /**
  * Get or create cart for user
@@ -475,10 +474,12 @@ export const removeCoupon = asyncHandler(async (req: Request, res: Response) => 
 
   const cart = await getOrCreateCart(req.user.id);
 
+  // SET expressions read the OLD row in Postgres, so the recomputed total
+  // must NOT subtract coupon_discount — that's the value being removed.
   await query(
-    `UPDATE carts 
-     SET coupon_code = NULL, coupon_discount = 0, 
-         total_amount = subtotal + delivery_charge - discount_amount - coupon_discount + COALESCE(tax_amount, 0),
+    `UPDATE carts
+     SET coupon_code = NULL, coupon_discount = 0,
+         total_amount = subtotal + delivery_charge - discount_amount + COALESCE(tax_amount, 0),
          updated_at = NOW()
      WHERE id = $1`,
     [cart.id]

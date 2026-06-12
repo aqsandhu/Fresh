@@ -17,7 +17,7 @@ export interface AdminSessionUser {
 export async function resolveAdminPermissions(
   userId: string,
   role: string,
-  adminRoleId: string | null
+  _adminRoleId: string | null
 ): Promise<string[]> {
   if (role === 'super_admin') return ['*'];
 

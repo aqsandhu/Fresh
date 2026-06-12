@@ -10,7 +10,6 @@ import {
   orderRateLimiter,
   validate,
   orderSchemas,
-  createRateLimiter,
 } from '../middleware';
 
 const router = Router();

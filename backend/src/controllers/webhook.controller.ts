@@ -333,7 +333,7 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
   try {
     const responseBody = await withTransaction(async (client) => {
       const orderResult = await client.query(
-        `SELECT id, total_amount, payment_status
+        `SELECT id, total_amount, payment_status, payment_method
            FROM orders
           WHERE id = $1 AND deleted_at IS NULL
           FOR UPDATE`,
@@ -365,7 +365,10 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
         }
       }
 
-      await client.query(
+      // COD orders never get a payments row at creation, so a plain UPDATE
+      // silently dropped the gateway's record. Update-then-insert keeps one
+      // row per order without needing a unique constraint.
+      const paymentUpdate = await client.query(
         `UPDATE payments
             SET status = $1,
                 transaction_id = $2,
@@ -374,6 +377,20 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
           WHERE order_id = $4`,
         [status, transaction_id, JSON.stringify(gateway_response || {}), order_id]
       );
+      if ((paymentUpdate.rowCount ?? 0) === 0) {
+        await client.query(
+          `INSERT INTO payments (order_id, payment_method, amount, status, transaction_id, gateway_response)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            order_id,
+            order.payment_method,
+            Number.isFinite(paidAmount) ? paidAmount : orderTotal,
+            status,
+            transaction_id,
+            JSON.stringify(gateway_response || {}),
+          ]
+        );
+      }
 
       if (status === 'completed') {
         await client.query(
@@ -471,12 +488,13 @@ export const riderLocationWebhook = asyncHandler(async (req: Request, res: Respo
   const source = req.headers['x-webhook-source'];
   const signature = req.headers['x-webhook-signature'] as string | undefined;
 
-  const logId = await logWebhookAttempt('rider_location', req.body, source, 'received');
-
+  // Verify BEFORE writing anything — logging unauthenticated requests let
+  // any caller flood webhook_logs for free.
   if (!verifyWebhookSignature(req, signature, source)) {
-    await updateWebhookLog(logId, 'failed', { error: 'Invalid webhook signature' });
     return errorResponse(res, 'Invalid webhook signature', 401);
   }
+
+  const logId = await logWebhookAttempt('rider_location', req.body, source, 'received');
 
   const { rider_id, latitude, longitude, timestamp } = req.body;
 

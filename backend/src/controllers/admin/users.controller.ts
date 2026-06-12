@@ -1,54 +1,19 @@
 // ============================================================================
-// ADMIN CONTROLLER
+// ADMIN CONTROLLER — customers & addresses
 // ============================================================================
 
 import { Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
-import { successResponse, notFoundResponse, errorResponse, createdResponse, paginatedResponse } from '../../utils/response';
-import { generateSlug, normalizePhoneNumber } from '../../utils/validators';
-import { emitOrderUpdate, emitToUser, emitToAdmins } from '../../config/socket';
-import { deleteFileFromStorage } from '../../config/storage';
+import { successResponse, notFoundResponse, errorResponse } from '../../utils/response';
 import logger from '../../utils/logger';
 import {
   resolveCityScope,
-  cityIdClause,
-  orderCityClause,
   customerCityExistsClause,
   orderCityMatchSql,
   addressCityMatchSql,
   addressCityWhereClause,
-  requireCityScope,
 } from '../../utils/cityScope';
-import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
-import {
-  fetchBannerSettings,
-  upsertBannerSettings,
-  fetchWhatsAppOrderSettings,
-  fetchWhatsAppOrderSettingsAll,
-  upsertWhatsAppOrderSettings,
-  upsertWhatsAppOrderSettingsBulk,
-  upsertGlobalSiteSetting,
-  fetchBrandLogoSettings,
-  deleteBrandLogoFromStorage,
-  clearBrandLogoSettings,
-  BRAND_LOGO_URL_KEY,
-  BRAND_LOGO_STORAGE_PATH_KEY,
-  fetchBrandFaviconSettings,
-  deleteBrandFaviconFromStorage,
-  clearBrandFaviconSettings,
-  BRAND_FAVICON_URL_KEY,
-  BRAND_FAVICON_STORAGE_PATH_KEY,
-} from '../../utils/siteSettings';
-import { loadAdminSession } from '../../utils/adminSession';
-
-const SALT_ROUNDS = 12;
-
-/**
- * Current admin session (fresh permissions from DB)
- * GET /api/admin/me
- */
 
 export const getAdminAddresses = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 100, search, city, area } = req.query;

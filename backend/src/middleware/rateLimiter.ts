@@ -3,7 +3,7 @@
 // ============================================================================
 
 import rateLimit from 'express-rate-limit';
-import RedisStore, { type RedisReply, type SendCommandFn } from 'rate-limit-redis';
+import RedisStore, { type SendCommandFn } from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { Request, Response } from 'express';
 import logger from '../utils/logger';
