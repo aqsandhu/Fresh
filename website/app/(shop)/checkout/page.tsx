@@ -41,11 +41,11 @@ import { useCityContext } from '@/context/CityContext'
 
 type RealAddress = SavedAddress
 
-// Public wrapper. PinReauthGate intercepts at the route level if the user
-// has been inactive for >30 min and asks for the PIN before rendering the
-// real checkout. Once verified the gate disappears and the existing flow
-// runs unchanged. Logged-in users who *just* logged in (PIN or OTP) skip
-// the gate because pinVerifiedAt is fresh.
+// Public wrapper. PinReauthGate intercepts at the route level if the user's
+// last PIN verification is older than PIN_STALE_MS (see lib/phoneStorage.ts)
+// and asks for the PIN before rendering the real checkout. Once verified the
+// gate disappears and the existing flow runs unchanged. Logged-in users who
+// *just* logged in (PIN or OTP) skip the gate because pinVerifiedAt is fresh.
 export default function CheckoutPageWrapper() {
   return (
     <PinReauthGate>

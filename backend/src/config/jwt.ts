@@ -90,6 +90,24 @@ export const generateAccessToken = (
   );
 };
 
+// Short-lived token minted on demand for Socket.IO handshakes. Browser clients
+// authenticate the websocket cross-site (the HttpOnly cookie can't ride along),
+// so they fetch this token over the same-origin REST proxy and pass it in the
+// handshake `auth.token`. Same claims as an access token, so the existing
+// verifyAccessToken socket guard validates it unchanged.
+const SOCKET_TOKEN_EXPIRES_IN = process.env.SOCKET_TOKEN_EXPIRES_IN || '1h';
+export const generateSocketToken = (
+  userId: string,
+  phone: string,
+  role: UserRole
+): string => {
+  return jwt.sign(
+    { userId, phone, role },
+    jwtSecret,
+    { expiresIn: SOCKET_TOKEN_EXPIRES_IN } as SignOptions
+  );
+};
+
 // Generate refresh token
 export const generateRefreshToken = (
   userId: string,

@@ -1,346 +1,96 @@
 // ============================================================================
-// CART INTEGRATION TESTS
-// Tests: Cart CRUD operations, item management, delivery charge calculation
+// CART ROUTES — REAL integration tests
+// Cart routes sit behind `authenticate`, so these verify the real auth gate,
+// request validation, and ownership/return-shape behaviour with a mocked DB.
 // ============================================================================
 
 import { jest } from '@jest/globals';
+import request from 'supertest';
 import { query } from '@/config/database';
+import cartRoutes from '@/routes/cart.routes';
+import { buildApp, signAccessToken } from './helpers';
 
 const mockQuery = query as jest.MockedFunction<typeof query>;
+const app = buildApp('/api/cart', cartRoutes);
 
-describe('Cart Endpoints', () => {
-  const mockUserId = 'user-123';
-  const mockCartId = 'cart-456';
+function ok<T>(rows: T[], command = 'SELECT'): any {
+  return { rows, rowCount: rows.length, command, oid: 0, fields: [] };
+}
 
-  beforeEach(() => {
-    jest.clearAllMocks();
+const VALID_PRODUCT = '11111111-1111-1111-1111-111111111111';
+
+describe('Cart auth gate', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('rejects an unauthenticated GET /api/cart with 401', async () => {
+    const res = await request(app).get('/api/cart');
+    expect(res.status).toBe(401);
+    expect(res.body.success).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  // ============================================================================
-  describe('GET /api/cart', () => {
-    it('should return cart with items for authenticated user', async () => {
-      const mockCart = {
-        id: mockCartId,
-        user_id: mockUserId,
-        status: 'active',
-        subtotal: 550,
-        delivery_charge: 0,
-        total_amount: 550,
-      };
+  it('rejects a tampered/invalid bearer token with 401', async () => {
+    const res = await request(app)
+      .get('/api/cart')
+      .set('Authorization', 'Bearer not-a-real-jwt');
+    expect(res.status).toBe(401);
+  });
+});
 
-      const mockItems = [
-        {
-          id: 'item-1',
-          product_id: 'prod-1',
-          name_en: 'Fresh Apples',
-          quantity: 2,
-          unit_price: 150,
-          total_price: 300,
-          primary_image: 'apples.jpg',
-        },
-        {
-          id: 'item-2',
-          product_id: 'prod-2',
-          name_en: 'Bananas',
-          quantity: 1,
-          unit_price: 250,
-          total_price: 250,
-          primary_image: 'bananas.jpg',
-        },
-      ];
+describe('GET /api/cart', () => {
+  beforeEach(() => jest.clearAllMocks());
 
-      mockQuery
-        .mockResolvedValueOnce({ rows: [mockCart], rowCount: 1, command: 'SELECT', oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: mockItems, rowCount: 2, command: 'SELECT', oid: 0, fields: [] });
-
-      const cartResult = await mockQuery(
-        `SELECT * FROM carts WHERE user_id = $1 AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
-        [mockUserId]
+  it('returns the cart and items for the authenticated user', async () => {
+    mockQuery
+      // getOrCreateCart → existing active cart
+      .mockResolvedValueOnce(ok([{ id: 'cart-1', user_id: 'user-1', status: 'active' }]))
+      // cart items
+      .mockResolvedValueOnce(
+        ok([{ id: 'item-1', product_id: VALID_PRODUCT, quantity: 2, unit_price: '150', total_price: '300' }])
       );
 
-      const itemsResult = await mockQuery(
-        `SELECT ci.*, p.name_en, p.primary_image 
-         FROM cart_items ci 
-         JOIN products p ON ci.product_id = p.id 
-         WHERE ci.cart_id = $1`,
-        [mockCartId]
-      );
+    const res = await request(app)
+      .get('/api/cart')
+      .set('Authorization', `Bearer ${signAccessToken()}`);
 
-      expect(cartResult.rows[0]).toMatchObject(mockCart);
-      expect(itemsResult.rows).toHaveLength(2);
-      expect(itemsResult.rows[0].quantity).toBe(2);
-    });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    // First query is scoped to the authenticated user id, not a client-supplied one.
+    expect(mockQuery.mock.calls[0][1]).toEqual(['user-1']);
+  });
+});
 
-    it('should create new cart if none exists', async () => {
-      mockQuery
-        .mockResolvedValueOnce({ rows: [], rowCount: 0, command: 'SELECT', oid: 0, fields: [] })
-        .mockResolvedValueOnce({
-          rows: [{ id: mockCartId, user_id: mockUserId, status: 'active' }],
-          rowCount: 1, command: 'INSERT', oid: 0, fields: [],
-        });
+describe('POST /api/cart/add', () => {
+  beforeEach(() => jest.clearAllMocks());
 
-      const existingCart = await mockQuery(
-        `SELECT * FROM carts WHERE user_id = $1 AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
-        [mockUserId]
-      );
+  it('rejects a missing product_id with 422 before touching the DB', async () => {
+    const res = await request(app)
+      .post('/api/cart/add')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ quantity: 2 });
 
-      expect(existingCart.rowCount).toBe(0);
-
-      const newCart = await mockQuery(
-        `INSERT INTO carts (user_id, status, expires_at) VALUES ($1, 'active', NOW() + INTERVAL '7 days') RETURNING *`,
-        [mockUserId]
-      );
-
-      expect(newCart.rows[0].user_id).toBe(mockUserId);
-    });
-
-    it('should return empty cart for new user', async () => {
-      mockQuery
-        .mockResolvedValueOnce({ rows: [{ id: mockCartId, user_id: mockUserId }], rowCount: 1, command: 'SELECT', oid: 0, fields: [] })
-        .mockResolvedValueOnce({ rows: [], rowCount: 0, command: 'SELECT', oid: 0, fields: [] });
-
-      const itemsResult = await mockQuery(
-        'SELECT * FROM cart_items WHERE cart_id = $1',
-        [mockCartId]
-      );
-
-      expect(itemsResult.rows).toHaveLength(0);
-    });
+    expect(res.status).toBe(422);
+    expect(res.body.success).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  // ============================================================================
-  describe('POST /api/cart/items', () => {
-    it('should add item to cart', async () => {
-      const newItem = {
-        product_id: 'prod-3',
-        quantity: 3,
-        unit_price: 100,
-      };
+  it('rejects a non-positive quantity with 422', async () => {
+    const res = await request(app)
+      .post('/api/cart/add')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ product_id: VALID_PRODUCT, quantity: 0 });
 
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ id: 'item-3', ...newItem, total_price: 300 }],
-        rowCount: 1, command: 'INSERT', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price) 
-         VALUES ($1, $2, $3, $4) RETURNING *`,
-        [mockCartId, newItem.product_id, newItem.quantity, newItem.unit_price]
-      );
-
-      expect(result.rows[0].product_id).toBe('prod-3');
-      expect(result.rows[0].quantity).toBe(3);
-      expect(result.rows[0].total_price).toBe(300);
-    });
-
-    it('should update quantity if item already in cart', async () => {
-      const existingItem = { id: 'item-1', product_id: 'prod-1', quantity: 2 };
-      const additionalQuantity = 3;
-      const newQuantity = existingItem.quantity + additionalQuantity;
-
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ ...existingItem, quantity: newQuantity }],
-        rowCount: 1, command: 'UPDATE', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        `UPDATE cart_items SET quantity = $1, unit_price = $2
-         WHERE cart_id = $3 AND product_id = $4 RETURNING *`,
-        [newQuantity, 150, mockCartId, existingItem.product_id]
-      );
-
-      expect(result.rows[0].quantity).toBe(5);
-    });
-
-    it('should reject adding item with quantity zero or negative', async () => {
-      const invalidQuantities = [0, -1, -5];
-
-      for (const qty of invalidQuantities) {
-        expect(qty <= 0).toBe(true);
-      }
-    });
-
-    it('should reject adding item exceeding available stock', async () => {
-      const stockQuantity = 10;
-      const requestedQuantity = 15;
-
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ stock_quantity: stockQuantity }],
-        rowCount: 1, command: 'SELECT', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        'SELECT stock_quantity FROM products WHERE id = $1',
-        ['prod-1']
-      );
-
-      expect(requestedQuantity).toBeGreaterThan(result.rows[0].stock_quantity);
-    });
+    expect(res.status).toBe(422);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  // ============================================================================
-  describe('PUT /api/cart/items/:id', () => {
-    it('should update item quantity', async () => {
-      const itemId = 'item-1';
-      const newQuantity = 5;
-      const unitPrice = 150;
+  it('rejects a non-UUID product_id with 422', async () => {
+    const res = await request(app)
+      .post('/api/cart/add')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ product_id: 'not-a-uuid', quantity: 1 });
 
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ id: itemId, quantity: newQuantity, total_price: newQuantity * unitPrice }],
-        rowCount: 1, command: 'UPDATE', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        'UPDATE cart_items SET quantity = $1 WHERE id = $2 RETURNING *',
-        [newQuantity, itemId]
-      );
-
-      expect(result.rows[0].quantity).toBe(5);
-      expect(result.rows[0].total_price).toBe(750);
-    });
-
-    it('should remove item when quantity set to zero', async () => {
-      const itemId = 'item-1';
-
-      mockQuery.mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0, command: 'DELETE', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        'DELETE FROM cart_items WHERE id = $1',
-        [itemId]
-      );
-
-      expect(result.rowCount).toBe(0);
-    });
-  });
-
-  // ============================================================================
-  describe('DELETE /api/cart/items/:id', () => {
-    it('should remove item from cart', async () => {
-      const itemId = 'item-1';
-
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ id: itemId }],
-        rowCount: 1, command: 'DELETE', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        'DELETE FROM cart_items WHERE id = $1 RETURNING *',
-        [itemId]
-      );
-
-      expect(result.rowCount).toBe(1);
-    });
-
-    it('should return 404 for non-existent cart item', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [],
-        rowCount: 0, command: 'DELETE', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        'DELETE FROM cart_items WHERE id = $1 RETURNING *',
-        ['non-existent']
-      );
-
-      expect(result.rowCount).toBe(0);
-    });
-  });
-
-  // ============================================================================
-  describe('POST /api/cart/clear', () => {
-    it('should clear all items from cart', async () => {
-      mockQuery.mockResolvedValueOnce({
-        rows: [],
-        rowCount: 2, command: 'DELETE', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        'DELETE FROM cart_items WHERE cart_id = $1',
-        [mockCartId]
-      );
-
-      expect(result.rowCount).toBe(2);
-    });
-  });
-
-  // ============================================================================
-  describe('Cart Calculations', () => {
-    it('should calculate subtotal correctly', async () => {
-      const items = [
-        { quantity: 2, unit_price: 150 },
-        { quantity: 1, unit_price: 250 },
-        { quantity: 3, unit_price: 100 },
-      ];
-
-      const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-      expect(subtotal).toBe(850); // 2*150 + 1*250 + 3*100 = 300 + 250 + 300
-    });
-
-    it('should apply free delivery for orders above threshold', async () => {
-      const subtotal = 600;
-      const freeDeliveryThreshold = 500;
-      const deliveryCharge = subtotal >= freeDeliveryThreshold ? 0 : 100;
-
-      expect(deliveryCharge).toBe(0);
-    });
-
-    it('should charge delivery for orders below threshold', async () => {
-      const subtotal = 300;
-      const freeDeliveryThreshold = 500;
-      const deliveryCharge = subtotal >= freeDeliveryThreshold ? 0 : 100;
-
-      expect(deliveryCharge).toBe(100);
-    });
-
-    it('should charge delivery for chicken-only orders regardless of threshold', async () => {
-      const items = [
-        { category: 'chicken', quantity: 5, unit_price: 200 },
-      ];
-      const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-      const hasOnlyChicken = items.every(item => item.category === 'chicken');
-
-      expect(hasOnlyChicken).toBe(true);
-      // Chicken-only orders always have delivery charge
-      const deliveryCharge = hasOnlyChicken ? 100 : (subtotal >= 500 ? 0 : 100);
-      expect(deliveryCharge).toBe(100);
-    });
-
-    it('should calculate total amount correctly', async () => {
-      const subtotal = 600;
-      const deliveryCharge = 0;
-      const total = subtotal + deliveryCharge;
-
-      expect(total).toBe(600);
-    });
-  });
-
-  // ============================================================================
-  describe('Cart Ownership & Security', () => {
-    it('should verify cart belongs to authenticated user', async () => {
-      const cartOwnerId = 'user-123';
-      const authenticatedUserId = 'user-123';
-
-      mockQuery.mockResolvedValueOnce({
-        rows: [{ user_id: cartOwnerId }],
-        rowCount: 1, command: 'SELECT', oid: 0, fields: [],
-      });
-
-      const result = await mockQuery(
-        'SELECT user_id FROM carts WHERE id = $1',
-        [mockCartId]
-      );
-
-      expect(result.rows[0].user_id).toBe(authenticatedUserId);
-    });
-
-    it('should prevent accessing another user cart', async () => {
-      const cartOwnerId = 'user-456';
-      const authenticatedUserId = 'user-123';
-
-      expect(cartOwnerId).not.toBe(authenticatedUserId);
-    });
+    expect(res.status).toBe(422);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
