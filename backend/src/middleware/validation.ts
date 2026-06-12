@@ -183,10 +183,16 @@ export const authSchemas = {
     password: Joi.string().required(),
   }),
   
+  // Website sends an EMPTY body — its refresh token lives in an HttpOnly
+  // cookie that the controller reads via getRefreshTokenFromRequest. Requiring
+  // a body token here would 400 every cookie-mode refresh and force-log-out
+  // browser sessions as soon as the access token expires. Mobile/admin still
+  // send the token in the body; a missing token everywhere yields the
+  // controller's own 401.
   refresh: Joi.object({
     refreshToken: Joi.string(),
     refresh_token: Joi.string(),
-  }).or('refreshToken', 'refresh_token'),
+  }),
   
   changePassword: Joi.object({
     currentPassword: Joi.string().required(),

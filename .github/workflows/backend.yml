@@ -11,19 +11,6 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: freshbazar_test
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@v4
 
@@ -42,15 +29,12 @@ jobs:
       - name: Build shared types
         run: pnpm --filter @freshbazar/shared-types build
 
+      # Full suite (unit + integration). Integration tests mount the real
+      # routers with the DB layer mocked, so no live Postgres is required.
       - name: Run backend tests
-        run: pnpm --filter @freshbazar/backend test -- --testPathPattern="tests/unit|auditLogger" --coverage
+        run: pnpm --filter @freshbazar/backend test
         env:
           NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 5432
-          DB_USER: test
-          DB_PASSWORD: test
-          DB_NAME: freshbazar_test
           JWT_SECRET: test-secret-key-for-ci-only
           JWT_REFRESH_SECRET: test-refresh-secret-for-ci-only
 

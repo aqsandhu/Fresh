@@ -4,10 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, MessageCircle, Loader2, Wifi, WifiOff } from 'lucide-react'
 import { chatApi } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
-import { usesHttpOnlyCookies } from '@/lib/authConfig'
-import { getValidAccessToken } from '@/lib/tokenRefresh'
 import {
   connectSocket,
+  resolveSocketAuthToken,
   subscribeToOrder,
   unsubscribeFromOrder,
   sendChatMessage,
@@ -76,9 +75,8 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     }
 
     const setupSocket = async () => {
-      const token = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
-      if (!usesHttpOnlyCookies() && !token) return
-      if (cancelled) return
+      const token = await resolveSocketAuthToken()
+      if (!token || cancelled) return
 
       const socket = connectSocket(token)
 
@@ -124,7 +122,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     }
     setMessages((prev) => [...prev, optimisticMsg])
 
-    const token = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
+    const token = await resolveSocketAuthToken()
     const socket = connectSocket(token)
     if (socket.connected) {
       sendChatMessage(orderId, text)
@@ -150,7 +148,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     setNewMessage(text)
 
     const runTyping = async () => {
-      const token = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
+      const token = await resolveSocketAuthToken()
       const socket = connectSocket(token)
       if (!socket.connected) return
 

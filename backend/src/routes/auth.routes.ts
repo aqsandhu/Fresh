@@ -89,6 +89,7 @@ router.post(
 // ── Protected routes ────────────────────────────────────────────────────
 router.post('/logout', authenticate, authController.logout);
 router.get('/me', authenticate, authController.getMe);
+router.get('/socket-token', authenticate, authController.getSocketToken);
 router.put('/profile', authenticate, verifyUserActive, authController.updateProfile);
 router.put('/change-password', authenticate, validate(authSchemas.changePassword), authController.changePassword);
 

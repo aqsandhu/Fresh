@@ -302,6 +302,19 @@ export const authApi = {
     return response.data
   },
 
+  // Short-lived token for the Socket.IO handshake. In cookie mode the websocket
+  // connects cross-site to the backend host where the HttpOnly cookie can't be
+  // sent, so we mint a handshake token over this same-origin (cookie-authed)
+  // call instead. Returns null if the session isn't valid.
+  getSocketToken: async (): Promise<string | null> => {
+    try {
+      const response = await api.get('/auth/socket-token')
+      return response.data?.data?.token ?? null
+    } catch {
+      return null
+    }
+  },
+
   // Update user profile
   updateProfile: async (data: { full_name?: string; email?: string; preferred_language?: string; notification_enabled?: boolean }) => {
     const response = await api.put('/auth/profile', data)

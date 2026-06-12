@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../config/database';
-import { verifyRefreshToken } from '../config/jwt';
+import { verifyRefreshToken, generateSocketToken } from '../config/jwt';
 import { issueTokenPair, issueAdminTokenPair, rotateRefreshToken } from '../utils/authTokens';
 import {
   isRefreshTokenAllowed,
@@ -25,6 +25,11 @@ import { normalizePhoneNumber } from '../utils/validators';
 import { verifyPhoneFromRequest } from '../services/otp.service';
 import { isOtpBypassEnabled } from '../config/otpBypass';
 import { getPinStatusForPhone, ensurePinColumns, hasPinColumns } from '../config/pinAuth';
+import {
+  getPinLockoutState,
+  registerPinFailure,
+  clearPinFailures,
+} from '../config/pinLockout';
 import logger from '../utils/logger';
 import { loadAdminSession } from '../utils/adminSession';
 import {
@@ -455,6 +460,23 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
+ * Issue a short-lived token for authenticating a Socket.IO handshake.
+ * GET /api/auth/socket-token
+ *
+ * Browser clients use HttpOnly-cookie auth and connect the websocket directly
+ * to the backend host, which is cross-site — the cookie isn't sent. They call
+ * this (same-origin, cookie-authenticated) to obtain a token they can pass in
+ * the socket handshake instead.
+ */
+export const getSocketToken = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    return unauthorizedResponse(res, 'Authentication required');
+  }
+  const token = generateSocketToken(req.user.userId, req.user.phone, req.user.role);
+  successResponse(res, { token }, 'Socket token issued');
+});
+
+/**
  * Get current user profile
  * GET /api/auth/me
  */
@@ -606,60 +628,6 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
 
 const PIN_BCRYPT_ROUNDS = 10;
 
-// ── Per-account PIN brute-force lockout ───────────────────────────────
-// A 4-digit PIN is only 10,000 combinations, so a botnet can defeat an
-// IP-based limiter trivially. We track failed attempts per phone and lock
-// the account for an exponentially increasing window after each round of
-// 5 failures, regardless of the source IP.
-const PIN_FAIL_THRESHOLD = 5;
-const PIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
-const PIN_LOCKOUT_BASE_MS = 15 * 60 * 1000;
-const PIN_LOCKOUT_MAX_MS = 24 * 60 * 60 * 1000;
-
-interface PinLockoutEntry {
-  fails: number;
-  firstFailAt: number;
-  lockedUntil: number;
-  totalRounds: number;
-}
-
-const pinLockouts = new Map<string, PinLockoutEntry>();
-
-function getPinLockoutState(phone: string): PinLockoutEntry {
-  const now = Date.now();
-  const entry = pinLockouts.get(phone);
-  if (!entry) return { fails: 0, firstFailAt: 0, lockedUntil: 0, totalRounds: 0 };
-  if (entry.lockedUntil && entry.lockedUntil > now) return entry;
-  if (entry.firstFailAt && now - entry.firstFailAt > PIN_FAIL_WINDOW_MS) {
-    pinLockouts.delete(phone);
-    return { fails: 0, firstFailAt: 0, lockedUntil: 0, totalRounds: 0 };
-  }
-  return entry;
-}
-
-function registerPinFailure(phone: string): { lockedUntil: number; fails: number } {
-  const now = Date.now();
-  const current = getPinLockoutState(phone);
-  const fails = current.fails + 1;
-  let lockedUntil = 0;
-  let totalRounds = current.totalRounds;
-  if (fails >= PIN_FAIL_THRESHOLD) {
-    totalRounds += 1;
-    lockedUntil = now + Math.min(PIN_LOCKOUT_BASE_MS * 2 ** (totalRounds - 1), PIN_LOCKOUT_MAX_MS);
-  }
-  pinLockouts.set(phone, {
-    fails: lockedUntil ? 0 : fails,
-    firstFailAt: current.firstFailAt || now,
-    lockedUntil,
-    totalRounds,
-  });
-  return { lockedUntil, fails };
-}
-
-function clearPinFailures(phone: string): void {
-  pinLockouts.delete(phone);
-}
-
 /**
  * GET /api/auth/pin-status?phone=+92...
  * Lets the login UI decide whether to show "Enter PIN" or fall through to OTP.
@@ -728,7 +696,7 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   const normalizedPhone = normalizePhoneNumber(phone);
 
   // Per-account lockout takes priority over any per-IP limit.
-  const lockState = getPinLockoutState(normalizedPhone);
+  const lockState = await getPinLockoutState(normalizedPhone);
   if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
     const retryAfter = Math.ceil((lockState.lockedUntil - Date.now()) / 1000);
     res.setHeader('Retry-After', String(retryAfter));
@@ -754,7 +722,7 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   if (result.rows.length === 0 || !result.rows[0].pin_hash) {
     // Same error for "no user" and "no PIN set" — prevents phone enumeration.
     // We still count a failure so attackers can't probe phones for free.
-    registerPinFailure(normalizedPhone);
+    await registerPinFailure(normalizedPhone);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
 
@@ -766,7 +734,7 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
 
   const valid = await bcrypt.compare(pin, user.pin_hash);
   if (!valid) {
-    const { lockedUntil } = registerPinFailure(normalizedPhone);
+    const { lockedUntil } = await registerPinFailure(normalizedPhone);
     logger.warn('PIN verify failed', { userId: user.id, lockedUntil });
     if (lockedUntil) {
       const retryAfter = Math.ceil((lockedUntil - Date.now()) / 1000);
@@ -781,7 +749,7 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Successful login resets the failure counter.
-  clearPinFailures(normalizedPhone);
+  await clearPinFailures(normalizedPhone);
 
   const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);

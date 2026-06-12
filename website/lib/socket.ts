@@ -1,7 +1,23 @@
 import { io, Socket } from 'socket.io-client';
 import { usesHttpOnlyCookies } from '@/lib/authConfig';
+import { getValidAccessToken } from '@/lib/tokenRefresh';
+import { authApi } from '@/lib/api';
 
 let socket: Socket | null = null;
+
+/**
+ * Resolve the token to authenticate a socket handshake.
+ * - Cookie mode: the websocket connects cross-site (HttpOnly cookie can't ride
+ *   along), so fetch a short-lived handshake token over the same-origin proxy.
+ * - Bearer mode (legacy/dev): use the in-memory access token.
+ * Returns null when there's no valid session.
+ */
+export const resolveSocketAuthToken = async (): Promise<string | null> => {
+  if (usesHttpOnlyCookies()) {
+    return authApi.getSocketToken();
+  }
+  return getValidAccessToken();
+};
 
 /**
  * Connect to Socket.IO — HttpOnly cookie auth when enabled (no JS token).

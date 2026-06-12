@@ -10,11 +10,11 @@ import {
   disconnectSocket,
   getSocket,
   reconnectSocket,
+  resolveSocketAuthToken,
 } from '@/lib/socket'
 import { usesHttpOnlyCookies } from '@/lib/authConfig'
 import {
   ensureAuthSession,
-  getValidAccessToken,
   refreshWebsiteAccessToken,
 } from '@/lib/tokenRefresh'
 
@@ -143,8 +143,8 @@ export default function NotificationProvider({ children }: { children: React.Rea
       const sessionOk = await ensureAuthSession()
       if (cancelled || !sessionOk) return
 
-      const token = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
-      if (!usesHttpOnlyCookies() && !token) return
+      const token = await resolveSocketAuthToken()
+      if (cancelled || !token) return
 
       const socket = connectSocket(token)
 
@@ -152,11 +152,13 @@ export default function NotificationProvider({ children }: { children: React.Rea
         if (!err.message.toLowerCase().includes('jwt') && !err.message.toLowerCase().includes('expired')) {
           return
         }
-        const refreshed = await refreshWebsiteAccessToken()
-        if (refreshed) {
-          const freshToken = usesHttpOnlyCookies() ? undefined : await getValidAccessToken()
-          reconnectSocket(freshToken)
+        // Bearer mode needs a token refresh first; cookie mode just re-mints a
+        // fresh handshake token. Either way, reconnect with the new token.
+        if (!usesHttpOnlyCookies() && !(await refreshWebsiteAccessToken())) {
+          return
         }
+        const freshToken = await resolveSocketAuthToken()
+        if (freshToken) reconnectSocket(freshToken)
       }
 
       socket.on('connect_error', handleConnectError)
