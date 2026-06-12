@@ -13,6 +13,7 @@ import {
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
+import { restoreOrderInventory } from '../utils/orderStatus';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 import { normalizePhoneNumber } from '../utils/validators';
@@ -625,9 +626,10 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
   let cancelledOrder: any;
 
   await withTransaction(async (client) => {
-    // Check if order exists and belongs to user
+    // Check if order exists and belongs to user. FOR UPDATE so two concurrent
+    // cancels can't both pass the status check and restore stock twice.
     const orderResult = await client.query(
-      'SELECT * FROM orders WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL',
+      'SELECT * FROM orders WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL FOR UPDATE',
       [id, req.user!.id]
     );
 
@@ -666,34 +668,8 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
       [reason, id]
     );
 
-    // Restore time slot capacity
-    if (order.time_slot_id) {
-      await client.query(
-        'UPDATE time_slots SET booked_orders = GREATEST(0, booked_orders - 1) WHERE id = $1',
-        [order.time_slot_id]
-      );
-    }
-
-    // CRITICAL FIX: Restore stock quantities for cancelled order items
-    const orderItemsResult = await client.query(
-      'SELECT product_id, quantity, unit FROM order_items WHERE order_id = $1',
-      [id]
-    );
-
-    for (const item of orderItemsResult.rows) {
-      const restoreAmount = stockUnitsNeeded(item.quantity, item.unit);
-      await client.query(
-        `UPDATE products 
-         SET stock_quantity = stock_quantity + $1,
-             stock_status = CASE 
-               WHEN stock_quantity + $1 > 0 THEN 'active'::product_status
-               ELSE 'out_of_stock'::product_status
-             END,
-             updated_at = NOW()
-         WHERE id = $2`,
-        [restoreAmount, item.product_id]
-      );
-    }
+    // Restore time-slot seat + stock (shared with admin/webhook cancel paths).
+    await restoreOrderInventory(client, order);
 
     cancelledOrder = order;
   });

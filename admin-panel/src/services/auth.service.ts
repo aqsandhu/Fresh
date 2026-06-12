@@ -2,6 +2,7 @@ import { api } from './api';
 import { clearCitySelection, setCitySelection } from '@/lib/cityStorage';
 import { refreshAdminAccessToken } from '@/lib/adminTokenRefresh';
 import { normalizeAdminUser } from '@/lib/adminUser';
+import { AUTH_COOKIES_ENABLED } from '@/config/env';
 import type { 
   LoginCredentials, 
   AuthResponse, 
@@ -31,8 +32,12 @@ export const authService = {
       }
 
       if (response.success && response.data) {
-        localStorage.setItem('admin_token', response.data.tokens.accessToken);
-        localStorage.setItem('admin_refresh_token', response.data.tokens.refreshToken);
+        // Cookie mode: the backend set HttpOnly cookies and stripped the
+        // token strings from the response — only the user is cached locally.
+        if (!AUTH_COOKIES_ENABLED && response.data.tokens) {
+          localStorage.setItem('admin_token', response.data.tokens.accessToken);
+          localStorage.setItem('admin_refresh_token', response.data.tokens.refreshToken);
+        }
         localStorage.setItem('admin_user', JSON.stringify(user));
 
         if (user.adminRoleId && user.adminRoleCityId) {
@@ -58,6 +63,11 @@ export const authService = {
   },
 
   logout: (): void => {
+    if (AUTH_COOKIES_ENABLED) {
+      // Revoke the refresh token + clear the HttpOnly cookies server-side.
+      // Fire-and-forget: local cleanup must not wait on the network.
+      api.post('/auth/logout').catch(() => {});
+    }
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_refresh_token');
     localStorage.removeItem('admin_user');
@@ -76,14 +86,17 @@ export const authService = {
   },
 
   getToken: (): string | null => {
+    if (AUTH_COOKIES_ENABLED) return null; // token is HttpOnly — not readable
     return localStorage.getItem('admin_token');
   },
 
   getRefreshToken: (): string | null => {
+    if (AUTH_COOKIES_ENABLED) return null; // token is HttpOnly — not readable
     return localStorage.getItem('admin_refresh_token');
   },
 
   isAuthenticated: (): boolean => {
+    if (AUTH_COOKIES_ENABLED) return !!localStorage.getItem('admin_user');
     return !!localStorage.getItem('admin_token');
   },
 

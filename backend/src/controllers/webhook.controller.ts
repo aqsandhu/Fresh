@@ -42,27 +42,11 @@ import crypto from 'crypto';
 import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, errorResponse } from '../utils/response';
-import { stockUnitsNeeded } from '../utils/unitPricing';
+import {
+  isValidOrderTransition,
+  restoreOrderInventory,
+} from '../utils/orderStatus';
 import logger from '../utils/logger';
-
-// Allowed forward transitions for order status. Anything not in this map is
-// treated as a no-op / rejected so external webhooks can't jump an order from
-// `pending` to `delivered` or revive a cancelled one.
-const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
-  pending: ['confirmed', 'cancelled'],
-  confirmed: ['preparing', 'cancelled'],
-  preparing: ['ready_for_pickup', 'cancelled'],
-  ready_for_pickup: ['out_for_delivery', 'cancelled'],
-  out_for_delivery: ['delivered', 'cancelled'],
-  delivered: ['refunded'],
-  cancelled: [],
-  refunded: [],
-};
-
-function isValidOrderTransition(from: string, to: string): boolean {
-  if (from === to) return true;
-  return ORDER_STATUS_TRANSITIONS[from]?.includes(to) ?? false;
-}
 
 /**
  * Atomically claim a webhook for processing.
@@ -208,7 +192,7 @@ export const orderStatusWebhook = asyncHandler(async (req: Request, res: Respons
 
   // Signature first — never trust payload before HMAC verification.
   const signature = req.headers['x-webhook-signature'] as string | undefined;
-  if (!verifyWebhookSignature(req.body, signature, source)) {
+  if (!verifyWebhookSignature(req, signature, source)) {
     return errorResponse(res, 'Invalid webhook signature', 401);
   }
 
@@ -282,31 +266,7 @@ export const orderStatusWebhook = asyncHandler(async (req: Request, res: Respons
       // Mirror cancellation side-effects (stock + time slot capacity) so a
       // webhook-driven cancel matches the customer-driven cancelOrder path.
       if (status === 'cancelled' && order.status !== 'cancelled') {
-        if (order.time_slot_id) {
-          await client.query(
-            'UPDATE time_slots SET booked_orders = GREATEST(0, booked_orders - 1) WHERE id = $1',
-            [order.time_slot_id]
-          );
-        }
-
-        const items = await client.query(
-          'SELECT product_id, quantity, unit FROM order_items WHERE order_id = $1',
-          [order_id]
-        );
-        for (const item of items.rows) {
-          const restoreAmount = stockUnitsNeeded(item.quantity, item.unit);
-          await client.query(
-            `UPDATE products
-                SET stock_quantity = stock_quantity + $1,
-                    stock_status = CASE
-                      WHEN stock_quantity + $1 > 0 THEN 'active'::product_status
-                      ELSE 'out_of_stock'::product_status
-                    END,
-                    updated_at = NOW()
-              WHERE id = $2`,
-            [restoreAmount, item.product_id]
-          );
-        }
+        await restoreOrderInventory(client, { id: order_id, time_slot_id: order.time_slot_id });
       }
 
       return {
@@ -337,7 +297,7 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
 
   // Signature first.
   const signature = req.headers['x-webhook-signature'] as string | undefined;
-  if (!verifyWebhookSignature(req.body, signature, source)) {
+  if (!verifyWebhookSignature(req, signature, source)) {
     return errorResponse(res, 'Invalid webhook signature', 401);
   }
 
@@ -506,7 +466,7 @@ export const riderLocationWebhook = asyncHandler(async (req: Request, res: Respo
 
   const logId = await logWebhookAttempt('rider_location', req.body, source, 'received');
 
-  if (!verifyWebhookSignature(req.body, signature, source)) {
+  if (!verifyWebhookSignature(req, signature, source)) {
     await updateWebhookLog(logId, 'failed', { error: 'Invalid webhook signature' });
     return errorResponse(res, 'Invalid webhook signature', 401);
   }
@@ -546,13 +506,19 @@ export const riderLocationWebhook = asyncHandler(async (req: Request, res: Respo
 });
 
 /**
- * Verify webhook signature
- * Implements HMAC-SHA256 signature verification
+ * Verify webhook signature (HMAC-SHA256 over the RAW request body).
  *
- * SECURITY FIX: Properly verifies webhook signatures using WEBHOOK_SECRET
- * Falls back to requiring x-webhook-source header for development
+ * The HMAC is computed on the exact bytes the sender transmitted (captured by
+ * the express.json `verify` hook in app.ts). Hashing JSON.stringify(req.body)
+ * instead would silently reject valid webhooks whenever the sender's key
+ * order/whitespace differs from our re-serialisation. JSON.stringify remains
+ * only as a fallback for callers that bypass the HTTP pipeline (unit tests).
  */
-const verifyWebhookSignature = (payload: any, signature: string | undefined, source: string | string[] | undefined): boolean => {
+const verifyWebhookSignature = (
+  req: Request,
+  signature: string | undefined,
+  source: string | string[] | undefined
+): boolean => {
   // If no signature provided, check for development mode with source header
   if (!signature) {
     // In development, allow webhooks with valid source header
@@ -572,11 +538,11 @@ const verifyWebhookSignature = (payload: any, signature: string | undefined, sou
   }
 
   try {
-    // Compute expected signature using HMAC-SHA256
-    const payloadString = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    const payloadBytes = rawBody ?? Buffer.from(JSON.stringify(req.body ?? {}));
     const expectedSignature = crypto
       .createHmac('sha256', webhookSecret)
-      .update(payloadString)
+      .update(payloadBytes)
       .digest('hex');
 
     // Use timing-safe comparison to prevent timing attacks

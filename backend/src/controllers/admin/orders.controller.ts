@@ -23,6 +23,11 @@ import {
 } from '../../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
 import {
+  isValidOrderTransition,
+  restoreOrderInventory,
+  ORDER_STATUS_TIMESTAMPS,
+} from '../../utils/orderStatus';
+import {
   fetchBannerSettings,
   upsertBannerSettings,
   fetchWhatsAppOrderSettings,
@@ -211,31 +216,58 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   const { id } = req.params;
   const { status, reason } = req.body;
 
-  const statusTimestamps: Record<string, string> = {
-    confirmed: 'confirmed_at',
-    preparing: 'preparing_at',
-    ready_for_pickup: 'ready_at',
-    out_for_delivery: 'out_for_delivery_at',
-    delivered: 'delivered_at',
-    cancelled: 'cancelled_at',
-  };
+  // Transaction + row lock: the transition check, the status flip and the
+  // cancel side-effects (stock/slot restore) must be atomic — same contract
+  // as the customer-cancel and webhook paths.
+  let updatedRow: any = null;
+  try {
+    updatedRow = await withTransaction(async (client) => {
+      const orderResult = await client.query(
+        'SELECT id, status, time_slot_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+        [id]
+      );
+      if (orderResult.rows.length === 0) return null;
 
-  const timestampColumn = statusTimestamps[status];
-  const timestampValue = timestampColumn ? `, ${timestampColumn} = NOW()` : '';
+      const order = orderResult.rows[0];
 
-  const result = await query(
-    `UPDATE orders 
-     SET status = $1${timestampValue}, 
-         cancellation_reason = COALESCE($2, cancellation_reason),
-         updated_at = NOW()
-     WHERE id = $3
-     RETURNING *`,
-    [status, reason, id]
-  );
+      if (!isValidOrderTransition(order.status, status)) {
+        throw Object.assign(
+          new Error(`Invalid status transition: ${order.status} → ${status}`),
+          { http: 409 }
+        );
+      }
 
-  if (result.rows.length === 0) {
+      const timestampColumn = ORDER_STATUS_TIMESTAMPS[status];
+      const timestampValue = timestampColumn ? `, ${timestampColumn} = NOW()` : '';
+
+      const result = await client.query(
+        `UPDATE orders
+         SET status = $1${timestampValue},
+             cancellation_reason = COALESCE($2, cancellation_reason),
+             updated_at = NOW()
+         WHERE id = $3
+         RETURNING *`,
+        [status, reason, id]
+      );
+
+      // Cancelling releases what the order consumed at creation.
+      if (status === 'cancelled' && order.status !== 'cancelled') {
+        await restoreOrderInventory(client, order);
+      }
+
+      return result.rows[0];
+    });
+  } catch (err: any) {
+    if (err?.http === 409) {
+      return errorResponse(res, err.message, 409);
+    }
+    throw err;
+  }
+
+  if (!updatedRow) {
     return notFoundResponse(res, 'Order not found');
   }
+  const result = { rows: [updatedRow] };
 
   logger.info('Order status updated', { orderId: id, status, updatedBy: req.user?.id });
 
@@ -276,19 +308,33 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
 export const markPaymentReceived = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
+  // Guard the state machine: a cancelled/refunded order must never flip to
+  // delivered+paid (that resurrected dead orders and inflated revenue).
   const result = await query(
-    `UPDATE orders 
+    `UPDATE orders
      SET payment_status = 'completed',
          paid_amount = total_amount,
          status = 'delivered',
          delivered_at = COALESCE(delivered_at, NOW()),
          updated_at = NOW()
      WHERE id = $1 AND deleted_at IS NULL
+       AND status NOT IN ('cancelled', 'refunded')
      RETURNING *`,
     [id]
   );
 
   if (result.rows.length === 0) {
+    const exists = await query(
+      `SELECT status FROM orders WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+    if (exists.rows.length > 0) {
+      return errorResponse(
+        res,
+        `Cannot mark a ${exists.rows[0].status} order as paid/delivered`,
+        409
+      );
+    }
     return notFoundResponse(res, 'Order not found');
   }
 
@@ -558,27 +604,56 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
     return errorResponse(res, 'At least one order ID is required', 400);
   }
 
-  const statusTimestamps: Record<string, string> = {
-    confirmed: 'confirmed_at',
-    preparing: 'preparing_at',
-    ready_for_pickup: 'ready_at',
-    out_for_delivery: 'out_for_delivery_at',
-    delivered: 'delivered_at',
-    cancelled: 'cancelled_at',
-  };
-
-  const timestampColumn = statusTimestamps[status];
+  const timestampColumn = ORDER_STATUS_TIMESTAMPS[status];
   const timestampValue = timestampColumn ? `, ${timestampColumn} = NOW()` : '';
 
-  const result = await query(
-    `UPDATE orders 
-     SET status = $1${timestampValue}, 
-         cancellation_reason = COALESCE($2, cancellation_reason),
-         updated_at = NOW()
-     WHERE id = ANY($3::uuid[]) AND deleted_at IS NULL
-     RETURNING *`,
-    [status, reason || null, order_ids]
-  );
+  // Per-order transition validation + cancel side-effects, atomically.
+  // Orders whose current status can't legally move to the target are skipped
+  // (and reported back) instead of being force-jumped.
+  const { updatedRows, skipped } = await withTransaction(async (client) => {
+    const lockResult = await client.query(
+      `SELECT id, status, time_slot_id FROM orders
+        WHERE id = ANY($1::uuid[]) AND deleted_at IS NULL
+        FOR UPDATE`,
+      [order_ids]
+    );
+
+    const allowed: any[] = [];
+    const skippedLocal: { id: string; status: string }[] = [];
+    for (const order of lockResult.rows) {
+      if (isValidOrderTransition(order.status, status)) {
+        allowed.push(order);
+      } else {
+        skippedLocal.push({ id: order.id, status: order.status });
+      }
+    }
+
+    if (allowed.length === 0) {
+      return { updatedRows: [] as any[], skipped: skippedLocal };
+    }
+
+    const result = await client.query(
+      `UPDATE orders
+       SET status = $1${timestampValue},
+           cancellation_reason = COALESCE($2, cancellation_reason),
+           updated_at = NOW()
+       WHERE id = ANY($3::uuid[])
+       RETURNING *`,
+      [status, reason || null, allowed.map((o) => o.id)]
+    );
+
+    if (status === 'cancelled') {
+      for (const order of allowed) {
+        if (order.status !== 'cancelled') {
+          await restoreOrderInventory(client, order);
+        }
+      }
+    }
+
+    return { updatedRows: result.rows, skipped: skippedLocal };
+  });
+
+  const result = { rows: updatedRows };
 
   for (const order of result.rows) {
     emitOrderUpdate(order.id, {
@@ -606,14 +681,18 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
 
   logger.info('Bulk order status updated', {
     count: result.rows.length,
+    skipped: skipped.length,
     status,
     updatedBy: req.user?.id,
   });
 
   successResponse(res, {
     updated: result.rows.length,
+    skipped,
     orders: result.rows,
-  }, `${result.rows.length} order(s) updated successfully`);
+  }, skipped.length > 0
+    ? `${result.rows.length} order(s) updated, ${skipped.length} skipped (invalid status transition)`
+    : `${result.rows.length} order(s) updated successfully`);
 });
 
 /**

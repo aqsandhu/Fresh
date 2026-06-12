@@ -348,6 +348,18 @@ export const addressSchemas = {
 
 // Order validation schemas
 export const orderSchemas = {
+  // GET /api/orders query — clamps page/limit (an unbounded limit was a
+  // free heavy-query lever) and whitelists status against the enum.
+  list: Joi.object({
+    page: commonSchemas.page,
+    limit: commonSchemas.limit,
+    status: Joi.string().valid(
+      'pending', 'confirmed', 'preparing', 'ready_for_pickup',
+      'out_for_delivery', 'delivered', 'cancelled', 'refunded'
+    ),
+    city_id: commonSchemas.uuid,
+  }),
+
   create: Joi.object({
     address_id: commonSchemas.uuid.required(),
     time_slot_id: commonSchemas.uuid,

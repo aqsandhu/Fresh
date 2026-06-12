@@ -3,14 +3,35 @@ import { Request, Response } from 'express';
 const ACCESS_COOKIE = 'token';
 const REFRESH_COOKIE = 'refreshToken';
 
+type SameSiteOption = 'lax' | 'strict' | 'none';
+
+/**
+ * SameSite is env-configurable because the admin SPA may live on a different
+ * site than the API (e.g. *.vercel.app → *.onrender.com). Cookie auth across
+ * sites needs SameSite=None; same-site deployments should keep the stricter
+ * Lax default. AUTH_COOKIE_DOMAIN lets subdomain deployments share the
+ * cookie (e.g. ".freshbazar.pk" for admin. + api.).
+ */
+function resolveSameSite(): SameSiteOption {
+  const raw = (process.env.AUTH_COOKIE_SAMESITE || 'lax').toLowerCase();
+  return raw === 'strict' || raw === 'none' ? raw : 'lax';
+}
+
+function resolveCookieDomain(): string | undefined {
+  return process.env.AUTH_COOKIE_DOMAIN || undefined;
+}
+
 function cookieOptions(maxAgeMs: number, path = '/') {
   const isProd = process.env.NODE_ENV === 'production';
+  const sameSite = resolveSameSite();
   return {
     httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax' as const,
+    // Browsers reject SameSite=None without Secure.
+    secure: isProd || sameSite === 'none',
+    sameSite,
     maxAge: maxAgeMs,
     path,
+    ...(resolveCookieDomain() ? { domain: resolveCookieDomain() } : {}),
   };
 }
 
@@ -46,8 +67,12 @@ export function setAuthCookies(
 }
 
 export function clearAuthCookies(res: Response): void {
-  res.clearCookie(ACCESS_COOKIE, { path: '/' });
-  res.clearCookie(REFRESH_COOKIE, { path: '/api/auth/refresh' });
+  const domain = resolveCookieDomain();
+  res.clearCookie(ACCESS_COOKIE, { path: '/', ...(domain ? { domain } : {}) });
+  res.clearCookie(REFRESH_COOKIE, {
+    path: '/api/auth/refresh',
+    ...(domain ? { domain } : {}),
+  });
 }
 
 export function getRefreshTokenFromRequest(req: {
@@ -65,12 +90,31 @@ export function isWebsiteCookieClient(req: Pick<Request, 'get'>): boolean {
   return shouldUseAuthCookies() && req.get('x-client-platform') === 'website';
 }
 
+/**
+ * Admin panel cookie mode is opt-in via ADMIN_AUTH_COOKIES=true (set the
+ * matching VITE_AUTH_COOKIES=true on the panel). Kept behind its own flag so
+ * the existing bearer-token deployment keeps working until the operator
+ * aligns domains / SameSite for the cross-site SPA.
+ */
+export function adminCookiesEnabled(): boolean {
+  return process.env.ADMIN_AUTH_COOKIES === 'true';
+}
+
+export function isAdminCookieClient(req: Pick<Request, 'get'>): boolean {
+  return adminCookiesEnabled() && req.get('x-client-platform') === 'admin';
+}
+
+/** Any browser client whose session lives in HttpOnly cookies. */
+export function isCookieAuthClient(req: Pick<Request, 'get'>): boolean {
+  return isWebsiteCookieClient(req) || isAdminCookieClient(req);
+}
+
 /** Remove JWT strings from JSON when the browser uses HttpOnly cookies. */
 export function stripTokensFromAuthData<T extends Record<string, unknown>>(
   req: Pick<Request, 'get'>,
   data: T
 ): T {
-  if (!isWebsiteCookieClient(req)) return data;
+  if (!isCookieAuthClient(req)) return data;
   if (!('tokens' in data)) return data;
   const { tokens: _removed, ...rest } = data;
   return rest as T;

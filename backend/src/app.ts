@@ -152,8 +152,18 @@ app.use(cors(corsOptions));
 // REQUEST PARSING MIDDLEWARE
 // ============================================================================
 
-// Parse JSON bodies
-app.use(express.json({ limit: '10mb' }));
+// Parse JSON bodies. The `verify` hook captures the raw request bytes so
+// webhook HMAC signatures can be checked against exactly what the sender
+// signed — re-serialising req.body (JSON.stringify) breaks the moment the
+// sender's key order or whitespace differs from ours.
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, _res, buf) => {
+      (req as Request & { rawBody?: Buffer }).rawBody = buf;
+    },
+  })
+);
 
 // Parse cookies (HttpOnly auth tokens for browser clients)
 app.use(cookieParser());

@@ -24,7 +24,7 @@ router.get('/track/:id', authenticate, orderController.trackOrder);
 // Protected routes
 router.use(authenticate);
 
-router.get('/', orderController.getOrders);
+router.get('/', validate(orderSchemas.list, 'query'), orderController.getOrders);
 router.get('/:id', orderController.getOrderById);
 router.post(
   '/',
