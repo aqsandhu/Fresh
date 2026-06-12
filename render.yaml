@@ -28,8 +28,10 @@ services:
       - key: DATABASE_MIGRATION_URL
         sync: false  # Optional direct :5432 URL if pooler blocks ALTER TABLE
       # Option 2: Use individual variables (fallback if DATABASE_URL not set)
+      # DB_HOST intentionally has no committed value — a public repo must not
+      # advertise the database hostname/project id. Set it in the dashboard.
       - key: DB_HOST
-        value: db.kvyjqqtkpozxpvuoalyw.supabase.co
+        sync: false
       - key: DB_PORT
         value: 5432
       - key: DB_USER

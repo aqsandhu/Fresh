@@ -22,7 +22,7 @@ import {
   playNotificationSound,
   reconnectSocket,
 } from '@/services/socket';
-import { getValidAdminAccessToken, refreshAdminAccessToken } from '@/lib/adminTokenRefresh';
+import { getValidAdminAccessToken } from '@/lib/adminTokenRefresh';
 
 export interface AdminNotification {
   id: string;
@@ -212,7 +212,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (!err.message.toLowerCase().includes('jwt') && !err.message.toLowerCase().includes('expired')) {
           return;
         }
-        const fresh = await refreshAdminAccessToken();
+        // getValidAdminAccessToken refreshes the session as needed and
+        // returns a token usable in BOTH auth modes (cookie mode mints a
+        // handshake token — the refresh result itself is not a JWT there).
+        const fresh = await getValidAdminAccessToken();
         if (fresh) {
           reconnectSocket(fresh);
         }

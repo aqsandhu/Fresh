@@ -37,6 +37,7 @@ import {
   clearAuthCookies,
   getRefreshTokenFromRequest,
   stripTokensFromAuthData,
+  isAdminCookieClient,
 } from '../utils/authCookies';
 
 const SALT_ROUNDS = 12;
@@ -864,8 +865,14 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
     return unauthorizedResponse(res, 'Account is not active. Please contact support.');
   }
 
-  // Generate tokens (8h access for admin panel — see ADMIN_JWT_EXPIRES_IN)
+  // Generate tokens (short-lived access for admin panel — see ADMIN_JWT_EXPIRES_IN)
   const tokens = await issueAdminTokenPair(user.id, user.phone, user.role);
+
+  // Cookie-mode admin panel (ADMIN_AUTH_COOKIES=true + X-Client-Platform:
+  // admin): session rides in HttpOnly cookies, tokens never reach JS.
+  if (isAdminCookieClient(req)) {
+    setAuthCookies(res, tokens);
+  }
 
   // Update last login
   await query(
@@ -893,7 +900,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
 
   logger.info('Admin logged in', { userId: user.id, phone: user.phone, role: user.role });
 
-  successResponse(res, {
+  successResponse(res, stripTokensFromAuthData(req, {
     user: {
       id: user.id,
       phone: user.phone,
@@ -907,7 +914,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
       permissions,
     },
     tokens,
-  }, 'Admin login successful');
+  }), 'Admin login successful');
 });
 
 /**

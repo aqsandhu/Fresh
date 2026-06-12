@@ -41,5 +41,11 @@ export async function rotateRefreshToken(
   } catch (err) {
     logger.warn('Could not revoke previous refresh token', { err });
   }
+  // Admin sessions must rotate into ADMIN-length tokens (8h refresh by
+  // default). Rotating an admin into the customer pair silently extended a
+  // leaked admin refresh token to 7 days, defeating the shortened policy.
+  if (role === 'admin' || role === 'super_admin') {
+    return issueAdminTokenPair(userId, phone, role);
+  }
   return issueTokenPair(userId, phone, role);
 }

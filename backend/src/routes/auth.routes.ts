@@ -75,7 +75,8 @@ router.post(
 );
 router.post(
   '/verify-pin',
-  authRateLimiter, // 5 / 15 min — brake on PIN brute-force
+  authRateLimiter, // per-IP brake; the real brute-force defence is the
+  // per-account exponential lockout in config/pinLockout.ts
   validate(authSchemas.verifyPin),
   authController.verifyPin
 );

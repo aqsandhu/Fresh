@@ -1,7 +1,7 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
 import { CITY_STORAGE_KEY, clearCitySelection } from '@/lib/cityStorage';
-import { API_BASE_URL } from '@/config/env';
+import { API_BASE_URL, AUTH_COOKIES_ENABLED } from '@/config/env';
 
 if (!process.env.VITE_API_URL) {
   console.warn('[Fresh Bazar Admin] VITE_API_URL is not set. Falling back to localhost:3000. Set this env var in production!');
@@ -52,9 +52,11 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & {
   _formDataBackup?: FormData;
 };
 
-// Create axios instance
+// Create axios instance. In cookie mode the session rides in HttpOnly
+// cookies (withCredentials) instead of a JS-readable bearer token.
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: AUTH_COOKIES_ENABLED,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -64,9 +66,16 @@ export const apiClient: AxiosInstance = axios.create({
 // Request interceptor to add auth token and convert camelCase to snake_case
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('admin_token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (config.headers) {
+      // Tells the backend which cookie policy applies (and to strip token
+      // strings from auth responses in cookie mode).
+      config.headers['X-Client-Platform'] = 'admin';
+    }
+    if (!AUTH_COOKIES_ENABLED) {
+      const token = localStorage.getItem('admin_token');
+      if (token && config.headers) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     const cityId = localStorage.getItem(CITY_STORAGE_KEY);
     if (cityId && cityId.length > 0 && config.headers) {
@@ -112,6 +121,11 @@ function redirectToLogin() {
 /** Only force login redirect when user had a session (not guest/login-page API noise). */
 function shouldForceLoginRedirect(): boolean {
   if (window.location.pathname.startsWith('/admin/login')) return false;
+  // Cookie mode has no JS-readable refresh token — the cached user marks
+  // an active session instead.
+  if (AUTH_COOKIES_ENABLED) {
+    return Boolean(localStorage.getItem('admin_user'));
+  }
   return Boolean(localStorage.getItem('admin_refresh_token'));
 }
 
@@ -146,7 +160,11 @@ apiClient.interceptors.response.use(
         if (!original.headers) {
           original.headers = {} as InternalAxiosRequestConfig['headers'];
         }
-        (original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+        // Cookie mode: the refreshed session is in HttpOnly cookies — the
+        // sentinel must NOT be sent as a bearer token.
+        if (!AUTH_COOKIES_ENABLED) {
+          (original.headers as Record<string, string>).Authorization = `Bearer ${newToken}`;
+        }
         // Restore FormData body — the first attempt may have consumed the stream.
         if (original._formDataBackup) {
           original.data = cloneFormData(original._formDataBackup);

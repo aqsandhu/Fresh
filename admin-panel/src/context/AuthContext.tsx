@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, type ReactNode }
 import { authService } from '@/services/auth.service';
 import { normalizeAdminUser } from '@/lib/adminUser';
 import { refreshAdminAccessToken, tokenNeedsRefresh } from '@/lib/adminTokenRefresh';
+import { AUTH_COOKIES_ENABLED } from '@/config/env';
 import type { User, LoginCredentials } from '@/types';
 
 interface AuthContextType {
@@ -24,8 +25,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const initAuth = async () => {
-      const token = authService.getToken();
       const storedUser = authService.getCurrentUser();
+
+      // Cookie mode: tokens are HttpOnly (unreadable). The cached user marks
+      // a probable session; /admin/me (with the 401→refresh→retry
+      // interceptor behind it) is the authority.
+      if (AUTH_COOKIES_ENABLED) {
+        if (!storedUser) {
+          setIsLoading(false);
+          return;
+        }
+        const freshUser = await authService.fetchSession();
+        if (freshUser) {
+          setUser(freshUser);
+        } else {
+          authService.logout();
+        }
+        setIsLoading(false);
+        return;
+      }
+
+      const token = authService.getToken();
       const refreshToken = authService.getRefreshToken();
 
       if (!storedUser || !refreshToken) {
@@ -51,9 +71,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     initAuth();
   }, []);
 
-  // Refresh access token in the background before it expires.
+  // Refresh access token in the background before it expires. Cookie mode
+  // skips this: expiry isn't readable from JS and the axios interceptor
+  // already refreshes-and-retries on 401.
   useEffect(() => {
-    if (!user) return;
+    if (!user || AUTH_COOKIES_ENABLED) return;
 
     const tick = () => {
       if (tokenNeedsRefresh(authService.getToken())) {

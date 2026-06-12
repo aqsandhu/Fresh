@@ -634,7 +634,13 @@ CREATE TABLE orders (
     
     -- WhatsApp order reference (FK added later — whatsapp_orders is defined further down)
     whatsapp_order_id UUID,
-    
+
+    -- Service city for admin routing (FK added later — service_cities is
+    -- defined further down). Without this column here, the city-scoped
+    -- order indexes below failed on a fresh install (the column previously
+    -- existed only via migration 04, which runs AFTER this file).
+    city_id UUID,
+
     -- Soft delete
     deleted_at TIMESTAMPTZ,
     
@@ -1082,6 +1088,10 @@ ALTER TABLE orders
     ADD CONSTRAINT fk_orders_whatsapp_order
     FOREIGN KEY (whatsapp_order_id) REFERENCES whatsapp_orders(id) ON DELETE SET NULL;
 
+ALTER TABLE orders
+    ADD CONSTRAINT fk_orders_city
+    FOREIGN KEY (city_id) REFERENCES service_cities(id);
+
 ALTER TABLE rider_tasks
     ADD CONSTRAINT fk_rider_tasks_atta_request
     FOREIGN KEY (atta_request_id) REFERENCES atta_requests(id) ON DELETE CASCADE;
@@ -1414,18 +1424,25 @@ CREATE TRIGGER update_site_settings_updated_at BEFORE UPDATE ON site_settings
 CREATE TRIGGER update_system_settings_updated_at BEFORE UPDATE ON system_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Function to generate order number
+-- Function to generate order number.
+-- Random 8-hex-char suffix (NOT a sequence) so order numbers are not
+-- enumerable — predictable IDs leak order volume and make tracking
+-- endpoints harvestable. Uniqueness retry loop + UNIQUE constraint backstop.
+-- Kept in sync with database/migrations/17-random-order-numbers.sql.
 CREATE OR REPLACE FUNCTION generate_order_number()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_candidate TEXT;
 BEGIN
-    NEW.order_number := 'ORD-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' || 
-                        LPAD(NEXTVAL('order_number_seq')::TEXT, 6, '0');
+    LOOP
+        v_candidate := 'ORD-' || TO_CHAR(NOW(), 'YYYYMMDD') || '-' ||
+                       UPPER(SUBSTRING(MD5(random()::text || clock_timestamp()::text) FOR 8));
+        EXIT WHEN NOT EXISTS (SELECT 1 FROM orders WHERE order_number = v_candidate);
+    END LOOP;
+    NEW.order_number := v_candidate;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
--- Sequence for order numbers
-CREATE SEQUENCE order_number_seq START 1;
 
 CREATE TRIGGER set_order_number BEFORE INSERT ON orders
     FOR EACH ROW EXECUTE FUNCTION generate_order_number();
@@ -1508,58 +1525,11 @@ CREATE TRIGGER ensure_single_default_address
 -- NEW TRIGGERS (Schema Fixes)
 -- ============================================================================
 
--- Function to decrement product stock when order is confirmed
-CREATE OR REPLACE FUNCTION decrement_stock_on_order()
-RETURNS TRIGGER AS $$
-DECLARE
-    v_item RECORD;
-    v_current_stock INTEGER;
-BEGIN
-    -- Loop through all items in the new order
-    FOR v_item IN 
-        SELECT product_id, quantity 
-        FROM order_items 
-        WHERE order_id = NEW.id
-    LOOP
-        -- Get current stock
-        SELECT stock_quantity INTO v_current_stock
-        FROM products
-        WHERE id = v_item.product_id;
-        
-        -- Check if sufficient stock
-        IF v_current_stock < v_item.quantity THEN
-            RAISE EXCEPTION 'Insufficient stock for product %. Available: %, Required: %', 
-                v_item.product_id, v_current_stock, v_item.quantity;
-        END IF;
-        
-        -- Decrement stock
-        UPDATE products 
-        SET 
-            stock_quantity = stock_quantity - v_item.quantity,
-            stock_status = CASE 
-                WHEN (stock_quantity - v_item.quantity) <= 0 THEN 'out_of_stock'::product_status
-                WHEN (stock_quantity - v_item.quantity) <= low_stock_threshold THEN 'active'::product_status
-                ELSE stock_status
-            END,
-            updated_at = NOW()
-        WHERE id = v_item.product_id;
-    END LOOP;
-    
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-COMMENT ON FUNCTION decrement_stock_on_order() IS 
-    'Decrements product stock when an order is confirmed (status changed from pending to confirmed).';
-
-CREATE TRIGGER trg_decrement_stock_on_confirm
-    AFTER UPDATE OF status ON orders
-    FOR EACH ROW
-    WHEN (OLD.status = 'pending' AND NEW.status = 'confirmed')
-    EXECUTE FUNCTION decrement_stock_on_order();
-
-COMMENT ON TRIGGER trg_decrement_stock_on_confirm ON orders IS 
-    'Triggers stock decrement when order is confirmed.';
+-- NOTE: there is deliberately NO stock-decrement trigger here. Inventory is
+-- owned by the application (order creation decrements with FOR UPDATE row
+-- locks; every cancel path restores via utils/orderStatus.ts). A previous
+-- AFTER-UPDATE-on-confirm trigger double-decremented stock and was dropped
+-- in database/migrations/16-drop-stock-trigger.sql — do not reintroduce it.
 
 -- Function to update cart total weight when items change
 CREATE OR REPLACE FUNCTION update_cart_weight()
