@@ -31,6 +31,7 @@ import { ensureStorageBucket } from './config/storage';
 import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
 import { ensurePinColumns } from './config/pinAuth';
 import { ensureAddressColumns } from './config/addressSchema';
+import { ensureOrderCouponColumns } from './config/orderSchema';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -274,6 +275,7 @@ const startServer = async () => {
       await ensureDatabaseExtensions();
       await ensurePinColumns();
       await ensureAddressColumns();
+      await ensureOrderCouponColumns();
       // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars are set.
       // Safe to call on every boot — idempotently upserts the super-admin row.
       const adminResult = await bootstrapAdmin();
@@ -315,6 +317,7 @@ const startServer = async () => {
           await ensureDatabaseExtensions();
           await ensurePinColumns();
           await ensureAddressColumns();
+          await ensureOrderCouponColumns();
         } else {
           setTimeout(retryDb, 30000); // Retry every 30 seconds
         }

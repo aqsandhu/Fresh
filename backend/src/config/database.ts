@@ -5,6 +5,42 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import logger from '../utils/logger';
 
+/**
+ * TLS options for the DB connection.
+ *
+ * Certificate verification order of preference:
+ *   1. DB_SSL_CA (PEM string or base64) — pin the provider CA, full verify.
+ *      Supabase: Dashboard → Settings → Database → "SSL Certificate".
+ *   2. DB_SSL_REJECT_UNAUTHORIZED=true — verify against system CAs.
+ *   3. Default — encrypted but UNVERIFIED (rejectUnauthorized: false), kept
+ *      for compatibility with poolers that present self-signed chains. We
+ *      log loudly in production so this isn't silently left open to MITM.
+ */
+function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } {
+  if (process.env.DB_SSL === 'false') return false;
+  if (!process.env.DATABASE_URL && process.env.DB_SSL !== 'true') return false;
+
+  const rawCa = process.env.DB_SSL_CA?.trim();
+  if (rawCa) {
+    const ca = rawCa.includes('-----BEGIN')
+      ? rawCa
+      : Buffer.from(rawCa, 'base64').toString('utf8');
+    return { rejectUnauthorized: true, ca };
+  }
+
+  if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true') {
+    return { rejectUnauthorized: true };
+  }
+
+  if (process.env.NODE_ENV === 'production') {
+    logger.warn(
+      'DB TLS certificate verification is DISABLED (rejectUnauthorized: false). ' +
+        'Set DB_SSL_CA (provider CA cert) or DB_SSL_REJECT_UNAUTHORIZED=true to close the MITM window.'
+    );
+  }
+  return { rejectUnauthorized: false };
+}
+
 // Build connection config from environment
 function buildPoolConfig() {
   // If DATABASE_URL is provided, use it directly
@@ -12,7 +48,7 @@ function buildPoolConfig() {
     logger.info('Using DATABASE_URL for database connection');
     return {
       connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+      ssl: buildSslConfig(),
       min: parseInt(process.env.DB_POOL_MIN || '2'),
       max: parseInt(process.env.DB_POOL_MAX || '10'),
       connectionTimeoutMillis: 10000,
@@ -29,7 +65,7 @@ function buildPoolConfig() {
     database: process.env.DB_NAME || 'grocery_db',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
-    ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+    ssl: buildSslConfig(),
     min: parseInt(process.env.DB_POOL_MIN || '2'),
     max: parseInt(process.env.DB_POOL_MAX || '10'),
     connectionTimeoutMillis: 10000,

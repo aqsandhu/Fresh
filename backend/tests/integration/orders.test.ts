@@ -64,3 +64,217 @@ describe('POST /api/orders validation', () => {
     expect(res.status).toBe(422);
   });
 });
+
+// ============================================================================
+// Cancel-reason contract: mobile sends `reason`, the website historically sent
+// `cancellation_reason`. Both must reach the stored cancellation_reason —
+// the website variant used to be silently dropped (stored NULL).
+// ============================================================================
+import { withTransaction } from '@/config/database';
+
+const mockWithTransaction = withTransaction as jest.MockedFunction<typeof withTransaction>;
+
+const ORDER_ID = '22222222-2222-2222-2222-222222222222';
+
+function cancellableOrderClient() {
+  const clientQuery = jest.fn<any>((sql: string) => {
+    const text = String(sql);
+    if (text.includes('FROM orders') && text.includes('FOR UPDATE')) {
+      return Promise.resolve(
+        ok([
+          {
+            id: ORDER_ID,
+            user_id: 'user-1',
+            status: 'pending',
+            order_number: 'FB-1001',
+            placed_at: new Date().toISOString(),
+            time_slot_id: null,
+          },
+        ])
+      );
+    }
+    if (text.includes('FROM order_items')) {
+      return Promise.resolve(ok([]));
+    }
+    return Promise.resolve(ok([]));
+  });
+  return clientQuery;
+}
+
+describe('PUT /api/orders/:id/cancel reason aliases', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it.each([
+    ['reason', { reason: 'changed my mind' }],
+    ['cancellation_reason (website)', { cancellation_reason: 'changed my mind' }],
+  ])('persists the reason sent as %s', async (_label, body) => {
+    const clientQuery = cancellableOrderClient();
+    mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
+
+    const res = await request(app)
+      .put(`/api/orders/${ORDER_ID}/cancel`)
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send(body);
+
+    expect(res.status).toBe(200);
+
+    const updateCall = clientQuery.mock.calls.find((c: any[]) =>
+      String(c[0]).includes("status = 'cancelled'")
+    );
+    expect(updateCall).toBeDefined();
+    expect((updateCall![1] as any[])[0]).toBe('changed my mind');
+  });
+});
+
+// ============================================================================
+// Money path: createOrder must persist coupon_discount and the stored row
+// must satisfy subtotal - discount - coupon + delivery = total.
+// (Before migration 18 the coupon portion was subtracted from the total but
+// stored NOWHERE, so the persisted numbers never reconciled.)
+// ============================================================================
+
+const VALID_ADDRESS = '33333333-3333-3333-3333-333333333333';
+const VALID_PRODUCT2 = '44444444-4444-4444-4444-444444444444';
+
+function createOrderClient() {
+  const clientQuery = jest.fn<any>((sql: string) => {
+    const text = String(sql);
+
+    if (text.includes('FROM carts') && text.includes("status = 'active'")) {
+      return Promise.resolve(
+        ok([{
+          id: 'cart-1', user_id: 'user-1', status: 'active',
+          discount_amount: '30', coupon_discount: '20', coupon_code: 'SAVE20',
+        }])
+      );
+    }
+    if (text.includes('SELECT * FROM cart_items WHERE cart_id')) {
+      return Promise.resolve(
+        ok([{ id: 'ci-1', product_id: VALID_PRODUCT2, quantity: 2, unit: 'full', weight_kg: null, unit_price: '100' }])
+      );
+    }
+    if (text.includes('FROM addresses')) {
+      return Promise.resolve(
+        ok([{
+          id: VALID_ADDRESS, user_id: 'user-1', written_address: 'House 1, Street 2',
+          landmark: '', house_number: 'H-12', area_name: 'Model Town',
+          city: 'Gujrat', province: 'Punjab', postal_code: '', door_picture_url: '',
+          location: null, zone_code: null,
+        }])
+      );
+    }
+    if (text.includes('service_cities')) {
+      return Promise.resolve(ok([]));
+    }
+    if (text.includes('SELECT city_id FROM products')) {
+      return Promise.resolve(ok([{ city_id: null }]));
+    }
+    if (text.includes('FROM products') && text.includes('half_kg_price') && text.includes('FOR UPDATE')) {
+      return Promise.resolve(
+        ok([{
+          price: '100', half_kg_price: null, quarter_kg_price: null, half_dozen_price: null,
+          stock_status: 'active', is_active: true, name_en: 'Tomatoes',
+        }])
+      );
+    }
+    if (text.includes('UPDATE cart_items')) {
+      return Promise.resolve(ok([]));
+    }
+    if (text.includes('SELECT * FROM carts WHERE id')) {
+      return Promise.resolve(
+        ok([{
+          id: 'cart-1', discount_amount: '30', coupon_discount: '20', coupon_code: 'SAVE20',
+        }])
+      );
+    }
+    if (text.includes('SELECT id FROM carts WHERE id')) {
+      return Promise.resolve(ok([{ id: 'cart-1' }]));
+    }
+    if (text.includes('fresh_subtotal')) {
+      return Promise.resolve(ok([{ fresh_subtotal: '200' }]));
+    }
+    if (text.includes('site_settings')) {
+      return Promise.resolve(ok([]));
+    }
+    if (text.includes('veg_fruit_total')) {
+      return Promise.resolve(ok([{ veg_fruit_total: '0' }]));
+    }
+    if (text.includes('delivery_charges_config')) {
+      return Promise.resolve(ok([]));
+    }
+    if (text.includes('INSERT INTO orders')) {
+      return Promise.resolve(
+        ok([{ id: 'order-1', order_number: 'FB-1001', status: 'pending', total_amount: '250', user_id: 'user-1' }])
+      );
+    }
+    if (text.includes('FROM products') && text.includes('primary_image')) {
+      return Promise.resolve(
+        ok([{ name_en: 'Tomatoes', primary_image: null, sku: 'TOM-1', stock_quantity: 50, stock_status: 'active' }])
+      );
+    }
+    if (text.includes('INSERT INTO order_items')) {
+      return Promise.resolve(ok([]));
+    }
+    if (text.includes('stock_quantity = stock_quantity -')) {
+      return Promise.resolve(ok([{ id: VALID_PRODUCT2 }]));
+    }
+    return Promise.resolve(ok([]));
+  });
+  return clientQuery;
+}
+
+describe('POST /api/orders coupon accounting', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('persists coupon_discount + coupon_code and the stored row reconciles', async () => {
+    // Global (non-client) queries: verifyUserActive + the coupon-column probe.
+    mockQuery.mockImplementation(((sql: any) => {
+      const text = String(sql);
+      if (text.includes('information_schema.columns')) {
+        return Promise.resolve(ok([{ exists: 1 }]));
+      }
+      if (text.includes('FROM users')) {
+        return Promise.resolve(
+          ok([{ id: 'user-1', phone: '+923001234567', role: 'customer', status: 'active', full_name: 'A' }])
+        );
+      }
+      return Promise.resolve(ok([]));
+    }) as any);
+
+    const clientQuery = createOrderClient();
+    mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
+
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({ address_id: VALID_ADDRESS, payment_method: 'cash_on_delivery' });
+
+    expect(res.status).toBe(201);
+
+    const insertCall = clientQuery.mock.calls.find((c: any[]) =>
+      String(c[0]).includes('INSERT INTO orders')
+    );
+    expect(insertCall).toBeDefined();
+    const insertSql = String(insertCall![0]);
+    expect(insertSql).toContain('coupon_discount');
+    expect(insertSql).toContain('coupon_code');
+
+    const params = insertCall![1] as any[];
+    // [user, address, snapshot, slot, date, subtotal, discount, coupon, code, delivery, tax, total, ...]
+    const subtotal = params[5];
+    const discount = params[6];
+    const coupon = params[7];
+    const couponCode = params[8];
+    const delivery = params[9];
+    const tax = params[10];
+    const total = params[11];
+
+    expect(subtotal).toBe(200);
+    expect(discount).toBe(30);
+    expect(coupon).toBe(20);
+    expect(couponCode).toBe('SAVE20');
+    expect(tax).toBe(0);
+    // The invariant that was previously broken:
+    expect(subtotal - discount - coupon + delivery + tax).toBeCloseTo(total, 2);
+  });
+});

@@ -296,6 +296,21 @@ export const cartSchemas = {
     unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
     special_instructions: Joi.string().max(500),
   }),
+
+  // POST /api/cart/sync — atomic replace of the server cart.
+  sync: Joi.object({
+    items: Joi.array()
+      .items(
+        Joi.object({
+          product_id: commonSchemas.uuid.required(),
+          quantity: commonSchemas.quantity.required(),
+          unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
+        })
+      )
+      .min(1)
+      .max(100)
+      .required(),
+  }),
   
   updateItem: Joi.object({
     quantity: commonSchemas.quantity.required(),

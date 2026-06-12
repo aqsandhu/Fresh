@@ -151,16 +151,15 @@ export const CheckoutScreen: React.FC = () => {
   const syncCartToServer = useCallback(async () => {
     if (items.length === 0 || cartSynced) return;
     try {
-      await apiClient.delete('/cart/clear').catch(() => {});
-      for (const item of items) {
-        await apiClient.post('/cart/add', {
+      // ONE atomic request — replaces the old clear + per-item POST loop.
+      const res = await apiClient.post('/cart/sync', {
+        items: items.map((item) => ({
           product_id: item.product.id,
           quantity: item.quantity,
           unit: item.unit || 'full',
-        });
-      }
-      const cartRes = await apiClient.get('/cart');
-      const cart = cartRes.data?.data?.cart || cartRes.data?.cart;
+        })),
+      });
+      const cart = res.data?.data?.cart || res.data?.cart;
       if (cart?.subtotal != null) {
         setServerSubtotal(parseFloat(String(cart.subtotal)));
       }
@@ -225,14 +224,15 @@ export const CheckoutScreen: React.FC = () => {
   };
 
   const syncCartBeforeOrder = async () => {
-    await apiClient.delete('/cart/clear').catch(() => {});
-    for (const item of items) {
-      await apiClient.post('/cart/add', {
+    // Atomic replace right before order placement — a mid-loop failure in
+    // the old version could place an order against a half-synced cart.
+    await apiClient.post('/cart/sync', {
+      items: items.map((item) => ({
         product_id: item.product.id,
         quantity: item.quantity,
         unit: item.unit || 'full',
-      });
-    }
+      })),
+    });
   };
 
   const handlePlaceOrder = async () => {

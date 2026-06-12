@@ -37,7 +37,14 @@ export async function persistRefreshToken(
   );
 }
 
-/** Returns true when refresh is allowed (active row, or table not yet in use). */
+/**
+ * Returns true only when an active (non-revoked, non-expired) row exists.
+ *
+ * FAIL CLOSED: every issued refresh token is persisted by persistRefreshToken,
+ * so "no row" means revoked/expired/forged — not "table not in use". The old
+ * empty-table and on-error `return true` fallbacks turned the revocation
+ * check into a no-op exactly when it mattered (DB hiccup, fresh deploy).
+ */
 export async function isRefreshTokenAllowed(refreshToken: string): Promise<boolean> {
   try {
     const tokenHash = hashRefreshToken(refreshToken);
@@ -48,12 +55,9 @@ export async function isRefreshTokenAllowed(refreshToken: string): Promise<boole
           AND expires_at > NOW()`,
       [tokenHash]
     );
-    if (active.rows.length > 0) return true;
-
-    const anyRow = await query('SELECT 1 FROM refresh_tokens LIMIT 1');
-    return anyRow.rows.length === 0;
+    return active.rows.length > 0;
   } catch {
-    return true;
+    return false;
   }
 }
 

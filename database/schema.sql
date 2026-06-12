@@ -582,6 +582,11 @@ CREATE TABLE orders (
     -- Pricing
     subtotal DECIMAL(10,2) NOT NULL,
     discount_amount DECIMAL(10,2) DEFAULT 0.00,
+    -- Coupon portion of the deduction, persisted separately so that
+    -- subtotal - discount_amount - coupon_discount + delivery_charge = total_amount
+    -- always reconciles (see migration 18).
+    coupon_discount DECIMAL(10,2) DEFAULT 0.00,
+    coupon_code VARCHAR(50),
     delivery_charge DECIMAL(10,2) DEFAULT 0.00,
     tax_amount DECIMAL(10,2) DEFAULT 0.00,
     total_amount DECIMAL(10,2) NOT NULL,

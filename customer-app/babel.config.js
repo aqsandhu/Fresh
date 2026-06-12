@@ -24,5 +24,12 @@ module.exports = function(api) {
       ],
       'react-native-reanimated/plugin',
     ],
+    env: {
+      // Release builds ship without console noise (errors kept for crash
+      // reporting breadcrumbs). Dev builds keep full logging.
+      production: {
+        plugins: [['transform-remove-console', { exclude: ['error'] }]],
+      },
+    },
   };
 };

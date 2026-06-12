@@ -22,10 +22,10 @@ module.exports = {
   // never pass on a 22k-line codebase and effectively disabled the check.)
   coverageThreshold: {
     global: {
-      branches: 6,
-      functions: 17,
-      lines: 20,
-      statements: 20,
+      branches: 8,
+      functions: 21,
+      lines: 22,
+      statements: 21,
     },
   },
   setupFiles: ['<rootDir>/tests/env.setup.ts'],

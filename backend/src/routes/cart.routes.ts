@@ -17,6 +17,7 @@ router.use(authenticate);
 
 router.get('/', cartController.getCart);
 router.post('/add', validate(cartSchemas.addItem), cartController.addToCart);
+router.post('/sync', validate(cartSchemas.sync), cartController.syncCart);
 router.put('/update/:itemId', validate(cartSchemas.updateItem), cartController.updateCartItem);
 router.delete('/remove/:itemId', cartController.removeFromCart);
 router.delete('/clear', cartController.clearCart);

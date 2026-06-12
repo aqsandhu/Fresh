@@ -14,6 +14,7 @@ import { successResponse, notFoundResponse, errorResponse, createdResponse } fro
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
 import { restoreOrderInventory } from '../utils/orderStatus';
+import { hasOrderCouponColumns } from '../config/orderSchema';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 import { normalizePhoneNumber } from '../utils/validators';
@@ -47,11 +48,17 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   const countResult = await query(`SELECT COUNT(*) FROM orders o ${whereSql}`, params);
   const total = parseInt(countResult.rows[0].count);
 
+  // Until migration 18 is applied the coupon columns don't exist — referencing
+  // them would break every order read, so gate on the cached probe.
+  const couponCols = (await hasOrderCouponColumns())
+    ? 'o.coupon_discount, o.coupon_code,'
+    : '';
+
   // Get orders
   const ordersSql = `
-    SELECT 
+    SELECT
       o.id, o.order_number, o.status, o.source,
-      o.subtotal, o.discount_amount, o.delivery_charge, o.tax_amount, o.total_amount,
+      o.subtotal, o.discount_amount, ${couponCols} o.delivery_charge, o.tax_amount, o.total_amount,
       o.payment_method, o.payment_status, o.paid_amount,
       o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
       o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
@@ -129,10 +136,14 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
 
   const { id } = req.params;
 
+  const couponCols = (await hasOrderCouponColumns())
+    ? 'o.coupon_discount, o.coupon_code,'
+    : '';
+
   const result = await query(
-    `SELECT 
+    `SELECT
       o.id, o.order_number, o.status, o.source,
-      o.subtotal, o.discount_amount, o.delivery_charge, o.tax_amount, o.total_amount,
+      o.subtotal, o.discount_amount, ${couponCols} o.delivery_charge, o.tax_amount, o.total_amount,
       o.payment_method, o.payment_status, o.paid_amount,
       o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
       o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
@@ -452,46 +463,82 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       subtotal + deliveryCharge - discountAmount - couponDiscount
     );
 
-    // Create order
-    const orderResult = await client.query(
-      `INSERT INTO orders (
-        user_id, address_id, delivery_address_snapshot,
-        time_slot_id, requested_delivery_date,
-        subtotal, discount_amount, delivery_charge, tax_amount, total_amount,
-        delivery_charge_rule_id,
-        payment_method, payment_status,
-        status, source, customer_notes, city_id
-      ) VALUES (
-        $1, $2, $3,
-        $4, $5,
-        $6, $7, $8, $9, $10,
-        $11,
-        $12, 'pending',
-        'pending', 'website', $13, $14
-      ) RETURNING *`,
-      [
-        req.user!.id, address_id,
-        JSON.stringify({
-          written_address: address.written_address,
-          landmark: address.landmark,
-          house_number: address.house_number,
-          area_name: address.area_name,
-          city: address.city,
-          province: address.province,
-          postal_code: address.postal_code,
-          door_picture_url: address.door_picture_url || '',
-          location: {
-            latitude: address.location ? address.location.y : null,
-            longitude: address.location ? address.location.x : null,
-          },
-        }),
-        time_slot_id, requested_delivery_date,
-        subtotal, discountAmount, deliveryCharge, 0, totalAmount,
-        deliveryChargeRuleId,
-        payment_method, customer_notes,
-        orderCityId,
-      ]
-    );
+    const addressSnapshot = JSON.stringify({
+      written_address: address.written_address,
+      landmark: address.landmark,
+      house_number: address.house_number,
+      area_name: address.area_name,
+      city: address.city,
+      province: address.province,
+      postal_code: address.postal_code,
+      door_picture_url: address.door_picture_url || '',
+      location: {
+        latitude: address.location ? address.location.y : null,
+        longitude: address.location ? address.location.x : null,
+      },
+    });
+
+    // Persist the coupon portion of the deduction so the stored row always
+    // reconciles: subtotal - discount_amount - coupon_discount + delivery
+    // = total_amount. Falls back to the legacy column set until migration 18
+    // has been applied (couponDiscount is folded into discount_amount there
+    // so the totals still add up — the split is just not recoverable).
+    const couponReady = await hasOrderCouponColumns();
+
+    const orderResult = couponReady
+      ? await client.query(
+          `INSERT INTO orders (
+            user_id, address_id, delivery_address_snapshot,
+            time_slot_id, requested_delivery_date,
+            subtotal, discount_amount, coupon_discount, coupon_code,
+            delivery_charge, tax_amount, total_amount,
+            delivery_charge_rule_id,
+            payment_method, payment_status,
+            status, source, customer_notes, city_id
+          ) VALUES (
+            $1, $2, $3,
+            $4, $5,
+            $6, $7, $8, $9,
+            $10, $11, $12,
+            $13,
+            $14, 'pending',
+            'pending', 'website', $15, $16
+          ) RETURNING *`,
+          [
+            req.user!.id, address_id, addressSnapshot,
+            time_slot_id, requested_delivery_date,
+            subtotal, discountAmount, couponDiscount, refreshedCart.coupon_code || null,
+            deliveryCharge, 0, totalAmount,
+            deliveryChargeRuleId,
+            payment_method, customer_notes,
+            orderCityId,
+          ]
+        )
+      : await client.query(
+          `INSERT INTO orders (
+            user_id, address_id, delivery_address_snapshot,
+            time_slot_id, requested_delivery_date,
+            subtotal, discount_amount, delivery_charge, tax_amount, total_amount,
+            delivery_charge_rule_id,
+            payment_method, payment_status,
+            status, source, customer_notes, city_id
+          ) VALUES (
+            $1, $2, $3,
+            $4, $5,
+            $6, $7, $8, $9, $10,
+            $11,
+            $12, 'pending',
+            'pending', 'website', $13, $14
+          ) RETURNING *`,
+          [
+            req.user!.id, address_id, addressSnapshot,
+            time_slot_id, requested_delivery_date,
+            subtotal, discountAmount + couponDiscount, deliveryCharge, 0, totalAmount,
+            deliveryChargeRuleId,
+            payment_method, customer_notes,
+            orderCityId,
+          ]
+        );
 
     const order = orderResult.rows[0];
 
@@ -621,7 +668,10 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const { id } = req.params;
-  const { reason } = req.body;
+  // Clients disagree on the key — mobile sends `reason`, the website sends
+  // `cancellation_reason`. Accept both so neither silently drops the reason.
+  const reason: string | null =
+    req.body?.reason ?? req.body?.cancellation_reason ?? null;
 
   let cancelledOrder: any;
 

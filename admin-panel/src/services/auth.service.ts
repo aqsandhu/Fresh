@@ -100,17 +100,15 @@ export const authService = {
     return !!localStorage.getItem('admin_token');
   },
 
+  /**
+   * Validate the current session against the server. Uses /admin/me — the
+   * previous /admin/verify-token endpoint never existed on the backend, so
+   * this always returned false and silently invalidated good sessions.
+   */
   verifyToken: async (): Promise<boolean> => {
-    try {
-      const token = localStorage.getItem('admin_token');
-      if (!token) return false;
-      
-      const response = await api.get<ApiResponse<{ valid: boolean }>>('/admin/verify-token');
-      return response.success && response.data?.valid;
-    } catch (error: any) {
-      console.error('Token verification error:', error);
-      return false;
-    }
+    if (!authService.isAuthenticated()) return false;
+    const user = await authService.fetchSession();
+    return user !== null;
   },
 
   refreshToken: async (): Promise<boolean> => {
