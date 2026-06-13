@@ -29,6 +29,19 @@ function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } 
   if (process.env.DB_SSL === 'false') return false;
   if (!process.env.DATABASE_URL && process.env.DB_SSL !== 'true') return false;
 
+  // HIGHEST PRIORITY kill-switch. An explicit DB_SSL_REJECT_UNAUTHORIZED=false
+  // means "connect even if the cert can't be verified" and MUST win over
+  // everything else — including a DB_SSL_CA that doesn't match the presented
+  // chain. Supabase's POOLER (port 6543) presents a self-signed cert that the
+  // downloadable project CA does NOT cover, so pinning that CA there fails with
+  // SELF_SIGNED_CERT_IN_CHAIN; this switch guarantees the API can still connect.
+  if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false') {
+    return { rejectUnauthorized: false };
+  }
+
+  // Pin a provider CA → full verification. Only works when the CA actually
+  // matches the presented chain (e.g. Supabase DIRECT connection on 5432, not
+  // the pooler). If it can't, set DB_SSL_REJECT_UNAUTHORIZED=false above.
   const rawCa = process.env.DB_SSL_CA?.trim();
   if (rawCa) {
     const ca = rawCa.includes('-----BEGIN')
@@ -40,14 +53,12 @@ function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } 
   if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true') {
     return { rejectUnauthorized: true };
   }
-  if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false') {
-    return { rejectUnauthorized: false };
-  }
 
   // Default: encrypted but UNVERIFIED. Self-signed provider chains (Supabase /
   // Render) reject system-CA verification and would crash every query, so we
-  // stay compatible by default and only warn in production. Pin DB_SSL_CA to
-  // close the MITM window without breaking the connection.
+  // stay compatible by default and only warn in production. Pin DB_SSL_CA (and
+  // unset DB_SSL_REJECT_UNAUTHORIZED) to close the MITM window where the CA
+  // actually matches the presented chain.
   if (process.env.NODE_ENV === 'production') {
     logger.warn(
       'DB TLS certificate verification is DISABLED (rejectUnauthorized: false). ' +
