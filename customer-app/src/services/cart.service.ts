@@ -139,6 +139,36 @@ class CartService {
     if (cart.length === 0) return true;
     return this.syncCartWithBackend(cart);
   }
+
+  /**
+   * Apply a coupon to the server cart. Syncs first so the coupon is validated
+   * against the current subtotal. Throws (handleApiError) on an invalid coupon
+   * so the caller can show the reason.
+   */
+  async applyCoupon(code: string): Promise<{
+    code: string;
+    description?: string | null;
+    discount_type: 'percentage' | 'fixed' | 'free_delivery';
+    discount_amount: number;
+    free_delivery: boolean;
+    summary: string;
+  }> {
+    await this.ensureBackendCartSynced();
+    try {
+      const response = await apiClient.post('/cart/apply-coupon', { code });
+      return response.data?.data || response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
+  async removeCoupon(): Promise<void> {
+    try {
+      await apiClient.delete('/cart/remove-coupon');
+    } catch {
+      /* best-effort — caller clears local state regardless */
+    }
+  }
 }
 
 export const cartService = new CartService();

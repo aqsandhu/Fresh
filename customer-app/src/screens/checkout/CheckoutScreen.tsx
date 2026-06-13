@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   Image,
+  TextInput,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,6 +37,7 @@ import {
 import { CheckoutAddressActions } from '@components/checkout/CheckoutAddressActions';
 import { addressService } from '@services/address.service';
 import { orderService } from '@services/order.service';
+import { cartService } from '@services/cart.service';
 import apiClient from '@services/api';
 import { useCartStore } from '@store';
 import { getSlotAvailability } from '@/lib/timeSlots';
@@ -91,14 +93,56 @@ export const CheckoutScreen: React.FC = () => {
     total?: number;
   } | null>(null);
 
+  // Coupon (preview only — the server recomputes it authoritatively at order
+  // placement, so the displayed total matches what gets charged).
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discount_type: string;
+    discount_amount: number;
+    free_delivery: boolean;
+    summary: string;
+  } | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError, setCouponError] = useState('');
+
   const selectedSlot = timeSlots.find((s) => s.id === selectedSlotId);
   const isFreeDeliverySlot = selectedSlot?.isFreeDelivery === true;
   const localSubtotal = subtotal();
   const sub = serverSubtotal ?? localSubtotal;
   const localDelivery = getDeliveryCharge(isFreeDeliverySlot);
   const deliveryCharge = serverDeliveryCharge ?? localDelivery;
-  const total = sub + deliveryCharge;
+  const couponFreeDelivery = appliedCoupon?.free_delivery === true;
+  const couponProductDiscount =
+    appliedCoupon && !couponFreeDelivery
+      ? Math.min(Number(appliedCoupon.discount_amount) || 0, sub)
+      : 0;
+  const effectiveDelivery = couponFreeDelivery ? 0 : deliveryCharge;
+  const total = Math.max(0, sub + effectiveDelivery - couponProductDiscount);
   const canPlaceOrder = Boolean(selectedAddressId) || (showNewAddress && newAddressValid);
+
+  const handleApplyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponLoading(true);
+    setCouponError('');
+    try {
+      const result = await cartService.applyCoupon(code);
+      setAppliedCoupon(result);
+    } catch (err: any) {
+      setAppliedCoupon(null);
+      setCouponError(err?.message || 'Invalid coupon code');
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = async () => {
+    await cartService.removeCoupon();
+    setAppliedCoupon(null);
+    setCouponInput('');
+    setCouponError('');
+  };
 
   const loadAddresses = useCallback(async () => {
     setLoadingAddresses(true);
@@ -627,12 +671,65 @@ export const CheckoutScreen: React.FC = () => {
             })}
           </ScrollView>
 
+          {/* Coupon */}
+          <View style={styles.couponBox}>
+            {appliedCoupon ? (
+              <View style={styles.couponApplied}>
+                <View style={styles.couponAppliedInfo}>
+                  <Text style={styles.couponAppliedTitle}>
+                    <MaterialIcons name="local-offer" size={13} color={COLORS.success} />{' '}
+                    {appliedCoupon.code} applied
+                  </Text>
+                  {!!appliedCoupon.summary && (
+                    <Text style={styles.couponAppliedSummary}>{appliedCoupon.summary}</Text>
+                  )}
+                </View>
+                <TouchableOpacity onPress={handleRemoveCoupon} hitSlop={8}>
+                  <MaterialIcons name="close" size={18} color={COLORS.success} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                <Text style={styles.couponLabel}>
+                  <MaterialIcons name="local-offer" size={14} color={COLORS.primary600} /> Have a coupon?
+                </Text>
+                <View style={styles.couponRow}>
+                  <TextInput
+                    value={couponInput}
+                    onChangeText={(t) => {
+                      setCouponInput(t.toUpperCase());
+                      if (couponError) setCouponError('');
+                    }}
+                    placeholder="Enter code"
+                    placeholderTextColor={COLORS.gray400}
+                    autoCapitalize="characters"
+                    style={styles.couponInput}
+                    onSubmitEditing={handleApplyCoupon}
+                  />
+                  <Button
+                    title="Apply"
+                    variant="outline"
+                    size="small"
+                    onPress={handleApplyCoupon}
+                    loading={couponLoading}
+                    disabled={!couponInput.trim() || couponLoading}
+                    style={styles.couponApplyBtn}
+                  />
+                </View>
+                {!!couponError && <Text style={styles.couponError}>{couponError}</Text>}
+              </View>
+            )}
+          </View>
+
           <View style={styles.priceBreakdown}>
             <CartSummaryRows
               subtotal={sub}
-              deliveryCharge={deliveryCharge}
+              deliveryCharge={effectiveDelivery}
               total={total}
               deliveryLoading={deliveryLoading}
+              couponCode={appliedCoupon?.code}
+              couponDiscount={couponProductDiscount}
+              couponFreeDelivery={couponFreeDelivery}
             />
           </View>
 
@@ -892,6 +989,48 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.lg,
     width: '100%',
   },
+  couponBox: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.gray200,
+    paddingTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    width: '100%',
+  },
+  couponLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.gray700,
+    marginBottom: SPACING.sm,
+  },
+  couponRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  couponInput: {
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: COLORS.gray900,
+  },
+  couponApplyBtn: { minWidth: 84 },
+  couponError: { fontSize: 12, color: COLORS.error, marginTop: 6 },
+  couponApplied: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    backgroundColor: COLORS.success + '14',
+    borderWidth: 1,
+    borderColor: COLORS.success + '55',
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  couponAppliedInfo: { flex: 1, minWidth: 0 },
+  couponAppliedTitle: { fontSize: 13, fontWeight: '700', color: COLORS.success },
+  couponAppliedSummary: { fontSize: 11, color: COLORS.gray600, marginTop: 2 },
   placeOrderBtn: { marginBottom: 0 },
   termsNote: {
     fontSize: 12,

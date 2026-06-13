@@ -6,6 +6,7 @@ export type SettingsTabId =
   | 'business'
   | 'banner'
   | 'hero'
+  | 'coupons'
   | 'brand'
   | 'favicon'
   | 'whatsapp';
@@ -26,6 +27,7 @@ const TAB_VIEW: Record<SettingsTabId, string[]> = {
   // Hero image is per-city like the banner — any admin who can view the banner
   // (or has the dedicated hero/settings codes) can see it.
   hero: ['settings.hero.view', 'settings.banner.view', 'settings.view', 'settings.update'],
+  coupons: ['coupons.view', 'coupons.manage'],
   brand: ['settings.brand.view', 'settings.view', 'settings.update'],
   favicon: ['settings.favicon.view', 'settings.view', 'settings.update'],
   whatsapp: [
@@ -43,6 +45,7 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   business: ['settings.business_hours.update', 'settings.update'],
   banner: ['settings.banner.update', 'settings.update'],
   hero: ['settings.hero.update', 'settings.banner.update', 'settings.update'],
+  coupons: ['coupons.manage'],
   brand: ['settings.brand.update', 'settings.update'],
   favicon: ['settings.favicon.update', 'settings.update'],
   whatsapp: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
@@ -113,7 +116,7 @@ export function canAccessSettingsPage(permissions: string[] | undefined): boolea
   return (
     hasPermission(permissions, ALL_SETTINGS_VIEW_CODES) ||
     (
-      ['delivery', 'timeslots', 'business', 'banner', 'hero', 'brand', 'favicon', 'whatsapp'] as SettingsTabId[]
+      ['delivery', 'timeslots', 'business', 'banner', 'hero', 'coupons', 'brand', 'favicon', 'whatsapp'] as SettingsTabId[]
     ).some(
       (tab) => canViewSettingsTab(permissions, tab)
     )
@@ -124,7 +127,7 @@ export function visibleSettingsTabs(
   permissions: string[] | undefined,
   role?: string
 ): SettingsTabId[] {
-  const tabs = (['delivery', 'timeslots', 'business', 'banner', 'hero', 'whatsapp'] as SettingsTabId[]).filter(
+  const tabs = (['delivery', 'timeslots', 'business', 'banner', 'hero', 'coupons', 'whatsapp'] as SettingsTabId[]).filter(
     (tab) => canViewSettingsTab(permissions, tab)
   );
   if (canViewBrandSettingsTab(permissions, role) && !tabs.includes('brand')) {

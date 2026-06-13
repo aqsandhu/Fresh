@@ -12,8 +12,15 @@ import {
 } from '../middleware';
 import { successResponse, errorResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
-import { resolveUnitPrice, stockUnitsNeeded } from '../utils/unitPricing';
+import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
 import { loadCartSnapshotFromClient } from '../utils/cartResponse';
+import { roundMoney } from '../utils/money';
+import {
+  hasCouponsTable,
+  couponValidationError,
+  computeCouponDiscount,
+  buildCouponSummary,
+} from '../utils/coupons';
 
 /**
  * Get or create cart for user
@@ -448,9 +455,111 @@ export const calculateCartDeliveryCharge = asyncHandler(async (req: Request, res
   successResponse(res, deliveryResult, 'Delivery charge calculated successfully');
 });
 
-// NOTE: Coupon redemption is intentionally NOT implemented. The previous
-// /cart/apply-coupon (501) and /cart/remove-coupon endpoints were removed so
-// the API doesn't advertise a feature that doesn't exist. The carts/orders
-// coupon_discount + coupon_code columns are retained only so historical orders
-// keep reconciling (subtotal - discount - coupon + delivery = total); they are
-// always 0 / NULL until a real coupon system is built.
+/**
+ * Apply a coupon code to the cart (preview / validation).
+ * POST /api/cart/apply-coupon  Body: { code }
+ *
+ * This is ADVISORY: it validates against the current cart and stores the code
+ * on the cart so the customer sees the offer. The authoritative discount and
+ * the usage-limit enforcement happen at order placement (order.controller),
+ * inside the order transaction with a FOR UPDATE lock on the coupon — so two
+ * customers racing for a limited coupon can both "apply" it, but only the
+ * winners actually redeem it at checkout.
+ */
+export const applyCoupon = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) return errorResponse(res, 'Authentication required', 401);
+
+  const code = String(req.body?.code ?? '').trim().toUpperCase();
+  if (!code) return errorResponse(res, 'Enter a coupon code', 400);
+
+  if (!(await hasCouponsTable())) {
+    return errorResponse(res, 'Coupons are not available yet. Please try again shortly.', 503);
+  }
+
+  const cart = await getOrCreateCart(req.user.id);
+
+  // Server-authoritative subtotal (live product prices, never the client's).
+  const subtotalRes = await query(FRESH_CART_SUBTOTAL_SQL, [cart.id]);
+  const subtotal = roundMoney(parseFloat(subtotalRes.rows[0]?.fresh_subtotal || '0'));
+  if (subtotal <= 0) return errorResponse(res, 'Your cart is empty', 400);
+
+  // Resolve the cart's city from its products (global coupons ignore city).
+  const cityRes = await query(
+    `SELECT p.city_id FROM cart_items ci
+       JOIN products p ON ci.product_id = p.id
+      WHERE ci.cart_id = $1 AND p.city_id IS NOT NULL
+      LIMIT 1`,
+    [cart.id]
+  );
+  const cartCityId = cityRes.rows[0]?.city_id ?? null;
+
+  // City-specific coupon wins over a same-code global coupon.
+  const couponRes = await query(
+    `SELECT * FROM coupons
+      WHERE UPPER(code) = $1 AND (city_id IS NULL OR city_id = $2)
+      ORDER BY (city_id IS NOT NULL) DESC
+      LIMIT 1`,
+    [code, cartCityId]
+  );
+  if (couponRes.rows.length === 0) {
+    return errorResponse(res, 'Invalid coupon code', 404);
+  }
+  const coupon = couponRes.rows[0];
+
+  const userUsedRes = await query(
+    'SELECT COUNT(*)::int AS n FROM coupon_redemptions WHERE coupon_id = $1 AND user_id = $2',
+    [coupon.id, req.user.id]
+  );
+  const userUsed = userUsedRes.rows[0]?.n ?? 0;
+
+  const priorOrderRes = await query(
+    `SELECT 1 FROM orders
+      WHERE user_id = $1 AND status <> 'cancelled' AND deleted_at IS NULL
+      LIMIT 1`,
+    [req.user.id]
+  );
+  const isFirstOrder = priorOrderRes.rows.length === 0;
+
+  const reason = couponValidationError(coupon, {
+    subtotal,
+    totalUsed: coupon.used_count,
+    userUsed,
+    isFirstOrder,
+  });
+  if (reason) return errorResponse(res, reason, 400);
+
+  await query(
+    'UPDATE carts SET coupon_code = $1, updated_at = NOW() WHERE id = $2',
+    [coupon.code, cart.id]
+  );
+
+  const { productDiscount, freeDelivery } = computeCouponDiscount(coupon, subtotal);
+
+  return successResponse(
+    res,
+    {
+      code: coupon.code,
+      description: coupon.description,
+      discount_type: coupon.discount_type,
+      discount_amount: productDiscount,
+      free_delivery: freeDelivery,
+      summary: buildCouponSummary(coupon),
+    },
+    'Coupon applied'
+  );
+});
+
+/**
+ * Remove the applied coupon from the cart.
+ * DELETE /api/cart/remove-coupon
+ */
+export const removeCoupon = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) return errorResponse(res, 'Authentication required', 401);
+
+  const cart = await getOrCreateCart(req.user.id);
+  await query(
+    'UPDATE carts SET coupon_code = NULL, coupon_discount = 0, updated_at = NOW() WHERE id = $1',
+    [cart.id]
+  );
+  return successResponse(res, null, 'Coupon removed');
+});

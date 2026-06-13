@@ -413,6 +413,26 @@ export const cartApi = {
     const response = await api.post('/cart/sync', { items })
     return response.data?.data || response.data
   },
+
+  /** Apply a coupon to the server cart. Returns the validated preview. */
+  applyCoupon: async (
+    code: string
+  ): Promise<{
+    code: string
+    description?: string | null
+    discount_type: 'percentage' | 'fixed' | 'free_delivery'
+    discount_amount: number
+    free_delivery: boolean
+    summary: string
+  }> => {
+    const response = await api.post('/cart/apply-coupon', { code })
+    return response.data?.data || response.data
+  },
+
+  removeCoupon: async () => {
+    const response = await api.delete('/cart/remove-coupon')
+    return response.data
+  },
 }
 
 // Chat API

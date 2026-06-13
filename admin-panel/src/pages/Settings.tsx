@@ -23,6 +23,7 @@ import {
   Image,
   ImagePlus,
   Sparkles,
+  Ticket,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -52,6 +53,7 @@ import {
 import { BrandLogoSettingsPanel } from '@/components/settings/BrandLogoSettingsPanel';
 import { BrandFaviconSettingsPanel } from '@/components/settings/BrandFaviconSettingsPanel';
 import { HeroImageSettingsPanel } from '@/components/settings/HeroImageSettingsPanel';
+import { CouponsSettingsPanel } from '@/components/settings/CouponsSettingsPanel';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -830,6 +832,19 @@ export const Settings: React.FC = () => {
           <span>Hero Image</span>
         </button>
         )}
+        {canViewSettingsTab(permissions, 'coupons') && (
+        <button
+          onClick={() => setActiveTab('coupons')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'coupons'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Ticket className="w-4 h-4" />
+          <span>Coupons</span>
+        </button>
+        )}
         {showBrandTab && (
         <button
           onClick={() => setActiveTab('brand')}
@@ -878,6 +893,9 @@ export const Settings: React.FC = () => {
       {activeTab === 'banner' && renderBanner()}
       {activeTab === 'hero' && (
         <HeroImageSettingsPanel canEdit={canUpdate('hero')} />
+      )}
+      {activeTab === 'coupons' && (
+        <CouponsSettingsPanel canEdit={canUpdate('coupons')} />
       )}
       {activeTab === 'brand' && (
         <BrandLogoSettingsPanel canEdit={canEditBrandLogo} />

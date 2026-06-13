@@ -100,6 +100,9 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
   if (p.startsWith('/whatsapp-orders') || p.startsWith('/atta-requests')) {
     return m === 'GET' ? ['orders.view'] : ['orders.update'];
   }
+  if (p.startsWith('/coupons')) {
+    return m === 'GET' ? ['coupons.view', 'coupons.manage'] : ['coupons.manage'];
+  }
   if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
   if (p.startsWith('/cities')) {
     if (m === 'GET') return ANY_ADMIN; // city list needed by header switcher
