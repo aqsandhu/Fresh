@@ -238,6 +238,15 @@ router.put(
 );
 router.delete('/site-settings/favicon', adminController.deleteBrandFaviconSettings);
 
+// Site Settings - Hero image (per city; every city admin + super admin)
+router.get('/site-settings/hero', adminController.getHeroSettings);
+router.put(
+  '/site-settings/hero',
+  uploadSingle('hero', 'hero'),
+  adminController.updateHeroSettings
+);
+router.delete('/site-settings/hero', adminController.deleteHeroSettings);
+
 // Site Settings - Banner
 router.get('/site-settings/banner', adminController.getBannerSettings);
 router.put('/site-settings/banner', adminController.updateBannerSettings);

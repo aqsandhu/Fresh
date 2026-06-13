@@ -36,9 +36,22 @@ export default function HeroSection() {
   const [phoneText, setPhoneText] = useState('0300-1234567')
   const [freeThreshold, setFreeThreshold] = useState(500)
   const [whatsappOrderUrl, setWhatsappOrderUrl] = useState('')
+  const [heroImageUrl, setHeroImageUrl] = useState(HERO_IMAGE)
 
   useEffect(() => {
     if (!selectedCityId) return
+
+    // Per-city hero image (admin-managed). Falls back to the default when the
+    // city hasn't set one.
+    api
+      .get('/site-settings/hero', { params: { city_id: selectedCityId } })
+      .then((res) => {
+        const url = String(
+          res.data?.data?.heroImageUrl || res.data?.data?.hero_image_url || ''
+        ).trim()
+        setHeroImageUrl(url || HERO_IMAGE)
+      })
+      .catch(() => setHeroImageUrl(HERO_IMAGE))
 
     bannerApi
       .getSettings()
@@ -178,12 +191,13 @@ export default function HeroSection() {
           {/* Hero image — below content on mobile (app order) */}
           <div className="relative mt-6 lg:mt-0 rounded-3xl overflow-hidden max-w-lg mx-auto lg:max-w-none w-full">
             <Image
-              src={HERO_IMAGE}
+              src={heroImageUrl}
               alt="Fresh vegetables and fruits"
               width={800}
               height={536}
               className="w-full h-[268px] md:h-auto md:aspect-square object-cover rounded-3xl"
               priority
+              unoptimized={heroImageUrl !== HERO_IMAGE}
             />
             <div className="absolute bottom-4 left-4 right-4 bg-white/95 backdrop-blur-sm rounded-xl px-4 py-3 shadow-lg flex items-center justify-between">
               <div>

@@ -448,42 +448,9 @@ export const calculateCartDeliveryCharge = asyncHandler(async (req: Request, res
   successResponse(res, deliveryResult, 'Delivery charge calculated successfully');
 });
 
-/**
- * Apply coupon code
- * POST /api/cart/apply-coupon
- *
- * NOTE: coupon redemption is not yet implemented. Returns 501 to make this
- * explicit rather than masquerading as an "invalid coupon" error. Remove
- * this endpoint (and the UI entry point) once the feature is built.
- */
-export const applyCoupon = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) {
-    return errorResponse(res, 'Authentication required', 401);
-  }
-  return errorResponse(res, 'Coupons are not yet available', 501);
-});
-
-/**
- * Remove coupon code
- * DELETE /api/cart/remove-coupon
- */
-export const removeCoupon = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) {
-    return errorResponse(res, 'Authentication required', 401);
-  }
-
-  const cart = await getOrCreateCart(req.user.id);
-
-  // SET expressions read the OLD row in Postgres, so the recomputed total
-  // must NOT subtract coupon_discount — that's the value being removed.
-  await query(
-    `UPDATE carts
-     SET coupon_code = NULL, coupon_discount = 0,
-         total_amount = subtotal + delivery_charge - discount_amount + COALESCE(tax_amount, 0),
-         updated_at = NOW()
-     WHERE id = $1`,
-    [cart.id]
-  );
-
-  successResponse(res, null, 'Coupon removed successfully');
-});
+// NOTE: Coupon redemption is intentionally NOT implemented. The previous
+// /cart/apply-coupon (501) and /cart/remove-coupon endpoints were removed so
+// the API doesn't advertise a feature that doesn't exist. The carts/orders
+// coupon_discount + coupon_code columns are retained only so historical orders
+// keep reconciling (subtotal - discount - coupon + delivery = total); they are
+// always 0 / NULL until a real coupon system is built.

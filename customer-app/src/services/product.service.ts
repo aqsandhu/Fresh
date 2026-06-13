@@ -240,6 +240,20 @@ class ProductService {
     }
   }
 
+  /** Per-city homepage hero image (admin-managed). Empty string = use default. */
+  async getHeroImage(): Promise<ApiResponse<{ url: string }>> {
+    try {
+      const response = await apiClient.get('/site-settings/hero', {
+        params: withCityParams(),
+      });
+      const raw = response.data?.data || response.data || {};
+      const url = String(raw.hero_image_url || raw.heroImageUrl || '').trim();
+      return { success: true, data: { url } };
+    } catch {
+      return { success: true, data: { url: '' } };
+    }
+  }
+
   async getBannerSettings(): Promise<
     ApiResponse<{
       leftText: string;

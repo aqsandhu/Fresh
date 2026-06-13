@@ -5,6 +5,7 @@ export type SettingsTabId =
   | 'timeslots'
   | 'business'
   | 'banner'
+  | 'hero'
   | 'brand'
   | 'favicon'
   | 'whatsapp';
@@ -22,6 +23,9 @@ const TAB_VIEW: Record<SettingsTabId, string[]> = {
   ],
   business: ['settings.business_hours.view', 'settings.view', 'settings.update'],
   banner: ['settings.banner.view', 'settings.view', 'settings.update'],
+  // Hero image is per-city like the banner — any admin who can view the banner
+  // (or has the dedicated hero/settings codes) can see it.
+  hero: ['settings.hero.view', 'settings.banner.view', 'settings.view', 'settings.update'],
   brand: ['settings.brand.view', 'settings.view', 'settings.update'],
   favicon: ['settings.favicon.view', 'settings.view', 'settings.update'],
   whatsapp: [
@@ -38,6 +42,7 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   timeslots: ['settings.timeslots.manage', 'settings.update'],
   business: ['settings.business_hours.update', 'settings.update'],
   banner: ['settings.banner.update', 'settings.update'],
+  hero: ['settings.hero.update', 'settings.banner.update', 'settings.update'],
   brand: ['settings.brand.update', 'settings.update'],
   favicon: ['settings.favicon.update', 'settings.update'],
   whatsapp: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
@@ -54,6 +59,8 @@ export const ALL_SETTINGS_VIEW_CODES = [
   'settings.business_hours.update',
   'settings.banner.view',
   'settings.banner.update',
+  'settings.hero.view',
+  'settings.hero.update',
   'settings.brand.view',
   'settings.brand.update',
   'settings.favicon.view',
@@ -106,7 +113,7 @@ export function canAccessSettingsPage(permissions: string[] | undefined): boolea
   return (
     hasPermission(permissions, ALL_SETTINGS_VIEW_CODES) ||
     (
-      ['delivery', 'timeslots', 'business', 'banner', 'brand', 'favicon', 'whatsapp'] as SettingsTabId[]
+      ['delivery', 'timeslots', 'business', 'banner', 'hero', 'brand', 'favicon', 'whatsapp'] as SettingsTabId[]
     ).some(
       (tab) => canViewSettingsTab(permissions, tab)
     )
@@ -117,7 +124,7 @@ export function visibleSettingsTabs(
   permissions: string[] | undefined,
   role?: string
 ): SettingsTabId[] {
-  const tabs = (['delivery', 'timeslots', 'business', 'banner', 'whatsapp'] as SettingsTabId[]).filter(
+  const tabs = (['delivery', 'timeslots', 'business', 'banner', 'hero', 'whatsapp'] as SettingsTabId[]).filter(
     (tab) => canViewSettingsTab(permissions, tab)
   );
   if (canViewBrandSettingsTab(permissions, role) && !tabs.includes('brand')) {

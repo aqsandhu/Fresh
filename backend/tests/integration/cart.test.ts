@@ -20,6 +20,19 @@ function ok<T>(rows: T[], command = 'SELECT'): any {
 
 const VALID_PRODUCT = '11111111-1111-1111-1111-111111111111';
 
+// Cart routes run `verifyUserActive` (a top-level `query`) after validation,
+// so every request that reaches a controller first looks up the active user.
+const ACTIVE_USER_ROW = {
+  id: 'user-1',
+  phone: '+923001234567',
+  role: 'customer',
+  status: 'active',
+  full_name: 'Test User',
+};
+function mockActiveUser(): void {
+  mockQuery.mockResolvedValueOnce(ok([ACTIVE_USER_ROW]));
+}
+
 describe('Cart auth gate', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -43,6 +56,8 @@ describe('GET /api/cart', () => {
 
   it('returns the cart and items for the authenticated user', async () => {
     mockQuery
+      // verifyUserActive → active user lookup
+      .mockResolvedValueOnce(ok([ACTIVE_USER_ROW]))
       // getOrCreateCart → existing active cart
       .mockResolvedValueOnce(ok([{ id: 'cart-1', user_id: 'user-1', status: 'active' }]))
       // cart items
@@ -56,8 +71,10 @@ describe('GET /api/cart', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    // First query is scoped to the authenticated user id, not a client-supplied one.
+    // Both the active-user re-check and the cart lookup are scoped to the
+    // authenticated user id, not a client-supplied one.
     expect(mockQuery.mock.calls[0][1]).toEqual(['user-1']);
+    expect(mockQuery.mock.calls[1][1]).toEqual(['user-1']);
   });
 });
 
@@ -200,6 +217,7 @@ describe('POST /api/cart/sync', () => {
       );
     });
 
+    mockActiveUser();
     mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
 
     const res = await request(app)
@@ -245,6 +263,7 @@ describe('POST /api/cart/sync', () => {
       return Promise.resolve(ok([]));
     });
 
+    mockActiveUser();
     mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
 
     const res = await request(app)

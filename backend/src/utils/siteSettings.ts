@@ -17,6 +17,8 @@ export const BRAND_LOGO_URL_KEY = 'brand_logo_url';
 export const BRAND_LOGO_STORAGE_PATH_KEY = 'brand_logo_storage_path';
 export const BRAND_FAVICON_URL_KEY = 'brand_favicon_url';
 export const BRAND_FAVICON_STORAGE_PATH_KEY = 'brand_favicon_storage_path';
+export const HERO_IMAGE_URL_KEY = 'hero_image_url';
+export const HERO_IMAGE_STORAGE_PATH_KEY = 'hero_image_storage_path';
 
 let cachedCityColumn: boolean | null = null;
 
@@ -412,4 +414,109 @@ export async function clearBrandFaviconSettings(userId?: string): Promise<BrandF
   await upsertGlobalSiteSetting(BRAND_FAVICON_URL_KEY, '', userId);
   await upsertGlobalSiteSetting(BRAND_FAVICON_STORAGE_PATH_KEY, '', userId);
   return fetchBrandFaviconSettings();
+}
+
+// ============================================================================
+// HERO SECTION IMAGE (per-city, like the banner text)
+// ----------------------------------------------------------------------------
+// Each service city can set its own homepage hero image (website + customer
+// app). A global (city_id NULL) row acts as the fallback when a city hasn't
+// set one. Every city admin manages their own city's image; the super admin
+// manages any city plus the global fallback.
+// ============================================================================
+
+export interface HeroImageSettings {
+  hero_image_url: string;
+  hero_image_storage_path: string;
+}
+
+/** City hero image with global fallback (city value wins when present). */
+export async function fetchHeroImageSettings(
+  cityId?: string | null
+): Promise<HeroImageSettings> {
+  const hasCityColumn = await hasSiteSettingsCityColumn();
+  const keys = [HERO_IMAGE_URL_KEY, HERO_IMAGE_STORAGE_PATH_KEY];
+
+  if (!hasCityColumn || !cityId) {
+    const result = await query(
+      hasCityColumn
+        ? `SELECT key, value FROM site_settings
+           WHERE key = ANY($1::text[]) AND city_id IS NULL`
+        : `SELECT key, value FROM site_settings WHERE key = ANY($1::text[])`,
+      [keys]
+    );
+    const map = rowsToMap(result.rows);
+    return {
+      hero_image_url: map[HERO_IMAGE_URL_KEY] || '',
+      hero_image_storage_path: map[HERO_IMAGE_STORAGE_PATH_KEY] || '',
+    };
+  }
+
+  const [globalResult, cityResult] = await Promise.all([
+    query(
+      `SELECT key, value FROM site_settings
+       WHERE key = ANY($1::text[]) AND city_id IS NULL`,
+      [keys]
+    ),
+    query(
+      `SELECT key, value FROM site_settings
+       WHERE key = ANY($1::text[]) AND city_id = $2`,
+      [keys, cityId]
+    ),
+  ]);
+
+  const merged = { ...rowsToMap(globalResult.rows), ...rowsToMap(cityResult.rows) };
+  return {
+    hero_image_url: merged[HERO_IMAGE_URL_KEY] || '',
+    hero_image_storage_path: merged[HERO_IMAGE_STORAGE_PATH_KEY] || '',
+  };
+}
+
+/** Save a city's hero image (URL + storage path). */
+export async function upsertHeroImageSettings(
+  url: string,
+  storagePath: string,
+  cityId: string | null,
+  userId?: string
+): Promise<HeroImageSettings> {
+  await upsertKeyedSetting(HERO_IMAGE_URL_KEY, url, cityId, userId);
+  await upsertKeyedSetting(HERO_IMAGE_STORAGE_PATH_KEY, storagePath, cityId, userId);
+  return fetchHeroImageSettings(cityId);
+}
+
+/** Storage object paths for a hero image (path field + URL fallback). */
+export function heroImageStoragePaths(settings: HeroImageSettings): string[] {
+  const paths = new Set<string>();
+  const stored = settings.hero_image_storage_path?.trim();
+  if (stored) paths.add(stored);
+  const fromUrl = objectPathFromSupabasePublicUrl(settings.hero_image_url || '');
+  if (fromUrl) paths.add(fromUrl);
+  return [...paths];
+}
+
+/** Remove a city's hero file(s) from storage, skipping `exceptPath`. */
+export async function deleteHeroImageFromStorage(
+  settings: HeroImageSettings,
+  exceptPath?: string
+): Promise<number> {
+  const skip = exceptPath?.trim();
+  const toDelete = heroImageStoragePaths(settings).filter((p) => p !== skip);
+  const count = await deleteStoragePaths(toDelete);
+  if (count > 0) {
+    logger.info('Deleted previous hero image file(s) from storage', {
+      count,
+      paths: toDelete,
+    });
+  }
+  return count;
+}
+
+/** Clear a city's hero image (keeps the global fallback intact). */
+export async function clearHeroImageSettings(
+  cityId: string | null,
+  userId?: string
+): Promise<HeroImageSettings> {
+  await upsertKeyedSetting(HERO_IMAGE_URL_KEY, '', cityId, userId);
+  await upsertKeyedSetting(HERO_IMAGE_STORAGE_PATH_KEY, '', cityId, userId);
+  return fetchHeroImageSettings(cityId);
 }
