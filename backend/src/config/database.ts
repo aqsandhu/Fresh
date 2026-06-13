@@ -8,13 +8,22 @@ import logger from '../utils/logger';
 /**
  * TLS options for the DB connection.
  *
- * Certificate verification order of preference:
- *   1. DB_SSL_CA (PEM string or base64) — pin the provider CA, full verify.
+ * SECURE BY DEFAULT IN PRODUCTION: certificate verification is now ON unless
+ * explicitly disabled. Most managed providers (Supabase pooler, Render
+ * Postgres) present publicly-trusted certs, so verification against the system
+ * CA store "just works" and closes the MITM window the old default left open.
+ *
+ * Resolution order:
+ *   1. DB_SSL=false                         → no TLS at all.
+ *   2. DB_SSL_CA (PEM string or base64)     → pin the provider CA, full verify.
  *      Supabase: Dashboard → Settings → Database → "SSL Certificate".
- *   2. DB_SSL_REJECT_UNAUTHORIZED=true — verify against system CAs.
- *   3. Default — encrypted but UNVERIFIED (rejectUnauthorized: false), kept
- *      for compatibility with poolers that present self-signed chains. We
- *      log loudly in production so this isn't silently left open to MITM.
+ *   3. DB_SSL_REJECT_UNAUTHORIZED=true|false → explicit override (wins).
+ *   4. production default                    → verify against system CAs.
+ *   5. non-production default                → encrypted but unverified, so
+ *      local/self-signed dev setups don't block startup.
+ *
+ * If a production provider uses a self-signed chain and connection fails,
+ * supply DB_SSL_CA (preferred) or set DB_SSL_REJECT_UNAUTHORIZED=false.
  */
 function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } {
   if (process.env.DB_SSL === 'false') return false;
@@ -31,12 +40,19 @@ function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } 
   if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true') {
     return { rejectUnauthorized: true };
   }
+  if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false') {
+    if (process.env.NODE_ENV === 'production') {
+      logger.warn(
+        'DB TLS certificate verification is DISABLED via DB_SSL_REJECT_UNAUTHORIZED=false. ' +
+          'This reopens a MITM window — prefer pinning the provider CA with DB_SSL_CA.'
+      );
+    }
+    return { rejectUnauthorized: false };
+  }
 
+  // Secure by default in production; lenient elsewhere for local dev.
   if (process.env.NODE_ENV === 'production') {
-    logger.warn(
-      'DB TLS certificate verification is DISABLED (rejectUnauthorized: false). ' +
-        'Set DB_SSL_CA (provider CA cert) or DB_SSL_REJECT_UNAUTHORIZED=true to close the MITM window.'
-    );
+    return { rejectUnauthorized: true };
   }
   return { rejectUnauthorized: false };
 }

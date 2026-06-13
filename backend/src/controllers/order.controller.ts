@@ -13,6 +13,7 @@ import {
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { calculateDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
+import { roundMoney } from '../utils/money';
 import { restoreOrderInventory } from '../utils/orderStatus';
 import { hasOrderCouponColumns } from '../config/orderSchema';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
@@ -448,8 +449,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
     // Fresh subtotal from live products table (JOIN), not cached carts.subtotal.
     const freshSubtotalResult = await client.query(FRESH_CART_SUBTOTAL_SQL, [cart.id]);
-    const subtotal = parseFloat(
-      freshSubtotalResult.rows[0]?.fresh_subtotal || '0'
+    const subtotal = roundMoney(
+      parseFloat(freshSubtotalResult.rows[0]?.fresh_subtotal || '0')
     );
     // Discount/coupon are server-controlled in this codebase (no client
     // payload paths set them), but clamp anyway to avoid any future surface
@@ -459,15 +460,21 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     const safeDiscount = Math.max(0, rawDiscount);
     const safeCoupon = Math.max(0, rawCoupon);
     const totalDeductible = Math.min(safeDiscount + safeCoupon, subtotal);
-    const discountAmount = totalDeductible > 0
-      ? safeDiscount * (totalDeductible / (safeDiscount + safeCoupon || 1))
-      : 0;
-    const couponDiscount = totalDeductible > 0
-      ? safeCoupon * (totalDeductible / (safeDiscount + safeCoupon || 1))
-      : 0;
-    const totalAmount = Math.max(
-      0,
-      subtotal + deliveryCharge - discountAmount - couponDiscount
+    // Round every monetary component to 2dp so the stored row reconciles
+    // exactly (subtotal - discount - coupon + delivery = total) without float
+    // residue, and so the payment webhook's amount equality check is clean.
+    const discountAmount = roundMoney(
+      totalDeductible > 0
+        ? safeDiscount * (totalDeductible / (safeDiscount + safeCoupon || 1))
+        : 0
+    );
+    const couponDiscount = roundMoney(
+      totalDeductible > 0
+        ? safeCoupon * (totalDeductible / (safeDiscount + safeCoupon || 1))
+        : 0
+    );
+    const totalAmount = roundMoney(
+      Math.max(0, subtotal + deliveryCharge - discountAmount - couponDiscount)
     );
 
     const addressSnapshot = JSON.stringify({

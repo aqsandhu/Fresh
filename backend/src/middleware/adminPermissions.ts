@@ -147,6 +147,13 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
       ? ['settings.favicon.view', 'settings.view', 'settings.update']
       : ['settings.favicon.update', 'settings.update'];
   }
+  if (p.startsWith('/site-settings/hero')) {
+    // Hero image is part of the storefront an admin already manages — anyone
+    // who can edit the banner (or has general settings access) can edit it.
+    return m === 'GET'
+      ? ['settings.hero.view', 'settings.banner.view', 'settings.view', 'settings.update']
+      : ['settings.hero.update', 'settings.banner.update', 'settings.update'];
+  }
   if (
     p.startsWith('/site-settings/banner') ||
     p.startsWith('/site-settings/whatsapp-order')

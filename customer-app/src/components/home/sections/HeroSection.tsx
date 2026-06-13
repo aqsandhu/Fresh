@@ -14,6 +14,9 @@ const STATIC_FEATURES = [
   { icon: 'phone' as const, key: 'phone' },
 ];
 
+const DEFAULT_HERO_IMAGE =
+  'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&h=800&fit=crop';
+
 interface HeroSectionProps {
   onShopNow: () => void;
   onAttaChakki: () => void;
@@ -30,6 +33,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow, onAttaChakk
   const [phoneText, setPhoneText] = useState('0300-1234567');
   const [freeThreshold, setFreeThreshold] = useState(500);
   const [whatsappOrderUrl, setWhatsappOrderUrl] = useState('');
+  const [heroImageUrl, setHeroImageUrl] = useState(DEFAULT_HERO_IMAGE);
 
   useEffect(() => {
     if (!selectedCityId) return;
@@ -40,6 +44,10 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow, onAttaChakk
     });
     productService.getWhatsAppOrderUrl().then((res) => {
       if (res.success && res.data.url) setWhatsappOrderUrl(res.data.url);
+    });
+    // Per-city hero image — falls back to the default when none is set.
+    productService.getHeroImage().then((res) => {
+      setHeroImageUrl(res.success && res.data.url ? res.data.url : DEFAULT_HERO_IMAGE);
     });
     orderService.getDeliverySettings().then((res) => {
       if (res.success && res.data?.free_delivery_threshold) {
@@ -145,7 +153,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow, onAttaChakk
 
       <View style={styles.heroImageWrap}>
         <Image
-          source={{ uri: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&h=800&fit=crop' }}
+          source={{ uri: heroImageUrl }}
           style={styles.heroImage}
         />
         <View style={styles.floatBadge}>

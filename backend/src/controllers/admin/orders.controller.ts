@@ -411,68 +411,87 @@ export const assignRider = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, `Rider is ${rider.status}. Cannot assign orders.`, 400);
   }
 
-  // Get the order details
-  const orderCheck = await query('SELECT time_slot_id, status FROM orders WHERE id = $1 AND deleted_at IS NULL', [id]);
-  if (orderCheck.rows.length === 0) {
-    return notFoundResponse(res, 'Order not found');
+  // All writes (order update + rider status + task swap) must be atomic — a
+  // partial failure previously left the order marked out_for_delivery while
+  // the rider/task rows said otherwise. The row lock also serialises two
+  // admins assigning the same order at once.
+  let result: { rows: any[] };
+  try {
+    result = await withTransaction(async (client) => {
+      const orderCheck = await client.query(
+        'SELECT time_slot_id, status FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+        [id]
+      );
+      if (orderCheck.rows.length === 0) {
+        throw Object.assign(new Error('Order not found'), { http: 404 });
+      }
+      if (['delivered', 'cancelled', 'refunded'].includes(orderCheck.rows[0].status)) {
+        throw Object.assign(
+          new Error('Cannot assign rider to a completed or cancelled order'),
+          { http: 400 }
+        );
+      }
+
+      const timeSlotId = orderCheck.rows[0].time_slot_id;
+
+      // Snapshot rider delivery charge at assignment time (only successful orders count later)
+      let riderCharge = 0;
+      if (timeSlotId) {
+        const chargeResult = await client.query(
+          'SELECT charge_per_order FROM rider_delivery_charges WHERE rider_id = $1 AND time_slot_id = $2',
+          [rider_id, timeSlotId]
+        );
+        if (chargeResult.rows.length > 0) {
+          riderCharge = parseFloat(chargeResult.rows[0].charge_per_order) || 0;
+        }
+      }
+
+      // Deliberate fast-path outside the strict state machine: assigning a rider
+      // implies the order is on its way, so any live status (pending/confirmed/
+      // preparing/ready) jumps straight to out_for_delivery. Dead orders are
+      // rejected above.
+      const updated = await client.query(
+        `UPDATE orders
+         SET rider_id = $1,
+             assigned_at = NOW(),
+             rider_delivery_charge = $3,
+             status = 'out_for_delivery',
+             out_for_delivery_at = COALESCE(out_for_delivery_at, NOW()),
+             updated_at = NOW()
+         WHERE id = $2
+         RETURNING *`,
+        [rider_id, id, riderCharge]
+      );
+
+      // Update rider status to busy
+      await client.query(
+        "UPDATE riders SET status = 'busy', updated_at = NOW() WHERE id = $1",
+        [rider_id]
+      );
+
+      // Cancel any previous rider task for this order, then create new one
+      await client.query(
+        `UPDATE rider_tasks SET status = 'cancelled', completed_at = NOW()
+         WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
+        [id]
+      );
+      await client.query(
+        `INSERT INTO rider_tasks (rider_id, task_type, order_id, status, assigned_at)
+         VALUES ($1, 'delivery', $2, 'assigned', NOW())`,
+        [rider_id, id]
+      );
+
+      return updated;
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, 'Order not found');
+    if (err?.http === 400) return errorResponse(res, err.message, 400);
+    throw err;
   }
-
-  if (['delivered', 'cancelled', 'refunded'].includes(orderCheck.rows[0].status)) {
-    return errorResponse(res, 'Cannot assign rider to a completed or cancelled order', 400);
-  }
-
-  const timeSlotId = orderCheck.rows[0].time_slot_id;
-
-  // Snapshot rider delivery charge at assignment time (only successful orders count later)
-  let riderCharge = 0;
-  if (timeSlotId) {
-    const chargeResult = await query(
-      'SELECT charge_per_order FROM rider_delivery_charges WHERE rider_id = $1 AND time_slot_id = $2',
-      [rider_id, timeSlotId]
-    );
-    if (chargeResult.rows.length > 0) {
-      riderCharge = parseFloat(chargeResult.rows[0].charge_per_order) || 0;
-    }
-  }
-
-  // Deliberate fast-path outside the strict state machine: assigning a rider
-  // implies the order is on its way, so any live status (pending/confirmed/
-  // preparing/ready) jumps straight to out_for_delivery. Dead orders are
-  // rejected above.
-  const result = await query(
-    `UPDATE orders 
-     SET rider_id = $1, 
-         assigned_at = NOW(),
-         rider_delivery_charge = $3,
-         status = 'out_for_delivery',
-         out_for_delivery_at = COALESCE(out_for_delivery_at, NOW()),
-         updated_at = NOW()
-     WHERE id = $2
-     RETURNING *`,
-    [rider_id, id, riderCharge]
-  );
 
   if (result.rows.length === 0) {
     return notFoundResponse(res, 'Order not found');
   }
-
-  // Update rider status to busy
-  await query(
-    "UPDATE riders SET status = 'busy', updated_at = NOW() WHERE id = $1",
-    [rider_id]
-  );
-
-  // Cancel any previous rider task for this order, then create new one
-  await query(
-    `UPDATE rider_tasks SET status = 'cancelled', completed_at = NOW() 
-     WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
-    [id]
-  );
-  await query(
-    `INSERT INTO rider_tasks (rider_id, task_type, order_id, status, assigned_at)
-     VALUES ($1, 'delivery', $2, 'assigned', NOW())`,
-    [rider_id, id]
-  );
 
   logger.info('Rider assigned to order', { orderId: id, riderId: rider_id, assignedBy: req.user?.id });
 

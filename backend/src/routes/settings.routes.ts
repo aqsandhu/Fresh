@@ -7,6 +7,7 @@ import {
   fetchWhatsAppOrderSettings,
   fetchBrandLogoSettings,
   fetchBrandFaviconSettings,
+  fetchHeroImageSettings,
 } from '../utils/siteSettings';
 import { query } from '../config/database';
 
@@ -33,6 +34,18 @@ router.get('/banner', asyncHandler(async (req, res) => {
     fetchWhatsAppOrderSettings(cityId),
   ]);
   successResponse(res, { ...banner, ...whatsapp }, 'Banner settings retrieved');
+}));
+
+// Public: per-city hero image for website + customer app homepage (no auth)
+router.get('/hero', asyncHandler(async (req, res) => {
+  const cityId = await resolvePublicCityId(req);
+  const hero = await fetchHeroImageSettings(cityId);
+  const imageUrl = hero.hero_image_url?.trim() || null;
+  successResponse(
+    res,
+    { heroImageUrl: imageUrl, hero_image_url: imageUrl },
+    'Hero image retrieved'
+  );
 }));
 
 // Public: WhatsApp order link for customer app hero (per city)

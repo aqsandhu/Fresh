@@ -26,6 +26,10 @@ import {
   clearBrandFaviconSettings,
   BRAND_FAVICON_URL_KEY,
   BRAND_FAVICON_STORAGE_PATH_KEY,
+  fetchHeroImageSettings,
+  upsertHeroImageSettings,
+  deleteHeroImageFromStorage,
+  clearHeroImageSettings,
 } from '../../utils/siteSettings';
 
 export const getBrandLogoSettings = asyncHandler(async (req: Request, res: Response) => {
@@ -184,6 +188,97 @@ export const deleteBrandFaviconSettings = asyncHandler(async (req: Request, res:
     removedCount > 0
       ? 'Brand favicon removed from site and storage.'
       : 'Brand favicon settings cleared.'
+  );
+});
+
+// ============================================================================
+// HERO SECTION IMAGE (per-city — website + customer app homepage)
+// Every city admin manages their own city; super admin manages any city.
+// ============================================================================
+
+/**
+ * Get the hero image for the current scope (city value, else global fallback).
+ * GET /api/admin/site-settings/hero
+ */
+export const getHeroSettings = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const hero = await fetchHeroImageSettings(scope.cityId);
+  successResponse(res, hero, 'Hero image settings retrieved');
+});
+
+/**
+ * Upload / replace the hero image for the scoped city.
+ * PUT /api/admin/site-settings/hero  (multipart: field "hero")
+ */
+export const updateHeroSettings = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  if (!scope.cityId) {
+    return errorResponse(res, 'Select a city before updating the hero image', 400);
+  }
+
+  const file = req.file as Express.Multer.File | undefined;
+  if (!file?.buffer?.length) {
+    return errorResponse(res, 'Hero image file is required', 400);
+  }
+  if (!file.url) {
+    return errorResponse(
+      res,
+      'Hero image upload failed. Check Supabase Storage (SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY) on Render.',
+      500
+    );
+  }
+
+  const userId = req.user?.id;
+  const newPath = file.storagePath?.trim() || '';
+
+  // Remove the city's previous hero file (skip the one we just uploaded).
+  const previous = await fetchHeroImageSettings(scope.cityId);
+  const removedCount = await deleteHeroImageFromStorage(previous, newPath);
+
+  const hero = await upsertHeroImageSettings(file.url, newPath, scope.cityId, userId);
+
+  logger.info('Hero image updated', {
+    updatedBy: userId,
+    cityId: scope.cityId,
+    url: file.url,
+    previousFilesRemoved: removedCount,
+  });
+
+  successResponse(
+    res,
+    { ...hero, previousFilesRemoved: removedCount },
+    removedCount > 0
+      ? 'Hero image updated. Previous file removed from storage.'
+      : 'Hero image updated successfully'
+  );
+});
+
+/**
+ * Remove the scoped city's hero image (falls back to the global hero, if any).
+ * DELETE /api/admin/site-settings/hero
+ */
+export const deleteHeroSettings = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  if (!scope.cityId) {
+    return errorResponse(res, 'Select a city before removing the hero image', 400);
+  }
+
+  const previous = await fetchHeroImageSettings(scope.cityId);
+  const removedCount = await deleteHeroImageFromStorage(previous);
+  const hero = await clearHeroImageSettings(scope.cityId, req.user?.id);
+
+  logger.info('Hero image removed', {
+    removedBy: req.user?.id,
+    cityId: scope.cityId,
+    filesRemoved: removedCount,
+  });
+
+  successResponse(
+    res,
+    { ...hero, filesRemoved: removedCount },
+    removedCount > 0
+      ? 'Hero image removed from site and storage.'
+      : 'Hero image cleared.'
   );
 });
 

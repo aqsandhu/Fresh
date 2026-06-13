@@ -6,6 +6,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { query } from '../config/database';
+import { ForbiddenError } from '../middleware/errorHandler';
 
 export interface CityScope {
   cityId: string | null;
@@ -14,6 +15,13 @@ export interface CityScope {
   unrestricted: boolean;
   /** false until migration 04 is applied — city_id filters are skipped so data still loads. */
   dbReady: boolean;
+  /**
+   * FAIL-CLOSED: true when a city-scoped admin has NO resolvable city (e.g. a
+   * role with no city assigned). Such an admin must see NOTHING, never every
+   * city. The middleware rejects these requests; the helpers also treat this
+   * as "match no rows" as defence-in-depth.
+   */
+  forbidden?: boolean;
 }
 
 let cachedCityColumns: boolean | null = null;
@@ -95,6 +103,13 @@ export async function resolveCityScope(req: Request): Promise<CityScope> {
     };
   }
 
+  // A non-super admin whose role resolves to NO city is a misconfiguration.
+  // Once city scoping is live (dbReady), fail CLOSED — deny rather than hand
+  // them every city's data. Before migration 04 there are no city columns to
+  // isolate, so the legacy unrestricted behaviour is kept.
+  if (dbReady) {
+    return { cityId: null, cityName: null, unrestricted: false, dbReady, forbidden: true };
+  }
   return { cityId: null, cityName: null, unrestricted: true, dbReady };
 }
 
@@ -105,6 +120,9 @@ export function cityIdClause(
   params: unknown[],
   paramIndex: number
 ): { sql: string; nextIndex: number } {
+  if (scope.forbidden) {
+    return { sql: ' AND FALSE', nextIndex: paramIndex };
+  }
   if (scope.unrestricted || !scope.cityId || !scope.dbReady) {
     return { sql: '', nextIndex: paramIndex };
   }
@@ -123,6 +141,9 @@ export function orderCityClause(
   params: unknown[],
   paramIndex: number
 ): { sql: string; nextIndex: number } {
+  if (scope.forbidden) {
+    return { sql: ' AND FALSE', nextIndex: paramIndex };
+  }
   if (scope.unrestricted || !scope.cityId || !scope.dbReady) {
     return { sql: '', nextIndex: paramIndex };
   }
@@ -147,6 +168,9 @@ export function customerCityExistsClause(
   params: unknown[],
   paramIndex: number
 ): { sql: string; nextIndex: number; cityIdParam: number | null; cityNameParam: number | null } {
+  if (scope.forbidden) {
+    return { sql: ' AND FALSE', nextIndex: paramIndex, cityIdParam: null, cityNameParam: null };
+  }
   if (scope.unrestricted || !scope.cityId || !scope.cityName || !scope.dbReady) {
     return { sql: '', nextIndex: paramIndex, cityIdParam: null, cityNameParam: null };
   }
@@ -211,6 +235,9 @@ export function addressCityWhereClause(
   params: unknown[],
   paramIndex: number
 ): { sql: string; nextIndex: number } {
+  if (scope.forbidden) {
+    return { sql: ' AND FALSE', nextIndex: paramIndex };
+  }
   if (scope.unrestricted || !scope.cityName || !scope.dbReady) {
     return { sql: '', nextIndex: paramIndex };
   }
@@ -227,7 +254,17 @@ export const attachCityScope = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    req.cityScope = await resolveCityScope(req);
+    const scope = await resolveCityScope(req);
+    req.cityScope = scope;
+    // Fail closed: a scoped admin with no assigned city is denied outright
+    // rather than silently granted access to every city's data.
+    if (scope.forbidden) {
+      return next(
+        new ForbiddenError(
+          'Your admin account is not assigned to a city. Ask a super admin to assign one.'
+        )
+      );
+    }
     next();
   } catch (err) {
     next(err);
@@ -235,6 +272,9 @@ export const attachCityScope = async (
 };
 
 export function requireCityScope(scope: CityScope): string | null {
+  if (scope.forbidden) {
+    return 'Your admin account is not assigned to a city. Ask a super admin to assign one.';
+  }
   if (scope.unrestricted || !scope.cityId) {
     return 'Select a city before creating or updating catalog data';
   }
@@ -247,6 +287,7 @@ export function requireCityScope(scope: CityScope): string | null {
  * Used by by-ID read/update/delete endpoints — list endpoints filter in SQL.
  */
 export function cityRowInScope(scope: CityScope, rowCityId: string | null): boolean {
+  if (scope.forbidden) return false;
   if (scope.unrestricted || !scope.cityId || !scope.dbReady) return true;
   return rowCityId === scope.cityId;
 }
@@ -256,6 +297,7 @@ export function cityRowInScope(scope: CityScope, rowCityId: string | null): bool
  * address city OR snapshot city), applied to a single order for by-ID routes.
  */
 export async function orderInScope(scope: CityScope, orderId: string): Promise<boolean> {
+  if (scope.forbidden) return false;
   if (scope.unrestricted || !scope.cityId || !scope.cityName || !scope.dbReady) return true;
   const r = await query(
     `SELECT 1 FROM orders o

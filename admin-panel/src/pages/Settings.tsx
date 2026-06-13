@@ -21,6 +21,7 @@ import {
   Eye,
   MessageCircle,
   Image,
+  ImagePlus,
   Sparkles,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
@@ -50,6 +51,7 @@ import {
 } from '@/lib/settingsPermissions';
 import { BrandLogoSettingsPanel } from '@/components/settings/BrandLogoSettingsPanel';
 import { BrandFaviconSettingsPanel } from '@/components/settings/BrandFaviconSettingsPanel';
+import { HeroImageSettingsPanel } from '@/components/settings/HeroImageSettingsPanel';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -815,6 +817,19 @@ export const Settings: React.FC = () => {
           <span>Website Banner</span>
         </button>
         )}
+        {canViewSettingsTab(permissions, 'hero') && (
+        <button
+          onClick={() => setActiveTab('hero')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'hero'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <ImagePlus className="w-4 h-4" />
+          <span>Hero Image</span>
+        </button>
+        )}
         {showBrandTab && (
         <button
           onClick={() => setActiveTab('brand')}
@@ -861,6 +876,9 @@ export const Settings: React.FC = () => {
       {activeTab === 'timeslots' && renderTimeSlots()}
       {activeTab === 'business' && renderBusinessHours()}
       {activeTab === 'banner' && renderBanner()}
+      {activeTab === 'hero' && (
+        <HeroImageSettingsPanel canEdit={canUpdate('hero')} />
+      )}
       {activeTab === 'brand' && (
         <BrandLogoSettingsPanel canEdit={canEditBrandLogo} />
       )}
