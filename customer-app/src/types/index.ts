@@ -193,6 +193,8 @@ export interface Order {
   subtotal: number;
   deliveryCharge: number;
   discount?: number;
+  couponDiscount?: number;
+  couponCode?: string | null;
   total: number;
   totalAmount?: number;
   address?: Address;

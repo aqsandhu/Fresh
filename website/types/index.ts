@@ -139,6 +139,8 @@ export interface Order {
   deliveryCharge?: number;
   discount_amount?: number;
   discountAmount?: number;
+  coupon_discount?: number;
+  coupon_code?: string | null;
   total_amount: number;
   totalAmount?: number;
   paid_amount?: number;

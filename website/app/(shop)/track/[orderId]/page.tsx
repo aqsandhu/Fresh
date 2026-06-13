@@ -14,7 +14,8 @@ import {
   Navigation,
   Loader2,
   AlertCircle,
-  XCircle
+  XCircle,
+  Tag
 } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
@@ -108,6 +109,8 @@ export default function TrackOrderPage() {
         createdAt: raw.placed_at || raw.created_at || '',
         subtotal: parseOrderAmount(raw.subtotal),
         deliveryCharge: parseOrderAmount(raw.delivery_charge),
+        couponDiscount: parseOrderAmount(raw.coupon_discount),
+        couponCode: raw.coupon_code || null,
         total: parseOrderAmount(raw.total_amount),
         slotStart,
         slotEnd,
@@ -417,6 +420,17 @@ export default function TrackOrderPage() {
                   <span>Subtotal</span>
                   <span>{formatPriceShort(order.subtotal)}</span>
                 </div>
+                {order.couponDiscount > 0 && (
+                  <div className="flex justify-between items-center gap-2 text-green-600 font-medium">
+                    <span className="inline-flex items-center gap-1 min-w-0">
+                      <Tag className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">
+                        Coupon{order.couponCode ? ` (${order.couponCode})` : ''}
+                      </span>
+                    </span>
+                    <span className="shrink-0">-{formatPriceShort(order.couponDiscount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-gray-600">
                   <span>Delivery</span>
                   <span className={order.deliveryCharge === 0 ? 'text-green-600' : ''}>

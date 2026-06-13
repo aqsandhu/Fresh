@@ -13,6 +13,7 @@ import {
   MapPinned,
   Settings,
   Shield,
+  Ticket,
   LogOut,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
@@ -42,6 +43,7 @@ const navItems: NavItem[] = [
   { path: '/admin/addresses', label: 'Addresses', icon: <MapPin className="w-5 h-5" /> },
   { path: '/admin/service-cities', label: 'Service Cities', icon: <MapPin className="w-5 h-5" /> },
   { path: '/admin/delivery-zones', label: 'Delivery Zones', icon: <MapPinned className="w-5 h-5" /> },
+  { path: '/admin/coupons-used', label: 'Coupons Used', icon: <Ticket className="w-5 h-5" /> },
   { path: '/admin/roles', label: 'Admin Roles', icon: <Shield className="w-5 h-5" /> },
   { path: '/admin/settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
 ];

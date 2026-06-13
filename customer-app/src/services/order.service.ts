@@ -97,6 +97,8 @@ function mapBackendOrder(raw: any): Order {
     subtotal: parseFloat(raw.subtotal) || 0,
     deliveryCharge: parseFloat(raw.delivery_charge) || 0,
     discount: parseFloat(raw.discount_amount) || 0,
+    couponDiscount: parseFloat(raw.coupon_discount) || 0,
+    couponCode: raw.coupon_code || null,
     total: parseFloat(raw.total_amount) || 0,
     address,
     deliverySlot,

@@ -78,6 +78,8 @@ export interface Order {
   subtotal: number;
   deliveryCharge: number;
   discountAmount?: number;
+  couponDiscount?: number;
+  couponCode?: string | null;
   totalAmount: number;
   paidAmount?: number;
   placedAt: string;

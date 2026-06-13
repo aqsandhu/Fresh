@@ -215,6 +215,7 @@ router.put('/delivery-zones/:id/toggle', adminController.toggleDeliveryZone);
 router.delete('/delivery-zones/:id', adminController.deleteDeliveryZone);
 
 // Discount Coupons (per-city; city admins manage their city, super admin any)
+router.get('/coupons/redemptions', couponController.listCouponRedemptions);
 router.get('/coupons', couponController.listCoupons);
 router.post('/coupons', adminRateLimiter, couponController.createCoupon);
 router.put('/coupons/:id', adminRateLimiter, couponController.updateCoupon);

@@ -143,8 +143,9 @@ function buildOrderSlipHtml(order: Order): string {
     </div>
     <div class="total-section">
       <div class="total-row"><span>Subtotal</span><span>Rs.${Number(order.subtotal).toFixed(0)}</span></div>
-      <div class="total-row"><span>Delivery</span><span>Rs.${Number(order.deliveryCharge).toFixed(0)}</span></div>
       ${Number(order.discountAmount) > 0 ? `<div class="total-row"><span>Discount</span><span>-Rs.${Number(order.discountAmount).toFixed(0)}</span></div>` : ''}
+      ${Number(order.couponDiscount) > 0 ? `<div class="total-row"><span>Coupon${order.couponCode ? ` (${esc(order.couponCode)})` : ''}</span><span>-Rs.${Number(order.couponDiscount).toFixed(0)}</span></div>` : ''}
+      <div class="total-row"><span>Delivery</span><span>Rs.${Number(order.deliveryCharge).toFixed(0)}</span></div>
       <div class="total-row grand-total"><span>Total</span><span>Rs.${Number(order.totalAmount).toFixed(0)}</span></div>
     </div>
     <div class="section" style="margin-top:8px;">
@@ -1132,16 +1133,24 @@ export const Orders: React.FC = () => {
                   <span className="text-gray-500">Subtotal</span>
                   <span>{formatCurrency(Number(selectedOrder.subtotal))}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Delivery Charge</span>
-                  <span>{Number(selectedOrder.deliveryCharge) === 0 ? 'FREE' : formatCurrency(Number(selectedOrder.deliveryCharge))}</span>
-                </div>
                 {Number(selectedOrder.discountAmount) > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-500">Discount</span>
                     <span className="text-green-600">-{formatCurrency(Number(selectedOrder.discountAmount))}</span>
                   </div>
                 )}
+                {Number(selectedOrder.couponDiscount) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">
+                      Coupon{selectedOrder.couponCode ? ` (${selectedOrder.couponCode})` : ''}
+                    </span>
+                    <span className="text-green-600">-{formatCurrency(Number(selectedOrder.couponDiscount))}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Delivery Charge</span>
+                  <span>{Number(selectedOrder.deliveryCharge) === 0 ? 'FREE' : formatCurrency(Number(selectedOrder.deliveryCharge))}</span>
+                </div>
                 <div className="flex justify-between text-lg font-semibold pt-2 border-t">
                   <span>Total</span>
                   <span>{formatCurrency(Number(selectedOrder.totalAmount))}</span>

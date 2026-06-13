@@ -11,4 +11,5 @@ export { Addresses } from './Addresses';
 export { ServiceCities } from './ServiceCities';
 export { DeliveryZones } from './DeliveryZones';
 export { Roles } from './Roles';
+export { CouponsUsed } from './CouponsUsed';
 export { Settings } from './Settings';

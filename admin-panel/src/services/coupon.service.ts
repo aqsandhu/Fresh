@@ -39,9 +39,54 @@ export interface CouponInput {
   isActive?: boolean;
 }
 
+export interface CouponRedemption {
+  id: string;
+  discountAmount: number;
+  createdAt: string;
+  couponId: string;
+  couponCode: string;
+  discountType: DiscountType;
+  cityName: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  orderId: string | null;
+  orderNumber: string | null;
+}
+
+export interface RedemptionFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  discountType?: DiscountType | '';
+  couponId?: string;
+}
+
+export interface RedemptionsResult {
+  redemptions: CouponRedemption[];
+  totalDiscount: number;
+  count: number;
+}
+
 // The api layer converts camelCase <-> snake_case both ways, so we work in
 // camelCase here and the backend receives snake_case.
 export const couponService = {
+  listRedemptions: async (filters: RedemptionFilters = {}): Promise<RedemptionsResult> => {
+    const params: Record<string, string> = {};
+    if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+    if (filters.dateTo) params.dateTo = filters.dateTo;
+    if (filters.discountType) params.discountType = filters.discountType;
+    if (filters.couponId) params.couponId = filters.couponId;
+    const res = await api.get<ApiResponse<RedemptionsResult>>(
+      '/admin/coupons/redemptions',
+      params
+    );
+    const data = (res.data || {}) as Partial<RedemptionsResult>;
+    return {
+      redemptions: data.redemptions || [],
+      totalDiscount: Number(data.totalDiscount) || 0,
+      count: Number(data.count) || 0,
+    };
+  },
+
   list: async (): Promise<Coupon[]> => {
     const res = await api.get<ApiResponse<Coupon[]>>('/admin/coupons');
     return (res.data as Coupon[]) || [];
