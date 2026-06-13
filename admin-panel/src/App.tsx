@@ -22,6 +22,7 @@ import {
   ServiceCities,
   DeliveryZones,
   Roles,
+  CouponsUsed,
   Settings,
 } from '@/pages';
 import './App.css';
@@ -248,6 +249,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Roles />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/coupons-used"
+        element={
+          <ProtectedRoute>
+            <CouponsUsed />
           </ProtectedRoute>
         }
       />

@@ -32,6 +32,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
     'settings.update',
   ],
   '/admin/roles': ['roles.manage'],
+  '/admin/coupons-used': ['coupons.view', 'coupons.manage'],
   '/admin/settings': ALL_SETTINGS_VIEW_CODES,
 };
 
@@ -49,6 +50,7 @@ export const ADMIN_ROUTE_FALLBACKS = [
   '/admin/whatsapp-orders',
   '/admin/delivery-zones',
   '/admin/service-cities',
+  '/admin/coupons-used',
 ];
 
 export function hasPermission(

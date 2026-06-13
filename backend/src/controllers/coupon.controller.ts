@@ -109,6 +109,88 @@ function withSummary(row: CouponRow): Record<string, unknown> {
 }
 
 /**
+ * GET /api/admin/coupons/redemptions
+ * Used-coupon ledger for the "Coupons Used" report. Filters: date range,
+ * discount_type, coupon_id. Returns the redemption rows + the total discount
+ * given for the filtered set. City-scoped like the coupon list.
+ */
+export const listCouponRedemptions = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+
+  const where: string[] = ['1=1'];
+  const params: unknown[] = [];
+
+  if (!scope.unrestricted && scope.cityId) {
+    params.push(scope.cityId);
+    where.push(`(c.city_id = $${params.length} OR c.city_id IS NULL)`);
+  } else if (scope.cityId) {
+    params.push(scope.cityId);
+    where.push(`(c.city_id = $${params.length} OR c.city_id IS NULL)`);
+  }
+
+  const { date_from, date_to, discount_type, coupon_id } = req.query;
+
+  if (typeof date_from === 'string' && date_from) {
+    params.push(date_from);
+    where.push(`cr.created_at >= $${params.length}::date`);
+  }
+  if (typeof date_to === 'string' && date_to) {
+    params.push(date_to);
+    // inclusive of the whole end day
+    where.push(`cr.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+  }
+  if (
+    typeof discount_type === 'string' &&
+    ['percentage', 'fixed', 'free_delivery'].includes(discount_type)
+  ) {
+    params.push(discount_type);
+    where.push(`c.discount_type = $${params.length}`);
+  }
+  if (typeof coupon_id === 'string' && coupon_id) {
+    params.push(coupon_id);
+    where.push(`cr.coupon_id = $${params.length}::uuid`);
+  }
+
+  const whereSql = where.join(' AND ');
+
+  const [rowsResult, totalResult] = await Promise.all([
+    query(
+      `SELECT cr.id, cr.discount_amount, cr.created_at,
+              c.id AS coupon_id, c.code AS coupon_code, c.discount_type,
+              sc.name AS city_name,
+              u.full_name AS customer_name, u.phone AS customer_phone,
+              o.id AS order_id, o.order_number
+         FROM coupon_redemptions cr
+         JOIN coupons c ON c.id = cr.coupon_id
+         LEFT JOIN service_cities sc ON sc.id = c.city_id
+         LEFT JOIN users u ON u.id = cr.user_id
+         LEFT JOIN orders o ON o.id = cr.order_id
+        WHERE ${whereSql}
+        ORDER BY cr.created_at DESC
+        LIMIT 1000`,
+      params
+    ),
+    query(
+      `SELECT COALESCE(SUM(cr.discount_amount), 0) AS total_discount, COUNT(*) AS count
+         FROM coupon_redemptions cr
+         JOIN coupons c ON c.id = cr.coupon_id
+        WHERE ${whereSql}`,
+      params
+    ),
+  ]);
+
+  successResponse(
+    res,
+    {
+      redemptions: rowsResult.rows,
+      total_discount: parseFloat(totalResult.rows[0]?.total_discount || '0'),
+      count: parseInt(totalResult.rows[0]?.count || '0', 10),
+    },
+    'Coupon redemptions retrieved'
+  );
+});
+
+/**
  * GET /api/admin/coupons
  * Scoped admins see their city + global coupons; super admin sees all (or the
  * selected city + global when a city is chosen in the header).

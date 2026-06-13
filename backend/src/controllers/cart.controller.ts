@@ -469,7 +469,9 @@ export const calculateCartDeliveryCharge = asyncHandler(async (req: Request, res
 export const applyCoupon = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) return errorResponse(res, 'Authentication required', 401);
 
-  const code = String(req.body?.code ?? '').trim().toUpperCase();
+  // Cap length defensively (codes are <= 50 chars). Parameterised either way,
+  // but this avoids pointless work on an oversized lookup value.
+  const code = String(req.body?.code ?? '').trim().toUpperCase().slice(0, 64);
   if (!code) return errorResponse(res, 'Enter a coupon code', 400);
 
   if (!(await hasCouponsTable())) {

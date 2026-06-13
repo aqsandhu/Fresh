@@ -227,6 +227,16 @@ export const OrderDetailScreen: React.FC = () => {
                 </Text>
               </View>
             )}
+            {(order.couponDiscount ?? 0) > 0 && (
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel} numberOfLines={1}>
+                  Coupon{order.couponCode ? ` (${order.couponCode})` : ''}
+                </Text>
+                <Text style={[styles.summaryValue, styles.discountValue]}>
+                  -{formatCurrency(order.couponDiscount ?? 0)}
+                </Text>
+              </View>
+            )}
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Total</Text>
               <Text style={styles.totalValue}>
