@@ -26,5 +26,7 @@ router.put('/update/:itemId', validate(cartSchemas.updateItem), verifyUserActive
 router.delete('/remove/:itemId', verifyUserActive, cartController.removeFromCart);
 router.delete('/clear', verifyUserActive, cartController.clearCart);
 router.post('/delivery-charge', validate(cartSchemas.deliveryCharge), verifyUserActive, cartController.calculateCartDeliveryCharge);
+router.post('/apply-coupon', verifyUserActive, cartController.applyCoupon);
+router.delete('/remove-coupon', verifyUserActive, cartController.removeCoupon);
 
 export default router;

@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   ArrowRight,
   ShoppingBag,
+  Ticket,
+  X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
@@ -96,6 +98,20 @@ function CheckoutPage() {
   const newAddressFormRef = useRef<AddressFormHandle>(null)
   const [newAddressValid, setNewAddressValid] = useState(false)
 
+  // Coupon state. The discount is a PREVIEW — the server recomputes it
+  // authoritatively at order placement, so the displayed total always matches
+  // what the backend will charge.
+  const [couponInput, setCouponInput] = useState('')
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string
+    discount_type: string
+    discount_amount: number
+    free_delivery: boolean
+    summary: string
+  } | null>(null)
+  const [couponLoading, setCouponLoading] = useState(false)
+  const [couponError, setCouponError] = useState('')
+
   const localSubtotal = getSubtotal()
   const selectedSlotObj = timeSlots.find(s => s.id === selectedTimeSlot)
   const isFreeDeliverySlot = selectedSlotObj?.is_free_delivery_slot === true
@@ -104,7 +120,13 @@ function CheckoutPage() {
   // the UI is correct instantly. When the server confirms via
   // /cart/delivery-charge we use that value as the source of truth.
   const deliveryCharge = serverDeliveryCharge ?? getDeliveryCharge(isFreeDeliverySlot)
-  const total = subtotal + deliveryCharge
+  const couponFreeDelivery = appliedCoupon?.free_delivery === true
+  const couponProductDiscount =
+    appliedCoupon && !couponFreeDelivery
+      ? Math.min(Number(appliedCoupon.discount_amount) || 0, subtotal)
+      : 0
+  const effectiveDelivery = couponFreeDelivery ? 0 : deliveryCharge
+  const total = Math.max(0, subtotal + effectiveDelivery - couponProductDiscount)
 
   // Sync the local cart to the server exactly ONCE per checkout visit. After
   // that we leave the server cart alone — quantity edits happen on the cart
@@ -241,6 +263,45 @@ function CheckoutPage() {
   //      (we'll auto-save it for them when they press Place Order).
   const canPlaceOrder =
     Boolean(selectedAddress) || (showNewAddress && newAddressValid)
+
+  const handleApplyCoupon = async () => {
+    const code = couponInput.trim()
+    if (!code) return
+    setCouponLoading(true)
+    setCouponError('')
+    try {
+      // Make sure the server cart reflects the current items before validating
+      // the coupon against its subtotal.
+      await cartApi.sync(
+        items.map((item) => ({
+          product_id: item.product.id,
+          quantity: item.quantity,
+          unit: item.unit || 'full',
+        }))
+      )
+      const result = await cartApi.applyCoupon(code)
+      setAppliedCoupon(result)
+      toast.success('Coupon applied')
+    } catch (err: any) {
+      setAppliedCoupon(null)
+      setCouponError(
+        err?.response?.data?.message || err?.message || 'Invalid coupon code'
+      )
+    } finally {
+      setCouponLoading(false)
+    }
+  }
+
+  const handleRemoveCoupon = async () => {
+    try {
+      await cartApi.removeCoupon()
+    } catch {
+      /* best-effort — clear locally regardless */
+    }
+    setAppliedCoupon(null)
+    setCouponInput('')
+    setCouponError('')
+  }
 
   const handlePlaceOrder = async () => {
     if (!selectedTimeSlot && timeSlots.length > 0) {
@@ -748,23 +809,98 @@ function CheckoutPage() {
                 })}
               </div>
 
+              {/* Coupon */}
+              <div className="mb-6 border-t pt-4">
+                {appliedCoupon ? (
+                  <div className="flex items-start justify-between gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-green-700 inline-flex items-center gap-1">
+                        <Ticket className="w-3.5 h-3.5" />
+                        {appliedCoupon.code} applied
+                      </p>
+                      {appliedCoupon.summary && (
+                        <p className="text-xs text-green-700/80 mt-0.5">{appliedCoupon.summary}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="text-green-700 hover:text-green-900 p-1 shrink-0"
+                      aria-label="Remove coupon"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1.5 inline-flex items-center gap-1.5">
+                      <Ticket className="w-4 h-4 text-primary-600" />
+                      Have a coupon?
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={couponInput}
+                        onChange={(e) => {
+                          setCouponInput(e.target.value.toUpperCase())
+                          if (couponError) setCouponError('')
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleApplyCoupon()
+                          }
+                        }}
+                        placeholder="Enter code"
+                        className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm uppercase focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleApplyCoupon}
+                        isLoading={couponLoading}
+                        disabled={!couponInput.trim() || couponLoading}
+                      >
+                        Apply
+                      </Button>
+                    </div>
+                    {couponError && (
+                      <p className="text-xs text-red-500 mt-1.5">{couponError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Price Breakdown */}
               <div className="space-y-3 mb-6 border-t pt-4">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
                   <span>{formatPriceShort(subtotal)}</span>
                 </div>
+                {couponProductDiscount > 0 && (
+                  <div className="flex justify-between text-green-600 font-medium">
+                    <span className="inline-flex items-center gap-1">
+                      <Ticket className="w-3.5 h-3.5" />
+                      Coupon ({appliedCoupon?.code})
+                    </span>
+                    <span>-{formatPriceShort(couponProductDiscount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-gray-600">
                   <span>Delivery</span>
                   <span
                     className={`inline-flex items-center gap-1 ${
-                      deliveryCharge === 0 ? 'text-green-600 font-semibold' : ''
+                      effectiveDelivery === 0 ? 'text-green-600 font-semibold' : ''
                     }`}
                   >
                     {deliveryLoading && (
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
                     )}
-                    {deliveryCharge === 0 ? 'FREE' : formatPriceShort(deliveryCharge)}
+                    {effectiveDelivery === 0
+                      ? couponFreeDelivery
+                        ? 'FREE (coupon)'
+                        : 'FREE'
+                      : formatPriceShort(effectiveDelivery)}
                   </span>
                 </div>
                 <div className="border-t pt-3">

@@ -14,6 +14,11 @@ import { successResponse, notFoundResponse, errorResponse, createdResponse } fro
 import { calculateDeliveryCharge } from '../utils/deliveryCalculator';
 import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
 import { roundMoney } from '../utils/money';
+import {
+  hasCouponsTable,
+  couponValidationError,
+  computeCouponDiscount,
+} from '../utils/coupons';
 import { restoreOrderInventory } from '../utils/orderStatus';
 import { hasOrderCouponColumns } from '../config/orderSchema';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
@@ -452,29 +457,74 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     const subtotal = roundMoney(
       parseFloat(freshSubtotalResult.rows[0]?.fresh_subtotal || '0')
     );
-    // Discount/coupon are server-controlled in this codebase (no client
-    // payload paths set them), but clamp anyway to avoid any future surface
-    // where a corrupt cart row could produce a negative total.
-    const rawDiscount = parseFloat(refreshedCart.discount_amount) || 0;
-    const rawCoupon = parseFloat(refreshedCart.coupon_discount) || 0;
-    const safeDiscount = Math.max(0, rawDiscount);
-    const safeCoupon = Math.max(0, rawCoupon);
-    const totalDeductible = Math.min(safeDiscount + safeCoupon, subtotal);
+
+    // ── Coupon (server-authoritative, locked) ──────────────────────────────
+    // The cart stores only the coupon CODE (the customer's intent). The actual
+    // discount and EVERY usage-limit check are recomputed here against the
+    // fresh subtotal under a FOR UPDATE lock on the coupon row, so a limited
+    // coupon can't be over-redeemed by concurrent checkouts and the client can
+    // never choose its own discount. There is no client path that sets a cart
+    // discount, so the cart-level discount stays 0.
+    const discountAmount = 0;
+    let effectiveDelivery = deliveryCharge;
+    let couponDiscount = 0;
+    let appliedCoupon: { id: string; code: string } | null = null;
+
+    const couponCode = refreshedCart.coupon_code
+      ? String(refreshedCart.coupon_code).trim().toUpperCase()
+      : '';
+
+    if (couponCode && (await hasCouponsTable())) {
+      const couponRes = await client.query(
+        `SELECT * FROM coupons
+          WHERE UPPER(code) = $1 AND (city_id IS NULL OR city_id = $2)
+          ORDER BY (city_id IS NOT NULL) DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [couponCode, orderCityId]
+      );
+      if (couponRes.rows.length === 0) {
+        throw new BadRequestError(
+          `Coupon "${couponCode}" is no longer available. Please remove it and try again.`
+        );
+      }
+      const coupon = couponRes.rows[0];
+
+      const userUsedRes = await client.query(
+        'SELECT COUNT(*)::int AS n FROM coupon_redemptions WHERE coupon_id = $1 AND user_id = $2',
+        [coupon.id, req.user!.id]
+      );
+      const priorOrderRes = await client.query(
+        `SELECT 1 FROM orders
+          WHERE user_id = $1 AND status <> 'cancelled' AND deleted_at IS NULL
+          LIMIT 1`,
+        [req.user!.id]
+      );
+
+      const reason = couponValidationError(coupon, {
+        subtotal,
+        totalUsed: coupon.used_count,
+        userUsed: userUsedRes.rows[0]?.n ?? 0,
+        isFirstOrder: priorOrderRes.rows.length === 0,
+      });
+      if (reason) {
+        throw new BadRequestError(`Coupon "${couponCode}": ${reason}`);
+      }
+
+      const { productDiscount, freeDelivery } = computeCouponDiscount(coupon, subtotal);
+      if (freeDelivery) {
+        effectiveDelivery = 0;
+      } else {
+        couponDiscount = productDiscount;
+      }
+      appliedCoupon = { id: coupon.id, code: coupon.code };
+    }
+
     // Round every monetary component to 2dp so the stored row reconciles
     // exactly (subtotal - discount - coupon + delivery = total) without float
     // residue, and so the payment webhook's amount equality check is clean.
-    const discountAmount = roundMoney(
-      totalDeductible > 0
-        ? safeDiscount * (totalDeductible / (safeDiscount + safeCoupon || 1))
-        : 0
-    );
-    const couponDiscount = roundMoney(
-      totalDeductible > 0
-        ? safeCoupon * (totalDeductible / (safeDiscount + safeCoupon || 1))
-        : 0
-    );
     const totalAmount = roundMoney(
-      Math.max(0, subtotal + deliveryCharge - discountAmount - couponDiscount)
+      Math.max(0, subtotal + effectiveDelivery - discountAmount - couponDiscount)
     );
 
     const addressSnapshot = JSON.stringify({
@@ -521,8 +571,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
           [
             req.user!.id, address_id, addressSnapshot,
             time_slot_id, requested_delivery_date,
-            subtotal, discountAmount, couponDiscount, refreshedCart.coupon_code || null,
-            deliveryCharge, 0, totalAmount,
+            subtotal, discountAmount, couponDiscount, appliedCoupon?.code ?? null,
+            effectiveDelivery, 0, totalAmount,
             deliveryChargeRuleId,
             payment_method, customer_notes,
             orderCityId,
@@ -547,7 +597,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
           [
             req.user!.id, address_id, addressSnapshot,
             time_slot_id, requested_delivery_date,
-            subtotal, discountAmount + couponDiscount, deliveryCharge, 0, totalAmount,
+            subtotal, discountAmount + couponDiscount, effectiveDelivery, 0, totalAmount,
             deliveryChargeRuleId,
             payment_method, customer_notes,
             orderCityId,
@@ -555,6 +605,22 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         );
 
     const order = orderResult.rows[0];
+
+    // Record the coupon redemption + bump its usage counter (same transaction,
+    // same FOR UPDATE lock taken above — serialises concurrent redemptions).
+    if (appliedCoupon) {
+      await client.query(
+        'UPDATE coupons SET used_count = used_count + 1, updated_at = NOW() WHERE id = $1',
+        [appliedCoupon.id]
+      );
+      const recordedDiscount =
+        couponDiscount > 0 ? couponDiscount : roundMoney(deliveryCharge - effectiveDelivery);
+      await client.query(
+        `INSERT INTO coupon_redemptions (coupon_id, user_id, order_id, discount_amount)
+         VALUES ($1, $2, $3, $4)`,
+        [appliedCoupon.id, req.user!.id, order.id, recordedDiscount]
+      );
+    }
 
     // Create order items and decrement stock
     for (const item of cartItemsResult.rows) {

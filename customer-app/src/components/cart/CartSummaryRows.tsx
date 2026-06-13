@@ -9,6 +9,12 @@ interface CartSummaryRowsProps {
   total: number;
   compact?: boolean;
   deliveryLoading?: boolean;
+  /** Optional coupon line — when set, a discount row is shown. */
+  couponCode?: string | null;
+  /** Money taken off the subtotal by the coupon (0 for free-delivery coupons). */
+  couponDiscount?: number;
+  /** When true, the delivery line reads "FREE (coupon)". */
+  couponFreeDelivery?: boolean;
 }
 
 interface SummaryLineProps {
@@ -66,6 +72,9 @@ export const CartSummaryRows: React.FC<CartSummaryRowsProps> = ({
   total,
   compact = false,
   deliveryLoading = false,
+  couponCode,
+  couponDiscount = 0,
+  couponFreeDelivery = false,
 }) => {
   const freeDelivery = deliveryCharge === 0;
   const labelSize = compact ? 13 : 14;
@@ -80,9 +89,24 @@ export const CartSummaryRows: React.FC<CartSummaryRowsProps> = ({
         labelSize={labelSize}
         valueSize={valueSize}
       />
+      {couponDiscount > 0 ? (
+        <SummaryLine
+          label={couponCode ? `Coupon (${couponCode})` : 'Coupon'}
+          value={`-${formatCurrency(couponDiscount)}`}
+          labelSize={labelSize}
+          valueSize={valueSize}
+          valueStyle={styles.freeValue}
+        />
+      ) : null}
       <SummaryLine
         label="Delivery"
-        value={freeDelivery ? 'FREE' : formatCurrency(deliveryCharge)}
+        value={
+          freeDelivery
+            ? couponFreeDelivery
+              ? 'FREE (coupon)'
+              : 'FREE'
+            : formatCurrency(deliveryCharge)
+        }
         labelSize={labelSize}
         valueSize={valueSize}
         valueStyle={freeDelivery ? styles.freeValue : undefined}

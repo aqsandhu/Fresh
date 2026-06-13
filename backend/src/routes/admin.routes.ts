@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import * as authController from '../controllers/auth.controller';
 import * as adminController from '../controllers/admin';
+import * as couponController from '../controllers/coupon.controller';
 import {
   authenticate,
   requireAdmin,
@@ -212,6 +213,13 @@ router.post('/delivery-zones', adminController.createDeliveryZone);
 router.put('/delivery-zones/:id', adminController.updateDeliveryZone);
 router.put('/delivery-zones/:id/toggle', adminController.toggleDeliveryZone);
 router.delete('/delivery-zones/:id', adminController.deleteDeliveryZone);
+
+// Discount Coupons (per-city; city admins manage their city, super admin any)
+router.get('/coupons', couponController.listCoupons);
+router.post('/coupons', adminRateLimiter, couponController.createCoupon);
+router.put('/coupons/:id', adminRateLimiter, couponController.updateCoupon);
+router.patch('/coupons/:id/toggle', couponController.toggleCoupon);
+router.delete('/coupons/:id', couponController.deleteCoupon);
 
 // Atta Requests
 router.get('/atta-requests', adminController.getAttaRequests);

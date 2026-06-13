@@ -9,6 +9,7 @@ import { jest } from '@jest/globals';
 import request from 'supertest';
 import { query } from '@/config/database';
 import orderRoutes from '@/routes/order.routes';
+import { resetCouponsTableCache } from '@/utils/coupons';
 import { buildApp, signAccessToken } from './helpers';
 
 const mockQuery = query as jest.MockedFunction<typeof query>;
@@ -202,6 +203,30 @@ function createOrderClient() {
     if (text.includes('delivery_charges_config')) {
       return Promise.resolve(ok([]));
     }
+    // Coupon engine: SAVE20 = flat Rs. 20 off, no conditions.
+    if (text.includes('FROM coupons') && text.includes('FOR UPDATE')) {
+      return Promise.resolve(
+        ok([{
+          id: 'coupon-1', code: 'SAVE20', description: null,
+          discount_type: 'fixed', discount_value: '20', max_discount_amount: null,
+          min_order_amount: '0', usage_limit: null, usage_limit_per_user: null,
+          used_count: 0, first_order_only: false, valid_from: null, valid_until: null,
+          is_active: true, city_id: null,
+        }])
+      );
+    }
+    if (text.includes('FROM coupon_redemptions')) {
+      return Promise.resolve(ok([{ n: 0 }]));
+    }
+    if (text.includes('FROM orders') && text.includes("status <> 'cancelled'")) {
+      return Promise.resolve(ok([])); // first order
+    }
+    if (text.includes('UPDATE coupons SET used_count')) {
+      return Promise.resolve(ok([]));
+    }
+    if (text.includes('INSERT INTO coupon_redemptions')) {
+      return Promise.resolve(ok([]));
+    }
     if (text.includes('INSERT INTO orders')) {
       return Promise.resolve(
         ok([{ id: 'order-1', order_number: 'FB-1001', status: 'pending', total_amount: '250', user_id: 'user-1' }])
@@ -227,10 +252,13 @@ describe('POST /api/orders coupon accounting', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('persists coupon_discount + coupon_code and the stored row reconciles', async () => {
-    // Global (non-client) queries: verifyUserActive + the coupon-column probe.
+    // The coupons-table probe caches across tests — reset so it re-probes here.
+    resetCouponsTableCache();
+    // Global (non-client) queries: verifyUserActive + the schema probes
+    // (orders.coupon_discount column + the coupons table).
     mockQuery.mockImplementation(((sql: any) => {
       const text = String(sql);
-      if (text.includes('information_schema.columns')) {
+      if (text.includes('information_schema')) {
         return Promise.resolve(ok([{ exists: 1 }]));
       }
       if (text.includes('FROM users')) {
@@ -270,11 +298,21 @@ describe('POST /api/orders coupon accounting', () => {
     const total = params[11];
 
     expect(subtotal).toBe(200);
-    expect(discount).toBe(30);
+    // Cart-level discount is unused now; the discount comes from the coupon
+    // table (SAVE20 = Rs. 20 off), recomputed server-side under a row lock.
+    expect(discount).toBe(0);
     expect(coupon).toBe(20);
     expect(couponCode).toBe('SAVE20');
     expect(tax).toBe(0);
-    // The invariant that was previously broken:
+    // The stored row reconciles: subtotal - discount - coupon + delivery = total.
     expect(subtotal - discount - coupon + delivery + tax).toBeCloseTo(total, 2);
+
+    // The redemption is recorded + the usage counter bumped in the same txn.
+    expect(
+      clientQuery.mock.calls.some((c: any[]) => String(c[0]).includes('UPDATE coupons SET used_count'))
+    ).toBe(true);
+    expect(
+      clientQuery.mock.calls.some((c: any[]) => String(c[0]).includes('INSERT INTO coupon_redemptions'))
+    ).toBe(true);
   });
 });
