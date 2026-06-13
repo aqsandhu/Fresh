@@ -8,22 +8,22 @@ import logger from '../utils/logger';
 /**
  * TLS options for the DB connection.
  *
- * SECURE BY DEFAULT IN PRODUCTION: certificate verification is now ON unless
- * explicitly disabled. Most managed providers (Supabase pooler, Render
- * Postgres) present publicly-trusted certs, so verification against the system
- * CA store "just works" and closes the MITM window the old default left open.
+ * IMPORTANT — managed Postgres providers (Supabase, Render) terminate TLS with
+ * a SELF-SIGNED certificate chain. Verifying that against the system CA store
+ * fails with SELF_SIGNED_CERT_IN_CHAIN and takes the whole API down, so the
+ * connection is encrypted-but-unverified BY DEFAULT. Verification is opt-in:
+ * the only correct way to verify a self-signed provider is to PIN its CA via
+ * DB_SSL_CA — flipping rejectUnauthorized on without a CA just breaks.
  *
  * Resolution order:
- *   1. DB_SSL=false                         → no TLS at all.
- *   2. DB_SSL_CA (PEM string or base64)     → pin the provider CA, full verify.
+ *   1. DB_SSL=false                          → no TLS at all.
+ *   2. DB_SSL_CA (PEM string or base64)      → pin the provider CA, full verify
+ *      (the recommended way to close the MITM window).
  *      Supabase: Dashboard → Settings → Database → "SSL Certificate".
  *   3. DB_SSL_REJECT_UNAUTHORIZED=true|false → explicit override (wins).
- *   4. production default                    → verify against system CAs.
- *   5. non-production default                → encrypted but unverified, so
- *      local/self-signed dev setups don't block startup.
- *
- * If a production provider uses a self-signed chain and connection fails,
- * supply DB_SSL_CA (preferred) or set DB_SSL_REJECT_UNAUTHORIZED=false.
+ *   4. default                               → encrypted, unverified
+ *      (rejectUnauthorized:false) so a self-signed provider connects out of
+ *      the box. We warn in production so this isn't silently left open.
  */
 function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } {
   if (process.env.DB_SSL === 'false') return false;
@@ -41,18 +41,19 @@ function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } 
     return { rejectUnauthorized: true };
   }
   if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false') {
-    if (process.env.NODE_ENV === 'production') {
-      logger.warn(
-        'DB TLS certificate verification is DISABLED via DB_SSL_REJECT_UNAUTHORIZED=false. ' +
-          'This reopens a MITM window — prefer pinning the provider CA with DB_SSL_CA.'
-      );
-    }
     return { rejectUnauthorized: false };
   }
 
-  // Secure by default in production; lenient elsewhere for local dev.
+  // Default: encrypted but UNVERIFIED. Self-signed provider chains (Supabase /
+  // Render) reject system-CA verification and would crash every query, so we
+  // stay compatible by default and only warn in production. Pin DB_SSL_CA to
+  // close the MITM window without breaking the connection.
   if (process.env.NODE_ENV === 'production') {
-    return { rejectUnauthorized: true };
+    logger.warn(
+      'DB TLS certificate verification is DISABLED (rejectUnauthorized: false). ' +
+        'Set DB_SSL_CA (provider CA cert — Supabase: Settings → Database → SSL Certificate) ' +
+        'to verify the connection and close the MITM window.'
+    );
   }
   return { rejectUnauthorized: false };
 }
