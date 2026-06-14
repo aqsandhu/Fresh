@@ -25,6 +25,7 @@ import {
   CouponsUsed,
   Reviews,
   Complaints,
+  UserTips,
   Settings,
 } from '@/pages';
 import './App.css';
@@ -275,6 +276,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Complaints />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/user-tips"
+        element={
+          <ProtectedRoute>
+            <UserTips />
           </ProtectedRoute>
         }
       />

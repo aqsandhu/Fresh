@@ -249,7 +249,7 @@ export const OrdersListScreen: React.FC = () => {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
-          ListHeaderComponent={<GuidanceTips tips={ORDERS_TIPS} />}
+          ListHeaderComponent={<GuidanceTips tips={ORDERS_TIPS} page="orders" />}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }

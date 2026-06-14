@@ -88,7 +88,7 @@ export const NewComplaintScreen: React.FC = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <GuidanceTips tips={COMPLAINT_TIPS} />
+          <GuidanceTips tips={COMPLAINT_TIPS} page="complaint" />
 
           {orderNumber ? (
             <View style={styles.orderTag}>

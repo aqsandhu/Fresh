@@ -194,7 +194,7 @@ export default function TrackOrderPage() {
           Back to Orders
         </Link>
 
-        <GuidanceTips tips={TRACK_TIPS} />
+        <GuidanceTips tips={TRACK_TIPS} page="track" />
 
         {/* Order Header */}
         <motion.div

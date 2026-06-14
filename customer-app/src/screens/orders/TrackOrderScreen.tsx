@@ -197,7 +197,7 @@ export const TrackOrderScreen: React.FC = () => {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ height: SPACING.md }} />
-        <GuidanceTips tips={TRACK_TIPS} />
+        <GuidanceTips tips={TRACK_TIPS} page="track" />
         {/* Map */}
         <View style={styles.mapContainer}>
           <MapView

@@ -406,7 +406,7 @@ export const CheckoutScreen: React.FC = () => {
           <MaterialIcons name="arrow-back" size={24} color={COLORS.gray700} />
         </TouchableOpacity>
         <Text style={styles.pageTitle}>Checkout</Text>
-        <GuidanceTips tips={CHECKOUT_TIPS} />
+        <GuidanceTips tips={CHECKOUT_TIPS} page="checkout" />
 
         {/* Address */}
         <View style={styles.section}>

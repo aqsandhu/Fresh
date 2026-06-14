@@ -495,7 +495,7 @@ function CheckoutPage() {
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
           Checkout
         </h1>
-        <GuidanceTips tips={CHECKOUT_TIPS} />
+        <GuidanceTips tips={CHECKOUT_TIPS} page="checkout" />
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Left Column */}

@@ -16,6 +16,7 @@ import {
   Ticket,
   Star,
   MessageSquareWarning,
+  Lightbulb,
   LogOut,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
@@ -48,6 +49,7 @@ const navItems: NavItem[] = [
   { path: '/admin/coupons-used', label: 'Coupons Used', icon: <Ticket className="w-5 h-5" /> },
   { path: '/admin/reviews', label: 'Reviews', icon: <Star className="w-5 h-5" /> },
   { path: '/admin/complaints', label: 'Complaints', icon: <MessageSquareWarning className="w-5 h-5" /> },
+  { path: '/admin/user-tips', label: 'User Tips', icon: <Lightbulb className="w-5 h-5" /> },
   { path: '/admin/roles', label: 'Admin Roles', icon: <Shield className="w-5 h-5" /> },
   { path: '/admin/settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
 ];

@@ -97,7 +97,7 @@ export const OrderDetailScreen: React.FC = () => {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={{ height: SPACING.md }} />
-        <GuidanceTips tips={ORDER_DETAIL_TIPS} />
+        <GuidanceTips tips={ORDER_DETAIL_TIPS} page="order_detail" />
         {/* Status Card */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>

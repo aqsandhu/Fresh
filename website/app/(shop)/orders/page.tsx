@@ -165,7 +165,7 @@ export default function OrdersPage() {
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
           My Orders
         </h1>
-        <GuidanceTips tips={ORDERS_TIPS} />
+        <GuidanceTips tips={ORDERS_TIPS} page="orders" />
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 overflow-x-auto">
