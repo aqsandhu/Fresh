@@ -7,6 +7,7 @@ import {
   TrackOrderScreen,
   NewComplaintScreen,
   MyComplaintsScreen,
+  WriteReviewScreen,
 } from '@screens';
 
 const Stack = createNativeStackNavigator<OrdersStackParamList>();
@@ -25,6 +26,7 @@ export const OrdersNavigator: React.FC = () => {
       <Stack.Screen name="TrackOrder" component={TrackOrderScreen} />
       <Stack.Screen name="NewComplaint" component={NewComplaintScreen} />
       <Stack.Screen name="MyComplaints" component={MyComplaintsScreen} />
+      <Stack.Screen name="WriteReview" component={WriteReviewScreen} />
     </Stack.Navigator>
   );
 };

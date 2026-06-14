@@ -350,6 +350,7 @@ export type OrdersStackParamList = {
   TrackOrder: { orderId: string };
   NewComplaint: { orderId?: string; orderNumber?: string } | undefined;
   MyComplaints: undefined;
+  WriteReview: { orderId: string };
 };
 
 // ── Reviews & Complaints (Feature 3) ────────────────────────────────────────

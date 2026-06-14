@@ -255,6 +255,7 @@ export const OrderDetailScreen: React.FC = () => {
         <OrderFeedbackSection
           orderId={order.id}
           delivered={order.status === 'delivered'}
+          onReview={() => navigation.navigate('WriteReview', { orderId: order.id })}
           onComplaint={() =>
             navigation.navigate('NewComplaint', {
               orderId: order.id,
