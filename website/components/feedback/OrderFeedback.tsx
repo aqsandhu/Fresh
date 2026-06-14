@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Star, MessageSquareWarning, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
@@ -9,7 +9,6 @@ import {
   reviewsApi,
   complaintsApi,
   type OrderReviewables,
-  type Review,
   type ReviewTargetType,
   type ComplaintCategory,
 } from '@/lib/api'
@@ -68,26 +67,107 @@ export default function OrderFeedback({ orderId, orderNumber, delivered }: Order
 
 // ── Review modal ─────────────────────────────────────────────────────────────
 
+interface ReviewTargetRow {
+  key: string
+  target: ReviewTargetType
+  productId?: string
+  label: string
+  image?: string | null
+}
+
+interface Draft {
+  rating: number
+  comment: string
+}
+
 function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const [data, setData] = useState<OrderReviewables | null>(null)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({})
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      setData(await reviewsApi.forOrder(orderId))
-    } catch {
-      toast.error('Could not load review options')
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      setLoading(true)
+      try {
+        const res = await reviewsApi.forOrder(orderId)
+        if (!active) return
+        setData(res)
+        // Pre-fill any reviews the customer already left.
+        const initial: Record<string, Draft> = {}
+        for (const r of res.reviews) {
+          const key =
+            r.targetType === 'product' ? `product:${r.productId}` : r.targetType
+          initial[key] = { rating: r.rating, comment: r.comment || '' }
+        }
+        setDrafts(initial)
+      } catch {
+        toast.error('Could not load review options')
+      } finally {
+        if (active) setLoading(false)
+      }
+    })()
+    return () => {
+      active = false
     }
   }, [orderId])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  const rows: ReviewTargetRow[] = [
+    ...(data?.products || []).map((p) => ({
+      key: `product:${p.productId}`,
+      target: 'product' as ReviewTargetType,
+      productId: p.productId,
+      label: p.productName,
+      image: p.productImage,
+    })),
+    {
+      key: 'rider',
+      target: 'rider' as ReviewTargetType,
+      // riderId may be null (no rider assigned) — still reviewable.
+      label: data?.rider?.riderName ? `Rider: ${data.rider.riderName}` : 'Rider behaviour',
+    },
+    {
+      key: 'service',
+      target: 'service' as ReviewTargetType,
+      label: 'Service / delivery experience',
+    },
+  ]
 
-  const findReview = (predicate: (r: Review) => boolean) => data?.reviews.find(predicate)
+  const setDraft = (key: string, patch: Partial<Draft>) =>
+    setDrafts((prev) => ({
+      ...prev,
+      [key]: { rating: prev[key]?.rating || 0, comment: prev[key]?.comment || '', ...patch },
+    }))
+
+  // Submit ALL targets the customer actually rated (rating >= 1). Empty stars =
+  // "not reviewed" and are skipped — one button for the whole order.
+  const submitAll = async () => {
+    const toSubmit = rows.filter((r) => (drafts[r.key]?.rating || 0) >= 1)
+    if (toSubmit.length === 0) {
+      toast.error('Please rate at least one item before submitting')
+      return
+    }
+    setSaving(true)
+    try {
+      for (const r of toSubmit) {
+        const d = drafts[r.key]
+        await reviewsApi.submit({
+          targetType: r.target,
+          orderId,
+          productId: r.productId,
+          rating: d.rating,
+          comment: d.comment.trim() || undefined,
+        })
+      }
+      toast.success('Thank you for your feedback')
+      onClose()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Could not save your review')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <Overlay onClose={onClose} title="Rate & Review">
@@ -96,113 +176,51 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
           <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
         </div>
       ) : (
-        <div className="space-y-4">
-          {data?.products.map((p) => (
-            <ReviewRow
-              key={`p-${p.productId}`}
-              orderId={orderId}
-              target="product"
-              productId={p.productId}
-              label={p.productName}
-              image={p.productImage}
-              existing={findReview((r) => r.targetType === 'product' && r.productId === p.productId)}
-              onSaved={load}
-            />
-          ))}
-          {data?.rider && (
-            <ReviewRow
-              orderId={orderId}
-              target="rider"
-              label={`Rider: ${data.rider.riderName || 'Delivery'}`}
-              existing={findReview((r) => r.targetType === 'rider')}
-              onSaved={load}
-            />
-          )}
-          <ReviewRow
-            orderId={orderId}
-            target="service"
-            label="Service / delivery experience"
-            existing={findReview((r) => r.targetType === 'service')}
-            onSaved={load}
-          />
-        </div>
+        <>
+          <p className="text-xs text-gray-500 mb-3">
+            Rate whatever you want — leave the rest blank. One tap submits everything.
+          </p>
+          <div className="space-y-3">
+            {rows.map((row) => {
+              const d = drafts[row.key] || { rating: 0, comment: '' }
+              return (
+                <div key={row.key} className="border border-gray-200 rounded-xl p-3">
+                  <div className="flex items-center gap-3">
+                    {row.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={resolveImageUrl(row.image) || '/placeholder-product.jpg'}
+                        alt={row.label}
+                        className="w-10 h-10 rounded-lg object-cover"
+                      />
+                    ) : null}
+                    <span className="flex-1 font-medium text-gray-800 text-sm">{row.label}</span>
+                  </div>
+                  <div className="mt-2">
+                    <StarRating
+                      value={d.rating}
+                      onChange={(rating) => setDraft(row.key, { rating })}
+                      size={26}
+                    />
+                  </div>
+                  <textarea
+                    value={d.comment}
+                    onChange={(e) => setDraft(row.key, { comment: e.target.value })}
+                    placeholder="Add a comment (optional)"
+                    maxLength={2000}
+                    rows={2}
+                    className="mt-2 w-full text-sm border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
+                  />
+                </div>
+              )
+            })}
+          </div>
+          <Button fullWidth onClick={submitAll} disabled={saving} className="mt-4">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Submit Review'}
+          </Button>
+        </>
       )}
     </Overlay>
-  )
-}
-
-function ReviewRow({
-  orderId,
-  target,
-  productId,
-  label,
-  image,
-  existing,
-  onSaved,
-}: {
-  orderId: string
-  target: ReviewTargetType
-  productId?: string
-  label: string
-  image?: string | null
-  existing?: Review
-  onSaved: () => void
-}) {
-  const [rating, setRating] = useState(existing?.rating || 0)
-  const [comment, setComment] = useState(existing?.comment || '')
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    setRating(existing?.rating || 0)
-    setComment(existing?.comment || '')
-  }, [existing])
-
-  const save = async () => {
-    if (rating < 1) {
-      toast.error('Please select a star rating')
-      return
-    }
-    setSaving(true)
-    try {
-      await reviewsApi.submit({ targetType: target, orderId, productId, rating, comment: comment.trim() || undefined })
-      toast.success('Thanks for your feedback')
-      onSaved()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Could not save review')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="border border-gray-200 rounded-xl p-3">
-      <div className="flex items-center gap-3">
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={resolveImageUrl(image) || '/placeholder-product.jpg'}
-            alt={label}
-            className="w-10 h-10 rounded-lg object-cover"
-          />
-        ) : null}
-        <span className="flex-1 font-medium text-gray-800 text-sm">{label}</span>
-        {existing && <span className="text-xs text-green-600 font-semibold">Rated</span>}
-      </div>
-      <div className="mt-2 flex items-center justify-between">
-        <StarRating value={rating} onChange={setRating} size={24} />
-        <Button size="sm" onClick={save} disabled={saving}>
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : existing ? 'Update' : 'Submit'}
-        </Button>
-      </div>
-      <textarea
-        value={comment}
-        onChange={(e) => setComment(e.target.value)}
-        placeholder="Add a comment (optional)"
-        maxLength={2000}
-        rows={2}
-        className="mt-2 w-full text-sm border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-primary-200"
-      />
-    </div>
   )
 }
 
