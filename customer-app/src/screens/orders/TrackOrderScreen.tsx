@@ -17,6 +17,8 @@ import { OrdersStackParamList, OrderStatus } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatDateTime, getStatusColor } from '@utils/helpers';
 import { ErrorView, LoadingOverlay } from '@components';
+import { GuidanceTips } from '@components/common/GuidanceTips';
+import { TRACK_TIPS } from '@/content/guidanceTips';
 import { orderService } from '@services/order.service';
 import { socketService } from '@services/socket.service';
 import OrderChat from '@components/OrderChat';
@@ -194,6 +196,8 @@ export const TrackOrderScreen: React.FC = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={{ height: SPACING.md }} />
+        <GuidanceTips tips={TRACK_TIPS} />
         {/* Map */}
         <View style={styles.mapContainer}>
           <MapView

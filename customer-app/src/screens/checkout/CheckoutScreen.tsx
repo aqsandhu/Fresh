@@ -38,6 +38,8 @@ import { CheckoutAddressActions } from '@components/checkout/CheckoutAddressActi
 import { addressService } from '@services/address.service';
 import { orderService } from '@services/order.service';
 import { cartService, type MyCoupon } from '@services/cart.service';
+import { GuidanceTips } from '@components/common/GuidanceTips';
+import { CHECKOUT_TIPS } from '@/content/guidanceTips';
 import apiClient from '@services/api';
 import { useCartStore } from '@store';
 import { getSlotAvailability } from '@/lib/timeSlots';
@@ -404,6 +406,7 @@ export const CheckoutScreen: React.FC = () => {
           <MaterialIcons name="arrow-back" size={24} color={COLORS.gray700} />
         </TouchableOpacity>
         <Text style={styles.pageTitle}>Checkout</Text>
+        <GuidanceTips tips={CHECKOUT_TIPS} />
 
         {/* Address */}
         <View style={styles.section}>

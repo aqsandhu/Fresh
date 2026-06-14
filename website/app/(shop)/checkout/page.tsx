@@ -40,6 +40,8 @@ import AddressForm, {
 } from '@/components/checkout/AddressForm'
 import { getSelectedCityId, addressMatchesSelectedCity } from '@/lib/cityStorage'
 import { useCityContext } from '@/context/CityContext'
+import GuidanceTips from '@/components/guidance/GuidanceTips'
+import { CHECKOUT_TIPS } from '@/lib/guidanceTipsContent'
 
 type RealAddress = SavedAddress
 
@@ -490,9 +492,10 @@ function CheckoutPage() {
       )}
 
       <div className="container mx-auto px-4">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
           Checkout
         </h1>
+        <GuidanceTips tips={CHECKOUT_TIPS} />
 
         <div className="grid lg:grid-cols-3 gap-8">
           {/* Left Column */}

@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import GuidanceTips from '@/components/guidance/GuidanceTips'
+import { ORDERS_TIPS } from '@/lib/guidanceTipsContent'
 import { motion } from 'framer-motion'
 import { 
   Package, 
@@ -159,9 +161,10 @@ export default function OrdersPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
           My Orders
         </h1>
+        <GuidanceTips tips={ORDERS_TIPS} />
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 overflow-x-auto">
