@@ -23,6 +23,7 @@ import { useQuery } from '@tanstack/react-query'
 import ProductCard from '@/components/ui/ProductCard'
 import ProductPrice from '@/components/ui/ProductPrice'
 import { useCartStore } from '@/store/cartStore'
+import { useVariableWeightNotice } from '@/store/variableWeightNotice'
 import { useCityContext } from '@/context/CityContext'
 import { productsApi } from '@/lib/api'
 import api from '@/lib/api'
@@ -38,6 +39,7 @@ export default function ProductDetailPage() {
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
   const [freeThreshold, setFreeThreshold] = useState(500)
   const { addItem, items } = useCartStore()
+  const notifyVariableWeight = useVariableWeightNotice((s) => s.notify)
   const { selectedCityId } = useCityContext()
 
   const { data: product, isLoading } = useQuery({
@@ -90,6 +92,9 @@ export default function ProductDetailPage() {
   const handleAddToCart = () => {
     if (!isFresh || !product) return
     addItem(product, quantity, selectedUnit)
+    if (product.isVariableWeight) {
+      notifyVariableWeight(product.id, product.variableWeightNote)
+    }
     const suffix = unitLabelShort(selectedUnit)
     toast.success(
       `${product.name}${suffix ? ` (${suffix})` : ''} added to cart!`

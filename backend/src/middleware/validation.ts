@@ -263,9 +263,11 @@ export const productSchemas = {
     is_active: Joi.boolean().default(true),
     is_featured: Joi.boolean().default(false),
     is_new_arrival: Joi.boolean().default(false),
+    is_variable_weight: Joi.boolean().default(false),
+    variable_weight_note: Joi.string().allow('', null).max(1000).optional(),
     tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
   }),
-  
+
   update: Joi.object({
     name_ur: Joi.string().min(2).max(255).allow('', null),
     name_en: Joi.string().min(2).max(255),
@@ -284,6 +286,8 @@ export const productSchemas = {
     is_active: Joi.boolean(),
     is_featured: Joi.boolean(),
     is_new_arrival: Joi.boolean(),
+    is_variable_weight: Joi.boolean(),
+    variable_weight_note: Joi.string().allow('', null).max(1000).optional(),
     tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
   }),
 };

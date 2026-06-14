@@ -8,6 +8,14 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, paginatedResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
 import { tagSearchSql } from '../utils/productTags';
+import { hasVariableWeightColumns } from '../config/productSchema';
+
+/** Column fragment for variable-weight fields, gated until migration 23 lands. */
+async function variableWeightCols(): Promise<string> {
+  return (await hasVariableWeightColumns())
+    ? 'p.is_variable_weight, p.variable_weight_note,'
+    : '';
+}
 
 /**
  * Get all products with filters
@@ -114,12 +122,14 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
   const order = allowedSortOrders.includes((sortOrder as string)?.toLowerCase()) ? (sortOrder as string).toUpperCase() : 'DESC';
 
   // Get products
+  const varCols = await variableWeightCols();
   const productsSql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
       p.subcategory_id, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${varCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.stock_status,
       p.primary_image, p.images, p.short_description,
       p.description_ur, p.description_en, p.attributes,
@@ -152,9 +162,10 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
 export const getProductById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const publicCityId = await resolvePublicCityId(req);
+  const varCols = await variableWeightCols();
 
   let sql = `
-    SELECT 
+    SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.name_ur as category_name_ur,
       c.slug as category_slug, c.qualifies_for_free_delivery,
@@ -162,6 +173,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
       p.subcategory_id, sc.name_en as subcategory_name,
       p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${varCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory,
       p.primary_image, p.images, p.short_description,
@@ -200,9 +212,10 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
 export const getProductBySlug = asyncHandler(async (req: Request, res: Response) => {
   const { slug } = req.params;
   const publicCityId = await resolvePublicCityId(req);
+  const varCols = await variableWeightCols();
 
   let sql = `
-    SELECT 
+    SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.name_ur as category_name_ur,
       c.slug as category_slug, c.qualifies_for_free_delivery,
@@ -210,6 +223,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
       p.subcategory_id, sc.name_en as subcategory_name,
       p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${varCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory,
       p.primary_image, p.images, p.short_description,

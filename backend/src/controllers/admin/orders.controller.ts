@@ -19,6 +19,8 @@ import {
   ORDER_STATUS_TIMESTAMPS,
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
+import { roundMoney } from '../../utils/money';
+import { hasVariableWeightColumns } from '../../config/productSchema';
 
 /**
  * Fire-and-forget: when an order reaches `delivered`, check whether the
@@ -177,9 +179,18 @@ export const getOrderDetails = asyncHandler(async (req: Request, res: Response) 
 
   const order = orderResult.rows[0];
 
-  // Get order items
+  // Get order items, flagged with whether the product is sold by variable
+  // weight so the admin can show the weigh-and-adjust control.
+  const varCol = (await hasVariableWeightColumns())
+    ? 'COALESCE(p.is_variable_weight, FALSE)'
+    : 'FALSE';
   const itemsResult = await query(
-    `SELECT * FROM order_items WHERE order_id = $1`,
+    `SELECT oi.*, ${varCol} AS is_variable_weight,
+            COALESCE(p.unit_value, 1) AS product_unit_value
+       FROM order_items oi
+       LEFT JOIN products p ON p.id = oi.product_id
+      WHERE oi.order_id = $1
+      ORDER BY oi.created_at ASC`,
     [id]
   );
 
@@ -360,6 +371,119 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
   });
 
   successResponse(res, result.rows[0], 'Payment received and order marked as delivered');
+});
+
+/**
+ * Adjust the actual packed weight of a variable-weight order item, and
+ * recompute that line + the whole order total — all atomically.
+ * PUT /api/admin/orders/:id/items/:itemId/weight   Body: { weight_kg }
+ */
+export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Response) => {
+  const { id, itemId } = req.params;
+  const weight = parseFloat(String(req.body?.weight_kg));
+  if (!Number.isFinite(weight) || weight < 0 || weight > 10000) {
+    return errorResponse(res, 'Enter a valid weight in kilograms', 400);
+  }
+
+  if (!(await hasVariableWeightColumns())) {
+    return errorResponse(res, 'Weight adjustment is not available yet.', 503);
+  }
+
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) {
+    return notFoundResponse(res, 'Order not found');
+  }
+
+  let updatedOrder: any = null;
+  try {
+    updatedOrder = await withTransaction(async (client) => {
+      const orderRes = await client.query(
+        `SELECT id, status, delivery_charge, discount_amount, coupon_discount, tax_amount
+           FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [id]
+      );
+      if (orderRes.rows.length === 0) {
+        throw Object.assign(new Error('Order not found'), { http: 404 });
+      }
+      const order = orderRes.rows[0];
+      if (['cancelled', 'refunded'].includes(order.status)) {
+        throw Object.assign(
+          new Error('Cannot change weight on a cancelled or refunded order'),
+          { http: 400 }
+        );
+      }
+
+      const itemRes = await client.query(
+        `SELECT oi.id, oi.unit_price,
+                COALESCE(p.unit_value, 1) AS unit_value,
+                COALESCE(p.is_variable_weight, FALSE) AS is_variable_weight
+           FROM order_items oi
+           LEFT JOIN products p ON p.id = oi.product_id
+          WHERE oi.id = $1 AND oi.order_id = $2
+          FOR UPDATE OF oi`,
+        [itemId, id]
+      );
+      if (itemRes.rows.length === 0) {
+        throw Object.assign(new Error('Order item not found'), { http: 404 });
+      }
+      const item = itemRes.rows[0];
+      if (!item.is_variable_weight) {
+        throw Object.assign(
+          new Error('This item is not sold by variable weight'),
+          { http: 400 }
+        );
+      }
+
+      // Price per kg = unit price ÷ the product's per-unit weight; the new line
+      // total is that × the actual weighed amount. Never client-supplied.
+      const unitValue = parseFloat(item.unit_value) || 1;
+      const unitPrice = parseFloat(item.unit_price) || 0;
+      const pricePerKg = unitValue > 0 ? unitPrice / unitValue : unitPrice;
+      const newTotal = roundMoney(pricePerKg * weight);
+
+      await client.query(
+        `UPDATE order_items
+            SET final_weight_kg = $1, weight_kg = $1, total_price = $2, updated_at = NOW()
+          WHERE id = $3`,
+        [weight, newTotal, itemId]
+      );
+
+      const sumRes = await client.query(
+        `SELECT COALESCE(SUM(total_price), 0) AS subtotal FROM order_items WHERE order_id = $1`,
+        [id]
+      );
+      const subtotal = roundMoney(parseFloat(sumRes.rows[0].subtotal) || 0);
+      const delivery = parseFloat(order.delivery_charge) || 0;
+      const discount = parseFloat(order.discount_amount) || 0;
+      const coupon = parseFloat(order.coupon_discount) || 0;
+      const tax = parseFloat(order.tax_amount) || 0;
+      const total = roundMoney(Math.max(0, subtotal + delivery - discount - coupon + tax));
+
+      const upd = await client.query(
+        `UPDATE orders SET subtotal = $1, total_amount = $2, updated_at = NOW()
+          WHERE id = $3 RETURNING *`,
+        [subtotal, total, id]
+      );
+      return upd.rows[0];
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 400) return errorResponse(res, err.message, 400);
+    throw err;
+  }
+
+  logger.info('Order item weight updated', { orderId: id, itemId, weight, updatedBy: req.user?.id });
+  emitOrderUpdate(id, {
+    orderId: id,
+    totalAmount: parseFloat(updatedOrder.total_amount),
+    message: 'Order amount updated after weighing',
+  });
+  emitToUser(updatedOrder.user_id, 'order:amount_updated', {
+    orderId: id,
+    totalAmount: parseFloat(updatedOrder.total_amount),
+    message: 'Your order amount was updated after weighing the items.',
+  });
+  successResponse(res, updatedOrder, 'Weight and amount updated');
 });
 
 /**

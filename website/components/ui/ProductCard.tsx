@@ -7,6 +7,7 @@ import { Product, ProductUnit } from '@/types'
 import ProductPrice from './ProductPrice'
 import UnitSelector from './UnitSelector'
 import { useCartStore } from '@/store/cartStore'
+import { useVariableWeightNotice } from '@/store/variableWeightNotice'
 import Badge from './Badge'
 import SmartImage from './SmartImage'
 import toast from 'react-hot-toast'
@@ -29,6 +30,7 @@ function ImageFallback() {
 /** Layout mirrors customer-app ProductCard (fullWidth / featured grid). */
 export default function ProductCard({ product, showAddToCart = true }: ProductCardProps) {
   const { addItem, updateQuantity, items } = useCartStore()
+  const notifyVariableWeight = useVariableWeightNotice((s) => s.notify)
   const unitOptions = useMemo(() => getUnitOptions(product), [product])
   const hasFractionUnits = unitOptions.length > 1
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
@@ -45,6 +47,9 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
 
   const handleAddToCart = () => {
     addItem(product, 1, selectedUnit)
+    if (product.isVariableWeight) {
+      notifyVariableWeight(product.id, product.variableWeightNote)
+    }
     const suffix = unitLabelShort(selectedUnit)
     toast.success(
       `${product.name}${suffix ? ` (${suffix})` : ''} added to cart`,

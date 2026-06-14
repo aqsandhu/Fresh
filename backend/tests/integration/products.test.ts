@@ -8,6 +8,7 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import { query } from '@/config/database';
+import { hasVariableWeightColumns } from '@/config/productSchema';
 import productRoutes from '@/routes/product.routes';
 import { buildApp } from './helpers';
 
@@ -17,6 +18,14 @@ const app = buildApp('/api/products', productRoutes);
 function ok<T>(rows: T[]): any {
   return { rows, rowCount: rows.length, command: 'SELECT', oid: 0, fields: [] };
 }
+
+// The product SELECTs add variable-weight columns only when migration 23 is
+// present. Prime that cached probe to "absent" so each test's mock sequence
+// (count, then list) isn't thrown off by an extra information_schema query.
+beforeAll(async () => {
+  mockQuery.mockResolvedValueOnce(ok([]));
+  await hasVariableWeightColumns();
+});
 
 describe('GET /api/products', () => {
   beforeEach(() => jest.clearAllMocks());

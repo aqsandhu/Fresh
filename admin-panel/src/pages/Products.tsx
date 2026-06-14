@@ -35,6 +35,10 @@ const getProductImageUrl = (product: Product): string | null => {
   return img ? resolveImageUrl(img) : null;
 };
 
+/** Default Urdu popup shown when a customer adds a variable-weight product. */
+const DEFAULT_VARIABLE_WEIGHT_NOTE =
+  'آرڈر پیک کرتے ہوئے اس پروڈکٹ کا وزن آپ کے آرڈر سے کم یا زیادہ ہو سکتا ہے۔ ایسی صورت میں آپ کا آرڈر اور اس کی رقم آپ کے اصل وزن کے مطابق تبدیل ہو جائے گی۔';
+
 const UNITS = [
   { value: 'kg', label: 'Kilogram (kg)' },
   { value: 'gram', label: 'Gram' },
@@ -89,6 +93,8 @@ export const Products: React.FC = () => {
     categoryId: '',
     isActive: true,
     isFeatured: false,
+    isVariableWeight: false,
+    variableWeightNote: '',
     tags: [],
   });
 
@@ -215,6 +221,8 @@ export const Products: React.FC = () => {
       categoryId: '',
       isActive: true,
       isFeatured: false,
+      isVariableWeight: false,
+      variableWeightNote: '',
       tags: [],
     });
     setIsModalOpen(true);
@@ -225,9 +233,13 @@ export const Products: React.FC = () => {
     setSelectedImages([]);
     setFormErrors({});
     let tags: string[] = product.tags || [];
+    let isVariableWeight = product.isVariableWeight ?? false;
+    let variableWeightNote = product.variableWeightNote ?? '';
     try {
       const full = await productService.getProductById(product.id);
       tags = full.tags || [];
+      isVariableWeight = full.isVariableWeight ?? false;
+      variableWeightNote = full.variableWeightNote ?? '';
     } catch {
       // Keep list tags if detail fetch fails
     }
@@ -255,6 +267,8 @@ export const Products: React.FC = () => {
       categoryId: product.categoryId,
       isActive: product.isActive,
       isFeatured: product.isFeatured,
+      isVariableWeight,
+      variableWeightNote,
       tags,
     });
     setIsModalOpen(true);
@@ -818,6 +832,52 @@ export const Products: React.FC = () => {
               />
               <span className="text-sm text-gray-700">Featured</span>
             </label>
+          </div>
+
+          {/* Variable weight (per-product) */}
+          <div className="rounded-lg border border-gray-200 p-3">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.isVariableWeight === true}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setFormData((prev) => ({
+                    ...prev,
+                    isVariableWeight: on,
+                    variableWeightNote:
+                      on && !prev.variableWeightNote
+                        ? DEFAULT_VARIABLE_WEIGHT_NOTE
+                        : prev.variableWeightNote,
+                  }));
+                }}
+                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="text-sm font-medium text-gray-800">Variable weight</span>
+            </label>
+            <p className="mt-1 text-xs text-gray-500">
+              For items like cauliflower or watermelon whose packed weight differs from the order.
+              The admin re-weighs at packing and the amount auto-adjusts. The customer sees the
+              note below as a popup when adding this product.
+            </p>
+            {formData.isVariableWeight && (
+              <div className="mt-2">
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Customer popup message (Urdu)
+                </label>
+                <textarea
+                  value={formData.variableWeightNote ?? ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, variableWeightNote: e.target.value })
+                  }
+                  dir="rtl"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  placeholder={DEFAULT_VARIABLE_WEIGHT_NOTE}
+                />
+                <p className="mt-1 text-xs text-gray-400">Leave as-is to use the default message.</p>
+              </div>
+            )}
           </div>
 
           {/* Image Upload */}

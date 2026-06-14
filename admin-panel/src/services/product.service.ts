@@ -60,6 +60,10 @@ export const productService = {
       formData.append('category_id', data.categoryId);
       formData.append('is_active', (data.isActive !== false).toString());
       formData.append('is_featured', (data.isFeatured === true).toString());
+      formData.append('is_variable_weight', (data.isVariableWeight === true).toString());
+      if (data.variableWeightNote != null) {
+        formData.append('variable_weight_note', data.variableWeightNote);
+      }
       formData.append('tags', JSON.stringify(data.tags || []));
 
       if (data.images && data.images.length > 0) {
@@ -99,6 +103,8 @@ export const productService = {
       if (data.categoryId) formData.append('category_id', data.categoryId);
       if (data.isActive !== undefined) formData.append('is_active', data.isActive.toString());
       if (data.isFeatured !== undefined) formData.append('is_featured', data.isFeatured.toString());
+      if (data.isVariableWeight !== undefined) formData.append('is_variable_weight', data.isVariableWeight.toString());
+      if (data.variableWeightNote !== undefined) formData.append('variable_weight_note', data.variableWeightNote ?? '');
       if (data.tags !== undefined) formData.append('tags', JSON.stringify(data.tags));
       
       if (data.images && data.images.length > 0) {

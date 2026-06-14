@@ -48,6 +48,8 @@ export interface Product {
   categoryName?: string;
   isFeatured: boolean;
   isActive: boolean;
+  isVariableWeight?: boolean;
+  variableWeightNote?: string | null;
   tags?: string[];
 }
 
@@ -125,6 +127,9 @@ export interface OrderItem {
   unitPrice: number;
   totalPrice: number;
   unit?: string;
+  isVariableWeight?: boolean;
+  finalWeightKg?: number | null;
+  productUnitValue?: number;
 }
 
 export interface Rider {
@@ -340,6 +345,8 @@ export interface CreateProductData {
   images?: File[];
   isActive?: boolean;
   isFeatured?: boolean;
+  isVariableWeight?: boolean;
+  variableWeightNote?: string | null;
   tags?: string[];
 }
 

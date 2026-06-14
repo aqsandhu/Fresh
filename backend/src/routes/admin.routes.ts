@@ -80,6 +80,10 @@ router.put(
   adminController.markPaymentReceived
 );
 router.put(
+  '/orders/:id/items/:itemId/weight',
+  adminController.updateOrderItemWeight
+);
+router.put(
   '/orders/:id/assign-rider',
   validate(orderSchemas.assignRider),
   adminController.assignRider
@@ -107,6 +111,7 @@ const coerceProductFields = (req: any, res: any, next: any) => {
   if (body.is_active !== undefined) body.is_active = body.is_active === 'true' || body.is_active === true;
   if (body.is_featured !== undefined) body.is_featured = body.is_featured === 'true' || body.is_featured === true;
   if (body.is_new_arrival !== undefined) body.is_new_arrival = body.is_new_arrival === 'true' || body.is_new_arrival === true;
+  if (body.is_variable_weight !== undefined) body.is_variable_weight = body.is_variable_weight === 'true' || body.is_variable_weight === true;
   if (body.tags !== undefined) {
     body.tags = parseTagsInput(body.tags);
   }

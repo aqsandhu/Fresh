@@ -24,6 +24,7 @@ import { UnitSelector, getSelectedUnitPrice } from '@components/product/UnitSele
 import { productService } from '@services/product.service';
 import { orderService } from '@services/order.service';
 import { useCartStore, useWishlistStore } from '@store';
+import { useVariableWeightNotice } from '@store/variableWeightNotice';
 import { useCityContext } from '@/context/CityContext';
 import { TAB_BAR_BASE_HEIGHT } from '@/lib/tabBarMetrics';
 
@@ -44,6 +45,7 @@ export const ProductDetailScreen: React.FC = () => {
   const [freeThreshold, setFreeThreshold] = useState(500);
 
   const { addItem, items } = useCartStore();
+  const notifyVariableWeight = useVariableWeightNotice((s) => s.notify);
   const { toggle: toggleWishlist, isWishlisted } = useWishlistStore();
   const { selectedCityId } = useCityContext();
   const insets = useSafeAreaInsets();
@@ -108,6 +110,9 @@ export const ProductDetailScreen: React.FC = () => {
   const handleAddToCart = async () => {
     if (!product || !product.inStock) return;
     await addItem(product, quantity, selectedUnit);
+    if (product.isVariableWeight) {
+      notifyVariableWeight(product.id, product.variableWeightNote);
+    }
   };
 
   const handleShare = async () => {

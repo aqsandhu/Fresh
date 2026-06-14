@@ -8,6 +8,7 @@ import { AppNavigator } from '@navigation';
 import { useNetworkStatus } from '@hooks';
 import { COLORS, SPACING } from '@utils/constants';
 import { ErrorBoundary } from '@components/common';
+import { VariableWeightNoticeModal } from '@components/common/VariableWeightNoticeModal';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -72,6 +73,7 @@ export default function App() {
           <QueryClientProvider client={queryClient}>
             <NetworkStatusBanner />
             <AppNavigator />
+            <VariableWeightNoticeModal />
           </QueryClientProvider>
         </ErrorBoundary>
       </SafeAreaProvider>
