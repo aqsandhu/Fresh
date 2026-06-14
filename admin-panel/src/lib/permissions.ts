@@ -33,6 +33,8 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   ],
   '/admin/roles': ['roles.manage'],
   '/admin/coupons-used': ['coupons.view', 'coupons.manage'],
+  '/admin/reviews': ['reviews.view', 'reviews.manage', 'orders.view'],
+  '/admin/complaints': ['complaints.view', 'complaints.manage', 'orders.view'],
   '/admin/settings': ALL_SETTINGS_VIEW_CODES,
 };
 
@@ -51,6 +53,8 @@ export const ADMIN_ROUTE_FALLBACKS = [
   '/admin/delivery-zones',
   '/admin/service-cities',
   '/admin/coupons-used',
+  '/admin/reviews',
+  '/admin/complaints',
 ];
 
 export function hasPermission(

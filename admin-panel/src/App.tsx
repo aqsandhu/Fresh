@@ -23,6 +23,8 @@ import {
   DeliveryZones,
   Roles,
   CouponsUsed,
+  Reviews,
+  Complaints,
   Settings,
 } from '@/pages';
 import './App.css';
@@ -257,6 +259,22 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <CouponsUsed />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/reviews"
+        element={
+          <ProtectedRoute>
+            <Reviews />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/complaints"
+        element={
+          <ProtectedRoute>
+            <Complaints />
           </ProtectedRoute>
         }
       />
