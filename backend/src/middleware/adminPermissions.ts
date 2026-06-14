@@ -116,6 +116,13 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
       ? ['complaints.view', 'complaints.manage', 'orders.view']
       : ['complaints.manage', 'orders.update'];
   }
+  // User guidance tips. New codes with settings.* fallback so admins who manage
+  // settings keep access without a permission reseed; super_admin via '*'.
+  if (p.startsWith('/tips')) {
+    return m === 'GET'
+      ? ['tips.view', 'tips.manage', 'settings.view', 'settings.update']
+      : ['tips.manage', 'settings.update'];
+  }
   if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
   if (p.startsWith('/cities')) {
     if (m === 'GET') return ANY_ADMIN; // city list needed by header switcher

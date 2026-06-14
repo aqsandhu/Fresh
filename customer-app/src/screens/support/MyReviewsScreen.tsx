@@ -100,7 +100,7 @@ export const MyReviewsScreen: React.FC = () => {
           renderItem={renderItem}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
-          ListHeaderComponent={<GuidanceTips tips={REVIEWS_TIPS} />}
+          ListHeaderComponent={<GuidanceTips tips={REVIEWS_TIPS} page="reviews" />}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl

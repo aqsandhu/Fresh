@@ -573,6 +573,14 @@ export const complaintsApi = {
   },
 }
 
+// User guidance tips (admin-managed, per page + city)
+export const tipsApi = {
+  forPage: async (page: string): Promise<{ id: string; text: string }[]> => {
+    const response = await api.get('/tips', { params: withCityParams({ page }) })
+    return response.data?.data || []
+  },
+}
+
 // Settings API (public endpoints)
 export const settingsApi = {
   getDeliverySettings: async (): Promise<{ base_charge: number; free_delivery_threshold: number; express_charge: number }> => {

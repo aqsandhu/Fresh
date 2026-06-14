@@ -1,28 +1,49 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { useGuidanceTips } from '@store/guidanceTips';
+import { tipsService } from '@services/tips.service';
 
 interface GuidanceTipsProps {
+  /** Hardcoded Urdu fallback tips, used until admin tips load (or if none). */
   tips: string[];
+  /** Page key to fetch admin-managed tips for (e.g. "checkout"). */
+  page?: string;
   title?: string;
 }
 
 /**
- * Dismissible Urdu user-guidance tips for order-related screens. The on/off
- * choice is global + persisted, so turning it off hides tips everywhere; a
- * compact "show tips" chip lets the user turn them back on any time.
+ * Dismissible Urdu guidance tips. Admin-managed tips (per page + city) are
+ * fetched and take priority; the hardcoded `tips` are the fallback. The on/off
+ * choice is global + persisted; a compact "show tips" chip restores them.
  */
-export const GuidanceTips: React.FC<GuidanceTipsProps> = ({ tips, title }) => {
+export const GuidanceTips: React.FC<GuidanceTipsProps> = ({ tips, page, title }) => {
   const { enabled, setEnabled } = useGuidanceTips();
-  if (tips.length === 0) return null;
+  const [remote, setRemote] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!page) return;
+    tipsService
+      .forPage(page)
+      .then((rows) => {
+        if (active && rows.length > 0) setRemote(rows);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [page]);
+
+  const list = remote ?? tips;
+  if (list.length === 0) return null;
 
   if (!enabled) {
     return (
       <View style={styles.showRow}>
         <TouchableOpacity style={styles.showChip} onPress={() => setEnabled(true)} activeOpacity={0.7}>
-          <MaterialIcons name="help-outline" size={14} color={COLORS.primary700} />
+          <MaterialIcons name="auto-awesome" size={14} color="#b45309" />
           <Text style={styles.showChipText}>ہدایات دکھائیں</Text>
         </TouchableOpacity>
       </View>
@@ -33,7 +54,9 @@ export const GuidanceTips: React.FC<GuidanceTipsProps> = ({ tips, title }) => {
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <MaterialIcons name="lightbulb-outline" size={16} color="#b45309" />
+          <View style={styles.iconChip}>
+            <MaterialIcons name="lightbulb" size={14} color="#d97706" />
+          </View>
           <Text style={styles.headerTitle}>{title || 'رہنمائی'}</Text>
         </View>
         <TouchableOpacity style={styles.offBtn} onPress={() => setEnabled(false)} hitSlop={8}>
@@ -42,14 +65,18 @@ export const GuidanceTips: React.FC<GuidanceTipsProps> = ({ tips, title }) => {
         </TouchableOpacity>
       </View>
 
-      {tips.map((tip, i) => (
-        <View key={i} style={styles.tipRow}>
-          <View style={styles.bullet} />
-          <Text style={styles.tipText}>{tip}</Text>
-        </View>
-      ))}
+      <View style={styles.body}>
+        {list.map((tip, i) => (
+          <View key={i} style={styles.tipRow}>
+            <View style={styles.numberChip}>
+              <Text style={styles.numberText}>{i + 1}</Text>
+            </View>
+            <Text style={styles.tipText}>{tip}</Text>
+          </View>
+        ))}
+      </View>
 
-      <TouchableOpacity onPress={() => setEnabled(false)} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.footer} onPress={() => setEnabled(false)} activeOpacity={0.7}>
         <Text style={styles.offLink}>یہ ہدایات بند کر دیں</Text>
       </TouchableOpacity>
     </View>
@@ -60,39 +87,68 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
-    backgroundColor: '#fffbeb',
+    backgroundColor: COLORS.white,
     borderWidth: 1,
     borderColor: '#fde68a',
     borderRadius: BORDER_RADIUS.xl,
-    padding: SPACING.md,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
+    backgroundColor: '#fffbeb',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerTitle: { fontSize: 14, fontWeight: '700', color: '#92400e' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  iconChip: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: { fontSize: 14, fontWeight: '800', color: '#92400e' },
   offBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  offBtnText: { fontSize: 12, color: '#b45309' },
-  tipRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
-  bullet: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#f59e0b', marginTop: 7 },
+  offBtnText: { fontSize: 12, color: '#b45309', fontWeight: '600' },
+  body: { paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm },
+  tipRow: { flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 8, marginBottom: 8 },
+  numberChip: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  numberText: { fontSize: 10, fontWeight: '800', color: '#b45309' },
   tipText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13.5,
     lineHeight: 24,
-    color: '#78350f',
+    color: '#374151',
     textAlign: 'right',
     writingDirection: 'rtl',
   },
+  footer: {
+    borderTopWidth: 1,
+    borderTopColor: '#fef3c7',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
   offLink: {
-    marginTop: 6,
     fontSize: 12,
     fontWeight: '600',
     color: '#b45309',
-    textDecorationLine: 'underline',
-    textAlign: 'right',
+    textAlign: 'left',
     writingDirection: 'rtl',
   },
   showRow: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.sm, alignItems: 'flex-end' },
@@ -101,13 +157,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     borderWidth: 1,
-    borderColor: COLORS.primary200,
-    backgroundColor: COLORS.primary50,
+    borderColor: '#fde68a',
+    backgroundColor: '#fffbeb',
     borderRadius: BORDER_RADIUS.full,
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
   },
-  showChipText: { fontSize: 12, fontWeight: '600', color: COLORS.primary700 },
+  showChipText: { fontSize: 12, fontWeight: '700', color: '#b45309' },
 });
 
 export default GuidanceTips;

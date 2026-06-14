@@ -6,4 +6,5 @@ export { addressService } from './address.service';
 export { attaService } from './atta.service';
 export { notificationService } from './notification.service';
 export { feedbackService } from './feedback.service';
+export { tipsService } from './tips.service';
 export { default as apiClient, handleApiError, ApiError } from './api';

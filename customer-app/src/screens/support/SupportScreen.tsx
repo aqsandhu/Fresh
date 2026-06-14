@@ -61,7 +61,7 @@ export const SupportScreen: React.FC = () => {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <GuidanceTips tips={SUPPORT_TIPS} />
+        <GuidanceTips tips={SUPPORT_TIPS} page="support" />
         {ENTRIES.map((e) => (
           <TouchableOpacity
             key={e.title}

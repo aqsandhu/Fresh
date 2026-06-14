@@ -20,6 +20,7 @@ import notificationRoutes from './notification.routes';
 import couponRoutes from './coupon.routes';
 import reviewRoutes from './review.routes';
 import complaintRoutes from './complaint.routes';
+import tipsRoutes from './tips.routes';
 
 const router = Router();
 
@@ -41,5 +42,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/coupons', couponRoutes);
 router.use('/reviews', reviewRoutes);
 router.use('/complaints', complaintRoutes);
+router.use('/tips', tipsRoutes);
 
 export default router;

@@ -8,6 +8,7 @@ import * as adminController from '../controllers/admin';
 import * as couponController from '../controllers/coupon.controller';
 import * as reviewController from '../controllers/review.controller';
 import * as complaintController from '../controllers/complaint.controller';
+import * as tipsController from '../controllers/tips.controller';
 import {
   authenticate,
   requireAdmin,
@@ -239,6 +240,12 @@ router.put('/reviews/:id', adminRateLimiter, reviewController.updateReviewAdmin)
 router.get('/complaints', complaintController.listComplaints);
 router.get('/complaints/:id', complaintController.getComplaint);
 router.put('/complaints/:id', adminRateLimiter, complaintController.updateComplaint);
+
+// User guidance tips (per-city; global tips are super-admin only)
+router.get('/tips', tipsController.listTips);
+router.post('/tips', adminRateLimiter, tipsController.createTip);
+router.put('/tips/:id', adminRateLimiter, tipsController.updateTip);
+router.delete('/tips/:id', tipsController.deleteTip);
 
 // Atta Requests
 router.get('/atta-requests', adminController.getAttaRequests);

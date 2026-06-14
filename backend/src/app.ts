@@ -34,6 +34,7 @@ import { ensureAddressColumns } from './config/addressSchema';
 import { ensureOrderCouponColumns } from './config/orderSchema';
 import { ensureVariableWeightColumns, ensureUnitToggleColumns } from './config/productSchema';
 import { ensureFeedbackTables } from './config/feedbackSchema';
+import { ensureTipsTable } from './config/tipsSchema';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -281,6 +282,7 @@ const startServer = async () => {
       await ensureVariableWeightColumns();
       await ensureUnitToggleColumns();
       await ensureFeedbackTables();
+      await ensureTipsTable();
       // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars are set.
       // Safe to call on every boot — idempotently upserts the super-admin row.
       const adminResult = await bootstrapAdmin();
