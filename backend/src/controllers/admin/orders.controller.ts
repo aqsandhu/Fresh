@@ -18,6 +18,17 @@ import {
   restoreOrderInventory,
   ORDER_STATUS_TIMESTAMPS,
 } from '../../utils/orderStatus';
+import { evaluateMilestone } from '../../utils/autoCoupons';
+
+/**
+ * Fire-and-forget: when an order reaches `delivered`, check whether the
+ * customer has earned an order-milestone coupon (grants + notifies). Never
+ * blocks or fails the request that triggered the delivery.
+ */
+function gradeMilestoneOnDelivery(order: { user_id?: string; city_id?: string | null }): void {
+  if (!order?.user_id) return;
+  evaluateMilestone(order.user_id, order.city_id ?? null).catch(() => undefined);
+}
 
 export const getAllOrders = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
@@ -257,6 +268,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
 
   // Notify the customer of status change
   const order = result.rows[0];
+  if (status === 'delivered') gradeMilestoneOnDelivery(order);
   emitToUser(order.user_id, 'order:status_changed', {
     orderId: id,
     orderNumber: order.order_number,
@@ -333,6 +345,7 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
 
   // Emit real-time events
   const updatedOrder = result.rows[0];
+  gradeMilestoneOnDelivery(updatedOrder);
   emitOrderUpdate(id, {
     orderId: id,
     status: 'delivered',

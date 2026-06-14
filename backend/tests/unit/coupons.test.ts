@@ -155,4 +155,41 @@ describe('buildCouponSummary', () => {
       'Free delivery'
     );
   });
+
+  it('describes a welcome-back coupon trigger', () => {
+    const s = buildCouponSummary(
+      makeCoupon({ trigger_type: 'welcome_back', inactivity_days: 30, auto_reusable: false })
+    );
+    expect(s).toContain('welcome-back reward after 30 days away');
+    expect(s).toContain('one order only');
+  });
+
+  it('describes a reusable milestone coupon trigger', () => {
+    const s = buildCouponSummary(
+      makeCoupon({ trigger_type: 'order_milestone', milestone_orders: 10, auto_reusable: true })
+    );
+    expect(s).toContain('loyalty reward at 10 delivered orders');
+    expect(s).toContain('reusable once earned');
+  });
+});
+
+describe('auto coupons skip per-user / first-order checks (governed by the grant)', () => {
+  it('does NOT reject an auto coupon for a returning customer on first_order_only', () => {
+    const coupon = makeCoupon({
+      trigger_type: 'welcome_back',
+      inactivity_days: 30,
+      first_order_only: true,
+      usage_limit_per_user: 1,
+    });
+    // Returning customer who has used it before — a manual coupon would reject,
+    // but the grant governs eligibility for auto coupons, so validation passes.
+    expect(
+      couponValidationError(coupon, { ...baseCtx, isFirstOrder: false, userUsed: 5 })
+    ).toBeNull();
+  });
+
+  it('still enforces min order + expiry for auto coupons', () => {
+    const coupon = makeCoupon({ trigger_type: 'welcome_back', inactivity_days: 30, min_order_amount: 2000 });
+    expect(couponValidationError(coupon, baseCtx)).toMatch(/Add Rs\. 1000 more/);
+  });
 });

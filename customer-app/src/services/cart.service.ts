@@ -2,8 +2,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ProductUnit, StoreCartItem, StoreProduct } from '@app-types';
 import { STORAGE_KEYS } from '@utils/constants';
 import { getStoredToken } from '@/lib/secureTokens';
+import { withCityParams } from '@/lib/apiHelpers';
 import apiClient, { handleApiError } from './api';
 import { ApiResponse } from '@app-types';
+
+export interface MyCoupon {
+  code: string;
+  description?: string | null;
+  discount_type: 'percentage' | 'fixed' | 'free_delivery';
+  min_order_amount: number;
+  trigger_type?: 'manual' | 'welcome_back' | 'order_milestone';
+  source?: string;
+  seen: boolean;
+  summary: string;
+}
 
 const lineKey = (productId: string, unit: ProductUnit = 'full') =>
   `${productId}::${unit}`;
@@ -167,6 +179,28 @@ class CartService {
       await apiClient.delete('/cart/remove-coupon');
     } catch {
       /* best-effort — caller clears local state regardless */
+    }
+  }
+
+  /**
+   * Customer's auto-granted coupons. Fetching also evaluates fresh eligibility
+   * (welcome-back / milestone), so new coupons get granted + notified.
+   */
+  async getMyCoupons(): Promise<{ coupons: MyCoupon[]; unseen: MyCoupon[] }> {
+    try {
+      const res = await apiClient.get('/coupons/mine', { params: withCityParams() });
+      const data = res.data?.data || res.data || {};
+      return { coupons: data.coupons || [], unseen: data.unseen || [] };
+    } catch {
+      return { coupons: [], unseen: [] };
+    }
+  }
+
+  async markCouponsSeen(): Promise<void> {
+    try {
+      await apiClient.patch('/coupons/mine/seen');
+    } catch {
+      /* best-effort */
     }
   }
 }

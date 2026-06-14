@@ -31,7 +31,7 @@ import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { resolveLineUnitPrice, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
 import { getSlotAvailability } from '@/lib/timeSlots'
-import { addressesApi, settingsApi, cartApi } from '@/lib/api'
+import { addressesApi, settingsApi, cartApi, myCouponsApi, type MyCoupon } from '@/lib/api'
 import api from '@/lib/api'
 import AddressActions from '@/components/checkout/AddressActions'
 import AddressForm, {
@@ -111,6 +111,7 @@ function CheckoutPage() {
   } | null>(null)
   const [couponLoading, setCouponLoading] = useState(false)
   const [couponError, setCouponError] = useState('')
+  const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([])
 
   const localSubtotal = getSubtotal()
   const selectedSlotObj = timeSlots.find(s => s.id === selectedTimeSlot)
@@ -264,9 +265,19 @@ function CheckoutPage() {
   const canPlaceOrder =
     Boolean(selectedAddress) || (showNewAddress && newAddressValid)
 
-  const handleApplyCoupon = async () => {
-    const code = couponInput.trim()
-    if (!code) return
+  // Load the customer's auto-granted coupons (welcome-back / milestone) so they
+  // can pick one at checkout. Fetching also evaluates fresh eligibility.
+  useEffect(() => {
+    if (!authHasHydrated || !isAuthenticated) return
+    myCouponsApi
+      .list()
+      .then((res) => setMyCoupons(res.coupons || []))
+      .catch(() => setMyCoupons([]))
+  }, [authHasHydrated, isAuthenticated, selectedCity?.id])
+
+  const applyCouponCode = async (code: string) => {
+    const trimmed = code.trim()
+    if (!trimmed) return
     setCouponLoading(true)
     setCouponError('')
     try {
@@ -279,7 +290,7 @@ function CheckoutPage() {
           unit: item.unit || 'full',
         }))
       )
-      const result = await cartApi.applyCoupon(code)
+      const result = await cartApi.applyCoupon(trimmed)
       setAppliedCoupon(result)
       toast.success('Coupon applied')
     } catch (err: any) {
@@ -291,6 +302,8 @@ function CheckoutPage() {
       setCouponLoading(false)
     }
   }
+
+  const handleApplyCoupon = () => applyCouponCode(couponInput)
 
   const handleRemoveCoupon = async () => {
     try {
@@ -870,6 +883,38 @@ function CheckoutPage() {
                     </div>
                     {couponError && (
                       <p className="text-xs text-red-500 mt-1.5 break-words">{couponError}</p>
+                    )}
+
+                    {myCoupons.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-medium text-gray-500 mb-1.5">Your coupons</p>
+                        <div className="space-y-2">
+                          {myCoupons.map((c) => (
+                            <button
+                              key={c.code}
+                              type="button"
+                              disabled={couponLoading}
+                              onClick={() => {
+                                setCouponInput(c.code)
+                                applyCouponCode(c.code)
+                              }}
+                              className="flex w-full items-center justify-between gap-2 rounded-lg border border-primary-200 bg-primary-50/60 px-3 py-2 text-left hover:bg-primary-50 disabled:opacity-60"
+                            >
+                              <span className="min-w-0">
+                                <span className="block font-mono text-sm font-semibold text-primary-700">
+                                  {c.code}
+                                </span>
+                                <span className="block text-xs text-gray-600 break-words">
+                                  {c.summary}
+                                </span>
+                              </span>
+                              <span className="shrink-0 text-xs font-semibold text-primary-600">
+                                Apply
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}

@@ -2,6 +2,7 @@ import { api } from './api';
 import type { ApiResponse } from '@/types';
 
 export type DiscountType = 'percentage' | 'fixed' | 'free_delivery';
+export type TriggerType = 'manual' | 'welcome_back' | 'order_milestone';
 
 export interface Coupon {
   id: string;
@@ -22,6 +23,10 @@ export interface Coupon {
   cityName: string | null;
   redemptionCount: number;
   summary: string;
+  triggerType?: TriggerType;
+  inactivityDays?: number | null;
+  milestoneOrders?: number | null;
+  autoReusable?: boolean;
 }
 
 export interface CouponInput {
@@ -37,6 +42,10 @@ export interface CouponInput {
   validFrom?: string | null;
   validUntil?: string | null;
   isActive?: boolean;
+  triggerType?: TriggerType;
+  inactivityDays?: number | null;
+  milestoneOrders?: number | null;
+  autoReusable?: boolean;
 }
 
 export interface CouponRedemption {

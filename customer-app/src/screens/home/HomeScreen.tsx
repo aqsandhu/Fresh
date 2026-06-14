@@ -15,13 +15,20 @@ import {
   DeliveryInfoSection,
 } from '@components/home/sections';
 import { productService } from '@services/product.service';
+import { cartService, type MyCoupon } from '@services/cart.service';
+import { CouponWinModal } from '@components/common/CouponWinModal';
 import { useCityContext } from '@/context/CityContext';
+import { useAuthStore } from '@store';
 
 /** Mirrors website/app/(shop)/page.tsx section order exactly. */
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const { selectedCityId } = useCityContext();
   const { inset: tabBarInset } = useTabBarMetrics();
+  const { isAuthenticated } = useAuthStore();
+
+  const [winCoupons, setWinCoupons] = useState<MyCoupon[]>([]);
+  const [winVisible, setWinVisible] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [featuredProducts, setFeaturedProducts] = useState<StoreProduct[]>([]);
@@ -65,6 +72,22 @@ export const HomeScreen: React.FC = () => {
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
+  };
+
+  // After login, surface any newly-earned coupons (welcome-back / milestone).
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    cartService.getMyCoupons().then((res) => {
+      if (res.unseen && res.unseen.length > 0) {
+        setWinCoupons(res.unseen);
+        setWinVisible(true);
+      }
+    });
+  }, [isAuthenticated, selectedCityId]);
+
+  const closeWinModal = () => {
+    setWinVisible(false);
+    cartService.markCouponsSeen();
   };
 
   const goToShop = (screen: 'ProductsMain' | 'CategoriesList' = 'ProductsMain') => {
@@ -113,6 +136,7 @@ export const HomeScreen: React.FC = () => {
         <DeliveryInfoSection />
         <View style={{ height: tabBarInset }} />
       </ScrollView>
+      <CouponWinModal visible={winVisible} coupons={winCoupons} onClose={closeWinModal} />
     </SafeAreaView>
   );
 };

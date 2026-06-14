@@ -23,6 +23,7 @@ import { Button, Input } from '@components';
 import { MobileHeader } from '@components/layout/MobileHeader';
 import { addressService } from '@services/address.service';
 import { authService } from '@services/auth.service';
+import { cartService, type MyCoupon } from '@services/cart.service';
 
 interface MenuItem {
   icon: string;
@@ -39,6 +40,7 @@ export const ProfileScreen: React.FC = () => {
   const cityName = useOptionalCityName();
   const { selectedCity } = useCityContext();
   const [addresses, setAddresses] = useState<Address[]>([]);
+  const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([]);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
@@ -69,6 +71,14 @@ export const ProfileScreen: React.FC = () => {
       setEditEmail(user.email || '');
     }
   }, [loadAddresses, user]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setMyCoupons([]);
+      return;
+    }
+    cartService.getMyCoupons().then((res) => setMyCoupons(res.coupons || []));
+  }, [isAuthenticated, selectedCity?.id]);
 
   const handleSaveProfile = async () => {
     setSaving(true);
@@ -293,6 +303,27 @@ export const ProfileScreen: React.FC = () => {
             ))
           )}
         </View>
+
+        {/* My Coupons */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>My Coupons</Text>
+          </View>
+          {myCoupons.length === 0 ? (
+            <Text style={styles.noAddresses}>
+              No coupons right now. Loyalty & welcome-back rewards appear here automatically.
+            </Text>
+          ) : (
+            myCoupons.map((c) => (
+              <View key={c.code} style={styles.couponCard}>
+                <Text style={styles.couponCardCode}>
+                  <MaterialIcons name="local-offer" size={14} color={COLORS.primary700} /> {c.code}
+                </Text>
+                <Text style={styles.couponCardSummary}>{c.summary}</Text>
+              </View>
+            ))
+          )}
+        </View>
         </>
         ) : (
           <View style={styles.guestCard}>
@@ -437,6 +468,18 @@ const styles = StyleSheet.create({
   },
   defaultBadgeText: { fontSize: 10, fontWeight: '700', color: COLORS.primary700 },
   addressText: { fontSize: 13, color: COLORS.gray600, marginTop: 4 },
+  couponCard: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.primary200,
+    backgroundColor: COLORS.primary50,
+    borderRadius: BORDER_RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  couponCardCode: { fontSize: 15, fontWeight: '700', color: COLORS.primary700 },
+  couponCardSummary: { fontSize: 12, color: COLORS.gray600, marginTop: 2 },
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
