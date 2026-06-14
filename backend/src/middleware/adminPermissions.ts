@@ -103,6 +103,19 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
   if (p.startsWith('/coupons')) {
     return m === 'GET' ? ['coupons.view', 'coupons.manage'] : ['coupons.manage'];
   }
+  // Reviews & complaints moderation. New granular codes, with order codes as a
+  // fallback so existing city admins (who already manage orders) keep access
+  // without a permission reseed; super_admin passes via '*'.
+  if (p.startsWith('/reviews')) {
+    return m === 'GET'
+      ? ['reviews.view', 'reviews.manage', 'orders.view']
+      : ['reviews.manage', 'orders.update'];
+  }
+  if (p.startsWith('/complaints')) {
+    return m === 'GET'
+      ? ['complaints.view', 'complaints.manage', 'orders.view']
+      : ['complaints.manage', 'orders.update'];
+  }
   if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
   if (p.startsWith('/cities')) {
     if (m === 'GET') return ANY_ADMIN; // city list needed by header switcher
