@@ -20,6 +20,7 @@ import {
   Wheat,
   Loader2,
   ArrowRight,
+  MessageSquareWarning,
 } from 'lucide-react'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { cn, formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
@@ -497,6 +498,14 @@ export default function Header() {
               >
                 <Package className="w-5 h-5" />
                 My Orders
+              </Link>
+              <Link
+                href="/support"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                <MessageSquareWarning className="w-5 h-5" />
+                Reviews &amp; Complaints
               </Link>
               <Link
                 href={hasMounted && isAuthenticated ? '/profile' : `/login?redirect=${pathname}`}
