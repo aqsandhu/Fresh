@@ -22,6 +22,7 @@ import toast from 'react-hot-toast'
 import { useQuery } from '@tanstack/react-query'
 import ProductCard from '@/components/ui/ProductCard'
 import ProductPrice from '@/components/ui/ProductPrice'
+import ProductReviews from '@/components/feedback/ProductReviews'
 import { useCartStore } from '@/store/cartStore'
 import { useVariableWeightNotice } from '@/store/variableWeightNotice'
 import { useCityContext } from '@/context/CityContext'
@@ -333,6 +334,8 @@ export default function ProductDetailPage() {
           )}
         </div>
       </section>
+
+      <ProductReviews productId={product.id} />
 
       {relatedProducts.length > 0 && (
         <div className="container mx-auto px-4">

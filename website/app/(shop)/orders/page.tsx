@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import GuidanceTips from '@/components/guidance/GuidanceTips'
+import OrderFeedback from '@/components/feedback/OrderFeedback'
 import { ORDERS_TIPS } from '@/lib/guidanceTipsContent'
 import { motion } from 'framer-motion'
 import { 
@@ -281,6 +282,11 @@ export default function OrdersPage() {
                       Cancel Order
                     </Button>
                   )}
+                  <OrderFeedback
+                    orderId={order.id}
+                    orderNumber={order.orderNumber}
+                    delivered={order.status === 'delivered'}
+                  />
                   <Link href={`/track/${order.id}`} className="flex-1">
                     <Button variant="ghost" fullWidth>
                       View Details
