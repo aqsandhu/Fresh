@@ -77,6 +77,9 @@ export interface Product {
   halfKgPrice?: number | null;
   quarterKgPrice?: number | null;
   halfDozenPrice?: number | null;
+  /** Weight may differ at packing — show the note popup when adding. */
+  isVariableWeight?: boolean;
+  variableWeightNote?: string | null;
 }
 
 /** Which unit fraction of the product the customer picked. */

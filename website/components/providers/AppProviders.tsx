@@ -8,6 +8,7 @@ import CityGate from '@/components/city/CityGate'
 import FloatingCityButton from '@/components/city/FloatingCityButton'
 import NotificationProvider from '@/components/providers/NotificationProvider'
 import CouponWinPopup from '@/components/coupons/CouponWinPopup'
+import VariableWeightNotice from '@/components/products/VariableWeightNotice'
 
 export default function AppProviders({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -31,6 +32,7 @@ export default function AppProviders({ children }: { children: React.ReactNode }
           <CityGate>{children}</CityGate>
           <FloatingCityButton />
           <CouponWinPopup />
+          <VariableWeightNotice />
         </NotificationProvider>
       </CityProvider>
       <ReactQueryDevtools initialIsOpen={false} />

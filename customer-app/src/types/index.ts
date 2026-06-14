@@ -112,6 +112,8 @@ export interface StoreProduct {
   quarterKgPrice?: number | null;
   halfDozenPrice?: number | null;
   isFresh?: boolean;
+  isVariableWeight?: boolean;
+  variableWeightNote?: string | null;
 }
 
 export interface StoreCartItem {

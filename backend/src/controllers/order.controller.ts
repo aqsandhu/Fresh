@@ -178,9 +178,9 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
 
   // Get order items
   const itemsResult = await query(
-    `SELECT 
+    `SELECT
       oi.id, oi.product_id, oi.product_name, oi.product_image, oi.product_sku,
-      oi.unit_price, oi.quantity, oi.total_price, oi.weight_kg, oi.status,
+      oi.unit_price, oi.quantity, oi.total_price, oi.weight_kg, oi.final_weight_kg, oi.status,
       oi.special_instructions, oi.unit
     FROM order_items oi
     WHERE oi.order_id = $1`,

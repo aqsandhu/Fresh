@@ -6,6 +6,7 @@ import { truncateText, formatCurrency } from '@utils/helpers';
 import { ProductPrice } from './ProductPrice';
 import { ProductUnit, StoreProduct } from '@app-types';
 import { useCartStore } from '@store';
+import { useVariableWeightNotice } from '@store/variableWeightNotice';
 import { getUnitOptions, getUnitPickerDisplayLabel, UNIT_PICKER_CHIP } from '@/lib/unitPricing';
 
 interface ProductCardProps {
@@ -25,6 +26,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const mobileAdd = showMobileAddButton || fullWidth;
   const { addItem, updateQuantity, removeItem, getItemQuantity } = useCartStore();
+  const notifyVariableWeight = useVariableWeightNotice((s) => s.notify);
   const unitOptions = useMemo(() => getUnitOptions(product), [product]);
   const hasFractionUnits = unitOptions.length > 1;
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full');
@@ -40,6 +42,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const handleAddToCart = async () => {
     await addItem(product, 1, selectedUnit);
+    if (product.isVariableWeight) {
+      notifyVariableWeight(product.id, product.variableWeightNote);
+    }
   };
 
   const handleIncrement = async () => {

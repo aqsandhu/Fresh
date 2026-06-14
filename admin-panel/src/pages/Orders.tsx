@@ -89,6 +89,16 @@ const SLIP_PRINT_STYLES = `
  * the print-slip markup. Without this, a customer named `<img onerror=...>`
  * would execute script in the admin's print window (stored XSS).
  */
+/** Format a kg decimal as "5 kg 300 g" (5.3 → 5 kg 300 g). */
+function formatKgGrams(kg: number): string {
+  if (!Number.isFinite(kg) || kg < 0) return '';
+  const whole = Math.floor(kg);
+  const grams = Math.round((kg - whole) * 1000);
+  if (grams === 0) return `${whole} kg`;
+  if (whole === 0) return `${grams} g`;
+  return `${whole} kg ${grams} g`;
+}
+
 function esc(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -180,6 +190,8 @@ export const Orders: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [weightInputs, setWeightInputs] = useState<Record<string, string>>({});
+  const [savingWeightId, setSavingWeightId] = useState<string | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [newStatus, setNewStatus] = useState<OrderStatus>('pending');
@@ -393,6 +405,33 @@ export const Orders: React.FC = () => {
       setIsDetailModalOpen(true);
     } catch {
       toast.error('Failed to load order details');
+    }
+  };
+
+  const handleSaveItemWeight = async (itemId: string) => {
+    if (!selectedOrder) return;
+    const raw = weightInputs[itemId];
+    const weight = parseFloat(String(raw));
+    if (!Number.isFinite(weight) || weight < 0) {
+      toast.error('Enter a valid weight in kg (e.g. 5.3 = 5 kg 300 g)');
+      return;
+    }
+    setSavingWeightId(itemId);
+    try {
+      await orderService.updateItemWeight(selectedOrder.id, itemId, weight);
+      const fresh = await orderService.getOrderById(selectedOrder.id);
+      setSelectedOrder(fresh);
+      setWeightInputs((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.success('Weight saved — order amount updated');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update weight');
+    } finally {
+      setSavingWeightId(null);
     }
   };
 
@@ -1093,34 +1132,78 @@ export const Orders: React.FC = () => {
               <h4 className="text-sm font-medium text-gray-500 uppercase mb-3">Items</h4>
               <div className="space-y-2">
                 {(selectedOrder.items || []).map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div className="flex items-center">
-                      <Package className="w-4 h-4 text-gray-400 mr-3" />
-                      <span>
-                        {item.productName}
-                        {item.unit && item.unit !== 'full' && (
-                          <span className="ml-1 text-xs text-primary-700 font-semibold">
-                            ({unitLabelShort(item.unit)})
-                          </span>
-                        )}
-                      </span>
+                  <div key={item.id} className="p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center min-w-0">
+                        <Package className="w-4 h-4 text-gray-400 mr-3 shrink-0" />
+                        <span className="truncate">
+                          {item.productName}
+                          {item.unit && item.unit !== 'full' && (
+                            <span className="ml-1 text-xs text-primary-700 font-semibold">
+                              ({unitLabelShort(item.unit)})
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-sm">
+                          {item.quantity} x {formatCurrency(Number(item.unitPrice))}
+                          {item.unit && item.unit !== 'full' && (
+                            <span className="text-xs text-gray-500 ml-1">
+                              / {unitLabelShort(item.unit)}
+                            </span>
+                          )}
+                        </span>
+                        <span className="ml-4 font-medium">
+                          {formatCurrency(Number(item.totalPrice))}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-sm">
-                        {item.quantity} x {formatCurrency(Number(item.unitPrice))}
-                        {item.unit && item.unit !== 'full' && (
-                          <span className="text-xs text-gray-500 ml-1">
-                            / {unitLabelShort(item.unit)}
+
+                    {item.isVariableWeight && (
+                      <div className="mt-2 pt-2 border-t border-gray-200">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-medium text-amber-700">
+                            Variable weight
                           </span>
+                          {item.finalWeightKg != null && (
+                            <span className="text-xs text-gray-600">
+                              · Packed: <strong>{formatKgGrams(Number(item.finalWeightKg))}</strong>
+                            </span>
+                          )}
+                          <div className="flex items-center gap-2 ml-auto">
+                            <input
+                              type="number"
+                              step="0.001"
+                              min={0}
+                              value={weightInputs[item.id] ?? ''}
+                              onChange={(e) =>
+                                setWeightInputs((prev) => ({ ...prev, [item.id]: e.target.value }))
+                              }
+                              placeholder={
+                                item.finalWeightKg != null ? String(item.finalWeightKg) : 'kg e.g. 5.3'
+                              }
+                              className="w-28 px-2 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-primary-500"
+                            />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSaveItemWeight(item.id)}
+                              isLoading={savingWeightId === item.id}
+                              disabled={!weightInputs[item.id] || savingWeightId === item.id}
+                            >
+                              Save weight
+                            </Button>
+                          </div>
+                        </div>
+                        {weightInputs[item.id] && Number.isFinite(parseFloat(weightInputs[item.id])) && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            = {formatKgGrams(parseFloat(weightInputs[item.id]))} · the order amount
+                            updates automatically.
+                          </p>
                         )}
-                      </span>
-                      <span className="ml-4 font-medium">
-                        {formatCurrency(Number(item.totalPrice))}
-                      </span>
-                    </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -16,6 +16,15 @@ import {
   requireCityScope,
 } from '../../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
+import { hasVariableWeightColumns } from '../../config/productSchema';
+
+/** Default Urdu popup shown when a customer adds a variable-weight product. */
+export const DEFAULT_VARIABLE_WEIGHT_NOTE =
+  'آرڈر پیک کرتے ہوئے اس پروڈکٹ کا وزن آپ کے آرڈر سے کم یا زیادہ ہو سکتا ہے۔ ایسی صورت میں آپ کا آرڈر اور اس کی رقم آپ کے اصل وزن کے مطابق تبدیل ہو جائے گی۔';
+
+function toBool(v: unknown): boolean {
+  return v === true || v === 'true' || v === '1' || v === 1;
+}
 
 export const getAdminProducts = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
@@ -77,11 +86,15 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
 export const getAdminProductById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const scope = await resolveCityScope(req);
+  const varCols = (await hasVariableWeightColumns())
+    ? 'p.is_variable_weight, p.variable_weight_note,'
+    : '';
   const result = await query(
     `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
       p.subcategory_id, p.price, p.compare_at_price, p.cost_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${varCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory, p.primary_image, p.images,
       p.short_description, p.description_ur, p.description_en,
@@ -128,6 +141,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     is_featured,
     is_new_arrival,
     tags,
+    is_variable_weight,
+    variable_weight_note,
   } = req.body;
 
   // Empty-string values come through multipart forms — coerce them to null
@@ -164,27 +179,59 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     primaryImage = images[0] || null;
   }
 
-  const result = await query(
-    `INSERT INTO products (
-      name_ur, name_en, slug, category_id, subcategory_id,
-      price, compare_at_price,
-      half_kg_price, quarter_kg_price, half_dozen_price,
-      unit_type, unit_value, stock_quantity,
-      description_ur, description_en, is_featured, is_new_arrival,
-      primary_image, images, city_id, tags
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
-    RETURNING *`,
-    [
-      name_ur || name_en, name_en, slug, category_id, subcategory_id,
-      price, compare_at_price,
-      halfKg, quarterKg, halfDozen,
-      unit_type, unit_value, stock_quantity || 0,
-      description_ur || null, description_en || null, is_featured || false, is_new_arrival || false,
-      primaryImage, images.length > 0 ? images : null,
-      scope.cityId,
-      productTags.length > 0 ? productTags : null,
-    ]
-  );
+  const varWeightReady = await hasVariableWeightColumns();
+  const isVarWeight = toBool(is_variable_weight);
+  const varNote = isVarWeight
+    ? (typeof variable_weight_note === 'string' && variable_weight_note.trim()
+        ? variable_weight_note.trim()
+        : DEFAULT_VARIABLE_WEIGHT_NOTE)
+    : null;
+
+  const result = varWeightReady
+    ? await query(
+        `INSERT INTO products (
+          name_ur, name_en, slug, category_id, subcategory_id,
+          price, compare_at_price,
+          half_kg_price, quarter_kg_price, half_dozen_price,
+          unit_type, unit_value, stock_quantity,
+          description_ur, description_en, is_featured, is_new_arrival,
+          primary_image, images, city_id, tags,
+          is_variable_weight, variable_weight_note
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+        RETURNING *`,
+        [
+          name_ur || name_en, name_en, slug, category_id, subcategory_id,
+          price, compare_at_price,
+          halfKg, quarterKg, halfDozen,
+          unit_type, unit_value, stock_quantity || 0,
+          description_ur || null, description_en || null, is_featured || false, is_new_arrival || false,
+          primaryImage, images.length > 0 ? images : null,
+          scope.cityId,
+          productTags.length > 0 ? productTags : null,
+          isVarWeight, varNote,
+        ]
+      )
+    : await query(
+        `INSERT INTO products (
+          name_ur, name_en, slug, category_id, subcategory_id,
+          price, compare_at_price,
+          half_kg_price, quarter_kg_price, half_dozen_price,
+          unit_type, unit_value, stock_quantity,
+          description_ur, description_en, is_featured, is_new_arrival,
+          primary_image, images, city_id, tags
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+        RETURNING *`,
+        [
+          name_ur || name_en, name_en, slug, category_id, subcategory_id,
+          price, compare_at_price,
+          halfKg, quarterKg, halfDozen,
+          unit_type, unit_value, stock_quantity || 0,
+          description_ur || null, description_en || null, is_featured || false, is_new_arrival || false,
+          primaryImage, images.length > 0 ? images : null,
+          scope.cityId,
+          productTags.length > 0 ? productTags : null,
+        ]
+      );
 
   logger.info('Product created', { productId: result.rows[0].id, createdBy: req.user?.id });
 
@@ -209,6 +256,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   const productCityId = existing.rows[0].city_id;
 
   // Build update query
+  const varWeightReady = await hasVariableWeightColumns();
   const allowedFields = [
     'name_ur', 'name_en', 'category_id', 'subcategory_id',
     'price', 'compare_at_price',
@@ -216,7 +264,10 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     'unit_type', 'unit_value',
     'stock_quantity', 'description_ur', 'description_en',
     'is_active', 'is_featured', 'is_new_arrival', 'tags',
+    // Only writable once migration 23 has added the columns.
+    ...(varWeightReady ? ['is_variable_weight', 'variable_weight_note'] : []),
   ];
+  const booleanFields = new Set(['is_active', 'is_featured', 'is_new_arrival', 'is_variable_weight']);
   // These columns must always serialize as NULL when the admin clears them.
   const nullableNumberFields = new Set([
     'compare_at_price', 'half_kg_price', 'quarter_kg_price', 'half_dozen_price',
@@ -232,6 +283,10 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
       if (key === 'tags') {
         normalised = parseTagsInput(value);
         normalised = normalised.length > 0 ? normalised : null;
+      } else if (key === 'variable_weight_note') {
+        normalised = typeof value === 'string' && value.trim() ? value.trim() : null;
+      } else if (booleanFields.has(key)) {
+        normalised = toBool(value);
       } else if (nullableNumberFields.has(key)) {
         if (value === '' || value === null || value === undefined) {
           normalised = null;

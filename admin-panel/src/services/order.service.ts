@@ -159,6 +159,21 @@ export const orderService = {
     }
   },
 
+  /** Record the actual packed weight (kg) of a variable-weight item; the
+   *  server recomputes the line + order totals and returns the updated order. */
+  updateItemWeight: async (orderId: string, itemId: string, weightKg: number): Promise<Order> => {
+    try {
+      const response = await api.put<ApiResponse<Order>>(
+        `/admin/orders/${orderId}/items/${itemId}/weight`,
+        { weightKg }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Error updating item weight:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to update weight');
+    }
+  },
+
   bulkUpdateOrderStatus: async (
     orderIds: string[],
     status: OrderStatus,
