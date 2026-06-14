@@ -6,3 +6,5 @@ export { LoadingOverlay } from './LoadingOverlay';
 export { ErrorView } from './ErrorView';
 export { EmptyState } from './EmptyState';
 export { ErrorBoundary } from './ErrorBoundary';
+export { StarRating } from './StarRating';
+export { GuidanceTips } from './GuidanceTips';

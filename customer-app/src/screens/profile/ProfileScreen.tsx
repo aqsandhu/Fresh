@@ -162,6 +162,13 @@ export const ProfileScreen: React.FC = () => {
             showArrow: true,
           },
           {
+            icon: 'rate-review',
+            title: 'Reviews & Complaints',
+            subtitle: 'Rate orders or raise a complaint',
+            onPress: () => navigation.navigate('Support'),
+            showArrow: true,
+          },
+          {
             icon: 'notifications',
             title: 'Notifications',
             subtitle: 'Manage notification preferences',
