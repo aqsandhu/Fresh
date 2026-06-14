@@ -265,6 +265,8 @@ export const productSchemas = {
     is_new_arrival: Joi.boolean().default(false),
     is_variable_weight: Joi.boolean().default(false),
     variable_weight_note: Joi.string().allow('', null).max(1000).optional(),
+    allow_half_kg: Joi.boolean().optional(),
+    allow_quarter_kg: Joi.boolean().optional(),
     tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
   }),
 
@@ -288,6 +290,8 @@ export const productSchemas = {
     is_new_arrival: Joi.boolean(),
     is_variable_weight: Joi.boolean(),
     variable_weight_note: Joi.string().allow('', null).max(1000).optional(),
+    allow_half_kg: Joi.boolean().optional(),
+    allow_quarter_kg: Joi.boolean().optional(),
     tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
   }),
 };

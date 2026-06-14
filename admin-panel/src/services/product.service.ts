@@ -64,6 +64,8 @@ export const productService = {
       if (data.variableWeightNote != null) {
         formData.append('variable_weight_note', data.variableWeightNote);
       }
+      formData.append('allow_half_kg', (data.allowHalfKg !== false).toString());
+      formData.append('allow_quarter_kg', (data.allowQuarterKg !== false).toString());
       formData.append('tags', JSON.stringify(data.tags || []));
 
       if (data.images && data.images.length > 0) {
@@ -105,6 +107,8 @@ export const productService = {
       if (data.isFeatured !== undefined) formData.append('is_featured', data.isFeatured.toString());
       if (data.isVariableWeight !== undefined) formData.append('is_variable_weight', data.isVariableWeight.toString());
       if (data.variableWeightNote !== undefined) formData.append('variable_weight_note', data.variableWeightNote ?? '');
+      if (data.allowHalfKg !== undefined) formData.append('allow_half_kg', data.allowHalfKg.toString());
+      if (data.allowQuarterKg !== undefined) formData.append('allow_quarter_kg', data.allowQuarterKg.toString());
       if (data.tags !== undefined) formData.append('tags', JSON.stringify(data.tags));
       
       if (data.images && data.images.length > 0) {

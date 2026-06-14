@@ -16,7 +16,7 @@ import {
   requireCityScope,
 } from '../../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
-import { hasVariableWeightColumns } from '../../config/productSchema';
+import { hasVariableWeightColumns, hasUnitToggleColumns } from '../../config/productSchema';
 
 /** Default Urdu popup shown when a customer adds a variable-weight product. */
 export const DEFAULT_VARIABLE_WEIGHT_NOTE =
@@ -24,6 +24,12 @@ export const DEFAULT_VARIABLE_WEIGHT_NOTE =
 
 function toBool(v: unknown): boolean {
   return v === true || v === 'true' || v === '1' || v === 1;
+}
+
+/** Boolean coercion that keeps the default when the field is absent. */
+function toBoolOr(v: unknown, def: boolean): boolean {
+  if (v === undefined || v === null || v === '') return def;
+  return toBool(v);
 }
 
 export const getAdminProducts = asyncHandler(async (req: Request, res: Response) => {
@@ -89,12 +95,16 @@ export const getAdminProductById = asyncHandler(async (req: Request, res: Respon
   const varCols = (await hasVariableWeightColumns())
     ? 'p.is_variable_weight, p.variable_weight_note,'
     : '';
+  const toggleCols = (await hasUnitToggleColumns())
+    ? 'p.allow_half_kg, p.allow_quarter_kg,'
+    : '';
   const result = await query(
     `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
       p.subcategory_id, p.price, p.compare_at_price, p.cost_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       ${varCols}
+      ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory, p.primary_image, p.images,
       p.short_description, p.description_ur, p.description_en,
@@ -143,6 +153,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     tags,
     is_variable_weight,
     variable_weight_note,
+    allow_half_kg,
+    allow_quarter_kg,
   } = req.body;
 
   // Empty-string values come through multipart forms — coerce them to null
@@ -233,6 +245,20 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
         ]
       );
 
+  // Half/quarter-kg availability toggles (migration 25). Stored via a follow-up
+  // update so the two INSERT branches above stay readable. Default TRUE keeps
+  // the existing behaviour when the admin form doesn't send the fields.
+  if (await hasUnitToggleColumns()) {
+    const allowHalf = toBoolOr(allow_half_kg, true);
+    const allowQuarter = toBoolOr(allow_quarter_kg, true);
+    await query(
+      `UPDATE products SET allow_half_kg = $1, allow_quarter_kg = $2 WHERE id = $3`,
+      [allowHalf, allowQuarter, result.rows[0].id]
+    );
+    result.rows[0].allow_half_kg = allowHalf;
+    result.rows[0].allow_quarter_kg = allowQuarter;
+  }
+
   logger.info('Product created', { productId: result.rows[0].id, createdBy: req.user?.id });
 
   createdResponse(res, result.rows[0], 'Product created successfully');
@@ -257,6 +283,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 
   // Build update query
   const varWeightReady = await hasVariableWeightColumns();
+  const unitToggleReady = await hasUnitToggleColumns();
   const allowedFields = [
     'name_ur', 'name_en', 'category_id', 'subcategory_id',
     'price', 'compare_at_price',
@@ -266,8 +293,13 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     'is_active', 'is_featured', 'is_new_arrival', 'tags',
     // Only writable once migration 23 has added the columns.
     ...(varWeightReady ? ['is_variable_weight', 'variable_weight_note'] : []),
+    // Only writable once migration 25 has added the columns.
+    ...(unitToggleReady ? ['allow_half_kg', 'allow_quarter_kg'] : []),
   ];
-  const booleanFields = new Set(['is_active', 'is_featured', 'is_new_arrival', 'is_variable_weight']);
+  const booleanFields = new Set([
+    'is_active', 'is_featured', 'is_new_arrival', 'is_variable_weight',
+    'allow_half_kg', 'allow_quarter_kg',
+  ]);
   // These columns must always serialize as NULL when the admin clears them.
   const nullableNumberFields = new Set([
     'compare_at_price', 'half_kg_price', 'quarter_kg_price', 'half_dozen_price',

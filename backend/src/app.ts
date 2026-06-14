@@ -32,7 +32,7 @@ import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
 import { ensurePinColumns } from './config/pinAuth';
 import { ensureAddressColumns } from './config/addressSchema';
 import { ensureOrderCouponColumns } from './config/orderSchema';
-import { ensureVariableWeightColumns } from './config/productSchema';
+import { ensureVariableWeightColumns, ensureUnitToggleColumns } from './config/productSchema';
 import { ensureFeedbackTables } from './config/feedbackSchema';
 import { morganStream } from './utils/logger';
 import {
@@ -279,6 +279,7 @@ const startServer = async () => {
       await ensureAddressColumns();
       await ensureOrderCouponColumns();
       await ensureVariableWeightColumns();
+      await ensureUnitToggleColumns();
       await ensureFeedbackTables();
       // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars are set.
       // Safe to call on every boot — idempotently upserts the super-admin row.

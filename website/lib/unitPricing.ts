@@ -42,21 +42,27 @@ export function getUnitOptions(product: Product): UnitOption[] {
   if (unit === 'kg' || unit === 'gram') {
     const halfKgOverride = toNumber(product.halfKgPrice)
     const quarterKgOverride = toNumber(product.quarterKgPrice)
-    return [
+    const options: UnitOption[] = [
       { unit: 'full', label: 'Per Kg', price: base, derived: false },
-      {
+    ]
+    // Each fraction is shown only when the admin has enabled it (default true).
+    if (product.allowHalfKg !== false) {
+      options.push({
         unit: 'half_kg',
         label: 'Half Kg (\u00BD kg)',
         price: halfKgOverride ?? base * 0.5,
         derived: halfKgOverride == null,
-      },
-      {
+      })
+    }
+    if (product.allowQuarterKg !== false) {
+      options.push({
         unit: 'quarter_kg',
         label: 'Quarter Kg (\u00BC kg)',
         price: quarterKgOverride ?? base * 0.25,
         derived: quarterKgOverride == null,
-      },
-    ]
+      })
+    }
+    return options
   }
 
   // No fraction units for piece / liter / pack — single option.

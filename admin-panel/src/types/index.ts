@@ -50,6 +50,8 @@ export interface Product {
   isActive: boolean;
   isVariableWeight?: boolean;
   variableWeightNote?: string | null;
+  allowHalfKg?: boolean;
+  allowQuarterKg?: boolean;
   tags?: string[];
 }
 
@@ -347,6 +349,8 @@ export interface CreateProductData {
   isFeatured?: boolean;
   isVariableWeight?: boolean;
   variableWeightNote?: string | null;
+  allowHalfKg?: boolean;
+  allowQuarterKg?: boolean;
   tags?: string[];
 }
 

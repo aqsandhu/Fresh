@@ -8,7 +8,7 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import { query } from '@/config/database';
-import { hasVariableWeightColumns } from '@/config/productSchema';
+import { hasVariableWeightColumns, hasUnitToggleColumns } from '@/config/productSchema';
 import { hasFeedbackTables } from '@/config/feedbackSchema';
 import productRoutes from '@/routes/product.routes';
 import { buildApp } from './helpers';
@@ -20,15 +20,17 @@ function ok<T>(rows: T[]): any {
   return { rows, rowCount: rows.length, command: 'SELECT', oid: 0, fields: [] };
 }
 
-// The product SELECTs add variable-weight (migration 23) and rating (migration
-// 24) columns only when those migrations are present. Prime both cached probes
-// to "absent" so each test's mock sequence (count, then list) isn't thrown off
-// by an extra information_schema query.
+// The product SELECTs add variable-weight (migration 23), rating (migration 24)
+// and unit-toggle (migration 25) columns only when those migrations are present.
+// Prime all three cached probes to "absent" so each test's mock sequence (count,
+// then list) isn't thrown off by an extra information_schema query.
 beforeAll(async () => {
   mockQuery.mockResolvedValueOnce(ok([]));
   await hasVariableWeightColumns();
   mockQuery.mockResolvedValueOnce(ok([]));
   await hasFeedbackTables();
+  mockQuery.mockResolvedValueOnce(ok([]));
+  await hasUnitToggleColumns();
 });
 
 describe('GET /api/products', () => {

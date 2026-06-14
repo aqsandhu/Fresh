@@ -8,7 +8,7 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, paginatedResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
 import { tagSearchSql } from '../utils/productTags';
-import { hasVariableWeightColumns } from '../config/productSchema';
+import { hasVariableWeightColumns, hasUnitToggleColumns } from '../config/productSchema';
 import { hasFeedbackTables } from '../config/feedbackSchema';
 
 /** Column fragment for variable-weight fields, gated until migration 23 lands. */
@@ -21,6 +21,11 @@ async function variableWeightCols(): Promise<string> {
 /** Column fragment for product rating aggregates, gated until migration 24 lands. */
 async function ratingCols(): Promise<string> {
   return (await hasFeedbackTables()) ? 'p.rating_average, p.review_count,' : '';
+}
+
+/** Column fragment for half/quarter-kg toggles, gated until migration 25 lands. */
+async function unitToggleCols(): Promise<string> {
+  return (await hasUnitToggleColumns()) ? 'p.allow_half_kg, p.allow_quarter_kg,' : '';
 }
 
 /**
@@ -130,6 +135,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
   // Get products
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
+  const toggleCols = await unitToggleCols();
   const productsSql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
@@ -138,6 +144,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       ${varCols}
       ${rateCols}
+      ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.stock_status,
       p.primary_image, p.images, p.short_description,
       p.description_ur, p.description_en, p.attributes,
@@ -172,6 +179,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
   const publicCityId = await resolvePublicCityId(req);
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
+  const toggleCols = await unitToggleCols();
 
   let sql = `
     SELECT
@@ -184,6 +192,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       ${varCols}
       ${rateCols}
+      ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory,
       p.primary_image, p.images, p.short_description,
@@ -224,6 +233,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
   const publicCityId = await resolvePublicCityId(req);
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
+  const toggleCols = await unitToggleCols();
 
   let sql = `
     SELECT
@@ -236,6 +246,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       ${varCols}
       ${rateCols}
+      ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory,
       p.primary_image, p.images, p.short_description,
