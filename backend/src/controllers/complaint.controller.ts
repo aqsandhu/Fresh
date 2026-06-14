@@ -29,6 +29,11 @@ const CATEGORIES = [
 const STATUSES = ['open', 'in_progress', 'resolved', 'closed'] as const;
 const PRIORITIES = ['low', 'normal', 'high'] as const;
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(v: string): boolean {
+  return UUID_RE.test(v);
+}
+
 function cleanText(v: unknown, max: number): string {
   return String(v ?? '').trim().slice(0, max);
 }
@@ -118,6 +123,7 @@ export const fileComplaint = asyncHandler(async (req: Request, res: Response) =>
   let riderId: string | null = null;
 
   if (orderId) {
+    if (!isUuid(String(orderId))) return errorResponse(res, 'Invalid order reference.', 400);
     const orderRes = await query(
       `SELECT id, user_id, city_id, COALESCE(rider_id, delivered_by) AS rider_id
          FROM orders WHERE id = $1 AND deleted_at IS NULL`,
@@ -234,6 +240,7 @@ export const getComplaint = asyncHandler(async (req: Request, res: Response) => 
   if (!(await ensureFeedbackTables())) return notFoundResponse(res, 'Complaint not found');
   const scope = await resolveCityScope(req);
   const { id } = req.params;
+  if (!isUuid(id)) return notFoundResponse(res, 'Complaint not found');
 
   const result = await query(
     `SELECT c.*, o.order_number, sc.name AS city_name,
@@ -261,6 +268,7 @@ export const updateComplaint = asyncHandler(async (req: Request, res: Response) 
   if (!(await ensureFeedbackTables())) return notFoundResponse(res, 'Complaint not found');
   const scope = await resolveCityScope(req);
   const { id } = req.params;
+  if (!isUuid(id)) return notFoundResponse(res, 'Complaint not found');
 
   const existing = await query('SELECT id, city_id, status FROM complaints WHERE id = $1', [id]);
   const row = existing.rows[0];

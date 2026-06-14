@@ -23,6 +23,11 @@ import logger from '../utils/logger';
 const VALID_TARGETS = ['product', 'rider', 'service'] as const;
 type TargetType = (typeof VALID_TARGETS)[number];
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(v: string): boolean {
+  return UUID_RE.test(v);
+}
+
 function toRating(v: unknown): number | null {
   const n = Number(v);
   if (!Number.isInteger(n) || n < 1 || n > 5) return null;
@@ -124,7 +129,7 @@ export const submitReview = asyncHandler(async (req: Request, res: Response) => 
   if (!VALID_TARGETS.includes(targetType)) return errorResponse(res, 'Invalid review target.', 400);
 
   const orderId = String(req.body.orderId ?? req.body.order_id ?? '').trim();
-  if (!orderId) return errorResponse(res, 'Order is required to leave a review.', 400);
+  if (!orderId || !isUuid(orderId)) return errorResponse(res, 'A valid order is required to leave a review.', 400);
 
   const rating = toRating(req.body.rating);
   if (rating === null) return errorResponse(res, 'Rating must be a whole number from 1 to 5.', 400);
@@ -151,7 +156,7 @@ export const submitReview = asyncHandler(async (req: Request, res: Response) => 
 
   if (targetType === 'product') {
     productId = String(req.body.productId ?? req.body.product_id ?? '').trim() || null;
-    if (!productId) return errorResponse(res, 'Product is required for a product review.', 400);
+    if (!productId || !isUuid(productId)) return errorResponse(res, 'A valid product is required for a product review.', 400);
     const inOrder = await query(
       `SELECT 1 FROM order_items WHERE order_id = $1 AND product_id = $2 LIMIT 1`,
       [orderId, productId]
@@ -232,6 +237,7 @@ export const getOrderReviewables = asyncHandler(async (req: Request, res: Respon
   if (!(await ensureFeedbackTables())) return successResponse(res, empty, 'Reviews unavailable');
 
   const { orderId } = req.params;
+  if (!isUuid(orderId)) return notFoundResponse(res, 'Order not found');
   const orderRes = await query(
     `SELECT o.id, o.user_id, o.status, COALESCE(o.rider_id, o.delivered_by) AS rider_id,
             ru.full_name AS rider_name
@@ -319,6 +325,9 @@ export const getProductReviews = asyncHandler(async (req: Request, res: Response
     return successResponse(res, { summary: { average: 0, count: 0 }, reviews: [] }, 'No reviews');
   }
   const { productId } = req.params;
+  if (!isUuid(productId)) {
+    return successResponse(res, { summary: { average: 0, count: 0 }, reviews: [] }, 'No reviews');
+  }
   const limit = Math.min(parseInt(String(req.query.limit ?? '20'), 10) || 20, 100);
 
   const [summaryRes, reviewsRes] = await Promise.all([
@@ -444,6 +453,7 @@ export const updateReviewAdmin = asyncHandler(async (req: Request, res: Response
   if (!(await ensureFeedbackTables())) return notFoundResponse(res, 'Review not found');
   const scope = await resolveCityScope(req);
   const { id } = req.params;
+  if (!isUuid(id)) return notFoundResponse(res, 'Review not found');
 
   const existing = await query('SELECT * FROM reviews WHERE id = $1', [id]);
   const review = existing.rows[0] as ReviewRow & { city_id: string | null };
