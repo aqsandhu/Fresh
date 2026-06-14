@@ -346,7 +346,61 @@ export type OrdersStackParamList = {
   OrdersList: undefined;
   OrderDetail: { orderId: string };
   TrackOrder: { orderId: string };
+  NewComplaint: { orderId?: string; orderNumber?: string } | undefined;
+  MyComplaints: undefined;
 };
+
+// ── Reviews & Complaints (Feature 3) ────────────────────────────────────────
+
+export type ReviewTargetType = 'product' | 'rider' | 'service';
+
+export interface Review {
+  id: string;
+  targetType: ReviewTargetType;
+  productId?: string | null;
+  riderId?: string | null;
+  orderId?: string | null;
+  rating: number;
+  comment?: string | null;
+  adminReply?: string | null;
+  productName?: string | null;
+  orderNumber?: string | null;
+  riderName?: string | null;
+  createdAt?: string;
+}
+
+export interface OrderReviewables {
+  canReview: boolean;
+  delivered: boolean;
+  products: { productId: string; productName: string; productImage?: string | null }[];
+  rider: { riderId: string; riderName: string } | null;
+  reviews: Review[];
+}
+
+export type ComplaintCategory =
+  | 'delivery'
+  | 'product_quality'
+  | 'rider_behavior'
+  | 'payment'
+  | 'app_issue'
+  | 'other';
+
+export type ComplaintStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
+export interface Complaint {
+  id: string;
+  ticketNumber: string;
+  orderId?: string | null;
+  orderNumber?: string | null;
+  category: ComplaintCategory;
+  subject: string;
+  message: string;
+  status: ComplaintStatus;
+  priority: 'low' | 'normal' | 'high';
+  adminResponse?: string | null;
+  resolvedAt?: string | null;
+  createdAt?: string;
+}
 
 export type ProfileStackParamList = {
   ProfileMain: undefined;
@@ -364,4 +418,8 @@ export type ProfileStackParamList = {
   About: undefined;
   AddAddress: { addressId?: string; returnTo?: 'checkout' | 'addresses' } | undefined;
   StaticPage: { pageId: 'terms' | 'privacy' | 'faq' | 'contact' | 'returns' | 'shipping' };
+  Support: undefined;
+  MyReviews: undefined;
+  MyComplaints: undefined;
+  NewComplaint: { orderId?: string; orderNumber?: string } | undefined;
 };

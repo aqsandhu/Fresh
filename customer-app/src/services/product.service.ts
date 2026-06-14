@@ -94,7 +94,10 @@ function mapBackendProduct(raw: any): StoreProduct {
     inStock: (parseInt(raw.stock_quantity) || 0) > 0,
     isFresh: raw.is_fresh !== false && (parseInt(raw.stock_quantity) || 0) > 0,
     rating: parseFloat(raw.rating_average) || 0,
-    reviewCount: parseInt(raw.order_count || raw.review_count) || 0,
+    reviewCount:
+      raw.review_count != null
+        ? parseInt(raw.review_count) || 0
+        : parseInt(raw.order_count) || 0,
     isFeatured: raw.is_featured || false,
     tags: raw.tags || [],
     halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),

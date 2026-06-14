@@ -1,7 +1,13 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { OrdersStackParamList } from '@app-types';
-import { OrdersListScreen, OrderDetailScreen, TrackOrderScreen } from '@screens';
+import {
+  OrdersListScreen,
+  OrderDetailScreen,
+  TrackOrderScreen,
+  NewComplaintScreen,
+  MyComplaintsScreen,
+} from '@screens';
 
 const Stack = createNativeStackNavigator<OrdersStackParamList>();
 
@@ -17,6 +23,8 @@ export const OrdersNavigator: React.FC = () => {
       <Stack.Screen name="OrdersList" component={OrdersListScreen} />
       <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
       <Stack.Screen name="TrackOrder" component={TrackOrderScreen} />
+      <Stack.Screen name="NewComplaint" component={NewComplaintScreen} />
+      <Stack.Screen name="MyComplaints" component={MyComplaintsScreen} />
     </Stack.Navigator>
   );
 };

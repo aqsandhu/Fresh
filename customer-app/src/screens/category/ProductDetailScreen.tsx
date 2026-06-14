@@ -19,6 +19,7 @@ import {
   Skeleton,
   ProductPrice,
   ProductCard,
+  ProductReviews,
 } from '@components';
 import { UnitSelector, getSelectedUnitPrice } from '@components/product/UnitSelector';
 import { productService } from '@services/product.service';
@@ -344,6 +345,8 @@ export const ProductDetailScreen: React.FC = () => {
             )}
           </View>
         </View>
+
+        <ProductReviews productId={product.id} />
 
         {relatedProducts.length > 0 && (
           <View style={styles.relatedSection}>

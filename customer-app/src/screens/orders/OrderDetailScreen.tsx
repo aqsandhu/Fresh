@@ -17,6 +17,7 @@ import { formatCurrency, formatDateTime, getStatusColor } from '@utils/helpers';
 import { Button, ErrorView, LoadingOverlay } from '@components';
 import { GuidanceTips } from '@components/common/GuidanceTips';
 import { ORDER_DETAIL_TIPS } from '@/content/guidanceTips';
+import { OrderFeedbackSection } from '@components/feedback/OrderFeedbackSection';
 import { orderService } from '@services/order.service';
 
 type OrderDetailRouteProp = RouteProp<OrdersStackParamList, 'OrderDetail'>;
@@ -249,6 +250,18 @@ export const OrderDetailScreen: React.FC = () => {
             </View>
           </View>
         </View>
+
+        {/* Rate & review / complaint */}
+        <OrderFeedbackSection
+          orderId={order.id}
+          delivered={order.status === 'delivered'}
+          onComplaint={() =>
+            navigation.navigate('NewComplaint', {
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+            })
+          }
+        />
 
         {/* Cancel Button */}
         {canCancel && (

@@ -8,3 +8,4 @@ export * from './checkout';
 export * from './atta';
 export * from './orders';
 export * from './profile';
+export * from './support';
