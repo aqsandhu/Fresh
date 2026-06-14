@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import { authenticate, verifyUserActive } from '../middleware';
+import { createRateLimiter } from '../middleware/rateLimiter';
 import {
   submitReview,
   getMyReviews,
@@ -14,6 +15,14 @@ import {
 
 const router = Router();
 
+// Reviews are upserts bounded by a customer's delivered orders, but still cap
+// the write rate as defence-in-depth on top of the global limiter.
+const reviewWriteLimiter = createRateLimiter(
+  60 * 1000,
+  30,
+  'Too many review submissions. Please slow down.'
+);
+
 // Public — product reviews for the storefront product page.
 router.get('/product/:productId', getProductReviews);
 
@@ -21,6 +30,6 @@ router.get('/product/:productId', getProductReviews);
 router.use(authenticate);
 router.get('/mine', getMyReviews);
 router.get('/order/:orderId', getOrderReviewables);
-router.post('/', verifyUserActive, submitReview);
+router.post('/', reviewWriteLimiter, verifyUserActive, submitReview);
 
 export default router;

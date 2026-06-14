@@ -5,13 +5,22 @@
 
 import { Router } from 'express';
 import { authenticate, verifyUserActive } from '../middleware';
+import { createRateLimiter } from '../middleware/rateLimiter';
 import { fileComplaint, getMyComplaints } from '../controllers/complaint.controller';
 
 const router = Router();
 
+// Filing a complaint creates a DB row + a ticket — cap it to stop an authed
+// user from scripting thousands of tickets (abuse / DB bloat).
+const complaintWriteLimiter = createRateLimiter(
+  60 * 60 * 1000,
+  20,
+  'Too many complaints submitted. Please try again later.'
+);
+
 router.use(authenticate);
 
 router.get('/mine', getMyComplaints);
-router.post('/', verifyUserActive, fileComplaint);
+router.post('/', complaintWriteLimiter, verifyUserActive, fileComplaint);
 
 export default router;
