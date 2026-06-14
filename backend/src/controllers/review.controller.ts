@@ -165,8 +165,12 @@ export const submitReview = asyncHandler(async (req: Request, res: Response) => 
       return errorResponse(res, 'This product is not part of that order.', 400);
     }
   } else if (targetType === 'rider') {
+    // Rider-behaviour review is ALWAYS allowed. When a rider was actually
+    // assigned, the review is attributed to them (rider_id set) and counts
+    // toward that rider's rating. When no rider was assigned, rider_id stays
+    // NULL — the review is still stored and shown to the customer + admin, but
+    // it never affects any rider's rating (recompute skips NULL rider_id).
     riderId = order.rider_id || order.delivered_by || null;
-    if (!riderId) return errorResponse(res, 'This order has no rider to review.', 400);
   }
 
   try {
@@ -279,7 +283,9 @@ export const getOrderReviewables = asyncHandler(async (req: Request, res: Respon
       canReview: delivered,
       delivered,
       products,
-      rider: order.rider_id ? { riderId: order.rider_id, riderName: order.rider_name } : null,
+      // Rider-behaviour is always reviewable. riderId is null when no rider was
+      // assigned (review still recorded, just not tied to any rider's rating).
+      rider: { riderId: order.rider_id || null, riderName: order.rider_name || null },
       reviews: reviewsRes.rows.map(mapReview),
     },
     'Order reviewables'
@@ -292,7 +298,7 @@ export const getMyReviews = asyncHandler(async (req: Request, res: Response) => 
   if (!(await ensureFeedbackTables())) return successResponse(res, [], 'No reviews');
 
   const result = await query(
-    `SELECT r.*, p.name AS product_name,
+    `SELECT r.*, COALESCE(p.name_en, p.name_ur) AS product_name,
             o.order_number, ru.full_name AS rider_name
        FROM reviews r
        LEFT JOIN products p ON p.id = r.product_id
@@ -405,7 +411,7 @@ export const listReviewsAdmin = asyncHandler(async (req: Request, res: Response)
 
   const [rowsRes, countsRes] = await Promise.all([
     query(
-      `SELECT r.*, p.name AS product_name, o.order_number,
+      `SELECT r.*, COALESCE(p.name_en, p.name_ur) AS product_name, o.order_number,
               u.full_name AS author_name, ru.full_name AS rider_name
          FROM reviews r
          LEFT JOIN products p ON p.id = r.product_id
