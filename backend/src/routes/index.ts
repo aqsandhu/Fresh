@@ -18,6 +18,8 @@ import settingsRoutes from './settings.routes';
 import chatRoutes from './chat.routes';
 import notificationRoutes from './notification.routes';
 import couponRoutes from './coupon.routes';
+import reviewRoutes from './review.routes';
+import complaintRoutes from './complaint.routes';
 
 const router = Router();
 
@@ -37,5 +39,7 @@ router.use('/site-settings', settingsRoutes);
 router.use('/chat', chatRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/coupons', couponRoutes);
+router.use('/reviews', reviewRoutes);
+router.use('/complaints', complaintRoutes);
 
 export default router;

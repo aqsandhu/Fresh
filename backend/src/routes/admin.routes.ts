@@ -6,6 +6,8 @@ import { Router } from 'express';
 import * as authController from '../controllers/auth.controller';
 import * as adminController from '../controllers/admin';
 import * as couponController from '../controllers/coupon.controller';
+import * as reviewController from '../controllers/review.controller';
+import * as complaintController from '../controllers/complaint.controller';
 import {
   authenticate,
   requireAdmin,
@@ -226,6 +228,15 @@ router.post('/coupons', adminRateLimiter, couponController.createCoupon);
 router.put('/coupons/:id', adminRateLimiter, couponController.updateCoupon);
 router.patch('/coupons/:id/toggle', couponController.toggleCoupon);
 router.delete('/coupons/:id', couponController.deleteCoupon);
+
+// Reviews & Ratings (moderation; per-city, super admin sees all)
+router.get('/reviews', reviewController.listReviewsAdmin);
+router.put('/reviews/:id', adminRateLimiter, reviewController.updateReviewAdmin);
+
+// Complaints (customer support tickets; per-city, super admin sees all)
+router.get('/complaints', complaintController.listComplaints);
+router.get('/complaints/:id', complaintController.getComplaint);
+router.put('/complaints/:id', adminRateLimiter, complaintController.updateComplaint);
 
 // Atta Requests
 router.get('/atta-requests', adminController.getAttaRequests);

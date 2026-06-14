@@ -44,6 +44,10 @@ export const PERMISSION_CODES = [
   'settings.delivery_zones.manage',
   'coupons.view',
   'coupons.manage',
+  'reviews.view',
+  'reviews.manage',
+  'complaints.view',
+  'complaints.manage',
   'roles.manage',
   'admins.manage',
 ] as const;
@@ -95,6 +99,10 @@ export const PERMISSION_CATALOGUE: PermissionCatalogueRow[] = [
   { code: 'settings.delivery_zones.manage', description: 'Manage delivery zones', category: 'Settings' },
   { code: 'coupons.view',        description: 'View discount coupons',            category: 'Coupons' },
   { code: 'coupons.manage',      description: 'Create / manage discount coupons', category: 'Coupons' },
+  { code: 'reviews.view',        description: 'View product / rider / service reviews', category: 'Support' },
+  { code: 'reviews.manage',      description: 'Moderate / reply to reviews',      category: 'Support' },
+  { code: 'complaints.view',     description: 'View customer complaints',         category: 'Support' },
+  { code: 'complaints.manage',   description: 'Respond to / resolve complaints',  category: 'Support' },
   { code: 'roles.manage',        description: 'Create / manage admin roles',     category: 'Admins' },
   { code: 'admins.manage',       description: 'Invite / manage admin users',     category: 'Admins' },
 ];
