@@ -77,6 +77,9 @@ export interface Product {
   halfKgPrice?: number | null;
   quarterKgPrice?: number | null;
   halfDozenPrice?: number | null;
+  /** Per-product availability of the half/quarter-kg units (default true). */
+  allowHalfKg?: boolean;
+  allowQuarterKg?: boolean;
   /** Weight may differ at packing — show the note popup when adding. */
   isVariableWeight?: boolean;
   variableWeightNote?: string | null;

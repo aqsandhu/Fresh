@@ -111,6 +111,8 @@ export interface StoreProduct {
   halfKgPrice?: number | null;
   quarterKgPrice?: number | null;
   halfDozenPrice?: number | null;
+  allowHalfKg?: boolean;
+  allowQuarterKg?: boolean;
   isFresh?: boolean;
   isVariableWeight?: boolean;
   variableWeightNote?: string | null;

@@ -95,6 +95,8 @@ export const Products: React.FC = () => {
     isFeatured: false,
     isVariableWeight: false,
     variableWeightNote: '',
+    allowHalfKg: true,
+    allowQuarterKg: true,
     tags: [],
   });
 
@@ -223,6 +225,8 @@ export const Products: React.FC = () => {
       isFeatured: false,
       isVariableWeight: false,
       variableWeightNote: '',
+      allowHalfKg: true,
+      allowQuarterKg: true,
       tags: [],
     });
     setIsModalOpen(true);
@@ -235,11 +239,17 @@ export const Products: React.FC = () => {
     let tags: string[] = product.tags || [];
     let isVariableWeight = product.isVariableWeight ?? false;
     let variableWeightNote = product.variableWeightNote ?? '';
+    // Default TRUE so legacy products (before migration 25) keep showing the
+    // half/quarter options until an admin explicitly unchecks them.
+    let allowHalfKg = product.allowHalfKg ?? true;
+    let allowQuarterKg = product.allowQuarterKg ?? true;
     try {
       const full = await productService.getProductById(product.id);
       tags = full.tags || [];
       isVariableWeight = full.isVariableWeight ?? false;
       variableWeightNote = full.variableWeightNote ?? '';
+      allowHalfKg = full.allowHalfKg ?? true;
+      allowQuarterKg = full.allowQuarterKg ?? true;
     } catch {
       // Keep list tags if detail fetch fails
     }
@@ -269,6 +279,8 @@ export const Products: React.FC = () => {
       isFeatured: product.isFeatured,
       isVariableWeight,
       variableWeightNote,
+      allowHalfKg,
+      allowQuarterKg,
       tags,
     });
     setIsModalOpen(true);
@@ -763,34 +775,76 @@ export const Products: React.FC = () => {
               base "Price" above. */}
           {(formData.unitType === 'kg' || formData.unitType === 'gram') && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Half kg price (Rs.) — optional"
-                type="number"
-                value={formData.halfKgPrice ?? ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    halfKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
-                  })
-                }
-                min={0}
-                step={0.01}
-                helperText="Leave blank to charge half of the per-kg price."
-              />
-              <Input
-                label="Quarter kg price (Rs.) — optional"
-                type="number"
-                value={formData.quarterKgPrice ?? ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    quarterKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
-                  })
-                }
-                min={0}
-                step={0.01}
-                helperText="Leave blank to charge a quarter of the per-kg price."
-              />
+              {/* Half kg — enable toggle gates the price input + storefront option */}
+              <div className="rounded-lg border border-gray-200 p-3">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.allowHalfKg}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        allowHalfKg: e.target.checked,
+                        halfKgPrice: e.target.checked ? formData.halfKgPrice : null,
+                      })
+                    }
+                    className="w-4 h-4 text-primary-600 rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Sell in Half kg (½)</span>
+                </label>
+                {formData.allowHalfKg && (
+                  <Input
+                    label="Half kg price (Rs.) — optional"
+                    type="number"
+                    value={formData.halfKgPrice ?? ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        halfKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
+                      })
+                    }
+                    min={0}
+                    step={0.01}
+                    helperText="Leave blank to charge half of the per-kg price."
+                    className="mt-3"
+                  />
+                )}
+              </div>
+              {/* Quarter kg */}
+              <div className="rounded-lg border border-gray-200 p-3">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={formData.allowQuarterKg}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        allowQuarterKg: e.target.checked,
+                        quarterKgPrice: e.target.checked ? formData.quarterKgPrice : null,
+                      })
+                    }
+                    className="w-4 h-4 text-primary-600 rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Sell in Quarter kg (¼)</span>
+                </label>
+                {formData.allowQuarterKg && (
+                  <Input
+                    label="Quarter kg price (Rs.) — optional"
+                    type="number"
+                    value={formData.quarterKgPrice ?? ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        quarterKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
+                      })
+                    }
+                    min={0}
+                    step={0.01}
+                    helperText="Leave blank to charge a quarter of the per-kg price."
+                    className="mt-3"
+                  />
+                )}
+              </div>
             </div>
           )}
 

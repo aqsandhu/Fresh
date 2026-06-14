@@ -150,6 +150,9 @@ function mapBackendProduct(raw: any): Product {
     halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),
     quarterKgPrice: toOptionalPrice(raw.quarter_kg_price ?? raw.quarterKgPrice),
     halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
+    // Default true when the field is absent (pre-migration / older payloads).
+    allowHalfKg: (raw.allow_half_kg ?? raw.allowHalfKg) !== false,
+    allowQuarterKg: (raw.allow_quarter_kg ?? raw.allowQuarterKg) !== false,
     isVariableWeight:
       raw.is_variable_weight === true || raw.isVariableWeight === true,
     variableWeightNote: raw.variable_weight_note ?? raw.variableWeightNote ?? null,
