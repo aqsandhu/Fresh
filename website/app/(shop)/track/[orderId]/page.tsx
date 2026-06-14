@@ -30,6 +30,8 @@ import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl 
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { unitLabelShort, unitPriceCaption } from '@/lib/unitPricing'
 import { ordersApi } from '@/lib/api'
+import GuidanceTips from '@/components/guidance/GuidanceTips'
+import { TRACK_TIPS } from '@/lib/guidanceTipsContent'
 
 const RiderTrackingMap = dynamic(() => import('@/components/ui/RiderTrackingMap'), {
   ssr: false,
@@ -191,6 +193,8 @@ export default function TrackOrderPage() {
           <ChevronLeft className="w-5 h-5 mr-1" />
           Back to Orders
         </Link>
+
+        <GuidanceTips tips={TRACK_TIPS} />
 
         {/* Order Header */}
         <motion.div

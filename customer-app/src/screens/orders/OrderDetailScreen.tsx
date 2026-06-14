@@ -15,6 +15,8 @@ import { OrdersStackParamList, Order } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatCurrency, formatDateTime, getStatusColor } from '@utils/helpers';
 import { Button, ErrorView, LoadingOverlay } from '@components';
+import { GuidanceTips } from '@components/common/GuidanceTips';
+import { ORDER_DETAIL_TIPS } from '@/content/guidanceTips';
 import { orderService } from '@services/order.service';
 
 type OrderDetailRouteProp = RouteProp<OrdersStackParamList, 'OrderDetail'>;
@@ -93,6 +95,8 @@ export const OrderDetailScreen: React.FC = () => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+        <View style={{ height: SPACING.md }} />
+        <GuidanceTips tips={ORDER_DETAIL_TIPS} />
         {/* Status Card */}
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>

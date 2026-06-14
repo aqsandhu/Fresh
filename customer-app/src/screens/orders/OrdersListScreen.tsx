@@ -18,6 +18,8 @@ import { OrdersStackParamList, Order, RootStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatCurrency, formatDate, getStatusColor } from '@utils/helpers';
 import { ErrorView, EmptyState, SkeletonList, Button } from '@components';
+import { GuidanceTips } from '@components/common/GuidanceTips';
+import { ORDERS_TIPS } from '@/content/guidanceTips';
 import { MobileHeader } from '@components/layout/MobileHeader';
 import { orderService } from '@services/order.service';
 import { useAuthStore } from '@store';
@@ -247,6 +249,7 @@ export const OrdersListScreen: React.FC = () => {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          ListHeaderComponent={<GuidanceTips tips={ORDERS_TIPS} />}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
