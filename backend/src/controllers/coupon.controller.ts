@@ -13,11 +13,13 @@ import {
   notFoundResponse,
   errorResponse,
 } from '../utils/response';
-import { resolveCityScope } from '../utils/cityScope';
-import { buildCouponSummary, CouponRow, DiscountType } from '../utils/coupons';
+import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
+import { buildCouponSummary, CouponRow, DiscountType, TriggerType } from '../utils/coupons';
+import { evaluateAutoCoupons, hasUserCouponsTable } from '../utils/autoCoupons';
 import logger from '../utils/logger';
 
 const DISCOUNT_TYPES: DiscountType[] = ['percentage', 'fixed', 'free_delivery'];
+const TRIGGER_TYPES: TriggerType[] = ['manual', 'welcome_back', 'order_milestone'];
 
 interface ParsedCoupon {
   code: string;
@@ -32,6 +34,10 @@ interface ParsedCoupon {
   valid_from: string | null;
   valid_until: string | null;
   is_active: boolean;
+  trigger_type: TriggerType;
+  inactivity_days: number | null;
+  milestone_orders: number | null;
+  auto_reusable: boolean;
 }
 
 function toIntOrNull(v: unknown): number | null {
@@ -85,6 +91,25 @@ function parseCouponBody(body: Record<string, unknown>): ParsedCoupon | string {
     return 'Valid-from date must be before valid-until date.';
   }
 
+  const triggerType = String(body.trigger_type ?? 'manual') as TriggerType;
+  if (!TRIGGER_TYPES.includes(triggerType)) {
+    return 'Invalid coupon trigger type.';
+  }
+
+  let inactivityDays: number | null = null;
+  let milestoneOrders: number | null = null;
+  if (triggerType === 'welcome_back') {
+    inactivityDays = toIntOrNull(body.inactivity_days);
+    if (inactivityDays == null || inactivityDays < 1) {
+      return 'Welcome-back coupons need an inactivity period of at least 1 day.';
+    }
+  } else if (triggerType === 'order_milestone') {
+    milestoneOrders = toIntOrNull(body.milestone_orders);
+    if (milestoneOrders == null || milestoneOrders < 1) {
+      return 'Milestone coupons need an order count of at least 1.';
+    }
+  }
+
   return {
     code: rawCode,
     description:
@@ -101,6 +126,10 @@ function parseCouponBody(body: Record<string, unknown>): ParsedCoupon | string {
     valid_from: validFrom,
     valid_until: validUntil,
     is_active: body.is_active === undefined ? true : body.is_active === true || body.is_active === 'true',
+    trigger_type: triggerType,
+    inactivity_days: inactivityDays,
+    milestone_orders: milestoneOrders,
+    auto_reusable: body.auto_reusable === true || body.auto_reusable === 'true',
   };
 }
 
@@ -243,21 +272,49 @@ export const createCoupon = asyncHandler(async (req: Request, res: Response) => 
     return errorResponse(res, 'Your admin account is not assigned to a city.', 403);
   }
 
-  try {
-    const result = await query(
-      `INSERT INTO coupons (
-        code, description, discount_type, discount_value, max_discount_amount,
-        min_order_amount, usage_limit, usage_limit_per_user, first_order_only,
-        valid_from, valid_until, is_active, city_id, created_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      RETURNING *`,
-      [
-        parsed.code, parsed.description, parsed.discount_type, parsed.discount_value,
-        parsed.max_discount_amount, parsed.min_order_amount, parsed.usage_limit,
-        parsed.usage_limit_per_user, parsed.first_order_only, parsed.valid_from,
-        parsed.valid_until, parsed.is_active, cityId, req.user?.id ?? null,
-      ]
+  // Auto-coupon columns only exist after migration 22. Gate so manual coupons
+  // still work pre-migration; reject auto types until it's applied.
+  const autoReady = await hasUserCouponsTable();
+  if (!autoReady && parsed.trigger_type !== 'manual') {
+    return errorResponse(
+      res,
+      'Automatic coupons are not available yet — database migration pending.',
+      503
     );
+  }
+
+  try {
+    const result = autoReady
+      ? await query(
+          `INSERT INTO coupons (
+            code, description, discount_type, discount_value, max_discount_amount,
+            min_order_amount, usage_limit, usage_limit_per_user, first_order_only,
+            valid_from, valid_until, is_active, city_id, created_by,
+            trigger_type, inactivity_days, milestone_orders, auto_reusable
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          RETURNING *`,
+          [
+            parsed.code, parsed.description, parsed.discount_type, parsed.discount_value,
+            parsed.max_discount_amount, parsed.min_order_amount, parsed.usage_limit,
+            parsed.usage_limit_per_user, parsed.first_order_only, parsed.valid_from,
+            parsed.valid_until, parsed.is_active, cityId, req.user?.id ?? null,
+            parsed.trigger_type, parsed.inactivity_days, parsed.milestone_orders, parsed.auto_reusable,
+          ]
+        )
+      : await query(
+          `INSERT INTO coupons (
+            code, description, discount_type, discount_value, max_discount_amount,
+            min_order_amount, usage_limit, usage_limit_per_user, first_order_only,
+            valid_from, valid_until, is_active, city_id, created_by
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          RETURNING *`,
+          [
+            parsed.code, parsed.description, parsed.discount_type, parsed.discount_value,
+            parsed.max_discount_amount, parsed.min_order_amount, parsed.usage_limit,
+            parsed.usage_limit_per_user, parsed.first_order_only, parsed.valid_from,
+            parsed.valid_until, parsed.is_active, cityId, req.user?.id ?? null,
+          ]
+        );
 
     logger.info('Coupon created', {
       couponId: result.rows[0].id,
@@ -291,22 +348,50 @@ export const updateCoupon = asyncHandler(async (req: Request, res: Response) => 
   const parsed = parseCouponBody(req.body as Record<string, unknown>);
   if (typeof parsed === 'string') return errorResponse(res, parsed, 400);
 
-  try {
-    const result = await query(
-      `UPDATE coupons SET
-         code = $1, description = $2, discount_type = $3, discount_value = $4,
-         max_discount_amount = $5, min_order_amount = $6, usage_limit = $7,
-         usage_limit_per_user = $8, first_order_only = $9, valid_from = $10,
-         valid_until = $11, is_active = $12, updated_at = NOW()
-       WHERE id = $13
-       RETURNING *`,
-      [
-        parsed.code, parsed.description, parsed.discount_type, parsed.discount_value,
-        parsed.max_discount_amount, parsed.min_order_amount, parsed.usage_limit,
-        parsed.usage_limit_per_user, parsed.first_order_only, parsed.valid_from,
-        parsed.valid_until, parsed.is_active, id,
-      ]
+  const autoReady = await hasUserCouponsTable();
+  if (!autoReady && parsed.trigger_type !== 'manual') {
+    return errorResponse(
+      res,
+      'Automatic coupons are not available yet — database migration pending.',
+      503
     );
+  }
+
+  try {
+    const result = autoReady
+      ? await query(
+          `UPDATE coupons SET
+             code = $1, description = $2, discount_type = $3, discount_value = $4,
+             max_discount_amount = $5, min_order_amount = $6, usage_limit = $7,
+             usage_limit_per_user = $8, first_order_only = $9, valid_from = $10,
+             valid_until = $11, is_active = $12,
+             trigger_type = $14, inactivity_days = $15, milestone_orders = $16,
+             auto_reusable = $17, updated_at = NOW()
+           WHERE id = $13
+           RETURNING *`,
+          [
+            parsed.code, parsed.description, parsed.discount_type, parsed.discount_value,
+            parsed.max_discount_amount, parsed.min_order_amount, parsed.usage_limit,
+            parsed.usage_limit_per_user, parsed.first_order_only, parsed.valid_from,
+            parsed.valid_until, parsed.is_active, id,
+            parsed.trigger_type, parsed.inactivity_days, parsed.milestone_orders, parsed.auto_reusable,
+          ]
+        )
+      : await query(
+          `UPDATE coupons SET
+             code = $1, description = $2, discount_type = $3, discount_value = $4,
+             max_discount_amount = $5, min_order_amount = $6, usage_limit = $7,
+             usage_limit_per_user = $8, first_order_only = $9, valid_from = $10,
+             valid_until = $11, is_active = $12, updated_at = NOW()
+           WHERE id = $13
+           RETURNING *`,
+          [
+            parsed.code, parsed.description, parsed.discount_type, parsed.discount_value,
+            parsed.max_discount_amount, parsed.min_order_amount, parsed.usage_limit,
+            parsed.usage_limit_per_user, parsed.first_order_only, parsed.valid_from,
+            parsed.valid_until, parsed.is_active, id,
+          ]
+        );
     logger.info('Coupon updated', { couponId: id, updatedBy: req.user?.id });
     return successResponse(res, withSummary(result.rows[0] as CouponRow), 'Coupon updated');
   } catch (err: any) {
@@ -350,4 +435,69 @@ export const deleteCoupon = asyncHandler(async (req: Request, res: Response) => 
   await query('DELETE FROM coupons WHERE id = $1', [id]);
   logger.info('Coupon deleted', { couponId: id, deletedBy: req.user?.id });
   return successResponse(res, { id }, 'Coupon deleted');
+});
+
+// ============================================================================
+// CUSTOMER-FACING — "My Coupons" (granted auto coupons)
+// ============================================================================
+
+/**
+ * GET /api/coupons/mine
+ * Evaluates welcome-back + milestone eligibility (granting any newly earned
+ * coupon), then returns the customer's available coupons. `unseen` powers the
+ * one-time login popup.
+ */
+export const getMyCoupons = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) return errorResponse(res, 'Authentication required', 401);
+  if (!(await hasUserCouponsTable())) {
+    return successResponse(res, { coupons: [], unseen: [] }, 'No coupons');
+  }
+
+  const cityId = await resolvePublicCityId(req);
+  await evaluateAutoCoupons(req.user.id, cityId);
+
+  const result = await query(
+    `SELECT uc.id AS grant_id, uc.status, uc.seen_at, uc.source AS grant_source, c.*
+       FROM user_coupons uc
+       JOIN coupons c ON c.id = uc.coupon_id
+      WHERE uc.user_id = $1
+        AND uc.status = 'available'
+        AND c.is_active = TRUE
+        AND (c.valid_until IS NULL OR c.valid_until >= NOW())
+      ORDER BY uc.granted_at DESC`,
+    [req.user.id]
+  );
+
+  const coupons = result.rows.map((r) => ({
+    code: r.code,
+    description: r.description,
+    discount_type: r.discount_type,
+    min_order_amount: Number(r.min_order_amount),
+    trigger_type: r.trigger_type,
+    source: r.grant_source,
+    seen: r.seen_at != null,
+    summary: buildCouponSummary(r as CouponRow),
+  }));
+
+  return successResponse(
+    res,
+    { coupons, unseen: coupons.filter((c) => !c.seen) },
+    'My coupons'
+  );
+});
+
+/**
+ * PATCH /api/coupons/mine/seen
+ * Marks the customer's available coupons as seen so the login popup shows once.
+ */
+export const markMyCouponsSeen = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) return errorResponse(res, 'Authentication required', 401);
+  if (!(await hasUserCouponsTable())) return successResponse(res, null, 'OK');
+
+  await query(
+    `UPDATE user_coupons SET seen_at = NOW()
+      WHERE user_id = $1 AND status = 'available' AND seen_at IS NULL`,
+    [req.user.id]
+  );
+  return successResponse(res, null, 'Marked seen');
 });

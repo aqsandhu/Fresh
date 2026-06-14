@@ -20,7 +20,9 @@ import {
   couponValidationError,
   computeCouponDiscount,
   buildCouponSummary,
+  isAutoCoupon,
 } from '../utils/coupons';
+import { hasUserCouponsTable } from '../utils/autoCoupons';
 
 /**
  * Get or create cart for user
@@ -507,6 +509,22 @@ export const applyCoupon = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'Invalid coupon code', 404);
   }
   const coupon = couponRes.rows[0];
+
+  // Auto coupons (welcome-back / milestone) can only be applied by a customer
+  // who actually holds an available grant for them.
+  if (isAutoCoupon(coupon)) {
+    if (!(await hasUserCouponsTable())) {
+      return errorResponse(res, 'This coupon is not available', 400);
+    }
+    const grant = await query(
+      `SELECT 1 FROM user_coupons
+        WHERE user_id = $1 AND coupon_id = $2 AND status = 'available' LIMIT 1`,
+      [req.user.id, coupon.id]
+    );
+    if (grant.rows.length === 0) {
+      return errorResponse(res, "This coupon isn't available for your account.", 400);
+    }
+  }
 
   const userUsedRes = await query(
     'SELECT COUNT(*)::int AS n FROM coupon_redemptions WHERE coupon_id = $1 AND user_id = $2',

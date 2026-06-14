@@ -17,6 +17,7 @@ import webhookRoutes from './webhook.routes';
 import settingsRoutes from './settings.routes';
 import chatRoutes from './chat.routes';
 import notificationRoutes from './notification.routes';
+import couponRoutes from './coupon.routes';
 
 const router = Router();
 
@@ -35,5 +36,6 @@ router.use('/webhooks', webhookRoutes);
 router.use('/site-settings', settingsRoutes);
 router.use('/chat', chatRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/coupons', couponRoutes);
 
 export default router;

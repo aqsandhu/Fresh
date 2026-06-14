@@ -37,7 +37,7 @@ import {
 import { CheckoutAddressActions } from '@components/checkout/CheckoutAddressActions';
 import { addressService } from '@services/address.service';
 import { orderService } from '@services/order.service';
-import { cartService } from '@services/cart.service';
+import { cartService, type MyCoupon } from '@services/cart.service';
 import apiClient from '@services/api';
 import { useCartStore } from '@store';
 import { getSlotAvailability } from '@/lib/timeSlots';
@@ -105,6 +105,7 @@ export const CheckoutScreen: React.FC = () => {
   } | null>(null);
   const [couponLoading, setCouponLoading] = useState(false);
   const [couponError, setCouponError] = useState('');
+  const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([]);
 
   const selectedSlot = timeSlots.find((s) => s.id === selectedSlotId);
   const isFreeDeliverySlot = selectedSlot?.isFreeDelivery === true;
@@ -121,13 +122,13 @@ export const CheckoutScreen: React.FC = () => {
   const total = Math.max(0, sub + effectiveDelivery - couponProductDiscount);
   const canPlaceOrder = Boolean(selectedAddressId) || (showNewAddress && newAddressValid);
 
-  const handleApplyCoupon = async () => {
-    const code = couponInput.trim();
-    if (!code) return;
+  const applyCouponCode = async (code: string) => {
+    const trimmed = code.trim();
+    if (!trimmed) return;
     setCouponLoading(true);
     setCouponError('');
     try {
-      const result = await cartService.applyCoupon(code);
+      const result = await cartService.applyCoupon(trimmed);
       setAppliedCoupon(result);
     } catch (err: any) {
       setAppliedCoupon(null);
@@ -137,12 +138,19 @@ export const CheckoutScreen: React.FC = () => {
     }
   };
 
+  const handleApplyCoupon = () => applyCouponCode(couponInput);
+
   const handleRemoveCoupon = async () => {
     await cartService.removeCoupon();
     setAppliedCoupon(null);
     setCouponInput('');
     setCouponError('');
   };
+
+  // Load the customer's auto-granted coupons so they can pick one at checkout.
+  useEffect(() => {
+    cartService.getMyCoupons().then((res) => setMyCoupons(res.coupons || []));
+  }, []);
 
   const loadAddresses = useCallback(async () => {
     setLoadingAddresses(true);
@@ -717,6 +725,30 @@ export const CheckoutScreen: React.FC = () => {
                   />
                 </View>
                 {!!couponError && <Text style={styles.couponError}>{couponError}</Text>}
+
+                {myCoupons.length > 0 && (
+                  <View style={styles.myCouponsWrap}>
+                    <Text style={styles.myCouponsTitle}>Your coupons</Text>
+                    {myCoupons.map((c) => (
+                      <TouchableOpacity
+                        key={c.code}
+                        style={styles.myCouponChip}
+                        disabled={couponLoading}
+                        onPress={() => {
+                          setCouponInput(c.code);
+                          applyCouponCode(c.code);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.myCouponInfo}>
+                          <Text style={styles.myCouponCode}>{c.code}</Text>
+                          <Text style={styles.myCouponSummary}>{c.summary}</Text>
+                        </View>
+                        <Text style={styles.myCouponApply}>Apply</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
               </View>
             )}
           </View>
@@ -1031,6 +1063,24 @@ const styles = StyleSheet.create({
   couponAppliedInfo: { flex: 1, minWidth: 0 },
   couponAppliedTitle: { fontSize: 13, fontWeight: '700', color: COLORS.success },
   couponAppliedSummary: { fontSize: 11, color: COLORS.gray600, marginTop: 2 },
+  myCouponsWrap: { marginTop: SPACING.md, gap: SPACING.sm },
+  myCouponsTitle: { fontSize: 12, fontWeight: '600', color: COLORS.gray500, marginBottom: 2 },
+  myCouponChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.primary200,
+    backgroundColor: COLORS.primary50,
+    borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  myCouponInfo: { flex: 1, minWidth: 0 },
+  myCouponCode: { fontSize: 14, fontWeight: '700', color: COLORS.primary700 },
+  myCouponSummary: { fontSize: 11, color: COLORS.gray600, marginTop: 2 },
+  myCouponApply: { fontSize: 12, fontWeight: '700', color: COLORS.primary600 },
   placeOrderBtn: { marginBottom: 0 },
   termsNote: {
     fontSize: 12,

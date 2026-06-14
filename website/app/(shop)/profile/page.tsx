@@ -24,6 +24,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi, addressesApi } from '@/lib/api'
+import MyCouponsCard from '@/components/coupons/MyCouponsCard'
 
 interface UserProfile {
   id: string
@@ -304,8 +305,15 @@ export default function ProfilePage() {
             </motion.div>
           </div>
 
-          {/* Right Column - Quick Links */}
-          <div className="lg:col-span-1 min-w-0">
+          {/* Right Column - My Coupons + Quick Links */}
+          <div className="lg:col-span-1 min-w-0 space-y-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+            >
+              <MyCouponsCard />
+            </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

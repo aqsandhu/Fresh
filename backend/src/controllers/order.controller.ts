@@ -18,7 +18,9 @@ import {
   hasCouponsTable,
   couponValidationError,
   computeCouponDiscount,
+  isAutoCoupon,
 } from '../utils/coupons';
+import { hasUserCouponsTable } from '../utils/autoCoupons';
 import { restoreOrderInventory } from '../utils/orderStatus';
 import { hasOrderCouponColumns } from '../config/orderSchema';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
@@ -468,7 +470,13 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     const discountAmount = 0;
     let effectiveDelivery = deliveryCharge;
     let couponDiscount = 0;
-    let appliedCoupon: { id: string; code: string } | null = null;
+    let appliedCoupon: {
+      id: string;
+      code: string;
+      grantId: string | null;
+      isAuto: boolean;
+      reusable: boolean;
+    } | null = null;
 
     const couponCode = refreshedCart.coupon_code
       ? String(refreshedCart.coupon_code).trim().toUpperCase()
@@ -489,6 +497,27 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         );
       }
       const coupon = couponRes.rows[0];
+
+      // Auto coupons (welcome-back / milestone) require a per-customer GRANT.
+      // Lock it so the same grant can't be spent by two concurrent checkouts.
+      let grantId: string | null = null;
+      if (isAutoCoupon(coupon)) {
+        if (!(await hasUserCouponsTable())) {
+          throw new BadRequestError(`Coupon "${couponCode}" is not available.`);
+        }
+        const grantRes = await client.query(
+          `SELECT id FROM user_coupons
+            WHERE user_id = $1 AND coupon_id = $2 AND status = 'available'
+            FOR UPDATE`,
+          [req.user!.id, coupon.id]
+        );
+        if (grantRes.rows.length === 0) {
+          throw new BadRequestError(
+            `Coupon "${couponCode}" is not available for your account.`
+          );
+        }
+        grantId = grantRes.rows[0].id;
+      }
 
       const userUsedRes = await client.query(
         'SELECT COUNT(*)::int AS n FROM coupon_redemptions WHERE coupon_id = $1 AND user_id = $2',
@@ -517,7 +546,13 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       } else {
         couponDiscount = productDiscount;
       }
-      appliedCoupon = { id: coupon.id, code: coupon.code };
+      appliedCoupon = {
+        id: coupon.id,
+        code: coupon.code,
+        grantId,
+        isAuto: isAutoCoupon(coupon),
+        reusable: coupon.auto_reusable === true,
+      };
     }
 
     // Round every monetary component to 2dp so the stored row reconciles
@@ -620,6 +655,14 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
          VALUES ($1, $2, $3, $4)`,
         [appliedCoupon.id, req.user!.id, order.id, recordedDiscount]
       );
+
+      // Consume a single-use auto-coupon grant (reusable grants stay available).
+      if (appliedCoupon.isAuto && appliedCoupon.grantId && !appliedCoupon.reusable) {
+        await client.query(
+          `UPDATE user_coupons SET status = 'used', used_at = NOW(), order_id = $1 WHERE id = $2`,
+          [order.id, appliedCoupon.grantId]
+        );
+      }
     }
 
     // Create order items and decrement stock

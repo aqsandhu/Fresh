@@ -21,6 +21,7 @@ import {
   type Coupon,
   type CouponInput,
   type DiscountType,
+  type TriggerType,
 } from '@/services/coupon.service';
 import { useCityContext } from '@/context/CityContext';
 import toast from 'react-hot-toast';
@@ -42,6 +43,10 @@ type FormState = {
   validFrom: string;
   validUntil: string;
   isActive: boolean;
+  triggerType: TriggerType;
+  inactivityDays: string;
+  milestoneOrders: string;
+  autoReusable: boolean;
 };
 
 const EMPTY_FORM: FormState = {
@@ -57,6 +62,10 @@ const EMPTY_FORM: FormState = {
   validFrom: '',
   validUntil: '',
   isActive: true,
+  triggerType: 'manual',
+  inactivityDays: '',
+  milestoneOrders: '',
+  autoReusable: false,
 };
 
 // Small helper shown under each field so admins understand the logic.
@@ -82,8 +91,16 @@ function previewSummary(f: FormState): string {
   }
   if (minOrder > 0) parts.push(`on orders of Rs. ${minOrder} or more`);
 
+  if (f.triggerType === 'welcome_back' && f.inactivityDays) {
+    parts.push(`— welcome-back reward after ${parseInt(f.inactivityDays)} days away`);
+  } else if (f.triggerType === 'order_milestone' && f.milestoneOrders) {
+    parts.push(`— loyalty reward at ${parseInt(f.milestoneOrders)} delivered orders`);
+  }
+
   const cond: string[] = [];
-  if (f.firstOrderOnly) cond.push('first order only');
+  const isAuto = f.triggerType !== 'manual';
+  if (isAuto) cond.push(f.autoReusable ? 'reusable once earned' : 'one order only');
+  if (f.firstOrderOnly && !isAuto) cond.push('first order only');
   if (f.usageLimitPerUser) cond.push(`${parseInt(f.usageLimitPerUser)} per customer`);
   if (f.usageLimit) cond.push(`${parseInt(f.usageLimit)} total uses`);
   if (f.validFrom && f.validUntil) cond.push(`valid ${f.validFrom}–${f.validUntil}`);
@@ -111,6 +128,10 @@ function toInput(f: FormState): CouponInput {
     validFrom: f.validFrom || null,
     validUntil: f.validUntil || null,
     isActive: f.isActive,
+    triggerType: f.triggerType,
+    inactivityDays: f.triggerType === 'welcome_back' ? intOrNull(f.inactivityDays) : null,
+    milestoneOrders: f.triggerType === 'order_milestone' ? intOrNull(f.milestoneOrders) : null,
+    autoReusable: f.triggerType !== 'manual' ? f.autoReusable : false,
   };
 }
 
@@ -129,6 +150,10 @@ function couponToForm(c: Coupon): FormState {
     validFrom: dateOnly(c.validFrom),
     validUntil: dateOnly(c.validUntil),
     isActive: c.isActive,
+    triggerType: c.triggerType ?? 'manual',
+    inactivityDays: c.inactivityDays != null ? String(c.inactivityDays) : '',
+    milestoneOrders: c.milestoneOrders != null ? String(c.milestoneOrders) : '',
+    autoReusable: c.autoReusable ?? false,
   };
 }
 
@@ -200,6 +225,14 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
     }
     if (form.discountType !== 'free_delivery' && !(parseFloat(form.discountValue) > 0)) {
       toast.error('Enter a discount value greater than 0');
+      return;
+    }
+    if (form.triggerType === 'welcome_back' && !(parseInt(form.inactivityDays) >= 1)) {
+      toast.error('Set the inactivity period (at least 1 day)');
+      return;
+    }
+    if (form.triggerType === 'order_milestone' && !(parseInt(form.milestoneOrders) >= 1)) {
+      toast.error('Set the order milestone (at least 1 order)');
       return;
     }
     saveMutation.mutate(toInput(form));
@@ -274,6 +307,12 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
                     ) : (
                       <Badge variant="warning" size="sm">Global</Badge>
                     )}
+                    {c.triggerType === 'welcome_back' && (
+                      <Badge variant="primary" size="sm">Welcome back</Badge>
+                    )}
+                    {c.triggerType === 'order_milestone' && (
+                      <Badge variant="primary" size="sm">Milestone</Badge>
+                    )}
                   </div>
                   <p className="text-sm text-gray-600 mt-1">{c.summary}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
@@ -345,6 +384,78 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
             />
             <Hint>The code customers type at checkout. Case-insensitive, unique per city.</Hint>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">How customers get it</label>
+            <select
+              value={form.triggerType}
+              onChange={(e) => set('triggerType', e.target.value as TriggerType)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            >
+              <option value="manual">Manual — customer types the code</option>
+              <option value="welcome_back">Welcome back — auto-granted to inactive customers</option>
+              <option value="order_milestone">Order milestone — auto-granted as a loyalty reward</option>
+            </select>
+            <Hint>
+              <strong>Manual</strong>: anyone with the code can use it. <strong>Welcome back</strong>:
+              automatically given to a customer who hasn't ordered for a while. <strong>Order
+              milestone</strong>: given once a customer reaches a number of delivered orders.
+            </Hint>
+          </div>
+
+          {form.triggerType === 'welcome_back' && (
+            <div>
+              <Input
+                label="Days of inactivity to qualify"
+                type="number"
+                value={form.inactivityDays}
+                onChange={(e) => set('inactivityDays', e.target.value)}
+                min={1}
+                placeholder="e.g. 30"
+                required
+              />
+              <Hint>
+                A customer who placed an order, then did NOT order again for this many days, is
+                automatically given this coupon (and notified) the next time they open the app.
+              </Hint>
+            </div>
+          )}
+
+          {form.triggerType === 'order_milestone' && (
+            <div>
+              <Input
+                label="Delivered orders to qualify"
+                type="number"
+                value={form.milestoneOrders}
+                onChange={(e) => set('milestoneOrders', e.target.value)}
+                min={1}
+                placeholder="e.g. 10"
+                required
+              />
+              <Hint>
+                As soon as a customer reaches this many DELIVERED orders, they earn this coupon
+                (and get a notification).
+              </Hint>
+            </div>
+          )}
+
+          {form.triggerType !== 'manual' && (
+            <div className="rounded-lg bg-gray-50 px-3 py-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={form.autoReusable}
+                  onChange={(e) => set('autoReusable', e.target.checked)}
+                  className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                />
+                <span className="text-sm text-gray-700">Keep available after the first use</span>
+              </label>
+              <Hint>
+                Off = the coupon works for ONE order after qualifying (then it's gone). On = the
+                customer keeps it permanently once earned.
+              </Hint>
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Discount Type</label>

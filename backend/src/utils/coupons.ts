@@ -11,6 +11,7 @@ import { roundMoney } from './money';
 import logger from './logger';
 
 export type DiscountType = 'percentage' | 'fixed' | 'free_delivery';
+export type TriggerType = 'manual' | 'welcome_back' | 'order_milestone';
 
 export interface CouponRow {
   id: string;
@@ -28,6 +29,16 @@ export interface CouponRow {
   valid_until: string | Date | null;
   is_active: boolean;
   city_id: string | null;
+  // Auto-coupon fields (migration 22). Optional so pre-migration rows parse.
+  trigger_type?: TriggerType;
+  inactivity_days?: number | null;
+  milestone_orders?: number | null;
+  auto_reusable?: boolean;
+}
+
+/** True when the coupon is granted by behaviour, not typed by code. */
+export function isAutoCoupon(coupon: Pick<CouponRow, 'trigger_type'>): boolean {
+  return coupon.trigger_type === 'welcome_back' || coupon.trigger_type === 'order_milestone';
 }
 
 export interface CouponContext {
@@ -77,15 +88,20 @@ export function couponValidationError(
     return 'This coupon has reached its usage limit.';
   }
 
-  if (
-    coupon.usage_limit_per_user != null &&
-    ctx.userUsed >= coupon.usage_limit_per_user
-  ) {
-    return 'You have already used this coupon the maximum number of times.';
-  }
+  // For AUTO coupons (welcome-back / milestone) the per-user limit and the
+  // "first order only" rule are governed by the per-customer GRANT, not by
+  // these fields — eligibility is the grant itself, checked by the caller.
+  if (!isAutoCoupon(coupon)) {
+    if (
+      coupon.usage_limit_per_user != null &&
+      ctx.userUsed >= coupon.usage_limit_per_user
+    ) {
+      return 'You have already used this coupon the maximum number of times.';
+    }
 
-  if (coupon.first_order_only && !ctx.isFirstOrder) {
-    return 'This coupon is valid on your first order only.';
+    if (coupon.first_order_only && !ctx.isFirstOrder) {
+      return 'This coupon is valid on your first order only.';
+    }
   }
 
   return null;
@@ -150,8 +166,18 @@ export function buildCouponSummary(coupon: CouponRow): string {
 
   if (minOrder > 0) parts.push(`on orders of Rs. ${minOrder} or more`);
 
+  // Behaviour trigger (auto coupons) reads first so the offer's reason is clear.
+  if (coupon.trigger_type === 'welcome_back' && coupon.inactivity_days != null) {
+    parts.push(`— welcome-back reward after ${coupon.inactivity_days} days away`);
+  } else if (coupon.trigger_type === 'order_milestone' && coupon.milestone_orders != null) {
+    parts.push(`— loyalty reward at ${coupon.milestone_orders} delivered orders`);
+  }
+
   const conditions: string[] = [];
-  if (coupon.first_order_only) conditions.push('first order only');
+  if (isAutoCoupon(coupon)) {
+    conditions.push(coupon.auto_reusable ? 'reusable once earned' : 'one order only');
+  }
+  if (coupon.first_order_only && !isAutoCoupon(coupon)) conditions.push('first order only');
   if (coupon.usage_limit_per_user != null) {
     conditions.push(
       `${coupon.usage_limit_per_user} use${coupon.usage_limit_per_user === 1 ? '' : 's'} per customer`

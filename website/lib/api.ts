@@ -435,6 +435,31 @@ export const cartApi = {
   },
 }
 
+export interface MyCoupon {
+  code: string
+  description?: string | null
+  discount_type: 'percentage' | 'fixed' | 'free_delivery'
+  min_order_amount: number
+  trigger_type?: 'manual' | 'welcome_back' | 'order_milestone'
+  source?: string
+  seen: boolean
+  summary: string
+}
+
+// Customer's auto-granted coupons (welcome-back / milestone). Fetching also
+// triggers server-side eligibility evaluation (so new ones get granted).
+export const myCouponsApi = {
+  list: async (): Promise<{ coupons: MyCoupon[]; unseen: MyCoupon[] }> => {
+    const response = await api.get('/coupons/mine', { params: withCityParams() })
+    const data = response.data?.data || response.data || {}
+    return { coupons: data.coupons || [], unseen: data.unseen || [] }
+  },
+  markSeen: async () => {
+    const response = await api.patch('/coupons/mine/seen')
+    return response.data
+  },
+}
+
 // Chat API
 export const chatApi = {
   getMessages: async (orderId: string) => {
