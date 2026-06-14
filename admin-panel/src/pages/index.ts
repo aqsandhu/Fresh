@@ -12,4 +12,6 @@ export { ServiceCities } from './ServiceCities';
 export { DeliveryZones } from './DeliveryZones';
 export { Roles } from './Roles';
 export { CouponsUsed } from './CouponsUsed';
+export { Reviews } from './Reviews';
+export { Complaints } from './Complaints';
 export { Settings } from './Settings';
