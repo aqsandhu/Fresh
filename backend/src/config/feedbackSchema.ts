@@ -12,6 +12,9 @@ import logger from '../utils/logger';
 let feedbackCached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
 
+let complaintImagesCached: boolean | null = null;
+let complaintImagesPromise: Promise<boolean> | null = null;
+
 function getMigrationConnectionString(): string | null {
   const direct = process.env.DATABASE_MIGRATION_URL || process.env.DIRECT_DATABASE_URL;
   if (direct) return direct;
@@ -104,6 +107,7 @@ async function runDdlOnConnection(connectionString: string): Promise<void> {
         message        TEXT NOT NULL,
         status         VARCHAR(20)  NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','resolved','closed')),
         priority       VARCHAR(10)  NOT NULL DEFAULT 'normal' CHECK (priority IN ('low','normal','high')),
+        images         TEXT[],
         admin_response TEXT,
         resolved_at    TIMESTAMPTZ,
         resolved_by    UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -162,4 +166,57 @@ export async function ensureFeedbackTables(): Promise<boolean> {
   })();
 
   return ensurePromise;
+}
+
+/** Cached probe for complaints.images (added after the original migration 24). */
+export async function hasComplaintImagesColumn(): Promise<boolean> {
+  if (complaintImagesCached !== null) return complaintImagesCached;
+  try {
+    const result = await query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'complaints'
+          AND column_name = 'images' LIMIT 1`
+    );
+    complaintImagesCached = (result.rowCount ?? 0) > 0;
+  } catch (error: any) {
+    logger.warn('Could not probe complaints.images', { error: error?.message });
+    complaintImagesCached = false;
+  }
+  return complaintImagesCached;
+}
+
+/** Add complaints.images to existing installs (idempotent). */
+export async function ensureComplaintImagesColumn(): Promise<boolean> {
+  if (complaintImagesCached === true) return true;
+  if (complaintImagesPromise) return complaintImagesPromise;
+
+  complaintImagesPromise = (async () => {
+    if (await hasComplaintImagesColumn()) return true;
+    const connectionString = getMigrationConnectionString();
+    if (!connectionString) return false;
+    const pool = new Pool({
+      connectionString,
+      ssl:
+        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
+          ? false
+          : { rejectUnauthorized: false },
+      max: 1,
+      connectionTimeoutMillis: 15000,
+    });
+    try {
+      await pool.query(`ALTER TABLE complaints ADD COLUMN IF NOT EXISTS images TEXT[]`);
+      complaintImagesCached = true;
+      logger.info('complaints.images column ensured');
+      return true;
+    } catch (error: any) {
+      logger.warn('Could not add complaints.images column', { error: error?.message });
+      complaintImagesCached = false;
+      return false;
+    } finally {
+      await pool.end().catch(() => undefined);
+      complaintImagesPromise = null;
+    }
+  })();
+
+  return complaintImagesPromise;
 }

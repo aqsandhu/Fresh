@@ -18,7 +18,7 @@ import {
   type ComplaintCategory,
   type ComplaintStatus,
 } from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+import { formatDate, resolveImageUrl } from '@/lib/utils'
 import { useAuthStore } from '@/store/cartStore'
 
 const CATEGORIES: { value: ComplaintCategory; label: string }[] = [
@@ -167,6 +167,22 @@ function ComplaintCard({ complaint }: { complaint: Complaint }) {
       </div>
       <h3 className="font-semibold text-gray-900 mt-2">{complaint.subject}</h3>
       <p className="text-sm text-gray-600 mt-1">{complaint.message}</p>
+      {complaint.images && complaint.images.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {complaint.images.map((img, i) => (
+            <a
+              key={i}
+              href={resolveImageUrl(img) || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-16 w-16 overflow-hidden rounded-lg border border-gray-200"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={resolveImageUrl(img) || ''} alt="" className="h-full w-full object-cover" />
+            </a>
+          ))}
+        </div>
+      )}
       {complaint.orderNumber && (
         <p className="text-xs text-gray-400 mt-2">Order #{complaint.orderNumber}</p>
       )}
@@ -227,7 +243,14 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
   const [message, setMessage] = useState('')
   const [orderId, setOrderId] = useState('')
   const [orders, setOrders] = useState<DeliveredOrder[]>([])
+  const [images, setImages] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
+
+  const addImages = (files: FileList | null) => {
+    if (!files) return
+    const picked = Array.from(files).filter((f) => f.type.startsWith('image/'))
+    setImages((prev) => [...prev, ...picked].slice(0, 5))
+  }
 
   // Load the customer's delivered orders so they can (optionally) attach one.
   useEffect(() => {
@@ -261,6 +284,7 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
         message: message.trim(),
         category,
         ...(orderId ? { orderId } : {}),
+        ...(images.length > 0 ? { images } : {}),
       })
       toast.success(`Complaint submitted — ticket ${res.ticketNumber}`)
       onSaved()
@@ -313,7 +337,7 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
                 onChange={(e) => setOrderId(e.target.value)}
                 className="mt-1 w-full border border-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200"
               >
-                <option value="">No specific order</option>
+                <option value="">Select specific order (optional)</option>
                 {orders.map((o) => (
                   <option key={o.id} value={o.id}>
                     #{o.orderNumber}
@@ -343,6 +367,42 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
               className="mt-1 w-full border border-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200"
               placeholder="Describe your complaint"
             />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">
+              Photos <span className="font-normal text-gray-400">(optional, up to 5)</span>
+            </label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {images.map((file, i) => (
+                <div key={i} className="relative h-16 w-16 overflow-hidden rounded-lg border border-gray-200">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={URL.createObjectURL(file)} alt="" className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                    aria-label="Remove image"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {images.length < 5 && (
+                <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-primary-400 hover:text-primary-500">
+                  <Plus className="h-5 w-5" />
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      addImages(e.target.files)
+                      e.target.value = ''
+                    }}
+                  />
+                </label>
+              )}
+            </div>
           </div>
           <Button fullWidth onClick={submit} disabled={saving}>
             {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Submit Complaint'}

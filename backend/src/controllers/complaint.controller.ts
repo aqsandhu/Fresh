@@ -14,7 +14,7 @@ import {
   notFoundResponse,
   errorResponse,
 } from '../utils/response';
-import { ensureFeedbackTables } from '../config/feedbackSchema';
+import { ensureFeedbackTables, hasComplaintImagesColumn } from '../config/feedbackSchema';
 import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
 import logger from '../utils/logger';
 
@@ -54,6 +54,7 @@ interface ComplaintRow {
   resolved_at: string | null;
   created_at: string;
   updated_at: string;
+  images?: string[] | null;
   order_number?: string | null;
   customer_name?: string | null;
   customer_phone?: string | null;
@@ -72,6 +73,7 @@ function mapComplaint(r: ComplaintRow) {
     message: r.message,
     status: r.status,
     priority: r.priority,
+    images: Array.isArray(r.images) ? r.images : [],
     adminResponse: r.admin_response,
     resolvedAt: r.resolved_at,
     createdAt: r.created_at,
@@ -142,16 +144,32 @@ export const fileComplaint = asyncHandler(async (req: Request, res: Response) =>
     cityId = await resolvePublicCityId(req).catch(() => null);
   }
 
+  // Optional attachments uploaded via multipart (the upload middleware has
+  // already pushed each file to storage and set f.url). Capped + gated.
+  const uploadedFiles = (req.files as Express.Multer.File[] | undefined) ?? [];
+  const imageUrls = uploadedFiles
+    .map((f) => (f as Express.Multer.File & { url?: string }).url || '')
+    .filter(Boolean)
+    .slice(0, 5);
+  const imagesReady = imageUrls.length > 0 && (await hasComplaintImagesColumn());
+
   const ticketNumber = await generateTicketNumber();
 
-  const result = await query(
-    `INSERT INTO complaints
-       (ticket_number, user_id, order_id, rider_id, city_id, category, subject, message)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-    [ticketNumber, req.user.id, resolvedOrderId, riderId, cityId, category, subject, message]
-  );
+  const result = imagesReady
+    ? await query(
+        `INSERT INTO complaints
+           (ticket_number, user_id, order_id, rider_id, city_id, category, subject, message, images)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+        [ticketNumber, req.user.id, resolvedOrderId, riderId, cityId, category, subject, message, imageUrls]
+      )
+    : await query(
+        `INSERT INTO complaints
+           (ticket_number, user_id, order_id, rider_id, city_id, category, subject, message)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [ticketNumber, req.user.id, resolvedOrderId, riderId, cityId, category, subject, message]
+      );
 
-  logger.info('Complaint filed', { ticket: ticketNumber, userId: req.user.id, category });
+  logger.info('Complaint filed', { ticket: ticketNumber, userId: req.user.id, category, images: imageUrls.length });
   return createdResponse(res, mapComplaint(result.rows[0]), 'Your complaint has been submitted');
 });
 

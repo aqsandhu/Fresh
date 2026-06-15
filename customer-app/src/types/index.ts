@@ -400,6 +400,7 @@ export interface Complaint {
   message: string;
   status: ComplaintStatus;
   priority: 'low' | 'normal' | 'high';
+  images?: string[];
   adminResponse?: string | null;
   resolvedAt?: string | null;
   createdAt?: string;

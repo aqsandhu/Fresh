@@ -4,7 +4,7 @@
 // ============================================================================
 
 import { Router } from 'express';
-import { authenticate, verifyUserActive } from '../middleware';
+import { authenticate, verifyUserActive, uploadMultiple } from '../middleware';
 import { createRateLimiter } from '../middleware/rateLimiter';
 import { fileComplaint, getMyComplaints } from '../controllers/complaint.controller';
 
@@ -21,6 +21,12 @@ const complaintWriteLimiter = createRateLimiter(
 router.use(authenticate);
 
 router.get('/mine', getMyComplaints);
-router.post('/', complaintWriteLimiter, verifyUserActive, fileComplaint);
+router.post(
+  '/',
+  complaintWriteLimiter,
+  verifyUserActive,
+  uploadMultiple('images', 5, 'complaints'),
+  fileComplaint
+);
 
 export default router;
