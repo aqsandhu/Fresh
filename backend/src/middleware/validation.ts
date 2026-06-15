@@ -468,12 +468,16 @@ export const adminSchemas = {
       })
     ).min(1).required(),
     address_text: Joi.string().required(),
-    latitude: commonSchemas.latitude,
-    longitude: commonSchemas.longitude,
+    latitude: commonSchemas.latitude.allow(null),
+    longitude: commonSchemas.longitude.allow(null),
     delivery_charge: commonSchemas.price.default(0),
-    admin_notes: Joi.string(),
+    admin_notes: Joi.string().allow('', null),
+    // Optional link to an existing customer + their saved address.
+    user_id: commonSchemas.uuid.optional().allow(null, ''),
+    address_id: commonSchemas.uuid.optional().allow(null, ''),
+    door_picture_url: Joi.string().uri().optional().allow(null, ''),
   }),
-  
+
   assignHouseNumber: Joi.object({
     house_number: Joi.string().max(50).required(),
   }),

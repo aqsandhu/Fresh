@@ -54,6 +54,7 @@ router.get('/dashboard', adminController.getDashboardStats);
 
 // Customers
 router.get('/customers', adminController.getCustomers);
+router.get('/customers/lookup', adminController.lookupCustomerByPhone);
 router.get('/customers/:id/addresses', adminController.getCustomerAddresses);
 router.delete(
   '/customers/:id',

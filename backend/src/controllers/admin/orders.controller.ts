@@ -21,6 +21,7 @@ import {
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { roundMoney } from '../../utils/money';
 import { hasVariableWeightColumns } from '../../config/productSchema';
+import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
 
 /**
  * Fire-and-forget: when an order reaches `delivered`, check whether the
@@ -688,9 +689,12 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
     longitude,
     delivery_charge = 0,
     admin_notes,
+    user_id,
+    address_id,
+    door_picture_url,
   } = req.body;
 
-  // Calculate totals
+  // Calculate totals (server-authoritative pricing — never trust client totals).
   let subtotal = 0;
   for (const item of items) {
     const productResult = await query(
@@ -703,39 +707,78 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
     subtotal += parseFloat(productResult.rows[0].price) * item.quantity;
   }
 
-  const totalAmount = subtotal + delivery_charge;
+  const charge = Number.isFinite(parseFloat(delivery_charge)) ? Math.max(0, parseFloat(delivery_charge)) : 0;
+  const totalAmount = subtotal + charge;
 
-  // Build location value
-  let locationSql = 'NULL';
-  const baseParams: any[] = [
-    whatsapp_number, customer_name, JSON.stringify(items),
-    subtotal, delivery_charge, totalAmount,
-    address_text,
-  ];
-  let paramIndex = 8;
+  // Resolve + validate the optional customer / address link. address_id is only
+  // accepted if it really belongs to the matched user (defence against IDOR).
+  const linkReady = await hasWhatsappLinkColumns();
+  let linkedUserId: string | null = null;
+  let linkedAddressId: string | null = null;
+  let doorPic: string | null =
+    typeof door_picture_url === 'string' && door_picture_url.trim() ? door_picture_url.trim() : null;
 
-  if (longitude != null && latitude != null) {
-    locationSql = `ST_SetSRID(ST_MakePoint($${paramIndex}::float, $${paramIndex + 1}::float), 4326)::geography`;
-    baseParams.push(longitude, latitude);
-    paramIndex += 2;
+  if (linkReady && user_id) {
+    const u = await query(`SELECT id FROM users WHERE id = $1 AND role = 'customer' AND deleted_at IS NULL`, [user_id]);
+    if (u.rows.length > 0) {
+      linkedUserId = u.rows[0].id;
+      if (address_id) {
+        const a = await query(
+          `SELECT id, door_picture_url FROM addresses WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
+          [address_id, linkedUserId]
+        );
+        if (a.rows.length > 0) {
+          linkedAddressId = a.rows[0].id;
+          if (!doorPic && a.rows[0].door_picture_url) doorPic = a.rows[0].door_picture_url;
+        }
+      }
+    }
   }
 
-  baseParams.push(req.user?.id, admin_notes);
+  // Build the parameter list dynamically so the geography + optional link
+  // columns stay parameterised.
+  const cols = ['whatsapp_number', 'customer_name', 'items', 'subtotal', 'delivery_charge', 'total_amount', 'address_text'];
+  const baseParams: any[] = [
+    whatsapp_number, customer_name, JSON.stringify(items),
+    subtotal, charge, totalAmount, address_text,
+  ];
+
+  // location
+  let locationSql = 'NULL';
+  if (longitude != null && latitude != null) {
+    baseParams.push(longitude, latitude);
+    locationSql = `ST_SetSRID(ST_MakePoint($${baseParams.length - 1}::float, $${baseParams.length}::float), 4326)::geography`;
+  }
+
+  baseParams.push(req.user?.id);
+  const enteredByPlaceholder = `$${baseParams.length}`;
+  baseParams.push(admin_notes ?? null);
+  const adminNotesPlaceholder = `$${baseParams.length}`;
+
+  const linkCols: string[] = [];
+  const linkVals: string[] = [];
+  if (linkReady) {
+    baseParams.push(linkedUserId);
+    linkCols.push('user_id');
+    linkVals.push(`$${baseParams.length}`);
+    baseParams.push(linkedAddressId);
+    linkCols.push('address_id');
+    linkVals.push(`$${baseParams.length}`);
+    baseParams.push(doorPic);
+    linkCols.push('door_picture_url');
+    linkVals.push(`$${baseParams.length}`);
+  }
 
   const result = await query(
     `INSERT INTO whatsapp_orders (
-      whatsapp_number, customer_name, items,
-      subtotal, delivery_charge, total_amount,
-      address_text, location,
-      entered_by, admin_notes
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 
-      ${locationSql},
-      $${paramIndex}, $${paramIndex + 1}
+      ${cols.join(', ')}, location, entered_by, admin_notes${linkCols.length ? ', ' + linkCols.join(', ') : ''}
+    ) VALUES (
+      $1, $2, $3, $4, $5, $6, $7, ${locationSql}, ${enteredByPlaceholder}, ${adminNotesPlaceholder}${linkVals.length ? ', ' + linkVals.join(', ') : ''}
     ) RETURNING *`,
     baseParams
   );
 
-  logger.info('WhatsApp order created', { orderId: result.rows[0].id, createdBy: req.user?.id });
+  logger.info('WhatsApp order created', { orderId: result.rows[0].id, createdBy: req.user?.id, linkedUserId, linkedAddressId });
 
   createdResponse(res, result.rows[0], 'WhatsApp order created successfully');
 });

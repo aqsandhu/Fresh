@@ -14,6 +14,7 @@ import {
   addressCityMatchSql,
   addressCityWhereClause,
 } from '../../utils/cityScope';
+import { normalizePhoneNumber } from '../../utils/validators';
 
 export const getAdminAddresses = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 100, search, city, area } = req.query;
@@ -385,6 +386,67 @@ export const getCustomerAddresses = asyncHandler(async (req: Request, res: Respo
   );
 
   successResponse(res, result.rows, 'Customer addresses retrieved successfully');
+});
+
+/**
+ * GET /api/admin/customers/lookup?phone=...
+ * Looks up an existing customer by phone (for the admin WhatsApp/manual order
+ * flow) and returns their saved addresses — including house number, saved
+ * location, and door picture — city-scoped. Returns nulls when no match so the
+ * admin can simply type the order in manually.
+ */
+export const lookupCustomerByPhone = asyncHandler(async (req: Request, res: Response) => {
+  const raw = String(req.query.phone ?? '').trim();
+  const empty = { customer: null as unknown, addresses: [] as unknown[] };
+  if (!raw) return successResponse(res, empty, 'No phone provided');
+
+  let normalized: string;
+  try {
+    normalized = normalizePhoneNumber(raw);
+  } catch {
+    return successResponse(res, empty, 'Invalid phone number');
+  }
+
+  const scope = await resolveCityScope(req);
+
+  const userRes = await query(
+    `SELECT id, full_name, phone
+       FROM users
+      WHERE phone = $1 AND role = 'customer' AND deleted_at IS NULL
+      LIMIT 1`,
+    [normalized]
+  );
+  const user = userRes.rows[0];
+  if (!user) return successResponse(res, empty, 'No customer found for this number');
+
+  // Saved addresses, scoped to the admin's city (super admin sees all).
+  const params: unknown[] = [user.id];
+  let whereSql = 'WHERE a.user_id = $1 AND a.deleted_at IS NULL';
+  const cityFilter = addressCityWhereClause(scope, 'a', params, 2);
+  whereSql += cityFilter.sql;
+
+  const addrRes = await query(
+    `SELECT
+       a.id, a.address_type, a.house_number, a.written_address,
+       a.landmark, a.area_name, a.city, a.province, a.postal_code,
+       a.is_default, a.door_picture_url, a.delivery_instructions,
+       ST_X(a.location::geometry) as longitude,
+       ST_Y(a.location::geometry) as latitude,
+       CASE WHEN a.location IS NOT NULL THEN true ELSE false END as has_location
+     FROM addresses a
+     ${whereSql}
+     ORDER BY a.is_default DESC, a.created_at DESC`,
+    params
+  );
+
+  return successResponse(
+    res,
+    {
+      customer: { id: user.id, fullName: user.full_name, phone: user.phone },
+      addresses: addrRes.rows,
+    },
+    'Customer found'
+  );
 });
 
 // ============================================================================

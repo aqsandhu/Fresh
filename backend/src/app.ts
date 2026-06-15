@@ -35,6 +35,7 @@ import { ensureOrderCouponColumns } from './config/orderSchema';
 import { ensureVariableWeightColumns, ensureUnitToggleColumns } from './config/productSchema';
 import { ensureFeedbackTables, ensureComplaintImagesColumn } from './config/feedbackSchema';
 import { ensureTipsTable } from './config/tipsSchema';
+import { ensureWhatsappLinkColumns } from './config/whatsappOrderSchema';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -311,6 +312,7 @@ const startServer = async () => {
         await ensureFeedbackTables();
         await ensureComplaintImagesColumn();
         await ensureTipsTable();
+        await ensureWhatsappLinkColumns();
         // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars
         // are set. Safe to call on every boot — idempotently upserts the row.
         const adminResult = await bootstrapAdmin();

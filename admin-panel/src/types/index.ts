@@ -396,6 +396,31 @@ export interface WhatsAppOrderData {
   longitude?: number;
   deliveryCharge?: number;
   adminNotes?: string;
+  userId?: string;
+  addressId?: string;
+  doorPictureUrl?: string;
+}
+
+export interface WhatsappCustomerAddress {
+  id: string;
+  addressType?: string;
+  houseNumber?: string | null;
+  writtenAddress?: string;
+  landmark?: string | null;
+  areaName?: string | null;
+  city?: string;
+  province?: string;
+  isDefault?: boolean;
+  doorPictureUrl?: string | null;
+  deliveryInstructions?: string | null;
+  longitude?: number | null;
+  latitude?: number | null;
+  hasLocation?: boolean;
+}
+
+export interface CustomerLookupResult {
+  customer: { id: string; fullName: string; phone: string } | null;
+  addresses: WhatsappCustomerAddress[];
 }
 
 export interface OrderFilters {
