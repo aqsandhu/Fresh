@@ -12,6 +12,7 @@ import StarRating from '@/components/feedback/StarRating'
 import {
   reviewsApi,
   complaintsApi,
+  ordersApi,
   type Review,
   type Complaint,
   type ComplaintCategory,
@@ -39,7 +40,7 @@ const STATUS_META: Record<ComplaintStatus, { label: string; cls: string }> = {
 const TARGET_LABEL: Record<string, string> = {
   product: 'Product',
   rider: 'Rider',
-  service: 'Service',
+  service: 'Company Service',
 }
 
 export default function SupportPage() {
@@ -190,7 +191,7 @@ function ReviewCard({ review }: { review: Review }) {
       ? review.riderName
         ? `Rider: ${review.riderName}`
         : 'Rider'
-      : 'Service / delivery'
+      : 'Company Service'
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-4">
       <div className="flex items-center justify-between">
@@ -214,18 +215,53 @@ function ReviewCard({ review }: { review: Review }) {
   )
 }
 
+interface DeliveredOrder {
+  id: string
+  orderNumber: string
+  date: string
+}
+
 function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [category, setCategory] = useState<ComplaintCategory>('other')
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
+  const [orderId, setOrderId] = useState('')
+  const [orders, setOrders] = useState<DeliveredOrder[]>([])
   const [saving, setSaving] = useState(false)
+
+  // Load the customer's delivered orders so they can (optionally) attach one.
+  useEffect(() => {
+    let active = true
+    ordersApi
+      .getAll()
+      .then((res) => {
+        if (!active) return
+        const delivered = (Array.isArray(res) ? res : [])
+          .filter((o: any) => o.status === 'delivered')
+          .map((o: any) => ({
+            id: o.id,
+            orderNumber: o.order_number || o.id,
+            date: o.delivered_at || o.placed_at || o.created_at || '',
+          }))
+        setOrders(delivered)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
 
   const submit = async () => {
     if (subject.trim().length < 3) return toast.error('Please add a short subject')
     if (message.trim().length < 5) return toast.error('Please describe the issue')
     setSaving(true)
     try {
-      const res = await complaintsApi.file({ subject: subject.trim(), message: message.trim(), category })
+      const res = await complaintsApi.file({
+        subject: subject.trim(),
+        message: message.trim(),
+        category,
+        ...(orderId ? { orderId } : {}),
+      })
       toast.success(`Complaint submitted — ticket ${res.ticketNumber}`)
       onSaved()
     } catch (e: any) {
@@ -267,6 +303,26 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
               ))}
             </div>
           </div>
+          {orders.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-700">
+                Related order <span className="font-normal text-gray-400">(optional)</span>
+              </label>
+              <select
+                value={orderId}
+                onChange={(e) => setOrderId(e.target.value)}
+                className="mt-1 w-full border border-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200"
+              >
+                <option value="">No specific order</option>
+                {orders.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    #{o.orderNumber}
+                    {o.date ? ` — ${formatDate(o.date)}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="text-sm font-medium text-gray-700">Subject</label>
             <input

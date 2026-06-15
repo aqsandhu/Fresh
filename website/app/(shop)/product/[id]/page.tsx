@@ -169,9 +169,10 @@ export default function ProductDetailPage() {
         </span>
       </nav>
 
-      {/* Flat product section — customer-app ProductDetailScreen (no card wrapper) */}
+      {/* Mobile: stacked (unchanged). Desktop: image left half + details right half. */}
       <section className="bg-white pb-6 mb-8">
-        <div className="relative mx-4 mt-1 aspect-square max-w-lg md:max-w-none bg-gray-100 rounded-xl overflow-hidden">
+        <div className="md:mx-auto md:max-w-6xl md:px-6 md:py-8 md:grid md:grid-cols-2 md:gap-10 md:items-start">
+        <div className="relative mx-4 mt-1 md:mx-0 md:mt-0 md:sticky md:top-24 aspect-square max-w-lg md:max-w-none bg-gray-100 rounded-xl md:rounded-2xl overflow-hidden md:border md:border-gray-100 md:shadow-sm">
           <SmartImage
             src={imageSrc}
             alt={product.name}
@@ -199,9 +200,9 @@ export default function ProductDetailPage() {
           </button>
         </div>
 
-        <div className="px-4 pt-4 space-y-3">
+        <div className="px-4 pt-4 md:px-0 md:pt-0 space-y-3">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <h1 className="text-[22px] font-bold text-gray-900 leading-7">
+            <h1 className="text-[22px] md:text-[28px] font-bold text-gray-900 leading-7 md:leading-9">
               {product.name}
             </h1>
             {product.nameUrdu && (
@@ -332,6 +333,7 @@ export default function ProductDetailPage() {
               </button>
             </div>
           )}
+        </div>
         </div>
       </section>
 

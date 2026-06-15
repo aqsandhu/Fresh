@@ -88,7 +88,7 @@ export const WriteReviewScreen: React.FC = () => {
           target: 'rider' as ReviewTargetType,
           label: data.rider?.riderName ? `رائڈر: ${data.rider.riderName}` : 'رائڈر کا رویہ',
         },
-        { key: 'service', target: 'service' as ReviewTargetType, label: 'سروس / ڈیلیوری کا تجربہ' },
+        { key: 'service', target: 'service' as ReviewTargetType, label: 'کمپنی سروس' },
       ]
     : [];
 
