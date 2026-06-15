@@ -1,10 +1,21 @@
 import { api } from './api';
-import type { 
+import type {
   WhatsAppOrderData,
-  ApiResponse 
+  CustomerLookupResult,
+  ApiResponse
 } from '@/types';
 
 export const whatsappService = {
+  /** Look up an existing customer (+ saved addresses) by phone. */
+  lookupCustomer: async (phone: string): Promise<CustomerLookupResult> => {
+    const response = await api.get<ApiResponse<CustomerLookupResult>>(
+      '/admin/customers/lookup',
+      { phone }
+    );
+    const data = (response.data || {}) as Partial<CustomerLookupResult>;
+    return { customer: data.customer ?? null, addresses: data.addresses ?? [] };
+  },
+
   createOrder: async (data: WhatsAppOrderData): Promise<unknown> => {
     try {
       const response = await api.post<ApiResponse<unknown>>('/admin/whatsapp-orders', data);
