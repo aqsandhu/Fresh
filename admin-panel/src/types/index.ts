@@ -276,6 +276,9 @@ export interface DeliverySettings {
   baseCharge: number;
   freeDeliveryThreshold: number;
   expressCharge: number;
+  /** Urgent (on-demand) delivery — super admin only. */
+  urgentCharge?: number;
+  urgentEta?: string;
 }
 
 export interface TimeSlot {

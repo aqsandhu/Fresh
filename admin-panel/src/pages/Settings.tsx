@@ -104,6 +104,8 @@ export const Settings: React.FC = () => {
     baseCharge: 50,
     freeDeliveryThreshold: 500,
     expressCharge: 100,
+    urgentCharge: 0,
+    urgentEta: '',
   });
 
   // Time Slots State
@@ -417,6 +419,43 @@ export const Settings: React.FC = () => {
             required
           />
         </div>
+
+        {role === 'super_admin' && (
+          <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50/60 p-4">
+            <h4 className="text-sm font-semibold text-amber-900 mb-1">
+              Urgent (on-demand) delivery
+            </h4>
+            <p className="text-xs text-amber-700 mb-3">
+              Super-admin only. A flat rate the customer can choose instead of a time slot.
+              Urgent orders ignore the free-delivery threshold, free slots and coupons.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Urgent Delivery Charge (Rs.)"
+                type="number"
+                value={deliverySettings.urgentCharge ?? 0}
+                onChange={(e) =>
+                  setDeliverySettings({
+                    ...deliverySettings,
+                    urgentCharge: parseFloat(e.target.value) || 0,
+                  })
+                }
+                leftIcon={<DollarSign className="w-4 h-4 text-gray-400" />}
+                min={0}
+                helperText="Set 0 to disable urgent delivery"
+              />
+              <Input
+                label="Estimated Time"
+                value={deliverySettings.urgentEta ?? ''}
+                onChange={(e) =>
+                  setDeliverySettings({ ...deliverySettings, urgentEta: e.target.value })
+                }
+                placeholder="e.g. 30–45 minutes"
+                helperText="Shown to the customer at checkout"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-end">
           <Button

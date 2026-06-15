@@ -13,6 +13,9 @@ import logger from '../utils/logger';
 let couponColumnsCached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
 
+let urgentColumnsCached: boolean | null = null;
+let urgentEnsurePromise: Promise<boolean> | null = null;
+
 function getMigrationConnectionString(): string | null {
   const direct = process.env.DATABASE_MIGRATION_URL || process.env.DIRECT_DATABASE_URL;
   if (direct) return direct;
@@ -112,4 +115,60 @@ export async function ensureOrderCouponColumns(): Promise<boolean> {
   })();
 
   return ensurePromise;
+}
+
+/** Check whether orders.is_urgent_delivery exists (cached). */
+export async function hasUrgentDeliveryColumns(): Promise<boolean> {
+  if (urgentColumnsCached !== null) return urgentColumnsCached;
+  try {
+    const result = await query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'orders'
+          AND column_name = 'is_urgent_delivery' LIMIT 1`
+    );
+    urgentColumnsCached = (result.rowCount ?? 0) > 0;
+  } catch (error: any) {
+    logger.warn('Could not probe orders.is_urgent_delivery column', { error: error?.message });
+    urgentColumnsCached = false;
+  }
+  return urgentColumnsCached;
+}
+
+/** Add urgent-delivery columns to orders (migration 28). */
+export async function ensureUrgentDeliveryColumns(): Promise<boolean> {
+  if (urgentColumnsCached === true) return true;
+  if (urgentEnsurePromise) return urgentEnsurePromise;
+
+  urgentEnsurePromise = (async () => {
+    if (await hasUrgentDeliveryColumns()) return true;
+    const connectionString = getMigrationConnectionString();
+    if (!connectionString) return false;
+    const pool = new Pool({
+      connectionString,
+      ssl:
+        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
+          ? false
+          : { rejectUnauthorized: false },
+      max: 1,
+      connectionTimeoutMillis: 15000,
+    });
+    try {
+      await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS is_urgent_delivery BOOLEAN NOT NULL DEFAULT FALSE`);
+      await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS urgent_delivery_eta VARCHAR(100)`);
+      urgentColumnsCached = true;
+      logger.info('orders urgent-delivery columns ensured (migration 28 applied)');
+      return true;
+    } catch (error: any) {
+      logger.warn('Could not apply orders urgent-delivery migration — run database/migrations/28 manually', {
+        error: error?.message,
+      });
+      urgentColumnsCached = false;
+      return false;
+    } finally {
+      await pool.end().catch(() => undefined);
+      urgentEnsurePromise = null;
+    }
+  })();
+
+  return urgentEnsurePromise;
 }

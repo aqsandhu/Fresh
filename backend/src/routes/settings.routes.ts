@@ -68,15 +68,23 @@ router.get('/delivery', asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT key, value FROM site_settings WHERE key LIKE 'delivery_%'`
   );
-  const settings: Record<string, number> = {
-    base_charge: 100,
-    free_delivery_threshold: 500,
-    express_charge: 100,
+  const map: Record<string, string> = {};
+  for (const row of result.rows) map[row.key.replace('delivery_', '')] = row.value;
+
+  const num = (k: string, d: number) => {
+    const n = parseFloat(map[k]);
+    return Number.isFinite(n) ? n : d;
   };
-  for (const row of result.rows) {
-    const shortKey = row.key.replace('delivery_', '');
-    settings[shortKey] = parseFloat(row.value) || 0;
-  }
+
+  const settings = {
+    base_charge: num('base_charge', 100),
+    free_delivery_threshold: num('free_delivery_threshold', 500),
+    express_charge: num('express_charge', 100),
+    // Urgent (on-demand) delivery — alternative to time slots.
+    urgent_charge: num('urgent_charge', 0),
+    urgent_eta: (map['urgent_eta'] || '').trim(),
+    urgent_enabled: num('urgent_charge', 0) > 0,
+  };
   successResponse(res, settings, 'Delivery settings retrieved');
 }));
 

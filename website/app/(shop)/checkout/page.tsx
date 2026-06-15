@@ -13,6 +13,7 @@ import { motion } from 'framer-motion'
 import {
   MapPin,
   Clock,
+  Zap,
   CreditCard,
   Check,
   Plus,
@@ -115,6 +116,23 @@ function CheckoutPage() {
   const [couponError, setCouponError] = useState('')
   const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([])
 
+  // Urgent (on-demand) delivery — a flat super-admin rate the customer can pick
+  // instead of a time slot. It ignores free delivery + coupons (handled below).
+  const [urgent, setUrgent] = useState(false)
+  const [urgentInfo, setUrgentInfo] = useState<{ charge: number; eta: string; enabled: boolean }>({
+    charge: 0, eta: '', enabled: false,
+  })
+
+  useEffect(() => {
+    settingsApi
+      .getDeliverySettings()
+      .then((s: any) => {
+        const charge = Number(s?.urgent_charge) || 0
+        setUrgentInfo({ charge, eta: String(s?.urgent_eta || ''), enabled: charge > 0 })
+      })
+      .catch(() => {})
+  }, [])
+
   const localSubtotal = getSubtotal()
   const selectedSlotObj = timeSlots.find(s => s.id === selectedTimeSlot)
   const isFreeDeliverySlot = selectedSlotObj?.is_free_delivery_slot === true
@@ -124,11 +142,16 @@ function CheckoutPage() {
   // /cart/delivery-charge we use that value as the source of truth.
   const deliveryCharge = serverDeliveryCharge ?? getDeliveryCharge(isFreeDeliverySlot)
   const couponFreeDelivery = appliedCoupon?.free_delivery === true
+  // Urgent orders never apply a coupon discount.
   const couponProductDiscount =
-    appliedCoupon && !couponFreeDelivery
+    !urgent && appliedCoupon && !couponFreeDelivery
       ? Math.min(Number(appliedCoupon.discount_amount) || 0, subtotal)
       : 0
-  const effectiveDelivery = couponFreeDelivery ? 0 : deliveryCharge
+  const effectiveDelivery = urgent
+    ? urgentInfo.charge
+    : couponFreeDelivery
+    ? 0
+    : deliveryCharge
   const total = Math.max(0, subtotal + effectiveDelivery - couponProductDiscount)
 
   // Sync the local cart to the server exactly ONCE per checkout visit. After
@@ -319,13 +342,14 @@ function CheckoutPage() {
   }
 
   const handlePlaceOrder = async () => {
-    if (!selectedTimeSlot && timeSlots.length > 0) {
+    if (!urgent && !selectedTimeSlot && timeSlots.length > 0) {
       toast.error('Please select a delivery time slot')
       return
     }
 
     const selectedSlot = timeSlots.find((s) => s.id === selectedTimeSlot)
     if (
+      !urgent &&
       selectedSlot &&
       (selectedSlot.available_slots <= 0 ||
         getSlotAvailability(selectedSlot, selectedDay).unavailable)
@@ -382,11 +406,15 @@ function CheckoutPage() {
       if (serviceCityId) {
         orderPayload.city_id = serviceCityId
       }
-      if (selectedDay === 'tomorrow') {
-        orderPayload.requested_delivery_date = getDateString('tomorrow')
-      }
-      if (selectedTimeSlot) {
-        orderPayload.time_slot_id = selectedTimeSlot
+      if (urgent) {
+        orderPayload.urgent_delivery = 'true'
+      } else {
+        if (selectedDay === 'tomorrow') {
+          orderPayload.requested_delivery_date = getDateString('tomorrow')
+        }
+        if (selectedTimeSlot) {
+          orderPayload.time_slot_id = selectedTimeSlot
+        }
       }
 
       const orderRes = await api.post('/orders', orderPayload)
@@ -652,6 +680,36 @@ function CheckoutPage() {
                 <h2 className="text-xl font-semibold">Delivery Time</h2>
               </div>
 
+              {urgentInfo.enabled && (
+                <div className="mb-5">
+                  <button
+                    type="button"
+                    onClick={() => setUrgent((v) => !v)}
+                    className={`w-full flex items-center justify-between rounded-xl border-2 p-4 transition-colors ${
+                      urgent ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-amber-300'
+                    }`}
+                  >
+                    <span className="flex items-center gap-3 text-left">
+                      <Zap className={`w-5 h-5 ${urgent ? 'text-amber-600' : 'text-gray-400'}`} />
+                      <span>
+                        <span className="block font-semibold text-gray-900">Urgent delivery</span>
+                        <span className="block text-xs text-gray-500">
+                          {urgentInfo.eta ? `Approx. ${urgentInfo.eta}` : 'Fastest available'} · no time slot needed
+                        </span>
+                      </span>
+                    </span>
+                    <span className="font-bold text-amber-600">{formatPriceShort(urgentInfo.charge)}</span>
+                  </button>
+                  {urgent && (
+                    <p className="mt-2 text-xs text-amber-700">
+                      Free-delivery offers and coupons don&apos;t apply to urgent delivery.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!urgent && (
+              <>
               <p className="text-sm font-medium text-gray-800 mb-4">
                 {selectedDay === 'today'
                   ? 'Today available time slots'
@@ -731,6 +789,8 @@ function CheckoutPage() {
                   </button>
                 ))}
               </div>
+              </>
+              )}
             </motion.div>
 
             {/* Payment Method */}

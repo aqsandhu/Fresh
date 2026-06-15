@@ -31,7 +31,7 @@ import { ensureStorageBucket } from './config/storage';
 import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
 import { ensurePinColumns } from './config/pinAuth';
 import { ensureAddressColumns } from './config/addressSchema';
-import { ensureOrderCouponColumns } from './config/orderSchema';
+import { ensureOrderCouponColumns, ensureUrgentDeliveryColumns } from './config/orderSchema';
 import { ensureVariableWeightColumns, ensureUnitToggleColumns } from './config/productSchema';
 import { ensureFeedbackTables, ensureComplaintImagesColumn } from './config/feedbackSchema';
 import { ensureTipsTable } from './config/tipsSchema';
@@ -313,6 +313,7 @@ const startServer = async () => {
         await ensureComplaintImagesColumn();
         await ensureTipsTable();
         await ensureWhatsappLinkColumns();
+        await ensureUrgentDeliveryColumns();
         // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars
         // are set. Safe to call on every boot — idempotently upserts the row.
         const adminResult = await bootstrapAdmin();
