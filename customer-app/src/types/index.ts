@@ -426,4 +426,5 @@ export type ProfileStackParamList = {
   MyReviews: undefined;
   MyComplaints: undefined;
   NewComplaint: { orderId?: string; orderNumber?: string } | undefined;
+  WorkAsRider: undefined;
 };

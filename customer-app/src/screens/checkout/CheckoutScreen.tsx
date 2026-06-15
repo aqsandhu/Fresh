@@ -109,6 +109,20 @@ export const CheckoutScreen: React.FC = () => {
   const [couponError, setCouponError] = useState('');
   const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([]);
 
+  // Urgent (on-demand) delivery — a flat super-admin rate instead of a slot.
+  // Ignores free delivery + coupons (handled below).
+  const [urgent, setUrgent] = useState(false);
+  const [urgentInfo, setUrgentInfo] = useState<{ charge: number; eta: string; enabled: boolean }>({
+    charge: 0, eta: '', enabled: false,
+  });
+
+  useEffect(() => {
+    orderService.getDeliverySettings().then((res) => {
+      const charge = Number(res.data?.urgent_charge) || 0;
+      setUrgentInfo({ charge, eta: String(res.data?.urgent_eta || ''), enabled: charge > 0 });
+    });
+  }, []);
+
   const selectedSlot = timeSlots.find((s) => s.id === selectedSlotId);
   const isFreeDeliverySlot = selectedSlot?.isFreeDelivery === true;
   const localSubtotal = subtotal();
@@ -117,10 +131,14 @@ export const CheckoutScreen: React.FC = () => {
   const deliveryCharge = serverDeliveryCharge ?? localDelivery;
   const couponFreeDelivery = appliedCoupon?.free_delivery === true;
   const couponProductDiscount =
-    appliedCoupon && !couponFreeDelivery
+    !urgent && appliedCoupon && !couponFreeDelivery
       ? Math.min(Number(appliedCoupon.discount_amount) || 0, sub)
       : 0;
-  const effectiveDelivery = couponFreeDelivery ? 0 : deliveryCharge;
+  const effectiveDelivery = urgent
+    ? urgentInfo.charge
+    : couponFreeDelivery
+    ? 0
+    : deliveryCharge;
   const total = Math.max(0, sub + effectiveDelivery - couponProductDiscount);
   const canPlaceOrder = Boolean(selectedAddressId) || (showNewAddress && newAddressValid);
 
@@ -290,13 +308,14 @@ export const CheckoutScreen: React.FC = () => {
   };
 
   const handlePlaceOrder = async () => {
-    if (!selectedSlotId && timeSlots.length > 0) {
+    if (!urgent && !selectedSlotId && timeSlots.length > 0) {
       Toast.show({ type: 'error', text1: 'Please select a delivery time slot' });
       return;
     }
 
     const selectedSlotForOrder = timeSlots.find((s) => s.id === selectedSlotId);
     if (
+      !urgent &&
       selectedSlotForOrder &&
       ((selectedSlotForOrder.available_slots ?? 0) <= 0 ||
         getSlotAvailability(
@@ -362,8 +381,12 @@ export const CheckoutScreen: React.FC = () => {
       };
       const cityId = await getSelectedCityId();
       if (cityId) body.city_id = cityId;
-      if (activeDay === 'tomorrow') body.requested_delivery_date = getDateString('tomorrow');
-      if (selectedSlotId) body.time_slot_id = selectedSlotId;
+      if (urgent) {
+        body.urgent_delivery = 'true';
+      } else {
+        if (activeDay === 'tomorrow') body.requested_delivery_date = getDateString('tomorrow');
+        if (selectedSlotId) body.time_slot_id = selectedSlotId;
+      }
 
       const res = await apiClient.post('/orders', body);
       const orderData = res.data?.data || res.data;
@@ -538,6 +561,43 @@ export const CheckoutScreen: React.FC = () => {
             </View>
             <Text style={styles.sectionTitle}>Delivery Time</Text>
           </View>
+
+          {urgentInfo.enabled && (
+            <TouchableOpacity
+              onPress={() => setUrgent((v) => !v)}
+              activeOpacity={0.85}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderWidth: 2,
+                borderColor: urgent ? '#f59e0b' : COLORS.gray200,
+                backgroundColor: urgent ? '#fffbeb' : COLORS.white,
+                borderRadius: BORDER_RADIUS.xl,
+                padding: SPACING.md,
+                marginBottom: urgent ? SPACING.xs : SPACING.md,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                <MaterialIcons name="bolt" size={22} color={urgent ? '#d97706' : COLORS.gray400} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', color: COLORS.gray900 }}>Urgent delivery</Text>
+                  <Text style={{ fontSize: 12, color: COLORS.gray500 }}>
+                    {urgentInfo.eta ? `Approx. ${urgentInfo.eta}` : 'Fastest available'} · no time slot
+                  </Text>
+                </View>
+              </View>
+              <Text style={{ fontWeight: '700', color: '#d97706' }}>{formatCurrency(urgentInfo.charge)}</Text>
+            </TouchableOpacity>
+          )}
+          {urgent && (
+            <Text style={{ fontSize: 12, color: '#b45309', marginBottom: SPACING.md }}>
+              Free delivery offers and coupons don&apos;t apply to urgent delivery.
+            </Text>
+          )}
+
+          {!urgent && (
+          <>
           <Text style={styles.slotsHeading}>
             {activeDay === 'today' ? 'Today available time slots' : 'Tomorrow time slots'}
           </Text>
@@ -616,6 +676,8 @@ export const CheckoutScreen: React.FC = () => {
               </TouchableOpacity>
             ))}
           </View>
+          </>
+          )}
         </View>
 
         {/* Payment */}
