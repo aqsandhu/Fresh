@@ -22,7 +22,7 @@ import {
 } from '../utils/coupons';
 import { hasUserCouponsTable } from '../utils/autoCoupons';
 import { restoreOrderInventory } from '../utils/orderStatus';
-import { hasOrderCouponColumns } from '../config/orderSchema';
+import { hasOrderCouponColumns, hasUrgentDeliveryColumns } from '../config/orderSchema';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 import { normalizePhoneNumber } from '../utils/validators';
@@ -325,7 +325,13 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     payment_method = 'cash_on_delivery',
     customer_notes,
     city_id: bodyCityId,
+    urgent_delivery,
   } = req.body;
+
+  // Urgent (on-demand) delivery: a flat super-admin rate instead of a time
+  // slot. It deliberately ignores free-delivery thresholds, free slots and
+  // coupons (handled below).
+  const isUrgent = urgent_delivery === true || urgent_delivery === 'true';
 
   const order = await withTransaction(async (client) => {
     // Get cart
@@ -438,21 +444,40 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     );
     const refreshedCart = refreshedCartResult.rows[0];
 
-    // Calculate delivery charge using transaction-visible cart totals.
-    const deliveryChargeResult = await calculateDeliveryCharge(
-      cart.id,
-      time_slot_id,
-      new Date(),
-      client
-    );
-    const deliveryCharge = deliveryChargeResult.delivery_charge;
+    // Calculate delivery charge. Urgent orders use the flat super-admin rate;
+    // otherwise the normal slot/threshold-aware calculation applies.
+    let deliveryCharge: number;
+    let deliveryChargeRuleId: string | undefined;
+    let urgentEta = '';
 
-    // Get delivery charge rule ID
-    const ruleResult = await client.query(
-      'SELECT id FROM delivery_charges_config WHERE rule_code = $1',
-      [deliveryChargeResult.rule_applied]
-    );
-    const deliveryChargeRuleId = ruleResult.rows[0]?.id;
+    if (isUrgent) {
+      const u = await client.query(
+        `SELECT key, value FROM site_settings WHERE key IN ('delivery_urgent_charge', 'delivery_urgent_eta')`
+      );
+      let urgentCharge = 0;
+      for (const r of u.rows) {
+        if (r.key === 'delivery_urgent_charge') urgentCharge = parseFloat(r.value) || 0;
+        if (r.key === 'delivery_urgent_eta') urgentEta = String(r.value || '').trim();
+      }
+      if (urgentCharge <= 0) {
+        throw new BadRequestError('Urgent delivery is not available right now.');
+      }
+      deliveryCharge = roundMoney(urgentCharge);
+      deliveryChargeRuleId = undefined;
+    } else {
+      const deliveryChargeResult = await calculateDeliveryCharge(
+        cart.id,
+        time_slot_id,
+        new Date(),
+        client
+      );
+      deliveryCharge = deliveryChargeResult.delivery_charge;
+      const ruleResult = await client.query(
+        'SELECT id FROM delivery_charges_config WHERE rule_code = $1',
+        [deliveryChargeResult.rule_applied]
+      );
+      deliveryChargeRuleId = ruleResult.rows[0]?.id;
+    }
 
     // Fresh subtotal from live products table (JOIN), not cached carts.subtotal.
     const freshSubtotalResult = await client.query(FRESH_CART_SUBTOTAL_SQL, [cart.id]);
@@ -482,7 +507,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       ? String(refreshedCart.coupon_code).trim().toUpperCase()
       : '';
 
-    if (couponCode && (await hasCouponsTable())) {
+    if (!isUrgent && couponCode && (await hasCouponsTable())) {
       const couponRes = await client.query(
         `SELECT * FROM coupons
           WHERE UPPER(code) = $1 AND (city_id IS NULL OR city_id = $2)
@@ -605,7 +630,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
           ) RETURNING *`,
           [
             req.user!.id, address_id, addressSnapshot,
-            time_slot_id, requested_delivery_date,
+            isUrgent ? null : time_slot_id, isUrgent ? null : requested_delivery_date,
             subtotal, discountAmount, couponDiscount, appliedCoupon?.code ?? null,
             effectiveDelivery, 0, totalAmount,
             deliveryChargeRuleId,
@@ -631,7 +656,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
           ) RETURNING *`,
           [
             req.user!.id, address_id, addressSnapshot,
-            time_slot_id, requested_delivery_date,
+            isUrgent ? null : time_slot_id, isUrgent ? null : requested_delivery_date,
             subtotal, discountAmount + couponDiscount, effectiveDelivery, 0, totalAmount,
             deliveryChargeRuleId,
             payment_method, customer_notes,
@@ -640,6 +665,16 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         );
 
     const order = orderResult.rows[0];
+
+    // Mark the order as urgent (gated until migration 28 is applied).
+    if (isUrgent && (await hasUrgentDeliveryColumns())) {
+      await client.query(
+        `UPDATE orders SET is_urgent_delivery = TRUE, urgent_delivery_eta = $1 WHERE id = $2`,
+        [urgentEta || null, order.id]
+      );
+      order.is_urgent_delivery = true;
+      order.urgent_delivery_eta = urgentEta || null;
+    }
 
     // Record the coupon redemption + bump its usage counter (same transaction,
     // same FOR UPDATE lock taken above — serialises concurrent redemptions).

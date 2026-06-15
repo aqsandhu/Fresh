@@ -389,8 +389,9 @@ export const orderSchemas = {
     requested_delivery_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
     payment_method: Joi.string().valid('cash_on_delivery', 'card', 'easypaisa', 'jazzcash').default('cash_on_delivery'),
     customer_notes: Joi.string().allow('').max(1000),
+    urgent_delivery: Joi.boolean().default(false),
   }),
-  
+
   updateStatus: Joi.object({
     status: Joi.string().valid(
       'pending', 'confirmed', 'preparing', 'ready_for_pickup',

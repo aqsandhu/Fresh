@@ -478,15 +478,20 @@ export const getSettings = asyncHandler(async (req: Request, res: Response) => {
   const result = await query(
     `SELECT key, value FROM site_settings WHERE key LIKE 'delivery_%'`
   );
-  const delivery: Record<string, number> = {
-    base_charge: 50,
-    free_delivery_threshold: 500,
-    express_charge: 100,
+  const map: Record<string, string> = {};
+  for (const row of result.rows) map[row.key.replace('delivery_', '')] = row.value;
+  const num = (k: string, d: number) => {
+    const n = parseFloat(map[k]);
+    return Number.isFinite(n) ? n : d;
   };
-  for (const row of result.rows) {
-    const shortKey = row.key.replace('delivery_', '');
-    delivery[shortKey] = parseFloat(row.value) || 0;
-  }
+
+  const delivery = {
+    base_charge: num('base_charge', 50),
+    free_delivery_threshold: num('free_delivery_threshold', 500),
+    express_charge: num('express_charge', 100),
+    urgent_charge: num('urgent_charge', 0),
+    urgent_eta: (map['urgent_eta'] || '').trim(),
+  };
 
   successResponse(res, { delivery }, 'Settings retrieved');
 });
@@ -498,13 +503,26 @@ export const getSettings = asyncHandler(async (req: Request, res: Response) => {
 
 export const updateDeliverySettings = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.id;
-  const { base_charge, free_delivery_threshold, express_charge } = req.body;
+  const { base_charge, free_delivery_threshold, express_charge, urgent_charge, urgent_eta } = req.body;
 
   const updates = [
     { key: 'delivery_base_charge', value: String(base_charge ?? 50) },
     { key: 'delivery_free_delivery_threshold', value: String(free_delivery_threshold ?? 500) },
     { key: 'delivery_express_charge', value: String(express_charge ?? 100) },
   ];
+
+  // Urgent (on-demand) delivery is a SUPER-ADMIN-only setting. Ignore these
+  // fields for any other admin so a city admin can't change the urgent rate.
+  const isSuperAdmin = req.user?.role === 'super_admin';
+  if (isSuperAdmin) {
+    if (urgent_charge !== undefined) {
+      const n = parseFloat(String(urgent_charge));
+      updates.push({ key: 'delivery_urgent_charge', value: String(Number.isFinite(n) && n >= 0 ? n : 0) });
+    }
+    if (urgent_eta !== undefined) {
+      updates.push({ key: 'delivery_urgent_eta', value: String(urgent_eta ?? '').trim().slice(0, 100) });
+    }
+  }
 
   for (const { key, value } of updates) {
     await upsertGlobalSiteSetting(key, value, userId);
@@ -514,6 +532,12 @@ export const updateDeliverySettings = asyncHandler(async (req: Request, res: Res
     base_charge: parseFloat(String(base_charge)) || 50,
     free_delivery_threshold: parseFloat(String(free_delivery_threshold)) || 500,
     express_charge: parseFloat(String(express_charge)) || 100,
+    ...(isSuperAdmin
+      ? {
+          urgent_charge: parseFloat(String(urgent_charge)) || 0,
+          urgent_eta: String(urgent_eta ?? '').trim(),
+        }
+      : {}),
   }, 'Delivery settings updated');
 });
 
