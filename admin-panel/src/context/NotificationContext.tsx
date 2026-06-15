@@ -18,6 +18,7 @@ import {
   onNewOrder,
   onOrderCancelled,
   onOrderStatusUpdated,
+  onSocketEvent,
   offSocketEvent,
   playNotificationSound,
   reconnectSocket,
@@ -26,11 +27,19 @@ import { getValidAdminAccessToken } from '@/lib/adminTokenRefresh';
 
 export interface AdminNotification {
   id: string;
-  type: 'order:new' | 'order:status_updated' | 'order:cancelled';
+  type:
+    | 'order:new'
+    | 'order:status_updated'
+    | 'order:cancelled'
+    | 'complaint:new'
+    | 'review:new'
+    | 'rider:application';
   title: string;
   message: string;
   orderId?: string;
   orderNumber?: string;
+  /** Optional in-app route to open when the notification is clicked. */
+  link?: string;
   read: boolean;
   createdAt: string;
 }
@@ -83,6 +92,7 @@ function buildNotification(
     message: String(data.message || fallbackMessage),
     orderId: data.orderId ? String(data.orderId) : undefined,
     orderNumber: data.orderNumber ? String(data.orderNumber) : undefined,
+    link: data.link ? String(data.link) : undefined,
     read: false,
     createdAt: new Date().toISOString(),
   };
@@ -202,6 +212,29 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
     };
 
+    const handleComplaint = (data: Record<string, unknown>) => {
+      const item = buildNotification('complaint:new', { ...data, link: '/admin/complaints' }, 'New complaint', 'A new complaint was filed');
+      pushNotification(item);
+      playNotificationSound();
+      toast(item.message, { icon: <Bell className="w-4 h-4 text-amber-500" />, duration: 5000 });
+      queryClient.invalidateQueries({ queryKey: ['admin-complaints'] });
+    };
+
+    const handleReview = (data: Record<string, unknown>) => {
+      const item = buildNotification('review:new', { ...data, link: '/admin/reviews' }, 'New review', 'A new review was submitted');
+      pushNotification(item);
+      toast(item.message, { icon: <Bell className="w-4 h-4 text-yellow-500" />, duration: 4000 });
+      queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
+    };
+
+    const handleRiderApplication = (data: Record<string, unknown>) => {
+      const item = buildNotification('rider:application', { ...data, link: '/admin/rider-applications' }, 'New rider application', 'A new rider application was received');
+      pushNotification(item);
+      playNotificationSound();
+      toast(item.message, { icon: <Bell className="w-4 h-4 text-blue-500" />, duration: 6000 });
+      queryClient.invalidateQueries({ queryKey: ['rider-applications'] });
+    };
+
     const setup = async () => {
       const token = await getValidAdminAccessToken();
       if (cancelled || !token) return;
@@ -239,6 +272,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       onNewOrder(handleNewOrder);
       onOrderStatusUpdated(handleStatusUpdated);
       onOrderCancelled(handleOrderCancelled);
+      onSocketEvent('complaint:new', handleComplaint);
+      onSocketEvent('review:new', handleReview);
+      onSocketEvent('rider:application', handleRiderApplication);
 
       connectionInterval = setInterval(() => {
         setIsSocketConnected(socket.connected);
@@ -254,6 +290,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       offSocketEvent('order:new', handleNewOrder);
       offSocketEvent('order:status_updated', handleStatusUpdated);
       offSocketEvent('order:cancelled', handleOrderCancelled);
+      offSocketEvent('complaint:new', handleComplaint);
+      offSocketEvent('review:new', handleReview);
+      offSocketEvent('rider:application', handleRiderApplication);
       flashTimersRef.current.forEach((t) => clearTimeout(t));
       flashTimersRef.current.clear();
       disconnectSocket();
