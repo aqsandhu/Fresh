@@ -208,16 +208,28 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
       const socket = connectSocket(token);
 
+      let recovering = false;
       const handleConnectError = async (err: Error) => {
-        if (!err.message.toLowerCase().includes('jwt') && !err.message.toLowerCase().includes('expired')) {
-          return;
-        }
-        // getValidAdminAccessToken refreshes the session as needed and
-        // returns a token usable in BOTH auth modes (cookie mode mints a
-        // handshake token — the refresh result itself is not a JWT there).
-        const fresh = await getValidAdminAccessToken();
-        if (fresh) {
-          reconnectSocket(fresh);
+        const msg = err.message.toLowerCase();
+        // Recover from any auth-related handshake failure: an expired JWT, or a
+        // missing/stale handshake token ("authentication required" — the latter
+        // was previously ignored, so the socket kept retrying with a dead token
+        // and never reconnected).
+        const isAuthError =
+          msg.includes('jwt') ||
+          msg.includes('expired') ||
+          msg.includes('auth') ||
+          msg.includes('token');
+        if (!isAuthError || recovering) return;
+        recovering = true;
+        try {
+          // getValidAdminAccessToken refreshes the session as needed and
+          // returns a token usable in BOTH auth modes (cookie mode mints a
+          // handshake token — the refresh result itself is not a JWT there).
+          const fresh = await getValidAdminAccessToken();
+          if (fresh) reconnectSocket(fresh);
+        } finally {
+          recovering = false;
         }
       };
 
