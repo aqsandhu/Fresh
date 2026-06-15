@@ -130,7 +130,7 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
     {
       key: 'service',
       target: 'service' as ReviewTargetType,
-      label: 'Service / delivery experience',
+      label: 'Company Service',
     },
   ]
 

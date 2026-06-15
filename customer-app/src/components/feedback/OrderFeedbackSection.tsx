@@ -16,7 +16,7 @@ interface OrderFeedbackSectionProps {
 const TARGET_LABEL: Record<string, string> = {
   product: 'پروڈکٹ',
   rider: 'رائڈر',
-  service: 'سروس',
+  service: 'کمپنی سروس',
 };
 
 /**

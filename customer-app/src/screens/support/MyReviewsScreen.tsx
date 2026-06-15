@@ -16,7 +16,7 @@ type Nav = NativeStackNavigationProp<ProfileStackParamList, 'MyReviews'>;
 const TARGET_LABEL: Record<string, string> = {
   product: 'پروڈکٹ',
   rider: 'رائڈر',
-  service: 'سروس',
+  service: 'کمپنی سروس',
 };
 
 export const MyReviewsScreen: React.FC = () => {
@@ -48,7 +48,7 @@ export const MyReviewsScreen: React.FC = () => {
   const titleFor = (r: Review): string => {
     if (r.targetType === 'product') return r.productName || 'پروڈکٹ';
     if (r.targetType === 'rider') return r.riderName ? `رائڈر: ${r.riderName}` : 'رائڈر';
-    return 'سروس / ڈیلیوری';
+    return 'کمپنی سروس';
   };
 
   const renderItem = ({ item }: { item: Review }) => (

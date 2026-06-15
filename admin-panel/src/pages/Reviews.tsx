@@ -18,7 +18,7 @@ const TABS: { value: ReviewTargetType | ''; label: string }[] = [
   { value: '', label: 'All' },
   { value: 'product', label: 'Products' },
   { value: 'rider', label: 'Riders' },
-  { value: 'service', label: 'Service' },
+  { value: 'service', label: 'Company Service' },
 ];
 
 function Stars({ value }: { value: number }) {
@@ -94,7 +94,7 @@ export const Reviews: React.FC = () => {
 function targetTitle(r: AdminReview): string {
   if (r.targetType === 'product') return r.productName || 'Product';
   if (r.targetType === 'rider') return r.riderName ? `Rider: ${r.riderName}` : 'Rider';
-  return 'Service / delivery';
+  return 'Company Service';
 }
 
 function ReviewCard({ review }: { review: AdminReview }) {
