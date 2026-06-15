@@ -185,6 +185,13 @@ export const ProfileScreen: React.FC = () => {
         ]
       : []),
     {
+      icon: 'two-wheeler',
+      title: 'Work as a Rider',
+      subtitle: 'Join our delivery team',
+      onPress: () => navigation.navigate('WorkAsRider'),
+      showArrow: true,
+    },
+    {
       icon: 'help',
       title: 'Help & Support',
       subtitle: 'Get help with your orders',

@@ -243,16 +243,25 @@ class OrderService {
     }
   }
 
-  async getDeliverySettings(): Promise<ApiResponse<{ base_charge: number; free_delivery_threshold: number; express_charge: number }>> {
+  async getDeliverySettings(): Promise<ApiResponse<{ base_charge: number; free_delivery_threshold: number; express_charge: number; urgent_charge: number; urgent_eta: string }>> {
     try {
       const response = await apiClient.get('/site-settings/delivery', { params: withCityParams() });
-      const raw = response.data;
-      return { success: true, data: raw.data };
+      const raw = response.data?.data || {};
+      return {
+        success: true,
+        data: {
+          base_charge: Number(raw.base_charge) || 100,
+          free_delivery_threshold: Number(raw.free_delivery_threshold) || 500,
+          express_charge: Number(raw.express_charge) || 100,
+          urgent_charge: Number(raw.urgent_charge) || 0,
+          urgent_eta: String(raw.urgent_eta || ''),
+        },
+      };
     } catch (error) {
       // Fallback to defaults if endpoint fails
       return {
         success: true,
-        data: { base_charge: 100, free_delivery_threshold: 500, express_charge: 100 },
+        data: { base_charge: 100, free_delivery_threshold: 500, express_charge: 100, urgent_charge: 0, urgent_eta: '' },
       };
     }
   }
