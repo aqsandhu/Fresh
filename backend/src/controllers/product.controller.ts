@@ -287,11 +287,17 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
   const requested = parseInt((req.query.limit as string) || '20', 10);
   const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 100) : 20;
   const publicCityId = await resolvePublicCityId(req);
+  const varCols = await variableWeightCols();
+  const rateCols = await ratingCols();
+  const toggleCols = await unitToggleCols();
 
   let sql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${varCols}
+      ${rateCols}
+      ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug
     FROM products p
@@ -317,11 +323,17 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
 export const getNewArrivals = asyncHandler(async (req: Request, res: Response) => {
   const { limit = 10 } = req.query;
   const publicCityId = await resolvePublicCityId(req);
+  const varCols = await variableWeightCols();
+  const rateCols = await ratingCols();
+  const toggleCols = await unitToggleCols();
 
   let sql = `
-    SELECT 
+    SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${varCols}
+      ${rateCols}
+      ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug
     FROM products p
@@ -359,16 +371,22 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
   }
 
   const categoryId = productResult.rows[0].category_id;
+  const varCols = await variableWeightCols();
+  const rateCols = await ratingCols();
+  const toggleCols = await unitToggleCols();
 
   let sql = `
-    SELECT 
+    SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${varCols}
+      ${rateCols}
+      ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.category_id = $1 
+    WHERE p.category_id = $1
       AND p.id != $2 
       AND p.is_active = TRUE`;
   const params: any[] = [categoryId, id];
@@ -410,10 +428,17 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
 
   params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
 
+  const varCols = await variableWeightCols();
+  const rateCols = await ratingCols();
+  const toggleCols = await unitToggleCols();
+
   const result = await query(
-    `SELECT 
+    `SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${varCols}
+      ${rateCols}
+      ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug,
       ts_rank(

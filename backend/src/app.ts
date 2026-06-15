@@ -274,28 +274,7 @@ const startServer = async () => {
       logger.warn('If using Supabase, ensure you are using the connection pooler URL:');
       logger.warn('  postgresql://postgres:PASSWORD@PROJECT_ID.pooler.supabase.com:6543/postgres');
       // Continue starting server - don't exit
-    } else {
-      await ensureDatabaseExtensions();
-      await ensurePinColumns();
-      await ensureAddressColumns();
-      await ensureOrderCouponColumns();
-      await ensureVariableWeightColumns();
-      await ensureUnitToggleColumns();
-      await ensureFeedbackTables();
-      await ensureComplaintImagesColumn();
-      await ensureTipsTable();
-      // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars are set.
-      // Safe to call on every boot — idempotently upserts the super-admin row.
-      const adminResult = await bootstrapAdmin();
-      if (adminResult.status === 'error') {
-        logger.error(`Admin bootstrap error: ${adminResult.message}`);
-      } else {
-        logger.info(`Admin bootstrap: ${adminResult.status} — ${adminResult.message}`);
-      }
     }
-
-    // Ensure Supabase Storage bucket exists (creates "uploads" if missing)
-    await ensureStorageBucket();
 
     await initRateLimiterStore();
 
@@ -303,7 +282,11 @@ const startServer = async () => {
     initializeSocket(httpServer);
     logger.info('Socket.IO initialized');
 
-    // Start HTTP server
+    // Start HTTP server FIRST so cold starts begin answering requests
+    // immediately. The schema migrations, admin bootstrap and storage-bucket
+    // check are all idempotent and feature-gated (controllers probe before
+    // using a new column), so they run in the background instead of delaying
+    // the server from listening — this shaves seconds off every cold boot.
     logOtpBypassWarningIfEnabled();
     httpServer.listen(PORT, () => {
       logger.info(`=================================`);
@@ -316,18 +299,44 @@ const startServer = async () => {
       logger.info(`=================================`);
     });
 
-    // If DB was not connected, keep retrying in background
-    if (!dbConnected) {
+    // Idempotent startup tasks — run in the background, never block listen().
+    const runStartupTasks = async () => {
+      try {
+        await ensureDatabaseExtensions();
+        await ensurePinColumns();
+        await ensureAddressColumns();
+        await ensureOrderCouponColumns();
+        await ensureVariableWeightColumns();
+        await ensureUnitToggleColumns();
+        await ensureFeedbackTables();
+        await ensureComplaintImagesColumn();
+        await ensureTipsTable();
+        // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars
+        // are set. Safe to call on every boot — idempotently upserts the row.
+        const adminResult = await bootstrapAdmin();
+        if (adminResult.status === 'error') {
+          logger.error(`Admin bootstrap error: ${adminResult.message}`);
+        } else {
+          logger.info(`Admin bootstrap: ${adminResult.status} — ${adminResult.message}`);
+        }
+      } catch (err) {
+        logger.error('Background startup tasks failed:', err);
+      }
+      // Ensure Supabase Storage bucket exists (creates "uploads" if missing).
+      await ensureStorageBucket().catch((err) =>
+        logger.warn('Could not ensure storage bucket', { error: (err as Error)?.message })
+      );
+    };
+
+    if (dbConnected) {
+      void runStartupTasks();
+    } else {
+      // DB wasn't ready — keep retrying, then run the startup tasks once it is.
       const retryDb = async () => {
         const connected = await testConnection(1, 0);
         if (connected) {
           logger.info('Database connection established after startup!');
-          await ensureDatabaseExtensions();
-          await ensurePinColumns();
-          await ensureAddressColumns();
-          await ensureOrderCouponColumns();
-          await ensureVariableWeightColumns();
-          await ensureFeedbackTables();
+          await runStartupTasks();
         } else {
           setTimeout(retryDb, 30000); // Retry every 30 seconds
         }
