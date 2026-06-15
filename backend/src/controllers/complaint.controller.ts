@@ -16,6 +16,7 @@ import {
 } from '../utils/response';
 import { ensureFeedbackTables, hasComplaintImagesColumn } from '../config/feedbackSchema';
 import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
+import { emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
 const CATEGORIES = [
@@ -170,6 +171,16 @@ export const fileComplaint = asyncHandler(async (req: Request, res: Response) =>
       );
 
   logger.info('Complaint filed', { ticket: ticketNumber, userId: req.user.id, category, images: imageUrls.length });
+
+  // Real-time notify admins (the panel shows a toast + bell entry).
+  emitToAdmins('complaint:new', {
+    title: 'New complaint',
+    message: `#${ticketNumber}: ${subject}`,
+    ticketNumber,
+    complaintId: result.rows[0].id,
+    category,
+  });
+
   return createdResponse(res, mapComplaint(result.rows[0]), 'Your complaint has been submitted');
 });
 
