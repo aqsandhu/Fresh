@@ -587,6 +587,32 @@ export const complaintsApi = {
   },
 }
 
+// Work-as-rider page (content + application)
+export interface WorkAsRiderContent {
+  intro: string
+  benefits: string
+  hours: string
+  terms: string
+}
+
+export const workAsRiderApi = {
+  getContent: async (): Promise<WorkAsRiderContent> => {
+    const response = await api.get('/work-as-rider')
+    return (response.data?.data || response.data) as WorkAsRiderContent
+  },
+  apply: async (input: {
+    fullName: string
+    phone: string
+    city?: string
+    area?: string
+    vehicleType?: string
+    message?: string
+  }) => {
+    const response = await api.post('/work-as-rider/apply', input, { params: withCityParams() })
+    return response.data?.data || response.data
+  },
+}
+
 // User guidance tips (admin-managed, per page + city)
 export const tipsApi = {
   forPage: async (page: string): Promise<{ id: string; text: string }[]> => {

@@ -17,6 +17,7 @@ import {
   Star,
   MessageSquareWarning,
   Lightbulb,
+  UserPlus,
   LogOut,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { path: '/admin/categories', label: 'Categories', icon: <Grid3X3 className="w-5 h-5" /> },
   { path: '/admin/customers', label: 'Customers', icon: <Users className="w-5 h-5" /> },
   { path: '/admin/riders', label: 'Riders', icon: <Bike className="w-5 h-5" /> },
+  { path: '/admin/rider-applications', label: 'Rider Applications', icon: <UserPlus className="w-5 h-5" /> },
   { path: '/admin/atta-requests', label: 'Atta Chakki', icon: <Wheat className="w-5 h-5" /> },
   { path: '/admin/whatsapp-orders', label: 'WhatsApp Orders', icon: <MessageCircle className="w-5 h-5" /> },
   { path: '/admin/addresses', label: 'Addresses', icon: <MapPin className="w-5 h-5" /> },

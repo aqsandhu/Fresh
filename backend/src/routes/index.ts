@@ -21,6 +21,7 @@ import couponRoutes from './coupon.routes';
 import reviewRoutes from './review.routes';
 import complaintRoutes from './complaint.routes';
 import tipsRoutes from './tips.routes';
+import workAsRiderRoutes from './workAsRider.routes';
 
 const router = Router();
 
@@ -43,5 +44,6 @@ router.use('/coupons', couponRoutes);
 router.use('/reviews', reviewRoutes);
 router.use('/complaints', complaintRoutes);
 router.use('/tips', tipsRoutes);
+router.use('/work-as-rider', workAsRiderRoutes);
 
 export default router;

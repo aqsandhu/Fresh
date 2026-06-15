@@ -21,6 +21,7 @@ import {
   Loader2,
   ArrowRight,
   MessageSquareWarning,
+  Bike,
 } from 'lucide-react'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { cn, formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
@@ -530,6 +531,14 @@ export default function Header() {
               >
                 <PhoneCall className="w-5 h-5" />
                 Contact Us
+              </Link>
+              <Link
+                href="/work-as-rider"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                <Bike className="w-5 h-5" />
+                Work as Rider
               </Link>
             </nav>
           </motion.div>
