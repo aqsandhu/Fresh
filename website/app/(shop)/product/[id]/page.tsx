@@ -23,6 +23,7 @@ import { useQuery } from '@tanstack/react-query'
 import ProductCard from '@/components/ui/ProductCard'
 import ProductPrice from '@/components/ui/ProductPrice'
 import ProductReviews from '@/components/feedback/ProductReviews'
+import GuidanceTips from '@/components/guidance/GuidanceTips'
 import { useCartStore } from '@/store/cartStore'
 import { useVariableWeightNotice } from '@/store/variableWeightNotice'
 import { useCityContext } from '@/context/CityContext'
@@ -134,7 +135,7 @@ export default function ProductDetailPage() {
   const imageSrc = product.image || product.image_url || undefined
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-10">
+    <div className="min-h-screen bg-gray-50 pb-10 overflow-x-hidden">
       <div className="bg-white border-b border-gray-100 sticky top-0 z-40">
         <div className="container mx-auto px-4 py-2">
           <button
@@ -168,6 +169,10 @@ export default function ProductDetailPage() {
           {product.name}
         </span>
       </nav>
+
+      <div className="container mx-auto px-4 mt-2">
+        <GuidanceTips tips={[]} page="product" />
+      </div>
 
       {/* Mobile: stacked (unchanged). Desktop: image left half + details right half. */}
       <section className="bg-white pb-6 mb-8">

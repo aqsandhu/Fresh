@@ -43,6 +43,7 @@ export interface AdminComplaint {
   message: string;
   status: ComplaintStatus;
   priority: ComplaintPriority;
+  images: string[] | null;
   adminResponse: string | null;
   resolvedAt: string | null;
   createdAt: string;

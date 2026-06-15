@@ -10,40 +10,54 @@ export default function VariableWeightNotice() {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm"
+      onClick={dismiss}
+      role="dialog"
+      aria-modal="true"
+    >
       <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: 12 }}
+        initial={{ opacity: 0, scale: 0.94, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.22 }}
-        className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+        transition={{ duration: 0.2 }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative mx-auto my-auto w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl"
       >
+        {/* Header band */}
+        <div className="flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50 px-5 pb-4 pt-6">
+          <span className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 ring-8 ring-amber-50">
+            <Scale className="h-8 w-8 text-amber-600" />
+          </span>
+        </div>
+
         <button
           type="button"
           onClick={dismiss}
           aria-label="Close"
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"
+          className="absolute right-3 top-3 rounded-full bg-white/70 p-1.5 text-gray-500 hover:bg-white hover:text-gray-700"
         >
-          <X className="h-5 w-5" />
+          <X className="h-4 w-4" />
         </button>
 
-        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100">
-          <Scale className="h-7 w-7 text-amber-600" />
+        <div className="px-5 pb-5 pt-4">
+          <h3 className="mb-2 text-center text-base font-bold text-gray-900 font-urdu" dir="rtl">
+            وزن میں معمولی فرق ممکن ہے
+          </h3>
+          <p
+            dir="rtl"
+            className="text-center text-[13px] leading-7 text-gray-600 font-urdu break-words"
+          >
+            {note}
+          </p>
+
+          <button
+            type="button"
+            onClick={dismiss}
+            className="mt-5 w-full rounded-xl bg-primary-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-primary-700"
+          >
+            سمجھ گیا (OK)
+          </button>
         </div>
-
-        <p
-          dir="rtl"
-          className="text-center text-base leading-loose text-gray-800 font-urdu"
-        >
-          {note}
-        </p>
-
-        <button
-          type="button"
-          onClick={dismiss}
-          className="mt-5 w-full rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
-        >
-          سمجھ گیا (OK)
-        </button>
       </motion.div>
     </div>
   )

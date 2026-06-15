@@ -525,6 +525,7 @@ export interface Complaint {
   message: string
   status: ComplaintStatus
   priority: 'low' | 'normal' | 'high'
+  images?: string[]
   adminResponse?: string | null
   resolvedAt?: string | null
   createdAt?: string
@@ -563,8 +564,21 @@ export const complaintsApi = {
     message: string
     category?: ComplaintCategory
     orderId?: string
+    images?: File[]
   }): Promise<Complaint> => {
-    const response = await api.post('/complaints', input, { params: withCityParams() })
+    // Use multipart only when there are attachments; otherwise plain JSON.
+    if (input.images && input.images.length > 0) {
+      const fd = new FormData()
+      fd.append('subject', input.subject)
+      fd.append('message', input.message)
+      if (input.category) fd.append('category', input.category)
+      if (input.orderId) fd.append('orderId', input.orderId)
+      input.images.slice(0, 5).forEach((file) => fd.append('images', file))
+      const response = await api.post('/complaints', fd, { params: withCityParams() })
+      return response.data?.data || response.data
+    }
+    const { images: _images, ...payload } = input
+    const response = await api.post('/complaints', payload, { params: withCityParams() })
     return response.data?.data || response.data
   },
   mine: async (): Promise<Complaint[]> => {

@@ -12,7 +12,7 @@ import {
   type ComplaintStatus,
 } from '@/services/feedback.service';
 import { useCityContext } from '@/context/CityContext';
-import { formatDateTime } from '@/utils/formatters';
+import { formatDateTime, resolveImageUrl } from '@/utils/formatters';
 
 const STATUS_TABS: { value: ComplaintStatus | ''; label: string }[] = [
   { value: '', label: 'All' },
@@ -152,6 +152,22 @@ function ComplaintCard({
       {expanded && (
         <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
           <p className="text-sm text-gray-700 whitespace-pre-wrap">{complaint.message}</p>
+
+          {complaint.images && complaint.images.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {complaint.images.map((img, i) => (
+                <a
+                  key={i}
+                  href={resolveImageUrl(img)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-20 w-20 overflow-hidden rounded-lg border border-gray-200"
+                >
+                  <img src={resolveImageUrl(img)} alt="" className="h-full w-full object-cover" />
+                </a>
+              ))}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
