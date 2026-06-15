@@ -179,7 +179,7 @@ export default function ProductDetailPage() {
             fill
             className="object-cover"
             priority
-            sizes="100vw"
+            sizes="(min-width: 768px) 50vw, 100vw"
             fallback={
               <div className="w-full h-full flex items-center justify-center text-gray-300">
                 <ShoppingCart className="w-16 h-16" />
