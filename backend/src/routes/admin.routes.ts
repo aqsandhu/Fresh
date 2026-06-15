@@ -9,6 +9,7 @@ import * as couponController from '../controllers/coupon.controller';
 import * as reviewController from '../controllers/review.controller';
 import * as complaintController from '../controllers/complaint.controller';
 import * as tipsController from '../controllers/tips.controller';
+import * as riderAppController from '../controllers/riderApplication.controller';
 import {
   authenticate,
   requireAdmin,
@@ -241,6 +242,11 @@ router.put('/reviews/:id', adminRateLimiter, reviewController.updateReviewAdmin)
 router.get('/complaints', complaintController.listComplaints);
 router.get('/complaints/:id', complaintController.getComplaint);
 router.put('/complaints/:id', adminRateLimiter, complaintController.updateComplaint);
+
+// Rider applications + "Work as Rider" page content
+router.get('/rider-applications', riderAppController.listRiderApplications);
+router.put('/rider-applications/:id', adminRateLimiter, riderAppController.updateRiderApplication);
+router.put('/work-as-rider', adminRateLimiter, riderAppController.updateWorkAsRiderContent);
 
 // User guidance tips (per-city; global tips are super-admin only)
 router.get('/tips', tipsController.listTips);

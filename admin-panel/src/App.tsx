@@ -26,6 +26,7 @@ import {
   Reviews,
   Complaints,
   UserTips,
+  RiderApplications,
   Settings,
 } from '@/pages';
 import './App.css';
@@ -284,6 +285,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <UserTips />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/rider-applications"
+        element={
+          <ProtectedRoute>
+            <RiderApplications />
           </ProtectedRoute>
         }
       />

@@ -50,6 +50,8 @@ export const PERMISSION_CODES = [
   'complaints.manage',
   'tips.view',
   'tips.manage',
+  'rider_applications.view',
+  'rider_applications.manage',
   'roles.manage',
   'admins.manage',
 ] as const;
@@ -107,6 +109,8 @@ export const PERMISSION_CATALOGUE: PermissionCatalogueRow[] = [
   { code: 'complaints.manage',   description: 'Respond to / resolve complaints',  category: 'Support' },
   { code: 'tips.view',           description: 'View user guidance tips',          category: 'Settings' },
   { code: 'tips.manage',         description: 'Add / edit / pause user guidance tips', category: 'Settings' },
+  { code: 'rider_applications.view',   description: 'View rider applications',     category: 'Riders' },
+  { code: 'rider_applications.manage', description: 'Manage rider applications + page content', category: 'Riders' },
   { code: 'roles.manage',        description: 'Create / manage admin roles',     category: 'Admins' },
   { code: 'admins.manage',       description: 'Invite / manage admin users',     category: 'Admins' },
 ];

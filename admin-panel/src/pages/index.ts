@@ -15,4 +15,5 @@ export { CouponsUsed } from './CouponsUsed';
 export { Reviews } from './Reviews';
 export { Complaints } from './Complaints';
 export { UserTips } from './UserTips';
+export { RiderApplications } from './RiderApplications';
 export { Settings } from './Settings';
