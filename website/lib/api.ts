@@ -153,6 +153,10 @@ function mapBackendProduct(raw: any): Product {
     // Default true when the field is absent (pre-migration / older payloads).
     allowHalfKg: (raw.allow_half_kg ?? raw.allowHalfKg) !== false,
     allowQuarterKg: (raw.allow_quarter_kg ?? raw.allowQuarterKg) !== false,
+    // Free-delivery eligibility comes straight from the category flag (admin
+    // checkbox). Only flagged categories count toward the threshold.
+    qualifiesForFreeDelivery:
+      (raw.qualifies_for_free_delivery ?? raw.qualifiesForFreeDelivery) === true,
     isVariableWeight:
       raw.is_variable_weight === true || raw.isVariableWeight === true,
     variableWeightNote: raw.variable_weight_note ?? raw.variableWeightNote ?? null,

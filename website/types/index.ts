@@ -80,6 +80,8 @@ export interface Product {
   /** Per-product availability of the half/quarter-kg units (default true). */
   allowHalfKg?: boolean;
   allowQuarterKg?: boolean;
+  /** Whether this product's category counts toward the free-delivery threshold. */
+  qualifiesForFreeDelivery?: boolean;
   /** Weight may differ at packing — show the note popup when adding. */
   isVariableWeight?: boolean;
   variableWeightNote?: string | null;

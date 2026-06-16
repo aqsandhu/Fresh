@@ -140,6 +140,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
+      c.qualifies_for_free_delivery,
       p.subcategory_id, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       ${varCols}
@@ -299,7 +300,8 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
       ${rateCols}
       ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
-      c.name_en as category_name, c.slug as category_slug
+      c.name_en as category_name, c.slug as category_slug,
+      c.qualifies_for_free_delivery
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE AND p.is_featured = TRUE`;
@@ -335,7 +337,8 @@ export const getNewArrivals = asyncHandler(async (req: Request, res: Response) =
       ${rateCols}
       ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
-      c.name_en as category_name, c.slug as category_slug
+      c.name_en as category_name, c.slug as category_slug,
+      c.qualifies_for_free_delivery
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE AND p.is_new_arrival = TRUE`;
@@ -383,7 +386,8 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
       ${rateCols}
       ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
-      c.name_en as category_name, c.slug as category_slug
+      c.name_en as category_name, c.slug as category_slug,
+      c.qualifies_for_free_delivery
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.category_id = $1
@@ -441,6 +445,7 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
       ${toggleCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug,
+      c.qualifies_for_free_delivery,
       ts_rank(
         to_tsvector('english', COALESCE(p.name_en, '') || ' ' || COALESCE(p.description_en, '') || ' ' || array_to_string(COALESCE(p.tags, ARRAY[]::text[]), ' ')),
         plainto_tsquery('english', $1)

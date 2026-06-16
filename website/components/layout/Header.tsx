@@ -64,7 +64,6 @@ export default function Header() {
     { href: '/', label: 'Home', icon: Home },
     ...categories.map(cat => ({ href: `/category/${cat.slug}`, label: cat.name, icon: null })),
     { href: '/atta-chakki', label: 'Atta Chakki', icon: Wheat },
-    { href: '/work-as-rider', label: 'Work as Rider', icon: Bike },
   ]
 
   // Banner settings from API
@@ -309,6 +308,18 @@ export default function Header() {
               <Search className="w-5 h-5 text-gray-600" />
             </button>
 
+            {/* Work as Rider — desktop icon with hover tooltip */}
+            <Link
+              href="/work-as-rider"
+              aria-label="Work as Rider"
+              className="relative group hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <Bike className="w-5 h-5 text-gray-600" />
+              <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
+                Work as Rider
+              </span>
+            </Link>
+
             {/* Notifications */}
             {hasMounted && isAuthenticated && <NotificationBell />}
 
@@ -532,6 +543,14 @@ export default function Header() {
               >
                 <PhoneCall className="w-5 h-5" />
                 Contact Us
+              </Link>
+              <Link
+                href="/work-as-rider"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                <Bike className="w-5 h-5" />
+                Work as Rider
               </Link>
             </nav>
           </motion.div>

@@ -366,6 +366,7 @@ export interface CreateCategoryData {
   image?: File;
   isActive?: boolean;
   displayOrder?: number;
+  qualifiesForFreeDelivery?: boolean;
 }
 
 export interface CreateRiderData {

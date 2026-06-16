@@ -105,6 +105,8 @@ function mapBackendProduct(raw: any): StoreProduct {
     halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
     allowHalfKg: (raw.allow_half_kg ?? raw.allowHalfKg) !== false,
     allowQuarterKg: (raw.allow_quarter_kg ?? raw.allowQuarterKg) !== false,
+    qualifiesForFreeDelivery:
+      (raw.qualifies_for_free_delivery ?? raw.qualifiesForFreeDelivery) === true,
     isVariableWeight: raw.is_variable_weight === true || raw.isVariableWeight === true,
     variableWeightNote: raw.variable_weight_note ?? raw.variableWeightNote ?? null,
   };

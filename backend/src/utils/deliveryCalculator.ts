@@ -23,15 +23,6 @@ import { FRESH_CART_LINE_UNIT_PRICE_SQL, FRESH_CART_SUBTOTAL_SQL } from './unitP
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
 const ENV_FREE_DELIVERY_MIN_AMOUNT = parseFloat(process.env.FREE_DELIVERY_MIN_AMOUNT || '500');
 
-const VEG_FRUIT_SLUGS = [
-  'vegetables',
-  'fruits',
-  'sabzi',
-  'fruit',
-  'vegetable',
-  'fresh-vegetables',
-  'fresh-fruits',
-];
 
 type DbClient = Pick<PoolClient, 'query'>;
 
@@ -65,14 +56,12 @@ const getDeliverySettings = async (
 
 /**
  * Sum of cart items in categories that count toward the free-delivery threshold.
- * Mirrors the client (packages/shared-types/src/deliveryRules.ts):
- *   • qualifies_for_free_delivery = TRUE   → always counts
- *   • qualifies_for_free_delivery = FALSE  → NEVER counts (admin opted out),
- *     even if the category name/slug looks like veg/fruit
- *   • qualifies_for_free_delivery IS NULL  → fall back to slug/name heuristics
- * The `IS DISTINCT FROM TRUE` guard on the heuristics is the key fix: previously
- * a FALSE category whose name started with "fruit"/"vegetable" still counted, so
- * a non-qualifying product wrongly produced free delivery at checkout.
+ *
+ * The ONLY thing that decides this is the admin's per-category checkbox
+ * (categories.qualifies_for_free_delivery). No slug/name heuristics — an admin
+ * who un-ticks a category removes it from the free-delivery threshold entirely.
+ * (Free-delivery time SLOTS still make every category free — that is Rule 1
+ * above and is handled separately.)
  */
 async function getVegFruitSubtotal(cartId: string, client?: DbClient): Promise<number> {
   const result = await runQuery(
@@ -82,16 +71,8 @@ async function getVegFruitSubtotal(cartId: string, client?: DbClient): Promise<n
        JOIN products p ON ci.product_id = p.id
        JOIN categories cat ON p.category_id = cat.id
       WHERE ci.cart_id = $1
-        AND cat.qualifies_for_free_delivery IS DISTINCT FROM FALSE
-        AND (
-          cat.qualifies_for_free_delivery = TRUE
-          OR LOWER(cat.slug) = ANY($2::text[])
-          OR LOWER(cat.name_en) LIKE 'vegetable%'
-          OR LOWER(cat.name_en) LIKE 'fruit%'
-          OR LOWER(cat.name_en) = 'sabzi'
-          OR LOWER(cat.name_en) = 'phal'
-        )`,
-    [cartId, VEG_FRUIT_SLUGS]
+        AND cat.qualifies_for_free_delivery = TRUE`,
+    [cartId]
   );
   return parseFloat(result.rows[0]?.veg_fruit_total || '0');
 }
