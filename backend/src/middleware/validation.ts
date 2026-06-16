@@ -473,6 +473,7 @@ export const adminSchemas = {
     ).min(1).required(),
     urgent_delivery: Joi.boolean().default(false),
     time_slot_id: commonSchemas.uuid.optional().allow(null, ''),
+    requested_delivery_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional().allow(null, ''),
     admin_notes: Joi.string().allow('', null),
     // Accepted for backward compatibility (ignored by the controller).
     whatsapp_number: Joi.string().optional().allow('', null),

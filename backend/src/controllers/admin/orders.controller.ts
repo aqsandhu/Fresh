@@ -694,6 +694,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
     address_id,
     urgent_delivery,
     time_slot_id,
+    requested_delivery_date,
   } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -816,13 +817,14 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
 
       const orderRes = await client.query(
         `INSERT INTO orders (
-          user_id, address_id, delivery_address_snapshot, time_slot_id,
+          user_id, address_id, delivery_address_snapshot, time_slot_id, requested_delivery_date,
           subtotal, discount_amount, delivery_charge, tax_amount, total_amount,
           payment_method, payment_status, status, source, customer_notes, city_id
-        ) VALUES ($1,$2,$3,$4,$5,0,$6,0,$7,'cash_on_delivery','pending','pending','whatsapp',$8,$9)
+        ) VALUES ($1,$2,$3,$4,$5,$6,0,$7,0,$8,'cash_on_delivery','pending','pending','whatsapp',$9,$10)
         RETURNING *`,
         [
           customer.id, address.id, snapshot, effectiveSlotId,
+          isUrgent ? null : (requested_delivery_date || null),
           subtotal, deliveryCharge, totalAmount, admin_notes || null, orderCityId,
         ]
       );
