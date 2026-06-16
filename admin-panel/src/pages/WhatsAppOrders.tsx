@@ -220,7 +220,9 @@ export const WhatsAppOrders: React.FC = () => {
         setUserId(found.id);
         setAddressId('');
         setAddresses(addrs);
-        if (addrs.length === 1) selectAddress(addrs[0]);
+        // Auto-fill the default (or most recent) saved address — including its
+        // latitude/longitude — so the admin doesn't have to re-pick it.
+        if (addrs.length > 0) selectAddress(addrs[0]);
         toast.success(`Found ${found.fullName}${addrs.length ? ` · ${addrs.length} address(es)` : ''}`);
       } else {
         setFoundCustomer(false);
@@ -345,6 +347,13 @@ export const WhatsAppOrders: React.FC = () => {
                         setFoundCustomer(false);
                         setUserId('');
                       }}
+                      onKeyDown={(e) => {
+                        // Enter searches instead of submitting the whole form.
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleLookup();
+                        }
+                      }}
                       onBlur={() => whatsappNumber && !lookupDone && handleLookup()}
                       placeholder="+923XXXXXXXXX"
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
@@ -459,7 +468,7 @@ export const WhatsAppOrders: React.FC = () => {
                 </div>
                 {latitude.trim() && longitude.trim() && (
                   <a
-                    href={`https://www.google.com/maps?q=${latitude.trim()},${longitude.trim()}`}
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${latitude.trim()},${longitude.trim()}`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline"
