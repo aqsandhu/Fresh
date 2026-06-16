@@ -231,7 +231,7 @@ export function getOrderStatusColor(status: string): string {
 
 export function getOrderStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    'received': 'Order Received',
+    'received': 'Order Placed',
     'preparing': 'Preparing',
     'out-for-delivery': 'Out for Delivery',
     'delivered': 'Delivered',

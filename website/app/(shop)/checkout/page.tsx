@@ -99,6 +99,7 @@ function CheckoutPage() {
   // the ref to save the address automatically when the user presses Place
   // Order without having clicked Save first.
   const newAddressFormRef = useRef<AddressFormHandle>(null)
+  const deliveryTimeRef = useRef<HTMLDivElement>(null)
   const [newAddressValid, setNewAddressValid] = useState(false)
 
   // Coupon state. The discount is a PREVIEW — the server recomputes it
@@ -262,6 +263,11 @@ function CheckoutPage() {
   const handleDayChange = (day: 'today' | 'tomorrow') => {
     setSelectedDay(day)
     loadTimeSlots(day)
+    // Scroll back up to where the slots start so the newly loaded slots for the
+    // chosen day are in view (the day buttons sit below the slot grid).
+    requestAnimationFrame(() => {
+      deliveryTimeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   const loadAddresses = async () => {
@@ -668,10 +674,11 @@ function CheckoutPage() {
 
             {/* Delivery Time */}
             <motion.div
+              ref={deliveryTimeRef}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="bg-white rounded-xl p-6 shadow-sm"
+              className="bg-white rounded-xl p-6 shadow-sm scroll-mt-24"
             >
               <div className="flex items-center gap-3 mb-6">
                 <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">

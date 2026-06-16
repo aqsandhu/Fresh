@@ -694,15 +694,23 @@ export const updateBusinessHours = asyncHandler(async (req: Request, res: Respon
 export const getCities = asyncHandler(async (req: Request, res: Response) => {
   const scope = req.cityScope;
 
-  if (scope && !scope.unrestricted && scope.cityId) {
-    const result = await query(
-      `SELECT id, name, province, is_active, created_at
-         FROM service_cities
-        WHERE id = $1
-        ORDER BY name`,
-      [scope.cityId]
-    );
-    return successResponse(res, result.rows, 'Cities retrieved');
+  // Super admins must always get the FULL list so the city switcher keeps
+  // working even while a single city is selected — the X-City-Id header would
+  // otherwise scope this list down to just the one selected city.
+  if (req.user?.role !== 'super_admin' && scope) {
+    if (scope.forbidden) {
+      return successResponse(res, [], 'Cities retrieved');
+    }
+    if (!scope.unrestricted && scope.cityId) {
+      const result = await query(
+        `SELECT id, name, province, is_active, created_at
+           FROM service_cities
+          WHERE id = $1
+          ORDER BY name`,
+        [scope.cityId]
+      );
+      return successResponse(res, result.rows, 'Cities retrieved');
+    }
   }
 
   const result = await query(
