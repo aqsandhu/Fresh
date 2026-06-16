@@ -21,6 +21,7 @@ import {
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { roundMoney } from '../../utils/money';
 import { resolveUnitPrice, normalizeProductUnit, stockUnitsNeeded } from '../../utils/unitPricing';
+import { normalizePhoneNumber } from '../../utils/validators';
 import { hasVariableWeightColumns } from '../../config/productSchema';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
 import { hasUrgentDeliveryColumns } from '../../config/orderSchema';
@@ -695,50 +696,117 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
     urgent_delivery,
     time_slot_id,
     requested_delivery_date,
+    whatsapp_number,
+    customer_name,
+    address_text,
+    latitude,
+    longitude,
+    door_picture_url,
   } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return errorResponse(res, 'Add at least one item.', 400);
   }
-  // A WhatsApp order is placed as a REAL order, so it needs a registered
-  // customer + one of their saved addresses (use the phone lookup to pick them).
-  if (!user_id || !address_id) {
-    return errorResponse(res, 'Select an existing customer and one of their saved addresses.', 400);
+  // The order can be placed for a looked-up customer + saved address, OR by
+  // typing the customer's number + a delivery address for an unregistered
+  // customer (the account + address are created on the fly). Either way we
+  // need an address to deliver to.
+  if (!address_id && !(typeof address_text === 'string' && address_text.trim())) {
+    return errorResponse(res, 'Select a saved address or enter a delivery address.', 400);
   }
 
   const scope = await resolveCityScope(req);
   const isUrgent = urgent_delivery === true || urgent_delivery === 'true';
 
-  // Validate customer + address (IDOR-safe: the address must belong to the user).
-  const userRes = await query(
-    `SELECT id, full_name, phone FROM users WHERE id = $1 AND role = 'customer' AND deleted_at IS NULL`,
-    [user_id]
-  );
-  if (userRes.rows.length === 0) return errorResponse(res, 'Customer not found.', 400);
-  const customer = userRes.rows[0];
-
-  const addrRes = await query(
-    `SELECT a.*, ST_X(a.location::geometry) AS lng, ST_Y(a.location::geometry) AS lat
-       FROM addresses a WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL`,
-    [address_id, user_id]
-  );
-  if (addrRes.rows.length === 0) return errorResponse(res, 'Address not found for this customer.', 400);
-  const address = addrRes.rows[0];
-
-  // Resolve the delivery city from the address (mirrors the customer flow),
-  // falling back to the admin's scoped city so the order is visible to them.
-  let orderCityId: string | null = scope.cityId ?? null;
-  if (address.city) {
-    const cityRow = await query(
-      `SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1`,
-      [address.city]
-    );
-    if (cityRow.rows[0]?.id) orderCityId = cityRow.rows[0].id;
-  }
+  // Optional manual coordinates (typed lat/long).
+  const latNum = latitude === '' || latitude == null ? NaN : Number(latitude);
+  const lngNum = longitude === '' || longitude == null ? NaN : Number(longitude);
+  const hasCoords = Number.isFinite(latNum) && Number.isFinite(lngNum);
+  const doorPic = typeof door_picture_url === 'string' && door_picture_url.trim() ? door_picture_url.trim() : null;
 
   let order: any;
   try {
     order = await withTransaction(async (client) => {
+      // ── Resolve the customer: prefer the looked-up account, else find-or-
+      //    create one from the phone so WhatsApp orders for unregistered
+      //    customers still become real, trackable orders. ───────────────────
+      let resolvedUserId: string | null = null;
+      if (user_id) {
+        const u = await client.query(
+          `SELECT id FROM users WHERE id = $1 AND role = 'customer' AND deleted_at IS NULL`,
+          [user_id]
+        );
+        if (u.rows[0]) resolvedUserId = u.rows[0].id;
+      }
+      if (!resolvedUserId) {
+        let normPhone: string;
+        try {
+          normPhone = normalizePhoneNumber(String(whatsapp_number || ''));
+        } catch {
+          throw Object.assign(new Error('A valid WhatsApp/phone number is required.'), { http: 400 });
+        }
+        const existing = await client.query(
+          'SELECT id, role, deleted_at FROM users WHERE phone = $1 LIMIT 1',
+          [normPhone]
+        );
+        if (existing.rows[0]) {
+          const ex = existing.rows[0];
+          if (ex.role === 'customer' && !ex.deleted_at) {
+            resolvedUserId = ex.id;
+          } else {
+            throw Object.assign(new Error('This number is registered to a non-customer or deleted account.'), { http: 400 });
+          }
+        } else {
+          const name = typeof customer_name === 'string' && customer_name.trim() ? customer_name.trim() : 'WhatsApp Customer';
+          const created = await client.query(
+            `INSERT INTO users (phone, full_name, role, status, is_phone_verified)
+             VALUES ($1, $2, 'customer', 'active', FALSE) RETURNING id`,
+            [normPhone, name]
+          );
+          resolvedUserId = created.rows[0].id;
+        }
+      }
+
+      // ── Resolve the address: a saved one (IDOR-checked), else create one
+      //    from the typed address + coordinates. ────────────────────────────
+      let addrRow: any = null;
+      if (address_id) {
+        const a = await client.query(
+          `SELECT a.*, ST_X(a.location::geometry) AS lng, ST_Y(a.location::geometry) AS lat
+             FROM addresses a WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL`,
+          [address_id, resolvedUserId]
+        );
+        if (a.rows[0]) addrRow = a.rows[0];
+      }
+      if (!addrRow) {
+        const text = typeof address_text === 'string' ? address_text.trim() : '';
+        if (!text) throw Object.assign(new Error('Enter a delivery address.'), { http: 400 });
+        const created = hasCoords
+          ? await client.query(
+              `INSERT INTO addresses (user_id, written_address, location, city, door_picture_url, address_type)
+               VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3::float, $4::float), 4326)::geography, $5, $6, 'home')
+               RETURNING *, ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat`,
+              [resolvedUserId, text, lngNum, latNum, scope.cityName || 'Gujrat', doorPic]
+            )
+          : await client.query(
+              `INSERT INTO addresses (user_id, written_address, city, door_picture_url, address_type)
+               VALUES ($1, $2, $3, $4, 'home')
+               RETURNING *, NULL::float AS lng, NULL::float AS lat`,
+              [resolvedUserId, text, scope.cityName || 'Gujrat', doorPic]
+            );
+        addrRow = created.rows[0];
+      }
+
+      // Delivery city: from the address, else the admin's scope.
+      let orderCityId: string | null = scope.cityId ?? null;
+      if (addrRow.city) {
+        const cityRow = await client.query(
+          `SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1`,
+          [addrRow.city]
+        );
+        if (cityRow.rows[0]?.id) orderCityId = cityRow.rows[0].id;
+      }
+
       // Price each line by its unit; track the free-delivery-eligible subtotal.
       let subtotal = 0;
       let vegFruitSubtotal = 0;
@@ -804,15 +872,15 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
       const totalAmount = roundMoney(subtotal + deliveryCharge);
 
       const snapshot = JSON.stringify({
-        written_address: address.written_address,
-        landmark: address.landmark,
-        house_number: address.house_number,
-        area_name: address.area_name,
-        city: address.city,
-        province: address.province,
-        postal_code: address.postal_code,
-        door_picture_url: address.door_picture_url || '',
-        location: { latitude: address.lat ?? null, longitude: address.lng ?? null },
+        written_address: addrRow.written_address,
+        landmark: addrRow.landmark,
+        house_number: addrRow.house_number,
+        area_name: addrRow.area_name,
+        city: addrRow.city,
+        province: addrRow.province,
+        postal_code: addrRow.postal_code,
+        door_picture_url: addrRow.door_picture_url || '',
+        location: { latitude: addrRow.lat ?? null, longitude: addrRow.lng ?? null },
       });
 
       const orderRes = await client.query(
@@ -823,7 +891,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
         ) VALUES ($1,$2,$3,$4,$5,$6,0,$7,0,$8,'cash_on_delivery','pending','pending','whatsapp',$9,$10)
         RETURNING *`,
         [
-          customer.id, address.id, snapshot, effectiveSlotId,
+          resolvedUserId, addrRow.id, snapshot, effectiveSlotId,
           isUrgent ? null : (requested_delivery_date || null),
           subtotal, deliveryCharge, totalAmount, admin_notes || null, orderCityId,
         ]
