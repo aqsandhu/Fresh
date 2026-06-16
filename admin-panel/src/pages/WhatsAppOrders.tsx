@@ -2,11 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MessageCircle, Plus, Trash2, User, Package, Search, Home,
-  CheckCircle, Loader2, Zap, Clock, Receipt, CalendarDays, MapPin, Phone, ExternalLink,
+  CheckCircle, Loader2, Zap, Clock, Receipt, CalendarDays, MapPin,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { api } from '@/services/api';
 import { whatsappService } from '@/services/whatsapp.service';
 import { productService } from '@/services/product.service';
@@ -120,13 +121,16 @@ export const WhatsAppOrders: React.FC = () => {
   const queryClient = useQueryClient();
   const [items, setItems] = useState<OrderItem[]>([{ id: '1', productId: '', quantity: 1, unit: 'full' }]);
 
+  // Editable customer + delivery fields (auto-filled by lookup, but always editable).
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [addressText, setAddressText] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [doorPictureUrl, setDoorPictureUrl] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [userId, setUserId] = useState('');
   const [addressId, setAddressId] = useState('');
-
-  // Looked-up customer (name + phone shown back to the admin).
-  const [customer, setCustomer] = useState<{ id: string; fullName: string; phone: string } | null>(null);
 
   // Delivery options (mirror the website: urgent OR a day + time slot).
   const [urgentOn, setUrgentOn] = useState(false);
@@ -137,6 +141,7 @@ export const WhatsAppOrders: React.FC = () => {
   const [addresses, setAddresses] = useState<WhatsappCustomerAddress[]>([]);
   const [lookupDone, setLookupDone] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
+  const [foundCustomer, setFoundCustomer] = useState(false);
 
   const { data: productsData } = useQuery({
     queryKey: ['products-for-whatsapp'],
@@ -182,10 +187,15 @@ export const WhatsAppOrders: React.FC = () => {
 
   const resetForm = () => {
     setWhatsappNumber('');
+    setCustomerName('');
+    setAddressText('');
+    setLatitude('');
+    setLongitude('');
+    setDoorPictureUrl('');
     setAdminNotes('');
     setUserId('');
     setAddressId('');
-    setCustomer(null);
+    setFoundCustomer(false);
     setItems([{ id: '1', productId: '', quantity: 1, unit: 'full' }]);
     setAddresses([]);
     setLookupDone(false);
@@ -205,23 +215,42 @@ export const WhatsAppOrders: React.FC = () => {
       const { customer: found, addresses: addrs } = await whatsappService.lookupCustomer(phone);
       setLookupDone(true);
       if (found) {
-        setCustomer(found);
+        setFoundCustomer(true);
+        setCustomerName(found.fullName);
         setUserId(found.id);
         setAddressId('');
         setAddresses(addrs);
-        if (addrs.length === 1) setAddressId(addrs[0].id);
+        if (addrs.length === 1) selectAddress(addrs[0]);
         toast.success(`Found ${found.fullName}${addrs.length ? ` · ${addrs.length} address(es)` : ''}`);
       } else {
-        setCustomer(null);
+        setFoundCustomer(false);
         setUserId('');
         setAddressId('');
         setAddresses([]);
-        toast('No registered customer for this number', { icon: 'ℹ️' });
+        toast('No saved customer — enter name + address to create the order', { icon: 'ℹ️' });
       }
     } catch {
       toast.error('Lookup failed');
     } finally {
       setLookingUp(false);
+    }
+  };
+
+  const selectAddress = (a: WhatsappCustomerAddress) => {
+    setAddressId(a.id);
+    setAddressText(composeAddress(a));
+    setLatitude(a.latitude != null ? String(a.latitude) : '');
+    setLongitude(a.longitude != null ? String(a.longitude) : '');
+    setDoorPictureUrl(a.doorPictureUrl || '');
+  };
+
+  // Editing any address field means it's no longer the saved one verbatim — drop
+  // the saved-address link (and its door photo) so the backend stores exactly
+  // what the admin typed as a fresh address.
+  const onAddressFieldEdit = () => {
+    if (addressId) {
+      setAddressId('');
+      setDoorPictureUrl('');
     }
   };
 
@@ -268,89 +297,86 @@ export const WhatsAppOrders: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId) return toast.error('Look up a registered customer first');
-    if (!addressId) return toast.error('Select one of the customer’s saved addresses');
+    if (!whatsappNumber.trim()) return toast.error('Enter the customer’s WhatsApp / phone number');
+    if (!addressId && !addressText.trim()) return toast.error('Select a saved address or type a delivery address');
     if (pricing.validItems.length === 0) return toast.error('Please add at least one item');
     if (urgentOn && !urgentEnabled) return toast.error('Urgent delivery is not available right now');
 
     const orderData: WhatsAppOrderData = {
-      userId,
-      addressId,
+      whatsappNumber: whatsappNumber.trim(),
+      customerName: customerName.trim() || undefined,
+      ...(userId ? { userId } : {}),
+      ...(addressId ? { addressId } : {}),
+      ...(!addressId && addressText.trim() ? { addressText: addressText.trim() } : {}),
+      ...(!addressId && latitude.trim() ? { latitude: latitude.trim() } : {}),
+      ...(!addressId && longitude.trim() ? { longitude: longitude.trim() } : {}),
+      ...(!addressId && doorPictureUrl ? { doorPictureUrl } : {}),
       items: pricing.validItems.map(({ productId, quantity, unit }) => ({ productId, quantity, unit })),
       urgentDelivery: urgentOn,
       ...(!urgentOn && timeSlotId ? { timeSlotId } : {}),
       ...(!urgentOn && timeSlotId && selectedDay === 'tomorrow' ? { requestedDeliveryDate: dateStr('tomorrow') } : {}),
       adminNotes: adminNotes || undefined,
-      whatsappNumber: whatsappNumber || undefined,
-      customerName: customer?.fullName || undefined,
     };
     createMutation.mutate(orderData);
   };
 
-  const selectedAddress = addresses.find((a) => a.id === addressId);
-  const readyToPlace = !!userId && !!addressId && pricing.validItems.length > 0;
+  const readyToPlace = !!whatsappNumber.trim() && (!!addressId || !!addressText.trim()) && pricing.validItems.length > 0;
+  const doorPreview = doorPictureUrl || addresses.find((a) => a.id === addressId)?.doorPictureUrl || '';
 
   return (
     <Layout title="WhatsApp Orders" subtitle="Place an order on a customer's behalf — it appears in Orders">
       <div className="max-w-4xl mx-auto">
         <Card>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Customer lookup */}
+            {/* Customer */}
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
-                <User className="w-5 h-5 mr-2" /> Customer
+                <User className="w-5 h-5 mr-2" /> Customer Information
               </h3>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp / Phone Number *</label>
-                <div className="flex gap-2 max-w-md">
-                  <input
-                    value={whatsappNumber}
-                    onChange={(e) => {
-                      setWhatsappNumber(e.target.value);
-                      setLookupDone(false);
-                      setCustomer(null);
-                      setUserId('');
-                      setAddressId('');
-                      setAddresses([]);
-                    }}
-                    onBlur={() => whatsappNumber && !lookupDone && handleLookup()}
-                    placeholder="+923XXXXXXXXX"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                    required
-                  />
-                  <Button type="button" variant="outline" onClick={handleLookup} disabled={lookingUp}>
-                    {lookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                  </Button>
-                </div>
-                {lookupDone && !customer && (
-                  <p className="mt-1 text-xs text-red-600">
-                    No registered customer for this number. The customer must sign up in the app before an order can be placed.
-                  </p>
-                )}
-              </div>
-
-              {/* Found customer card */}
-              {customer && (
-                <div className="mt-3 flex items-center gap-3 rounded-lg border border-green-200 bg-green-50 p-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-700">
-                    <User className="h-5 w-5" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp Number *</label>
+                  <div className="flex gap-2">
+                    <input
+                      value={whatsappNumber}
+                      onChange={(e) => {
+                        setWhatsappNumber(e.target.value);
+                        setLookupDone(false);
+                        setFoundCustomer(false);
+                        setUserId('');
+                      }}
+                      onBlur={() => whatsappNumber && !lookupDone && handleLookup()}
+                      placeholder="+923XXXXXXXXX"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                      required
+                    />
+                    <Button type="button" variant="outline" onClick={handleLookup} disabled={lookingUp}>
+                      {lookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                    </Button>
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">{customer.fullName}</p>
-                    <p className="flex items-center gap-1 text-xs text-gray-600">
-                      <Phone className="h-3 w-3" /> {customer.phone}
+                  {lookupDone && (
+                    <p className={`mt-1 text-xs ${foundCustomer ? 'text-green-600' : 'text-gray-500'}`}>
+                      {foundCustomer
+                        ? `✓ Existing customer: ${customerName}`
+                        : 'New number — a customer record is created when you place the order'}
                     </p>
-                  </div>
-                  <CheckCircle className="ml-auto h-5 w-5 text-green-600" />
+                  )}
                 </div>
-              )}
+                <Input
+                  label="Customer Name *"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Enter customer name"
+                  required
+                />
+              </div>
             </div>
 
             {/* Saved addresses */}
             {addresses.length > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-2 flex items-center">
-                  <Home className="w-4 h-4 mr-1.5" /> Saved addresses ({addresses.length}) — select one *
+                  <Home className="w-4 h-4 mr-1.5" /> Saved addresses ({addresses.length}) — tap to use one
                 </h3>
                 <div className="space-y-2">
                   {addresses.map((a) => {
@@ -359,7 +385,7 @@ export const WhatsAppOrders: React.FC = () => {
                       <button
                         key={a.id}
                         type="button"
-                        onClick={() => setAddressId(a.id)}
+                        onClick={() => selectAddress(a)}
                         className={`w-full text-left rounded-lg border p-3 transition-colors ${
                           active ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-primary-300'
                         }`}
@@ -391,50 +417,62 @@ export const WhatsAppOrders: React.FC = () => {
               </div>
             )}
 
-            {/* Selected address details — full address, house #, location, door photo */}
-            {selectedAddress && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                <h4 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-gray-700">
-                  <MapPin className="h-4 w-4" /> Delivery details
-                </h4>
-                <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-                  <div className="sm:col-span-2">
-                    <span className="text-gray-500">Address: </span>
-                    <span className="font-medium text-gray-900">{composeAddress(selectedAddress)}</span>
-                  </div>
-                  {selectedAddress.landmark && (
-                    <div className="sm:col-span-2">
-                      <span className="text-gray-500">Landmark: </span>
-                      <span className="text-gray-800">{selectedAddress.landmark}</span>
-                    </div>
-                  )}
-                  <div>
-                    <span className="text-gray-500">House #: </span>
-                    <span className="text-gray-800">{selectedAddress.houseNumber || '—'}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Location: </span>
-                    {selectedAddress.latitude != null && selectedAddress.longitude != null ? (
-                      <a
-                        href={`https://www.google.com/maps?q=${selectedAddress.latitude},${selectedAddress.longitude}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 font-medium text-primary-600 hover:underline"
-                      >
-                        {Number(selectedAddress.latitude).toFixed(5)}, {Number(selectedAddress.longitude).toFixed(5)}
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : (
-                      <span className="text-gray-400">Not pinned</span>
-                    )}
-                  </div>
+            {/* Delivery address — editable (auto-filled from a saved address) */}
+            <div>
+              <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+                <MapPin className="w-5 h-5 mr-2" /> Delivery Address
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+                  <textarea
+                    value={addressText}
+                    onChange={(e) => {
+                      setAddressText(e.target.value);
+                      onAddressFieldEdit();
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    rows={2}
+                    placeholder="Complete delivery address"
+                    required
+                  />
                 </div>
-                {selectedAddress.doorPictureUrl && (
-                  <div className="mt-3">
-                    <span className="block text-xs text-gray-500 mb-1">Door picture</span>
-                    <a href={resolveImageUrl(selectedAddress.doorPictureUrl)} target="_blank" rel="noopener noreferrer">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Latitude (optional)"
+                    value={latitude}
+                    onChange={(e) => {
+                      setLatitude(e.target.value);
+                      onAddressFieldEdit();
+                    }}
+                    placeholder="e.g. 32.5742"
+                  />
+                  <Input
+                    label="Longitude (optional)"
+                    value={longitude}
+                    onChange={(e) => {
+                      setLongitude(e.target.value);
+                      onAddressFieldEdit();
+                    }}
+                    placeholder="e.g. 74.0754"
+                  />
+                </div>
+                {latitude.trim() && longitude.trim() && (
+                  <a
+                    href={`https://www.google.com/maps?q=${latitude.trim()},${longitude.trim()}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:underline"
+                  >
+                    <MapPin className="h-3 w-3" /> View pinned location on map
+                  </a>
+                )}
+                {doorPreview && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Door picture (from saved address)</label>
+                    <a href={resolveImageUrl(doorPreview)} target="_blank" rel="noopener noreferrer">
                       <img
-                        src={resolveImageUrl(selectedAddress.doorPictureUrl)}
+                        src={resolveImageUrl(doorPreview)}
                         alt="Door"
                         className="h-24 w-24 rounded-lg border border-gray-200 object-cover"
                       />
@@ -442,7 +480,7 @@ export const WhatsAppOrders: React.FC = () => {
                   </div>
                 )}
               </div>
-            )}
+            </div>
 
             {/* Items */}
             <div>
@@ -718,8 +756,9 @@ export const WhatsAppOrders: React.FC = () => {
         <Card className="mt-6 bg-blue-50 border-blue-200">
           <h4 className="font-medium text-blue-900 mb-2">How to use:</h4>
           <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-            <li>Type the WhatsApp number and press search — the registered customer + their saved addresses auto-load</li>
-            <li>Pick one of the saved addresses — name, house number, location and door photo show below</li>
+            <li>Type the WhatsApp number and press search — an existing customer's name + saved addresses auto-load</li>
+            <li>Tap a saved address to fill it in, or just type the name + address for a new customer (the account is created automatically)</li>
+            <li>Latitude / longitude and door picture come with a saved address and stay editable</li>
             <li>Add products and pick the unit — the rate for that unit shows below each item</li>
             <li>Choose urgent delivery, or Today/Tomorrow + a time slot — delivery is calculated exactly like the website</li>
             <li>Place the order — it appears in <strong>Orders</strong> with a green WhatsApp badge</li>

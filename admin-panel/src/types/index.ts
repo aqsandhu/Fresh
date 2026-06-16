@@ -392,10 +392,17 @@ export interface RiderDeliveryCharge {
 }
 
 export interface WhatsAppOrderData {
-  /** Required: the order is placed as a real order under this registered customer. */
-  userId: string;
-  /** Required: one of the customer's saved addresses. */
-  addressId: string;
+  /** Always required — used to find-or-create the customer account. */
+  whatsappNumber: string;
+  customerName?: string;
+  /** Optional: a looked-up registered customer + one of their saved addresses. */
+  userId?: string;
+  addressId?: string;
+  /** Manual delivery details (used when no saved address is selected). */
+  addressText?: string;
+  latitude?: string | number;
+  longitude?: string | number;
+  doorPictureUrl?: string;
   items: {
     productId: string;
     quantity: number;
@@ -405,9 +412,6 @@ export interface WhatsAppOrderData {
   timeSlotId?: string;
   requestedDeliveryDate?: string;
   adminNotes?: string;
-  // Sent for reference only — ignored server-side.
-  whatsappNumber?: string;
-  customerName?: string;
 }
 
 export interface WhatsappCustomerAddress {

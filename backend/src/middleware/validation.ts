@@ -459,10 +459,17 @@ export const adminSchemas = {
   updateProduct: productSchemas.update,
   
   createWhatsappOrder: Joi.object({
-    // A WhatsApp order is placed as a real order, so a registered customer +
-    // one of their saved addresses are required (resolved via phone lookup).
-    user_id: commonSchemas.uuid.required(),
-    address_id: commonSchemas.uuid.required(),
+    // The phone is always required (used to find-or-create the customer when no
+    // registered account is linked). Either a saved address_id OR a typed
+    // address_text must be provided (enforced in the controller).
+    whatsapp_number: commonSchemas.phone.required(),
+    customer_name: Joi.string().max(255).optional().allow('', null),
+    user_id: commonSchemas.uuid.optional().allow(null, ''),
+    address_id: commonSchemas.uuid.optional().allow(null, ''),
+    address_text: Joi.string().max(1000).optional().allow('', null),
+    latitude: commonSchemas.latitude.optional().allow(null, ''),
+    longitude: commonSchemas.longitude.optional().allow(null, ''),
+    door_picture_url: Joi.string().uri().optional().allow(null, ''),
     items: Joi.array().items(
       Joi.object({
         product_id: commonSchemas.uuid.required(),
@@ -475,9 +482,6 @@ export const adminSchemas = {
     time_slot_id: commonSchemas.uuid.optional().allow(null, ''),
     requested_delivery_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional().allow(null, ''),
     admin_notes: Joi.string().allow('', null),
-    // Accepted for backward compatibility (ignored by the controller).
-    whatsapp_number: Joi.string().optional().allow('', null),
-    customer_name: Joi.string().max(255).optional().allow('', null),
   }),
 
   assignHouseNumber: Joi.object({
