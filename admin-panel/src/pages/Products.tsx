@@ -793,21 +793,37 @@ export const Products: React.FC = () => {
                   <span className="text-sm font-medium text-gray-700">Sell in Half kg (½)</span>
                 </label>
                 {formData.allowHalfKg && (
-                  <Input
-                    label="Half kg price (Rs.) — optional"
-                    type="number"
-                    value={formData.halfKgPrice ?? ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        halfKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
-                      })
-                    }
-                    min={0}
-                    step={0.01}
-                    helperText="Leave blank to charge half of the per-kg price."
-                    className="mt-3"
-                  />
+                  <>
+                    <Input
+                      label="Half kg price (Rs.) — optional"
+                      type="number"
+                      value={formData.halfKgPrice ?? ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          halfKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
+                        })
+                      }
+                      min={0}
+                      step={0.01}
+                      helperText="Leave blank to charge half of the per-kg price."
+                      className="mt-3"
+                    />
+                    <p className="mt-1 text-xs">
+                      <span className="text-gray-500">Customer pays </span>
+                      <span className="font-semibold text-gray-800">
+                        Rs. {(formData.halfKgPrice != null ? formData.halfKgPrice : (Number(formData.price) || 0) * 0.5).toLocaleString('en-PK')}
+                      </span>
+                      <span className="text-gray-500"> for ½ kg</span>
+                      {formData.halfKgPrice != null ? (
+                        <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
+                          manual override · auto would be Rs. {((Number(formData.price) || 0) * 0.5).toLocaleString('en-PK')}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400"> (auto)</span>
+                      )}
+                    </p>
+                  </>
                 )}
               </div>
               {/* Quarter kg */}
@@ -828,21 +844,37 @@ export const Products: React.FC = () => {
                   <span className="text-sm font-medium text-gray-700">Sell in Quarter kg (¼)</span>
                 </label>
                 {formData.allowQuarterKg && (
-                  <Input
-                    label="Quarter kg price (Rs.) — optional"
-                    type="number"
-                    value={formData.quarterKgPrice ?? ''}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        quarterKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
-                      })
-                    }
-                    min={0}
-                    step={0.01}
-                    helperText="Leave blank to charge a quarter of the per-kg price."
-                    className="mt-3"
-                  />
+                  <>
+                    <Input
+                      label="Quarter kg price (Rs.) — optional"
+                      type="number"
+                      value={formData.quarterKgPrice ?? ''}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          quarterKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
+                        })
+                      }
+                      min={0}
+                      step={0.01}
+                      helperText="Leave blank to charge a quarter of the per-kg price."
+                      className="mt-3"
+                    />
+                    <p className="mt-1 text-xs">
+                      <span className="text-gray-500">Customer pays </span>
+                      <span className="font-semibold text-gray-800">
+                        Rs. {(formData.quarterKgPrice != null ? formData.quarterKgPrice : (Number(formData.price) || 0) * 0.25).toLocaleString('en-PK')}
+                      </span>
+                      <span className="text-gray-500"> for ¼ kg</span>
+                      {formData.quarterKgPrice != null ? (
+                        <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
+                          manual override · auto would be Rs. {((Number(formData.price) || 0) * 0.25).toLocaleString('en-PK')}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400"> (auto)</span>
+                      )}
+                    </p>
+                  </>
                 )}
               </div>
             </div>
@@ -864,6 +896,20 @@ export const Products: React.FC = () => {
                 step={0.01}
                 helperText="Leave blank to charge half of the per-dozen price."
               />
+              <p className="mt-1 text-xs">
+                <span className="text-gray-500">Customer pays </span>
+                <span className="font-semibold text-gray-800">
+                  Rs. {(formData.halfDozenPrice != null ? formData.halfDozenPrice : (Number(formData.price) || 0) * 0.5).toLocaleString('en-PK')}
+                </span>
+                <span className="text-gray-500"> for ½ dozen</span>
+                {formData.halfDozenPrice != null ? (
+                  <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
+                    manual override · auto would be Rs. {((Number(formData.price) || 0) * 0.5).toLocaleString('en-PK')}
+                  </span>
+                ) : (
+                  <span className="text-gray-400"> (auto)</span>
+                )}
+              </p>
             </div>
           )}
 

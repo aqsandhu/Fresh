@@ -692,11 +692,18 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'No valid fields to update', 400);
   }
 
-  // If name_en is being updated (either directly or via nameEn), also update slug
+  // If name_en is being updated (either directly or via nameEn), also update slug.
+  // Slugs are unique PER CITY (the same "Chicken"/"Fruits"/"Sabzi" exists in
+  // every city), so the collision check must be scoped to this category's city —
+  // otherwise editing a shared category falsely reports a duplicate.
   const nameEnValue = updates.name_en || updates.nameEn;
   if (nameEnValue) {
     const newSlug = generateSlug(nameEnValue);
-    const existingResult = await query('SELECT id FROM categories WHERE slug = $1 AND id != $2', [newSlug, id]);
+    const categoryCityId = existingCat.rows[0].city_id;
+    const existingResult = await query(
+      'SELECT id FROM categories WHERE slug = $1 AND id != $2 AND city_id IS NOT DISTINCT FROM $3',
+      [newSlug, id, categoryCityId]
+    );
     if (existingResult.rows.length > 0) {
       return errorResponse(res, 'Category with similar name already exists', 409);
     }
