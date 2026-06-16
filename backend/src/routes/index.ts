@@ -22,6 +22,7 @@ import reviewRoutes from './review.routes';
 import complaintRoutes from './complaint.routes';
 import tipsRoutes from './tips.routes';
 import workAsRiderRoutes from './workAsRider.routes';
+import restaurantRoutes from './restaurant.routes';
 
 const router = Router();
 
@@ -45,5 +46,6 @@ router.use('/reviews', reviewRoutes);
 router.use('/complaints', complaintRoutes);
 router.use('/tips', tipsRoutes);
 router.use('/work-as-rider', workAsRiderRoutes);
+router.use('/restaurant', restaurantRoutes);
 
 export default router;

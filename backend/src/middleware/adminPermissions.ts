@@ -129,6 +129,12 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
       ? ['rider_applications.view', 'rider_applications.manage', 'riders.view', 'riders.manage']
       : ['rider_applications.manage', 'riders.manage'];
   }
+  // Restaurant (B2B) accounts — review requests + manage approved restaurants.
+  if (p.startsWith('/restaurants')) {
+    return m === 'GET'
+      ? ['restaurants.view', 'restaurants.manage']
+      : ['restaurants.manage'];
+  }
   if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
   if (p.startsWith('/cities')) {
     if (m === 'GET') return ANY_ADMIN; // city list needed by header switcher

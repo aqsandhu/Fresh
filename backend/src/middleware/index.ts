@@ -45,6 +45,7 @@ export {
   attaSchemas,
   riderSchemas,
   adminSchemas,
+  restaurantSchemas,
 } from './validation';
 
 // Rate limiting
