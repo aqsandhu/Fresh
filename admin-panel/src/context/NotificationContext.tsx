@@ -171,18 +171,33 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     let cleanupConnectError: (() => void) | undefined;
 
     const handleNewOrder = (data: Record<string, unknown>) => {
+      const isUrgent = data.isUrgent === true;
       const item = buildNotification(
         'order:new',
         data,
-        'New order',
+        isUrgent ? 'Urgent order placed' : 'New order',
         data.orderNumber ? `New order #${data.orderNumber} received` : 'A new order was received'
       );
       pushNotification(item);
       playNotificationSound();
-      toast.success(item.message, {
-        icon: <Bell className="w-4 h-4 text-green-500" />,
-        duration: 5000,
-      });
+      if (isUrgent) {
+        // Prominent, longer urgent alert.
+        toast(
+          (data.orderNumber
+            ? `⚡ Urgent order #${data.orderNumber} is Placed`
+            : '⚡ Urgent order is Placed'),
+          {
+            icon: '⚡',
+            duration: 9000,
+            style: { background: '#b45309', color: '#fff', fontWeight: 700 },
+          }
+        );
+      } else {
+        toast.success(item.message, {
+          icon: <Bell className="w-4 h-4 text-green-500" />,
+          duration: 5000,
+        });
+      }
       setNewOrderCount((c) => c + 1);
       flashOrder(item.orderId, 5000);
       queryClient.invalidateQueries({ queryKey: ['orders'] });

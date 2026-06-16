@@ -15,6 +15,31 @@ interface OrderItem {
   id: string;
   productId: string;
   quantity: number;
+  unit: string;
+}
+
+interface UnitOption {
+  value: string;
+  label: string;
+}
+
+/** Units the admin enabled for a product — base unit + allowed fractions. */
+function allowedUnitsFor(product: any): UnitOption[] {
+  const unitType = String(product?.unitType || 'kg').toLowerCase();
+  const baseLabel =
+    unitType === 'dozen'
+      ? 'Per Dozen'
+      : unitType === 'kg' || unitType === 'gram'
+      ? 'Per Kg'
+      : `Per ${unitType || 'unit'}`;
+  const units: UnitOption[] = [{ value: 'full', label: baseLabel }];
+  if (unitType === 'kg' || unitType === 'gram') {
+    if (product?.allowHalfKg !== false) units.push({ value: 'half_kg', label: 'Half Kg (½)' });
+    if (product?.allowQuarterKg !== false) units.push({ value: 'quarter_kg', label: 'Quarter Kg (¼)' });
+  } else if (unitType === 'dozen') {
+    units.push({ value: 'half_dozen', label: 'Half Dozen' });
+  }
+  return units;
 }
 
 function composeAddress(a: WhatsappCustomerAddress): string {
@@ -30,7 +55,7 @@ function composeAddress(a: WhatsappCustomerAddress): string {
 
 export const WhatsAppOrders: React.FC = () => {
   const queryClient = useQueryClient();
-  const [items, setItems] = useState<OrderItem[]>([{ id: '1', productId: '', quantity: 1 }]);
+  const [items, setItems] = useState<OrderItem[]>([{ id: '1', productId: '', quantity: 1, unit: 'full' }]);
 
   const [formData, setFormData] = useState({
     whatsappNumber: '',
@@ -74,7 +99,7 @@ export const WhatsAppOrders: React.FC = () => {
       whatsappNumber: '', customerName: '', addressText: '', deliveryCharge: 0, adminNotes: '',
       latitude: '', longitude: '', doorPictureUrl: '', userId: '', addressId: '',
     });
-    setItems([{ id: '1', productId: '', quantity: 1 }]);
+    setItems([{ id: '1', productId: '', quantity: 1, unit: 'full' }]);
     setAddresses([]);
     setLookupDone(false);
     setFoundCustomer(null);
@@ -121,7 +146,7 @@ export const WhatsAppOrders: React.FC = () => {
     }));
   };
 
-  const addItem = () => setItems([...items, { id: Date.now().toString(), productId: '', quantity: 1 }]);
+  const addItem = () => setItems([...items, { id: Date.now().toString(), productId: '', quantity: 1, unit: 'full' }]);
   const removeItem = (id: string) => {
     if (items.length > 1) setItems(items.filter((i) => i.id !== id));
   };
@@ -145,7 +170,7 @@ export const WhatsAppOrders: React.FC = () => {
       addressText: formData.addressText,
       deliveryCharge: formData.deliveryCharge || undefined,
       adminNotes: formData.adminNotes || undefined,
-      items: validItems.map(({ productId, quantity }) => ({ productId, quantity })),
+      items: validItems.map(({ productId, quantity, unit }) => ({ productId, quantity, unit })),
       ...(Number.isFinite(lat) && Number.isFinite(lng) ? { latitude: lat, longitude: lng } : {}),
       ...(formData.userId ? { userId: formData.userId } : {}),
       ...(formData.addressId ? { addressId: formData.addressId } : {}),
@@ -305,39 +330,73 @@ export const WhatsAppOrders: React.FC = () => {
                 <Package className="w-5 h-5 mr-2" /> Order Items
               </h3>
               <div className="space-y-3">
-                {items.map((item, index) => (
-                  <div key={item.id} className="flex items-center gap-3">
-                    <span className="text-sm text-gray-500 w-6">{index + 1}.</span>
-                    <select
-                      value={item.productId}
-                      onChange={(e) => updateItem(item.id, 'productId', e.target.value)}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                    >
-                      <option value="">Select product</option>
-                      {(products as any[]).map((p: any) => (
-                        <option key={p.id} value={p.id}>
-                          {p.nameEn} - Rs. {p.price}/{p.unitType}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={item.quantity}
-                      onChange={(e) => updateItem(item.id, 'quantity', parseInt(e.target.value) || 1)}
-                      className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeItem(item.id)}
-                      className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
-                      disabled={items.length === 1}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
+                {items.map((item, index) => {
+                  const product = (products as any[]).find((p: any) => p.id === item.productId);
+                  const units = product ? allowedUnitsFor(product) : [{ value: 'full', label: 'Per unit' }];
+                  return (
+                    <div key={item.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 p-2">
+                      <span className="text-sm text-gray-500 w-5">{index + 1}.</span>
+                      <select
+                        value={item.productId}
+                        onChange={(e) => {
+                          // Changing the product resets the unit to the base unit
+                          // (the new product may not allow the old fraction).
+                          setItems(items.map((i) => (i.id === item.id ? { ...i, productId: e.target.value, unit: 'full' } : i)));
+                        }}
+                        className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="">Select product</option>
+                        {(products as any[]).map((p: any) => (
+                          <option key={p.id} value={p.id}>
+                            {p.nameEn} - Rs. {p.price}/{p.unitType}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Unit — only the units the admin enabled for this product */}
+                      <select
+                        value={item.unit}
+                        onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
+                        disabled={!item.productId || units.length <= 1}
+                        className="px-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-400"
+                      >
+                        {units.map((u) => (
+                          <option key={u.value} value={u.value}>
+                            {u.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Quantity counter */}
+                      <div className="flex items-center rounded-lg border border-gray-300">
+                        <button
+                          type="button"
+                          onClick={() => updateItem(item.id, 'quantity', Math.max(1, item.quantity - 1))}
+                          className="px-2.5 py-1.5 text-gray-600 hover:bg-gray-100 rounded-l-lg"
+                        >
+                          −
+                        </button>
+                        <span className="w-9 text-center text-sm font-medium tabular-nums">{item.quantity}</span>
+                        <button
+                          type="button"
+                          onClick={() => updateItem(item.id, 'quantity', item.quantity + 1)}
+                          className="px-2.5 py-1.5 text-gray-600 hover:bg-gray-100 rounded-r-lg"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeItem(item.id)}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
+                        disabled={items.length === 1}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
               <Button type="button" variant="outline" onClick={addItem} className="mt-3" leftIcon={<Plus className="w-4 h-4" />}>
                 Add Item

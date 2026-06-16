@@ -86,6 +86,8 @@ export interface Order {
   couponCode?: string | null;
   totalAmount: number;
   paidAmount?: number;
+  isUrgentDelivery?: boolean;
+  urgentDeliveryEta?: string | null;
   placedAt: string;
   createdAt?: string;
   confirmedAt?: string;
@@ -393,6 +395,7 @@ export interface WhatsAppOrderData {
   items: {
     productId: string;
     quantity: number;
+    unit?: string;
   }[];
   addressText: string;
   latitude?: number;

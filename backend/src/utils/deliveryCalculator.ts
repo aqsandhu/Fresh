@@ -63,7 +63,17 @@ const getDeliverySettings = async (
   }
 };
 
-/** Sum of cart items in categories that count toward free-delivery threshold. */
+/**
+ * Sum of cart items in categories that count toward the free-delivery threshold.
+ * Mirrors the client (packages/shared-types/src/deliveryRules.ts):
+ *   • qualifies_for_free_delivery = TRUE   → always counts
+ *   • qualifies_for_free_delivery = FALSE  → NEVER counts (admin opted out),
+ *     even if the category name/slug looks like veg/fruit
+ *   • qualifies_for_free_delivery IS NULL  → fall back to slug/name heuristics
+ * The `IS DISTINCT FROM TRUE` guard on the heuristics is the key fix: previously
+ * a FALSE category whose name started with "fruit"/"vegetable" still counted, so
+ * a non-qualifying product wrongly produced free delivery at checkout.
+ */
 async function getVegFruitSubtotal(cartId: string, client?: DbClient): Promise<number> {
   const result = await runQuery(
     client,
@@ -72,6 +82,7 @@ async function getVegFruitSubtotal(cartId: string, client?: DbClient): Promise<n
        JOIN products p ON ci.product_id = p.id
        JOIN categories cat ON p.category_id = cat.id
       WHERE ci.cart_id = $1
+        AND cat.qualifies_for_free_delivery IS DISTINCT FROM FALSE
         AND (
           cat.qualifies_for_free_delivery = TRUE
           OR LOWER(cat.slug) = ANY($2::text[])
