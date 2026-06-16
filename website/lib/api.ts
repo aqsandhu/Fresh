@@ -617,6 +617,27 @@ export const workAsRiderApi = {
   },
 }
 
+// Restaurant (B2B) registration + PIN login. Snake_case keys match the backend
+// validation schema exactly.
+export const restaurantApi = {
+  register: async (input: {
+    business_name: string
+    owner_name?: string
+    phone: string
+    pin: string
+    email?: string
+    address?: string
+    city?: string
+  }) => {
+    const response = await api.post('/restaurant/register', input)
+    return response.data?.data || response.data
+  },
+  login: async (input: { phone: string; pin: string }): Promise<{ token: string; restaurant: any }> => {
+    const response = await api.post('/restaurant/login', input)
+    return (response.data?.data || response.data) as { token: string; restaurant: any }
+  },
+}
+
 // User guidance tips (admin-managed, per page + city)
 export const tipsApi = {
   forPage: async (page: string): Promise<{ id: string; text: string }[]> => {
