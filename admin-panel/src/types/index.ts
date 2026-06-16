@@ -403,6 +403,7 @@ export interface WhatsAppOrderData {
   }[];
   urgentDelivery?: boolean;
   timeSlotId?: string;
+  requestedDeliveryDate?: string;
   adminNotes?: string;
   // Sent for reference only — ignored server-side.
   whatsappNumber?: string;
