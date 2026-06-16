@@ -16,4 +16,5 @@ export { Reviews } from './Reviews';
 export { Complaints } from './Complaints';
 export { UserTips } from './UserTips';
 export { RiderApplications } from './RiderApplications';
+export { Restaurants } from './Restaurants';
 export { Settings } from './Settings';
