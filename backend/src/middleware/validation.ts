@@ -459,25 +459,24 @@ export const adminSchemas = {
   updateProduct: productSchemas.update,
   
   createWhatsappOrder: Joi.object({
-    whatsapp_number: commonSchemas.phone.required(),
-    customer_name: Joi.string().max(255),
+    // A WhatsApp order is placed as a real order, so a registered customer +
+    // one of their saved addresses are required (resolved via phone lookup).
+    user_id: commonSchemas.uuid.required(),
+    address_id: commonSchemas.uuid.required(),
     items: Joi.array().items(
       Joi.object({
         product_id: commonSchemas.uuid.required(),
         quantity: commonSchemas.quantity.required(),
         unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
-        notes: Joi.string(),
+        notes: Joi.string().allow('', null),
       })
     ).min(1).required(),
-    address_text: Joi.string().required(),
-    latitude: commonSchemas.latitude.allow(null),
-    longitude: commonSchemas.longitude.allow(null),
-    delivery_charge: commonSchemas.price.default(0),
+    urgent_delivery: Joi.boolean().default(false),
+    time_slot_id: commonSchemas.uuid.optional().allow(null, ''),
     admin_notes: Joi.string().allow('', null),
-    // Optional link to an existing customer + their saved address.
-    user_id: commonSchemas.uuid.optional().allow(null, ''),
-    address_id: commonSchemas.uuid.optional().allow(null, ''),
-    door_picture_url: Joi.string().uri().optional().allow(null, ''),
+    // Accepted for backward compatibility (ignored by the controller).
+    whatsapp_number: Joi.string().optional().allow('', null),
+    customer_name: Joi.string().max(255).optional().allow('', null),
   }),
 
   assignHouseNumber: Joi.object({

@@ -21,6 +21,7 @@ import {
   Navigation2,
   X,
   Bell,
+  MessageCircle,
   Wifi,
   WifiOff,
   Trash2,
@@ -495,6 +496,11 @@ export const Orders: React.FC = () => {
                 ⚡ URGENT
               </span>
             )}
+            {order.source === 'whatsapp' && (
+              <span className="inline-flex items-center gap-0.5 rounded bg-green-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                <MessageCircle className="h-2.5 w-2.5" /> WHATSAPP
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-500">{formatDateTime(order.placedAt)}</p>
         </div>
@@ -714,6 +720,10 @@ export const Orders: React.FC = () => {
     if (order.isUrgentDelivery) {
       return 'bg-amber-50 border-l-4 border-amber-500';
     }
+    // WhatsApp orders get a distinct green accent.
+    if (order.source === 'whatsapp') {
+      return 'bg-green-50 border-l-4 border-green-500';
+    }
     return '';
   };
 
@@ -880,6 +890,14 @@ export const Orders: React.FC = () => {
                 {selectedOrder.urgentDeliveryEta ? (
                   <span className="text-sm text-amber-50">· ETA {selectedOrder.urgentDeliveryEta}</span>
                 ) : null}
+              </div>
+            )}
+            {/* WhatsApp source banner */}
+            {selectedOrder.source === 'whatsapp' && (
+              <div className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-white">
+                <MessageCircle className="h-5 w-5" />
+                <span className="font-bold">WhatsApp order</span>
+                <span className="text-sm text-green-50">· placed by admin on the customer's behalf</span>
               </div>
             )}
             {/* Order Header */}
