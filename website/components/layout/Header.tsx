@@ -22,6 +22,7 @@ import {
   ArrowRight,
   MessageSquareWarning,
   Bike,
+  UtensilsCrossed,
 } from 'lucide-react'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { cn, formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
@@ -64,6 +65,7 @@ export default function Header() {
     { href: '/', label: 'Home', icon: Home },
     ...categories.map(cat => ({ href: `/category/${cat.slug}`, label: cat.name, icon: null })),
     { href: '/atta-chakki', label: 'Atta Chakki', icon: Wheat },
+    { href: '/restaurant/login', label: 'Restaurant', icon: UtensilsCrossed },
   ]
 
   // Banner settings from API
