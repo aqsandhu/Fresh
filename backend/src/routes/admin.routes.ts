@@ -10,6 +10,7 @@ import * as reviewController from '../controllers/review.controller';
 import * as complaintController from '../controllers/complaint.controller';
 import * as tipsController from '../controllers/tips.controller';
 import * as riderAppController from '../controllers/riderApplication.controller';
+import * as restaurantsController from '../controllers/admin/restaurants.controller';
 import {
   authenticate,
   requireAdmin,
@@ -247,6 +248,14 @@ router.put('/complaints/:id', adminRateLimiter, complaintController.updateCompla
 router.get('/rider-applications', riderAppController.listRiderApplications);
 router.put('/rider-applications/:id', adminRateLimiter, riderAppController.updateRiderApplication);
 router.put('/work-as-rider', adminRateLimiter, riderAppController.updateWorkAsRiderContent);
+
+// Restaurants (B2B accounts): review requests + manage approved restaurants
+router.get('/restaurants', restaurantsController.getRestaurants);
+router.post('/restaurants/:id/approve', adminRateLimiter, restaurantsController.approveRestaurant);
+router.post('/restaurants/:id/disable', adminRateLimiter, restaurantsController.disableRestaurant);
+router.post('/restaurants/:id/ban', adminRateLimiter, restaurantsController.banRestaurant);
+router.put('/restaurants/:id', adminRateLimiter, restaurantsController.updateRestaurant);
+router.delete('/restaurants/:id', adminRateLimiter, restaurantsController.removeRestaurant);
 
 // User guidance tips (per-city; global tips are super-admin only)
 router.get('/tips', tipsController.listTips);

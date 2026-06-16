@@ -173,6 +173,37 @@ export const generateAdminTokenPair = (
   };
 };
 
+// ── Restaurant (B2B) tokens ────────────────────────────────────────────────
+// A restaurant session is fully isolated from user/admin sessions: the payload
+// carries `type: 'restaurant'` + `restaurantId` and NO `userId`/`role`, so it
+// can never satisfy the user/admin `authenticate` guards, and a user/admin
+// token can never satisfy `authenticateRestaurant`.
+const RESTAURANT_JWT_EXPIRES_IN = process.env.RESTAURANT_JWT_EXPIRES_IN || '12h';
+
+export interface RestaurantTokenPayload {
+  restaurantId: string;
+  phone: string;
+  type: 'restaurant';
+  iat?: number;
+  exp?: number;
+}
+
+export const generateRestaurantToken = (restaurantId: string, phone: string): string => {
+  return jwt.sign(
+    { restaurantId, phone, type: 'restaurant' },
+    jwtSecret,
+    { expiresIn: RESTAURANT_JWT_EXPIRES_IN } as SignOptions
+  );
+};
+
+export const verifyRestaurantToken = (token: string): RestaurantTokenPayload => {
+  const decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+  if (decoded?.type !== 'restaurant' || typeof decoded?.restaurantId !== 'string') {
+    throw new Error('Not a restaurant token');
+  }
+  return decoded as unknown as RestaurantTokenPayload;
+};
+
 // Decode token without verification (for debugging)
 export const decodeToken = (token: string): JwtPayload | null => {
   try {

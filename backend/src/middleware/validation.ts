@@ -443,6 +443,30 @@ export const riderSchemas = {
   }),
 };
 
+// Restaurant (B2B) validation schemas
+export const restaurantSchemas = {
+  register: Joi.object({
+    business_name: Joi.string().min(2).max(255).required(),
+    owner_name: Joi.string().max(255).allow('', null),
+    phone: commonSchemas.phone.required(),
+    pin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+      'string.length': 'PIN must be exactly 4 digits',
+      'string.pattern.base': 'PIN must contain only digits (0-9)',
+    }),
+    email: commonSchemas.email.allow('', null),
+    address: Joi.string().max(1000).allow('', null),
+    city: Joi.string().max(120).allow('', null),
+  }),
+
+  login: Joi.object({
+    phone: commonSchemas.phone.required(),
+    pin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+      'string.length': 'PIN must be exactly 4 digits',
+      'string.pattern.base': 'PIN must contain only digits (0-9)',
+    }),
+  }),
+};
+
 // Admin validation schemas
 export const adminSchemas = {
   // SECURITY FIX: Add admin login validation with password requirements
