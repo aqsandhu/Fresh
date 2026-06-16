@@ -20,8 +20,10 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { roundMoney } from '../../utils/money';
+import { resolveUnitPrice, normalizeProductUnit } from '../../utils/unitPricing';
 import { hasVariableWeightColumns } from '../../config/productSchema';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
+import { hasUrgentDeliveryColumns } from '../../config/orderSchema';
 
 /**
  * Fire-and-forget: when an order reaches `delivered`, check whether the
@@ -93,10 +95,15 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
   );
   const total = parseInt(countResult.rows[0].count);
 
+  const urgentCol = (await hasUrgentDeliveryColumns())
+    ? 'o.is_urgent_delivery, o.urgent_delivery_eta,'
+    : '';
+
   // Get orders
   const ordersSql = `
-    SELECT 
+    SELECT
       o.id, o.order_number, o.status, o.source,
+      ${urgentCol}
       o.subtotal, o.discount_amount, o.delivery_charge, o.tax_amount, o.total_amount,
       o.payment_method, o.payment_status, o.paid_amount,
       o.placed_at, o.delivered_at, o.show_customer_phone,
@@ -695,16 +702,22 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
   } = req.body;
 
   // Calculate totals (server-authoritative pricing — never trust client totals).
+  // Each item carries its own unit (full / half_kg / quarter_kg / half_dozen);
+  // the price for that unit is resolved server-side.
   let subtotal = 0;
+  const normalizedItems: { product_id: string; quantity: number; unit: string }[] = [];
   for (const item of items) {
     const productResult = await query(
-      'SELECT price FROM products WHERE id = $1 AND is_active = TRUE',
+      'SELECT price, half_kg_price, quarter_kg_price, half_dozen_price FROM products WHERE id = $1 AND is_active = TRUE',
       [item.product_id]
     );
     if (productResult.rows.length === 0) {
       return errorResponse(res, `Product not found: ${item.product_id}`, 400);
     }
-    subtotal += parseFloat(productResult.rows[0].price) * item.quantity;
+    const unit = normalizeProductUnit(item.unit);
+    const unitPrice = resolveUnitPrice(productResult.rows[0], unit);
+    subtotal += unitPrice * item.quantity;
+    normalizedItems.push({ product_id: item.product_id, quantity: item.quantity, unit });
   }
 
   const charge = Number.isFinite(parseFloat(delivery_charge)) ? Math.max(0, parseFloat(delivery_charge)) : 0;
@@ -739,7 +752,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
   // columns stay parameterised.
   const cols = ['whatsapp_number', 'customer_name', 'items', 'subtotal', 'delivery_charge', 'total_amount', 'address_text'];
   const baseParams: any[] = [
-    whatsapp_number, customer_name, JSON.stringify(items),
+    whatsapp_number, customer_name, JSON.stringify(normalizedItems),
     subtotal, charge, totalAmount, address_text,
   ];
 

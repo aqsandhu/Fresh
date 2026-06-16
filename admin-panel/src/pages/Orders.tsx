@@ -488,7 +488,14 @@ export const Orders: React.FC = () => {
       title: 'Order #',
       render: (order: Order) => (
         <div>
-          <p className="font-medium text-gray-900">{order.orderNumber}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="font-medium text-gray-900">{order.orderNumber}</p>
+            {order.isUrgentDelivery && (
+              <span className="inline-flex items-center gap-0.5 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                ⚡ URGENT
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-500">{formatDateTime(order.placedAt)}</p>
         </div>
       ),
@@ -703,6 +710,10 @@ export const Orders: React.FC = () => {
     if (flashingOrders.has(order.id)) {
       return 'animate-pulse bg-yellow-50 transition-colors duration-500';
     }
+    // Urgent orders stand out across the whole row.
+    if (order.isUrgentDelivery) {
+      return 'bg-amber-50 border-l-4 border-amber-500';
+    }
     return '';
   };
 
@@ -855,7 +866,22 @@ export const Orders: React.FC = () => {
         }
       >
         {selectedOrder && (
-          <div className="space-y-6" id="order-print-area">
+          <div
+            className={`space-y-6 ${
+              selectedOrder.isUrgentDelivery ? 'rounded-lg ring-2 ring-amber-400 bg-amber-50/40 p-4' : ''
+            }`}
+            id="order-print-area"
+          >
+            {/* Urgent banner */}
+            {selectedOrder.isUrgentDelivery && (
+              <div className="flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2.5 text-white">
+                <span className="text-lg">⚡</span>
+                <span className="font-bold">Urgent delivery order</span>
+                {selectedOrder.urgentDeliveryEta ? (
+                  <span className="text-sm text-amber-50">· ETA {selectedOrder.urgentDeliveryEta}</span>
+                ) : null}
+              </div>
+            )}
             {/* Order Header */}
             <div className="flex items-center justify-between">
               <div>

@@ -796,7 +796,11 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     orderNumber: order.order_number,
     status: order.status,
     totalAmount: parseFloat(order.total_amount),
-    message: `New order #${order.order_number} placed`,
+    isUrgent,
+    urgentEta: isUrgent ? order.urgent_delivery_eta || null : null,
+    message: isUrgent
+      ? `URGENT order #${order.order_number} placed`
+      : `New order #${order.order_number} placed`,
   });
 
   emitToUser(req.user.id, 'order:created', {

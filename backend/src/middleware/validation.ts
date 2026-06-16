@@ -465,6 +465,7 @@ export const adminSchemas = {
       Joi.object({
         product_id: commonSchemas.uuid.required(),
         quantity: commonSchemas.quantity.required(),
+        unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
         notes: Joi.string(),
       })
     ).min(1).required(),
