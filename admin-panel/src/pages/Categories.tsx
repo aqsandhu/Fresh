@@ -52,6 +52,7 @@ export const Categories: React.FC = () => {
     icon: '',
     isActive: true,
     displayOrder: 0,
+    qualifiesForFreeDelivery: false,
   });
 
   const { data: categories, isLoading } = useQuery({
@@ -142,6 +143,7 @@ export const Categories: React.FC = () => {
       icon: '',
       isActive: true,
       displayOrder: 0,
+      qualifiesForFreeDelivery: false,
     });
     setIsModalOpen(true);
   };
@@ -156,6 +158,7 @@ export const Categories: React.FC = () => {
       icon: category.icon || '',
       isActive: category.isActive,
       displayOrder: category.displayOrder,
+      qualifiesForFreeDelivery: category.qualifiesForFreeDelivery ?? false,
     });
     // Set image preview if category has an image
     setImagePreview(category.imageUrl ? resolveImageUrl(category.imageUrl) : null);
@@ -251,6 +254,7 @@ export const Categories: React.FC = () => {
       icon: formData.icon,
       isActive: formData.isActive ?? true,
       displayOrder: formData.displayOrder ?? 0,
+      qualifiesForFreeDelivery: formData.qualifiesForFreeDelivery ?? false,
     };
 
     if (editingCategory) {
@@ -261,6 +265,7 @@ export const Categories: React.FC = () => {
         if (formData.icon) submitData.append('icon', formData.icon);
         submitData.append('is_active', String(formData.isActive ?? true));
         submitData.append('display_order', String(formData.displayOrder ?? 0));
+        submitData.append('qualifies_for_free_delivery', String(formData.qualifiesForFreeDelivery ?? false));
         submitData.append('image', selectedImage);
         updateWithImageMutation.mutate({ id: editingCategory.id, data: submitData });
       } else {
@@ -470,6 +475,27 @@ export const Categories: React.FC = () => {
               min={0}
               helperText="Lower numbers appear first"
             />
+          </div>
+
+          {/* Free-delivery calculation */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="flex items-start gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={formData.qualifiesForFreeDelivery ?? false}
+                onChange={(e) => setFormData({ ...formData, qualifiesForFreeDelivery: e.target.checked })}
+                className="mt-0.5 w-4 h-4 text-primary-600 rounded"
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-800">
+                  Apply free-delivery calculation
+                </span>
+                <span className="block text-xs text-gray-500">
+                  Only items in checked categories count toward the free-delivery amount.
+                  Free-delivery time slots stay free for every category.
+                </span>
+              </span>
+            </label>
           </div>
 
           {/* Image Upload */}

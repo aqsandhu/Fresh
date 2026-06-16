@@ -565,12 +565,17 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
     parent_id,
     display_order,
     is_active,
+    qualifies_for_free_delivery,
   } = req.body;
 
   // Validation
   if (!nameEn || !nameUr) {
     return errorResponse(res, 'Name (English) and Name (Urdu) are required', 400);
   }
+
+  // Default OFF: a category only counts toward the free-delivery threshold when
+  // the admin explicitly ticks the box.
+  const qualifiesFreeDelivery = toBool(qualifies_for_free_delivery);
 
   let slug = generateSlug(nameEn);
   if (!slug) {
@@ -601,13 +606,15 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
     `INSERT INTO categories (
       name_ur, name_en, slug, icon_url, image_url,
       parent_id, display_order, is_active,
+      qualifies_for_free_delivery,
       created_by, city_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     RETURNING *`,
     [
       nameUr, nameEn, slug, icon || null, imageUrl,
       parent_id || null, display_order || 0,
       is_active !== undefined ? is_active : true,
+      qualifiesFreeDelivery,
       req.user?.id,
       scope.cityId,
     ]
@@ -643,12 +650,15 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
     'parentId': 'parent_id',
     'displayOrder': 'display_order',
     'isActive': 'is_active',
+    'qualifiesForFreeDelivery': 'qualifies_for_free_delivery',
   };
 
   const allowedFields = [
     'name_ur', 'name_en', 'icon_url', 'image_url',
     'parent_id', 'display_order', 'is_active',
+    'qualifies_for_free_delivery',
   ];
+  const booleanFields = new Set(['is_active', 'qualifies_for_free_delivery']);
 
   const setClauses: string[] = [];
   const values: any[] = [];
@@ -658,10 +668,10 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
   for (const [key, value] of Object.entries(updates)) {
     // Map camelCase to snake_case if needed
     const dbField = fieldMapping[key] || key;
-    
+
     if (allowedFields.includes(dbField)) {
       setClauses.push(`${dbField} = $${paramIndex++}`);
-      values.push(value);
+      values.push(booleanFields.has(dbField) ? toBool(value) : value);
     }
   }
 
