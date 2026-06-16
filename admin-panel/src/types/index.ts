@@ -88,6 +88,7 @@ export interface Order {
   paidAmount?: number;
   isUrgentDelivery?: boolean;
   urgentDeliveryEta?: string | null;
+  source?: string;
   placedAt: string;
   createdAt?: string;
   confirmedAt?: string;
@@ -391,21 +392,21 @@ export interface RiderDeliveryCharge {
 }
 
 export interface WhatsAppOrderData {
-  whatsappNumber: string;
-  customerName: string;
+  /** Required: the order is placed as a real order under this registered customer. */
+  userId: string;
+  /** Required: one of the customer's saved addresses. */
+  addressId: string;
   items: {
     productId: string;
     quantity: number;
     unit?: string;
   }[];
-  addressText: string;
-  latitude?: number;
-  longitude?: number;
-  deliveryCharge?: number;
+  urgentDelivery?: boolean;
+  timeSlotId?: string;
   adminNotes?: string;
-  userId?: string;
-  addressId?: string;
-  doorPictureUrl?: string;
+  // Sent for reference only — ignored server-side.
+  whatsappNumber?: string;
+  customerName?: string;
 }
 
 export interface WhatsappCustomerAddress {

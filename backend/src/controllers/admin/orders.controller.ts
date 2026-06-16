@@ -20,7 +20,7 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { roundMoney } from '../../utils/money';
-import { resolveUnitPrice, normalizeProductUnit } from '../../utils/unitPricing';
+import { resolveUnitPrice, normalizeProductUnit, stockUnitsNeeded } from '../../utils/unitPricing';
 import { hasVariableWeightColumns } from '../../config/productSchema';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
 import { hasUrgentDeliveryColumns } from '../../config/orderSchema';
@@ -688,112 +688,184 @@ export const assignRider = asyncHandler(async (req: Request, res: Response) => {
 
 export const createWhatsappOrder = asyncHandler(async (req: Request, res: Response) => {
   const {
-    whatsapp_number,
-    customer_name,
     items,
-    address_text,
-    latitude,
-    longitude,
-    delivery_charge = 0,
     admin_notes,
     user_id,
     address_id,
-    door_picture_url,
+    urgent_delivery,
+    time_slot_id,
   } = req.body;
 
-  // Calculate totals (server-authoritative pricing — never trust client totals).
-  // Each item carries its own unit (full / half_kg / quarter_kg / half_dozen);
-  // the price for that unit is resolved server-side.
-  let subtotal = 0;
-  const normalizedItems: { product_id: string; quantity: number; unit: string }[] = [];
-  for (const item of items) {
-    const productResult = await query(
-      'SELECT price, half_kg_price, quarter_kg_price, half_dozen_price FROM products WHERE id = $1 AND is_active = TRUE',
-      [item.product_id]
-    );
-    if (productResult.rows.length === 0) {
-      return errorResponse(res, `Product not found: ${item.product_id}`, 400);
-    }
-    const unit = normalizeProductUnit(item.unit);
-    const unitPrice = resolveUnitPrice(productResult.rows[0], unit);
-    subtotal += unitPrice * item.quantity;
-    normalizedItems.push({ product_id: item.product_id, quantity: item.quantity, unit });
+  if (!Array.isArray(items) || items.length === 0) {
+    return errorResponse(res, 'Add at least one item.', 400);
+  }
+  // A WhatsApp order is placed as a REAL order, so it needs a registered
+  // customer + one of their saved addresses (use the phone lookup to pick them).
+  if (!user_id || !address_id) {
+    return errorResponse(res, 'Select an existing customer and one of their saved addresses.', 400);
   }
 
-  const charge = Number.isFinite(parseFloat(delivery_charge)) ? Math.max(0, parseFloat(delivery_charge)) : 0;
-  const totalAmount = subtotal + charge;
+  const scope = await resolveCityScope(req);
+  const isUrgent = urgent_delivery === true || urgent_delivery === 'true';
 
-  // Resolve + validate the optional customer / address link. address_id is only
-  // accepted if it really belongs to the matched user (defence against IDOR).
-  const linkReady = await hasWhatsappLinkColumns();
-  let linkedUserId: string | null = null;
-  let linkedAddressId: string | null = null;
-  let doorPic: string | null =
-    typeof door_picture_url === 'string' && door_picture_url.trim() ? door_picture_url.trim() : null;
-
-  if (linkReady && user_id) {
-    const u = await query(`SELECT id FROM users WHERE id = $1 AND role = 'customer' AND deleted_at IS NULL`, [user_id]);
-    if (u.rows.length > 0) {
-      linkedUserId = u.rows[0].id;
-      if (address_id) {
-        const a = await query(
-          `SELECT id, door_picture_url FROM addresses WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL`,
-          [address_id, linkedUserId]
-        );
-        if (a.rows.length > 0) {
-          linkedAddressId = a.rows[0].id;
-          if (!doorPic && a.rows[0].door_picture_url) doorPic = a.rows[0].door_picture_url;
-        }
-      }
-    }
-  }
-
-  // Build the parameter list dynamically so the geography + optional link
-  // columns stay parameterised.
-  const cols = ['whatsapp_number', 'customer_name', 'items', 'subtotal', 'delivery_charge', 'total_amount', 'address_text'];
-  const baseParams: any[] = [
-    whatsapp_number, customer_name, JSON.stringify(normalizedItems),
-    subtotal, charge, totalAmount, address_text,
-  ];
-
-  // location
-  let locationSql = 'NULL';
-  if (longitude != null && latitude != null) {
-    baseParams.push(longitude, latitude);
-    locationSql = `ST_SetSRID(ST_MakePoint($${baseParams.length - 1}::float, $${baseParams.length}::float), 4326)::geography`;
-  }
-
-  baseParams.push(req.user?.id);
-  const enteredByPlaceholder = `$${baseParams.length}`;
-  baseParams.push(admin_notes ?? null);
-  const adminNotesPlaceholder = `$${baseParams.length}`;
-
-  const linkCols: string[] = [];
-  const linkVals: string[] = [];
-  if (linkReady) {
-    baseParams.push(linkedUserId);
-    linkCols.push('user_id');
-    linkVals.push(`$${baseParams.length}`);
-    baseParams.push(linkedAddressId);
-    linkCols.push('address_id');
-    linkVals.push(`$${baseParams.length}`);
-    baseParams.push(doorPic);
-    linkCols.push('door_picture_url');
-    linkVals.push(`$${baseParams.length}`);
-  }
-
-  const result = await query(
-    `INSERT INTO whatsapp_orders (
-      ${cols.join(', ')}, location, entered_by, admin_notes${linkCols.length ? ', ' + linkCols.join(', ') : ''}
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, ${locationSql}, ${enteredByPlaceholder}, ${adminNotesPlaceholder}${linkVals.length ? ', ' + linkVals.join(', ') : ''}
-    ) RETURNING *`,
-    baseParams
+  // Validate customer + address (IDOR-safe: the address must belong to the user).
+  const userRes = await query(
+    `SELECT id, full_name, phone FROM users WHERE id = $1 AND role = 'customer' AND deleted_at IS NULL`,
+    [user_id]
   );
+  if (userRes.rows.length === 0) return errorResponse(res, 'Customer not found.', 400);
+  const customer = userRes.rows[0];
 
-  logger.info('WhatsApp order created', { orderId: result.rows[0].id, createdBy: req.user?.id, linkedUserId, linkedAddressId });
+  const addrRes = await query(
+    `SELECT a.*, ST_X(a.location::geometry) AS lng, ST_Y(a.location::geometry) AS lat
+       FROM addresses a WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL`,
+    [address_id, user_id]
+  );
+  if (addrRes.rows.length === 0) return errorResponse(res, 'Address not found for this customer.', 400);
+  const address = addrRes.rows[0];
 
-  createdResponse(res, result.rows[0], 'WhatsApp order created successfully');
+  // Resolve the delivery city from the address (mirrors the customer flow),
+  // falling back to the admin's scoped city so the order is visible to them.
+  let orderCityId: string | null = scope.cityId ?? null;
+  if (address.city) {
+    const cityRow = await query(
+      `SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1`,
+      [address.city]
+    );
+    if (cityRow.rows[0]?.id) orderCityId = cityRow.rows[0].id;
+  }
+
+  let order: any;
+  try {
+    order = await withTransaction(async (client) => {
+      // Price each line by its unit; track the free-delivery-eligible subtotal.
+      let subtotal = 0;
+      let vegFruitSubtotal = 0;
+      const lines: any[] = [];
+      for (const item of items) {
+        const pr = await client.query(
+          `SELECT p.name_en, p.primary_image, p.sku, p.price, p.half_kg_price, p.quarter_kg_price,
+                  p.half_dozen_price, cat.qualifies_for_free_delivery
+             FROM products p JOIN categories cat ON p.category_id = cat.id
+            WHERE p.id = $1 AND p.is_active = TRUE FOR UPDATE`,
+          [item.product_id]
+        );
+        if (pr.rows.length === 0) {
+          throw Object.assign(new Error(`Product not found: ${item.product_id}`), { http: 400 });
+        }
+        const p = pr.rows[0];
+        const unit = normalizeProductUnit(item.unit);
+        const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);
+        const unitPrice = resolveUnitPrice(p, unit);
+        const lineTotal = roundMoney(unitPrice * qty);
+        subtotal += lineTotal;
+        if (p.qualifies_for_free_delivery === true) vegFruitSubtotal += lineTotal;
+        lines.push({ product_id: item.product_id, name: p.name_en, image: p.primary_image, sku: p.sku, unit, unitPrice, qty, lineTotal });
+      }
+      subtotal = roundMoney(subtotal);
+
+      // Delivery settings.
+      const sset = await client.query(
+        `SELECT key, value FROM site_settings WHERE key IN ('delivery_base_charge','delivery_free_delivery_threshold','delivery_urgent_charge','delivery_urgent_eta')`
+      );
+      let baseCharge = 100, freeThreshold = 500, urgentCharge = 0, urgentEta = '';
+      for (const r of sset.rows) {
+        if (r.key === 'delivery_base_charge') baseCharge = parseFloat(r.value) || baseCharge;
+        if (r.key === 'delivery_free_delivery_threshold') freeThreshold = parseFloat(r.value) || freeThreshold;
+        if (r.key === 'delivery_urgent_charge') urgentCharge = parseFloat(r.value) || 0;
+        if (r.key === 'delivery_urgent_eta') urgentEta = String(r.value || '').trim();
+      }
+
+      // Delivery charge — same rules as the website (urgent flat rate; free
+      // slot → free; else free only when the eligible subtotal meets the
+      // threshold). Urgent ignores slots + the threshold.
+      // effectiveSlotId is nulled out if the slot no longer exists, so the
+      // orders.time_slot_id FK never fails on a stale id.
+      let effectiveSlotId: string | null = isUrgent ? null : (time_slot_id || null);
+      let deliveryCharge = 0;
+      if (isUrgent) {
+        if (urgentCharge <= 0) throw Object.assign(new Error('Urgent delivery is not available right now.'), { http: 400 });
+        deliveryCharge = roundMoney(urgentCharge);
+      } else if (effectiveSlotId) {
+        const slot = await client.query(`SELECT is_free_delivery_slot FROM time_slots WHERE id = $1`, [effectiveSlotId]);
+        if (slot.rows.length === 0) {
+          effectiveSlotId = null;
+          deliveryCharge = vegFruitSubtotal >= freeThreshold ? 0 : baseCharge;
+        } else {
+          deliveryCharge = slot.rows[0].is_free_delivery_slot === true
+            ? 0
+            : (vegFruitSubtotal >= freeThreshold ? 0 : baseCharge);
+        }
+      } else {
+        deliveryCharge = vegFruitSubtotal >= freeThreshold ? 0 : baseCharge;
+      }
+
+      const totalAmount = roundMoney(subtotal + deliveryCharge);
+
+      const snapshot = JSON.stringify({
+        written_address: address.written_address,
+        landmark: address.landmark,
+        house_number: address.house_number,
+        area_name: address.area_name,
+        city: address.city,
+        province: address.province,
+        postal_code: address.postal_code,
+        door_picture_url: address.door_picture_url || '',
+        location: { latitude: address.lat ?? null, longitude: address.lng ?? null },
+      });
+
+      const orderRes = await client.query(
+        `INSERT INTO orders (
+          user_id, address_id, delivery_address_snapshot, time_slot_id,
+          subtotal, discount_amount, delivery_charge, tax_amount, total_amount,
+          payment_method, payment_status, status, source, customer_notes, city_id
+        ) VALUES ($1,$2,$3,$4,$5,0,$6,0,$7,'cash_on_delivery','pending','pending','whatsapp',$8,$9)
+        RETURNING *`,
+        [
+          customer.id, address.id, snapshot, effectiveSlotId,
+          subtotal, deliveryCharge, totalAmount, admin_notes || null, orderCityId,
+        ]
+      );
+      const o = orderRes.rows[0];
+
+      if (isUrgent && (await hasUrgentDeliveryColumns())) {
+        await client.query(`UPDATE orders SET is_urgent_delivery = TRUE, urgent_delivery_eta = $1 WHERE id = $2`, [urgentEta || null, o.id]);
+        o.is_urgent_delivery = true;
+        o.urgent_delivery_eta = urgentEta || null;
+      }
+
+      for (const l of lines) {
+        await client.query(
+          `INSERT INTO order_items (order_id, product_id, product_name, product_image, product_sku, unit_price, quantity, total_price, unit)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [o.id, l.product_id, l.name, l.image, l.sku, l.unitPrice, l.qty, l.lineTotal, l.unit]
+        );
+        const need = stockUnitsNeeded(l.qty, l.unit);
+        await client.query(
+          `UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2`,
+          [need, l.product_id]
+        );
+      }
+
+      return o;
+    });
+  } catch (err: any) {
+    if (err?.http === 400) return errorResponse(res, err.message, 400);
+    throw err;
+  }
+
+  logger.info('WhatsApp order placed as real order', { orderId: order.id, by: req.user?.id });
+  emitToAdmins('order:new', {
+    orderId: order.id,
+    orderNumber: order.order_number,
+    status: order.status,
+    totalAmount: parseFloat(order.total_amount),
+    isUrgent: order.is_urgent_delivery === true,
+    source: 'whatsapp',
+    message: `New WhatsApp order #${order.order_number} placed`,
+  });
+
+  createdResponse(res, order, 'WhatsApp order placed');
 });
 
 /**
