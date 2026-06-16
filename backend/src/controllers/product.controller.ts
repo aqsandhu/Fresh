@@ -8,8 +8,17 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, paginatedResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
 import { tagSearchSql } from '../utils/productTags';
-import { hasVariableWeightColumns, hasUnitToggleColumns } from '../config/productSchema';
+import { hasVariableWeightColumns, hasUnitToggleColumns, hasRestaurantCatalogColumns } from '../config/productSchema';
 import { hasFeedbackTables } from '../config/feedbackSchema';
+
+/**
+ * Keeps the B2B (restaurant) catalog out of the consumer storefront. Gated until
+ * migration 31 lands so queries never reference a column that doesn't exist yet.
+ * Returns a clause to append after an existing WHERE (alias `p`).
+ */
+async function consumerProductFilter(): Promise<string> {
+  return (await hasRestaurantCatalogColumns()) ? ' AND p.is_restaurant = FALSE' : '';
+}
 
 /** Column fragment for variable-weight fields, gated until migration 23 lands. */
 async function variableWeightCols(): Promise<string> {
@@ -52,6 +61,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE
   `;
+  sql += await consumerProductFilter();
 
   const params: any[] = [];
   let paramIndex = 1;
@@ -206,6 +216,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
     JOIN categories c ON p.category_id = c.id
     LEFT JOIN categories sc ON p.subcategory_id = sc.id
     WHERE p.id = $1 AND p.is_active = TRUE`;
+  sql += await consumerProductFilter();
   const params: any[] = [id];
   if (publicCityId) {
     sql += ` AND p.city_id = $2`;
@@ -260,6 +271,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
     JOIN categories c ON p.category_id = c.id
     LEFT JOIN categories sc ON p.subcategory_id = sc.id
     WHERE p.slug = $1 AND p.is_active = TRUE`;
+  sql += await consumerProductFilter();
   const params: any[] = [slug];
   if (publicCityId) {
     sql += ` AND p.city_id = $2`;
@@ -305,6 +317,7 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE AND p.is_featured = TRUE`;
+  sql += await consumerProductFilter();
   const params: any[] = [];
   if (publicCityId) {
     sql += ` AND p.city_id = $1`;
@@ -342,6 +355,7 @@ export const getNewArrivals = asyncHandler(async (req: Request, res: Response) =
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE AND p.is_new_arrival = TRUE`;
+  sql += await consumerProductFilter();
   const params: any[] = [];
   if (publicCityId) {
     sql += ` AND p.city_id = $1`;
@@ -391,8 +405,9 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.category_id = $1
-      AND p.id != $2 
+      AND p.id != $2
       AND p.is_active = TRUE`;
+  sql += await consumerProductFilter();
   const params: any[] = [categoryId, id];
   if (publicCityId) {
     sql += ` AND p.city_id = $3`;
@@ -435,6 +450,7 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
+  const notRestaurant = await consumerProductFilter();
 
   const result = await query(
     `SELECT
@@ -452,7 +468,7 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
       ) as rank
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE
+    WHERE p.is_active = TRUE${notRestaurant}
       AND (
         to_tsvector('english', COALESCE(p.name_en, '') || ' ' || COALESCE(p.description_en, '') || ' ' || array_to_string(COALESCE(p.tags, ARRAY[]::text[]), ' '))
         @@ plainto_tsquery('english', $1)

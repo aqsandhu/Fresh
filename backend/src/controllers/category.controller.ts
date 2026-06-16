@@ -7,6 +7,12 @@ import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
+import { hasRestaurantCatalogColumns } from '../config/productSchema';
+
+/** Gated clause keeping restaurant categories out of the consumer storefront. */
+async function consumerCategoryFilter(alias = 'c'): Promise<string> {
+  return (await hasRestaurantCatalogColumns()) ? ` AND ${alias}.is_restaurant = FALSE` : '';
+}
 
 /**
  * Get all categories
@@ -25,6 +31,7 @@ export const getCategories = asyncHandler(async (req: Request, res: Response) =>
     LEFT JOIN products p ON c.id = p.category_id AND p.is_active = TRUE
     WHERE c.is_active = TRUE
   `;
+  sql += await consumerCategoryFilter('c');
 
   const params: any[] = [];
   let paramIndex = 1;
@@ -68,6 +75,7 @@ export const getCategoryBySlug = asyncHandler(async (req: Request, res: Response
       c.meta_title, c.meta_description
     FROM categories c
     WHERE c.slug = $1 AND c.is_active = TRUE`;
+  categorySql += await consumerCategoryFilter('c');
   const categoryParams: any[] = [slug];
   if (publicCityId) {
     categorySql += ` AND c.city_id = $2`;
@@ -90,6 +98,7 @@ export const getCategoryBySlug = asyncHandler(async (req: Request, res: Response
     FROM categories c
     LEFT JOIN products p ON c.id = p.category_id AND p.is_active = TRUE
     WHERE c.parent_id = $1 AND c.is_active = TRUE`;
+  subSql += await consumerCategoryFilter('c');
   const subParams: any[] = [category.id];
   if (publicCityId) {
     subSql += ` AND c.city_id = $2`;
@@ -118,6 +127,7 @@ export const getCategoryTree = asyncHandler(async (req: Request, res: Response) 
       c.parent_id, c.display_order
     FROM categories c
     WHERE c.is_active = TRUE`;
+  sql += await consumerCategoryFilter('c');
   const params: any[] = [];
   if (publicCityId) {
     sql += ` AND c.city_id = $1`;
