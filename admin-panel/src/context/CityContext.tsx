@@ -172,15 +172,17 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, [isScopedAdmin, lockedCityId, allCities, cities]);
 
+  // '' is a valid super-admin selection ("All cities") — never coerce it to a
+  // real city, otherwise picking "All cities" snaps back to cities[0] (Gujrat).
   const selectedCity = useMemo(
-    () => cities.find((c) => c.id === selectedCityId) || cities[0] || null,
+    () => (selectedCityId ? cities.find((c) => c.id === selectedCityId) ?? null : null),
     [cities, selectedCityId]
   );
 
   const value = useMemo(
     () => ({
       cities,
-      selectedCityId: selectedCity?.id ?? selectedCityId,
+      selectedCityId,
       selectedCity,
       setSelectedCityId,
       canSwitchCity,

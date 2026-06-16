@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -48,6 +48,7 @@ function getDisplayDate(day: DayTab): string {
 
 export const TimeSlotScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<CartStackParamList>>();
+  const scrollRef = useRef<ScrollView>(null);
   const [activeDay, setActiveDay] = useState<DayTab>('today');
   const [todaySlots, setTodaySlots] = useState<DeliverySlot[]>([]);
   const [tomorrowSlots, setTomorrowSlots] = useState<DeliverySlot[]>([]);
@@ -103,6 +104,10 @@ export const TimeSlotScreen: React.FC = () => {
         setSelectedSlot(null);
       }
     }
+    // Scroll back up to where the slots start (the day tabs sit below the grid).
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: true });
+    });
   };
 
   // Mirrors backend rule: free slot OR (vegetables + fruits >= threshold)
@@ -127,7 +132,7 @@ export const TimeSlotScreen: React.FC = () => {
 
     setPlacing(true);
 
-    // Locally-saved addresses have a "local_" prefix — not a valid UUID.
+    // Locally-saved addresses have a "local_" prefix ï¿½ not a valid UUID.
     // Try to sync to the server and use the returned server ID.
     let finalAddressId = selectedAddress.id;
     if (selectedAddress.id.startsWith('local_')) {
@@ -290,7 +295,7 @@ export const TimeSlotScreen: React.FC = () => {
         <View style={[styles.progressStep, styles.progressStepActive]} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Time slots */}
         <Text style={styles.sectionTitle}>
           {activeDay === 'today' ? 'Today available time slots' : 'Tomorrow time slots'}
@@ -360,7 +365,7 @@ export const TimeSlotScreen: React.FC = () => {
           )}
           {deliveryCharge === 0 && !selectedSlot?.isFreeDelivery && (
             <Text style={styles.freeNote}>
-              Free delivery — Rs. {vegFruitSubtotal} in vegetables/fruits qualifies.
+              Free delivery ï¿½ Rs. {vegFruitSubtotal} in vegetables/fruits qualifies.
             </Text>
           )}
           {deliveryCharge > 0 && (

@@ -61,7 +61,7 @@ function mapStatus(s: string): OrderDisplayStatus {
 }
 
 const timelineSteps: { status: OrderDisplayStatus; label: string; icon: typeof Package }[] = [
-  { status: 'received', label: 'Order Received', icon: Package },
+  { status: 'received', label: 'Order Placed', icon: Package },
   { status: 'preparing', label: 'Preparing', icon: ChefHat },
   { status: 'out-for-delivery', label: 'Out for Delivery', icon: Truck },
   { status: 'delivered', label: 'Delivered', icon: CheckCircle },
