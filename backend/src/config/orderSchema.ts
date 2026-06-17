@@ -16,6 +16,9 @@ let ensurePromise: Promise<boolean> | null = null;
 let urgentColumnsCached: boolean | null = null;
 let urgentEnsurePromise: Promise<boolean> | null = null;
 
+let restaurantOrderCached: boolean | null = null;
+let restaurantOrderPromise: Promise<boolean> | null = null;
+
 function getMigrationConnectionString(): string | null {
   const direct = process.env.DATABASE_MIGRATION_URL || process.env.DIRECT_DATABASE_URL;
   if (direct) return direct;
@@ -171,4 +174,65 @@ export async function ensureUrgentDeliveryColumns(): Promise<boolean> {
   })();
 
   return urgentEnsurePromise;
+}
+
+// ── Restaurant orders (migration 32) ────────────────────────────────────────
+// Restaurant (B2B) orders flow through the SAME orders pipeline as consumer
+// orders so riders + accounting stay combined: orders.restaurant_id identifies
+// them, and user_id/address_id are relaxed to NULL (a restaurant order has no
+// consumer account / saved address — the snapshot carries the address).
+export async function hasRestaurantOrderColumns(): Promise<boolean> {
+  if (restaurantOrderCached !== null) return restaurantOrderCached;
+  try {
+    const result = await query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'orders'
+          AND column_name = 'restaurant_id' LIMIT 1`
+    );
+    restaurantOrderCached = (result.rowCount ?? 0) > 0;
+  } catch (error: any) {
+    logger.warn('Could not probe orders.restaurant_id column', { error: error?.message });
+    restaurantOrderCached = false;
+  }
+  return restaurantOrderCached;
+}
+
+export async function ensureRestaurantOrderColumns(): Promise<boolean> {
+  if (restaurantOrderCached === true) return true;
+  if (restaurantOrderPromise) return restaurantOrderPromise;
+
+  restaurantOrderPromise = (async () => {
+    if (await hasRestaurantOrderColumns()) return true;
+    const connectionString = getMigrationConnectionString();
+    if (!connectionString) return false;
+    const pool = new Pool({
+      connectionString,
+      ssl:
+        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
+          ? false
+          : { rejectUnauthorized: false },
+      max: 1,
+      connectionTimeoutMillis: 15000,
+    });
+    try {
+      await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS restaurant_id UUID REFERENCES restaurants(id) ON DELETE SET NULL`);
+      await pool.query(`ALTER TABLE orders ALTER COLUMN user_id DROP NOT NULL`);
+      await pool.query(`ALTER TABLE orders ALTER COLUMN address_id DROP NOT NULL`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS orders_restaurant_idx ON orders (restaurant_id)`);
+      restaurantOrderCached = true;
+      logger.info('orders restaurant columns ensured (migration 32 applied)');
+      return true;
+    } catch (error: any) {
+      logger.warn('Could not apply orders restaurant migration — run database/migrations/32 manually', {
+        error: error?.message,
+      });
+      restaurantOrderCached = false;
+      return false;
+    } finally {
+      await pool.end().catch(() => undefined);
+      restaurantOrderPromise = null;
+    }
+  })();
+
+  return restaurantOrderPromise;
 }
