@@ -8,7 +8,7 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import { query } from '@/config/database';
-import { hasVariableWeightColumns, hasUnitToggleColumns } from '@/config/productSchema';
+import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumns } from '@/config/productSchema';
 import { hasFeedbackTables } from '@/config/feedbackSchema';
 import productRoutes from '@/routes/product.routes';
 import { buildApp } from './helpers';
@@ -31,6 +31,10 @@ beforeAll(async () => {
   await hasFeedbackTables();
   mockQuery.mockResolvedValueOnce(ok([]));
   await hasUnitToggleColumns();
+  // Quality tiers (migration 34) — prime to "absent" so the consumer SELECTs use
+  // the legacy column set and each test's count→list mock sequence stays aligned.
+  mockQuery.mockResolvedValueOnce(ok([]));
+  await hasQualityCatalogColumns();
 });
 
 describe('GET /api/products', () => {

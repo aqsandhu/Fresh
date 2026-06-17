@@ -8,16 +8,18 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, paginatedResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
 import { tagSearchSql } from '../utils/productTags';
-import { hasVariableWeightColumns, hasUnitToggleColumns, hasRestaurantCatalogColumns } from '../config/productSchema';
+import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumns } from '../config/productSchema';
 import { hasFeedbackTables } from '../config/feedbackSchema';
 
 /**
- * Keeps the B2B (restaurant) catalog out of the consumer storefront. Gated until
- * migration 31 lands so queries never reference a column that doesn't exist yet.
- * Returns a clause to append after an existing WHERE (alias `p`).
+ * Column fragment for the consumer quality tiers (B/C price + per-quality shared
+ * stock), gated until migration 34 lands. Quality A is the existing price /
+ * stock_quantity. Returns a trailing-comma fragment for the SELECT column list.
  */
-async function consumerProductFilter(): Promise<string> {
-  return (await hasRestaurantCatalogColumns()) ? ' AND p.is_restaurant = FALSE' : '';
+async function qualityCols(): Promise<string> {
+  return (await hasQualityCatalogColumns())
+    ? 'p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c,'
+    : '';
 }
 
 /** Column fragment for variable-weight fields, gated until migration 23 lands. */
@@ -61,8 +63,6 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE
   `;
-  sql += await consumerProductFilter();
-
   const params: any[] = [];
   let paramIndex = 1;
 
@@ -146,6 +146,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
+  const qCols = await qualityCols();
   const productsSql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
@@ -153,6 +154,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
       c.qualifies_for_free_delivery,
       p.subcategory_id, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${qCols}
       ${varCols}
       ${rateCols}
       ${toggleCols}
@@ -191,6 +193,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
+  const qCols = await qualityCols();
 
   let sql = `
     SELECT
@@ -201,6 +204,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
       p.subcategory_id, sc.name_en as subcategory_name,
       p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${qCols}
       ${varCols}
       ${rateCols}
       ${toggleCols}
@@ -215,9 +219,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
     FROM products p
     JOIN categories c ON p.category_id = c.id
     LEFT JOIN categories sc ON p.subcategory_id = sc.id
-    WHERE p.id = $1 AND p.is_active = TRUE`;
-  sql += await consumerProductFilter();
-  const params: any[] = [id];
+    WHERE p.id = $1 AND p.is_active = TRUE`;  const params: any[] = [id];
   if (publicCityId) {
     sql += ` AND p.city_id = $2`;
     params.push(publicCityId);
@@ -246,6 +248,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
+  const qCols = await qualityCols();
 
   let sql = `
     SELECT
@@ -256,6 +259,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
       p.subcategory_id, sc.name_en as subcategory_name,
       p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${qCols}
       ${varCols}
       ${rateCols}
       ${toggleCols}
@@ -270,9 +274,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
     FROM products p
     JOIN categories c ON p.category_id = c.id
     LEFT JOIN categories sc ON p.subcategory_id = sc.id
-    WHERE p.slug = $1 AND p.is_active = TRUE`;
-  sql += await consumerProductFilter();
-  const params: any[] = [slug];
+    WHERE p.slug = $1 AND p.is_active = TRUE`;  const params: any[] = [slug];
   if (publicCityId) {
     sql += ` AND p.city_id = $2`;
     params.push(publicCityId);
@@ -303,11 +305,13 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
+  const qCols = await qualityCols();
 
   let sql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${qCols}
       ${varCols}
       ${rateCols}
       ${toggleCols}
@@ -316,9 +320,7 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
       c.qualifies_for_free_delivery
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE AND p.is_featured = TRUE`;
-  sql += await consumerProductFilter();
-  const params: any[] = [];
+    WHERE p.is_active = TRUE AND p.is_featured = TRUE`;  const params: any[] = [];
   if (publicCityId) {
     sql += ` AND p.city_id = $1`;
     params.push(publicCityId);
@@ -341,11 +343,13 @@ export const getNewArrivals = asyncHandler(async (req: Request, res: Response) =
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
+  const qCols = await qualityCols();
 
   let sql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${qCols}
       ${varCols}
       ${rateCols}
       ${toggleCols}
@@ -354,9 +358,7 @@ export const getNewArrivals = asyncHandler(async (req: Request, res: Response) =
       c.qualifies_for_free_delivery
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE AND p.is_new_arrival = TRUE`;
-  sql += await consumerProductFilter();
-  const params: any[] = [];
+    WHERE p.is_active = TRUE AND p.is_new_arrival = TRUE`;  const params: any[] = [];
   if (publicCityId) {
     sql += ` AND p.city_id = $1`;
     params.push(publicCityId);
@@ -391,11 +393,13 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
+  const qCols = await qualityCols();
 
   let sql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${qCols}
       ${varCols}
       ${rateCols}
       ${toggleCols}
@@ -406,9 +410,7 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
     JOIN categories c ON p.category_id = c.id
     WHERE p.category_id = $1
       AND p.id != $2
-      AND p.is_active = TRUE`;
-  sql += await consumerProductFilter();
-  const params: any[] = [categoryId, id];
+      AND p.is_active = TRUE`;  const params: any[] = [categoryId, id];
   if (publicCityId) {
     sql += ` AND p.city_id = $3`;
     params.push(publicCityId);
@@ -450,12 +452,13 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
-  const notRestaurant = await consumerProductFilter();
+  const qCols = await qualityCols();
 
   const result = await query(
     `SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+      ${qCols}
       ${varCols}
       ${rateCols}
       ${toggleCols}
@@ -468,7 +471,7 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
       ) as rank
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE${notRestaurant}
+    WHERE p.is_active = TRUE
       AND (
         to_tsvector('english', COALESCE(p.name_en, '') || ' ' || COALESCE(p.description_en, '') || ' ' || array_to_string(COALESCE(p.tags, ARRAY[]::text[]), ' '))
         @@ plainto_tsquery('english', $1)

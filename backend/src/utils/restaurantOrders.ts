@@ -9,7 +9,8 @@ import { roundMoney } from './money';
 import {
   normalizeProductUnit,
   normalizeQuality,
-  resolveQualityUnitPrice,
+  resolveRestaurantUnitPrice,
+  qualityStockColumn,
   stockUnitsNeeded,
 } from './unitPricing';
 
@@ -82,11 +83,12 @@ export async function placeRestaurantOrder(
     const lines: any[] = [];
     for (const item of items) {
       const pr = await client.query(
-        // City-bound: a restaurant can only order its own city's catalog.
-        `SELECT id, name_en, primary_image, sku, price, quality_b_price, quality_c_price,
-                half_kg_price, quarter_kg_price, half_dozen_price
+        // City-bound: a restaurant can only order its own city's catalog. The
+        // unified product is shown to restaurants when available_for_restaurants.
+        `SELECT id, name_en, primary_image, sku, price, price_b, price_c,
+                restaurant_price_a, restaurant_price_b, restaurant_price_c
            FROM products
-          WHERE id = $1 AND is_active = TRUE AND is_restaurant = TRUE
+          WHERE id = $1 AND is_active = TRUE AND available_for_restaurants = TRUE
             AND city_id = $2
           FOR UPDATE`,
         [item.product_id, restaurant.city_id]
@@ -98,7 +100,7 @@ export async function placeRestaurantOrder(
       const unit = normalizeProductUnit(item.unit);
       const quality = normalizeQuality(item.quality);
       const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);
-      const unitPrice = resolveQualityUnitPrice(p, quality, unit);
+      const unitPrice = resolveRestaurantUnitPrice(p, quality, unit);
       if (unitPrice == null) {
         throw new RestaurantOrderError(`Quality ${quality} is not available for ${p.name_en}.`);
       }
@@ -142,11 +144,25 @@ export async function placeRestaurantOrder(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [order.id, l.product_id, l.name, l.image, l.sku, l.unitPrice, l.qty, l.lineTotal, l.unit, l.quality]
       );
+      // Decrement the SHARED per-quality stock bucket (same bucket consumer
+      // orders draw from). Whitelisted column + `>= need` guard = atomic, no
+      // oversell. stock_status is a Quality-A flag, recomputed only for tier A.
       const need = stockUnitsNeeded(l.qty, l.unit);
-      await client.query(
-        `UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2`,
+      const stockCol = qualityStockColumn(l.quality);
+      const statusSet =
+        stockCol === 'stock_quantity'
+          ? `, stock_status = CASE WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
+          : '';
+      const dec = await client.query(
+        `UPDATE products
+            SET ${stockCol} = ${stockCol} - $1${statusSet}, updated_at = NOW()
+          WHERE id = $2 AND ${stockCol} >= $1
+          RETURNING id`,
         [need, l.product_id]
       );
+      if (dec.rowCount === 0) {
+        throw new RestaurantOrderError(`Insufficient stock for ${l.name}.`);
+      }
     }
 
     return { order, restaurant };

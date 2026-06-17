@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ProductUnit, StoreCartItem, StoreProduct } from '@app-types';
+import { ProductUnit, ProductQuality, StoreCartItem, StoreProduct } from '@app-types';
 import { STORAGE_KEYS } from '@utils/constants';
 import { getStoredToken } from '@/lib/secureTokens';
 import { withCityParams } from '@/lib/apiHelpers';
@@ -17,8 +17,8 @@ export interface MyCoupon {
   summary: string;
 }
 
-const lineKey = (productId: string, unit: ProductUnit = 'full') =>
-  `${productId}::${unit}`;
+const lineKey = (productId: string, unit: ProductUnit = 'full', quality: ProductQuality = 'A') =>
+  `${productId}::${unit}::${quality}`;
 
 class CartService {
   private syncInProgress = false;
@@ -49,17 +49,18 @@ class CartService {
   async addToCart(
     product: StoreProduct,
     quantity: number = 1,
-    unit: ProductUnit = 'full'
+    unit: ProductUnit = 'full',
+    quality: ProductQuality = 'A'
   ): Promise<StoreCartItem[]> {
     const cart = await this.getCart();
     const existingItemIndex = cart.findIndex(
-      (item) => lineKey(item.product.id, item.unit || 'full') === lineKey(product.id, unit)
+      (item) => lineKey(item.product.id, item.unit || 'full', item.quality || 'A') === lineKey(product.id, unit, quality)
     );
 
     if (existingItemIndex >= 0) {
       cart[existingItemIndex].quantity += quantity;
     } else {
-      cart.push({ product, quantity, unit });
+      cart.push({ product, quantity, unit, quality });
     }
 
     await this.saveCart(cart);
@@ -70,11 +71,12 @@ class CartService {
   async updateQuantity(
     productId: string,
     quantity: number,
-    unit: ProductUnit = 'full'
+    unit: ProductUnit = 'full',
+    quality: ProductQuality = 'A'
   ): Promise<StoreCartItem[]> {
     const cart = await this.getCart();
     const itemIndex = cart.findIndex(
-      (item) => lineKey(item.product.id, item.unit || 'full') === lineKey(productId, unit)
+      (item) => lineKey(item.product.id, item.unit || 'full', item.quality || 'A') === lineKey(productId, unit, quality)
     );
 
     if (itemIndex >= 0) {
@@ -90,10 +92,10 @@ class CartService {
     return cart;
   }
 
-  async removeFromCart(productId: string, unit: ProductUnit = 'full'): Promise<StoreCartItem[]> {
+  async removeFromCart(productId: string, unit: ProductUnit = 'full', quality: ProductQuality = 'A'): Promise<StoreCartItem[]> {
     const cart = await this.getCart();
     const updatedCart = cart.filter(
-      (item) => lineKey(item.product.id, item.unit || 'full') !== lineKey(productId, unit)
+      (item) => lineKey(item.product.id, item.unit || 'full', item.quality || 'A') !== lineKey(productId, unit, quality)
     );
     await this.saveCart(updatedCart);
     this.syncCartWithBackend(updatedCart).catch(() => {});
@@ -123,6 +125,7 @@ class CartService {
           product_id: item.product.id,
           quantity: item.quantity,
           unit: item.unit || 'full',
+          quality: item.quality || 'A',
         })),
       });
       return true;

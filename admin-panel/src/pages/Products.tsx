@@ -61,9 +61,6 @@ export const Products: React.FC = () => {
   // /admin/categories so clicking a category lands you on its products.
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || '');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
-  // Consumer catalog vs restaurant (B2B) catalog — same CRUD, separate sets.
-  const [mode, setMode] = useState<'consumer' | 'restaurant'>('consumer');
-  const isRestaurantMode = mode === 'restaurant';
 
   // Keep the URL in sync with the filter selection so the back button works
   // and the URL is shareable.
@@ -101,12 +98,18 @@ export const Products: React.FC = () => {
     allowHalfKg: true,
     allowQuarterKg: true,
     tags: [],
-    qualityBPrice: null,
-    qualityCPrice: null,
+    priceB: null,
+    priceC: null,
+    stockQuantityB: null,
+    stockQuantityC: null,
+    availableForRestaurants: false,
+    restaurantPriceA: null,
+    restaurantPriceB: null,
+    restaurantPriceC: null,
   });
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['products', { search: searchQuery, category: categoryFilter, status: statusFilter, page, mode }],
+    queryKey: ['products', { search: searchQuery, category: categoryFilter, status: statusFilter, page }],
     queryFn: () =>
       productService.getProducts({
         search: searchQuery || undefined,
@@ -114,14 +117,18 @@ export const Products: React.FC = () => {
         isActive: statusFilter === 'all' ? undefined : statusFilter === 'active',
         page,
         limit: 12,
-        restaurant: isRestaurantMode,
       }),
   });
 
   const { data: categories } = useQuery({
-    queryKey: ['categories', mode],
-    queryFn: () => categoryService.getCategories(isRestaurantMode),
+    queryKey: ['categories'],
+    queryFn: () => categoryService.getCategories(),
   });
+
+  // Only products inside a restaurant-enabled category can be offered to
+  // restaurants. Look the flag up from the loaded categories by the form's pick.
+  const selectedCategoryAllowsRestaurants =
+    categories?.find((c) => c.id === formData.categoryId)?.availableForRestaurants ?? false;
 
   const createMutation = useMutation({
     mutationFn: productService.createProduct,
@@ -234,9 +241,14 @@ export const Products: React.FC = () => {
       allowHalfKg: true,
       allowQuarterKg: true,
       tags: [],
-      isRestaurant: isRestaurantMode,
-      qualityBPrice: null,
-      qualityCPrice: null,
+      priceB: null,
+      priceC: null,
+      stockQuantityB: null,
+      stockQuantityC: null,
+      availableForRestaurants: false,
+      restaurantPriceA: null,
+      restaurantPriceB: null,
+      restaurantPriceC: null,
     });
     setIsModalOpen(true);
   };
@@ -252,13 +264,14 @@ export const Products: React.FC = () => {
     // half/quarter options until an admin explicitly unchecks them.
     let allowHalfKg = product.allowHalfKg ?? true;
     let allowQuarterKg = product.allowQuarterKg ?? true;
+    let detail: Product = product;
     try {
-      const full = await productService.getProductById(product.id);
-      tags = full.tags || [];
-      isVariableWeight = full.isVariableWeight ?? false;
-      variableWeightNote = full.variableWeightNote ?? '';
-      allowHalfKg = full.allowHalfKg ?? true;
-      allowQuarterKg = full.allowQuarterKg ?? true;
+      detail = await productService.getProductById(product.id);
+      tags = detail.tags || [];
+      isVariableWeight = detail.isVariableWeight ?? false;
+      variableWeightNote = detail.variableWeightNote ?? '';
+      allowHalfKg = detail.allowHalfKg ?? true;
+      allowQuarterKg = detail.allowQuarterKg ?? true;
     } catch {
       // Keep list tags if detail fetch fails
     }
@@ -291,9 +304,14 @@ export const Products: React.FC = () => {
       allowHalfKg,
       allowQuarterKg,
       tags,
-      isRestaurant: product.isRestaurant ?? isRestaurantMode,
-      qualityBPrice: product.qualityBPrice ?? null,
-      qualityCPrice: product.qualityCPrice ?? null,
+      priceB: detail.priceB ?? null,
+      priceC: detail.priceC ?? null,
+      stockQuantityB: detail.stockQuantityB ?? null,
+      stockQuantityC: detail.stockQuantityC ?? null,
+      availableForRestaurants: detail.availableForRestaurants ?? false,
+      restaurantPriceA: detail.restaurantPriceA ?? null,
+      restaurantPriceB: detail.restaurantPriceB ?? null,
+      restaurantPriceC: detail.restaurantPriceC ?? null,
     });
     setIsModalOpen(true);
   };
@@ -392,11 +410,12 @@ export const Products: React.FC = () => {
       return;
     }
 
-    // A product stays in its own catalog on edit; new products belong to the
-    // catalog of the active tab.
+    // A product can only be "also for restaurants" if its category allows it.
     const submitData: CreateProductData = {
       ...formData,
-      isRestaurant: editingProduct ? (editingProduct.isRestaurant ?? false) : isRestaurantMode,
+      availableForRestaurants: selectedCategoryAllowsRestaurants
+        ? (formData.availableForRestaurants ?? false)
+        : false,
     };
     if (selectedImages.length > 0) {
       submitData.images = selectedImages;
@@ -460,25 +479,6 @@ export const Products: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Consumer vs Restaurant catalog tabs */}
-      <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
-        {(['consumer', 'restaurant'] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => {
-              setMode(m);
-              setCategoryFilter('');
-              setPage(1);
-            }}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              mode === m ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            {m === 'consumer' ? 'Consumer' : 'Restaurants'}
-          </button>
-        ))}
-      </div>
 
       {/* Filters & Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -739,9 +739,10 @@ export const Products: React.FC = () => {
             />
           </div>
 
+          {/* Quality A — the base price + stock every product has. */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Input
-              label="Price (Rs.)"
+              label="Quality A price (Rs.)"
               type="number"
               value={formData.price}
               onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) })}
@@ -763,7 +764,7 @@ export const Products: React.FC = () => {
               helperText="For showing discount"
             />
             <Input
-              label="Stock Quantity"
+              label="Quality A stock"
               type="number"
               value={formData.stockQuantity}
               onChange={(e) => setFormData({ ...formData, stockQuantity: parseInt(e.target.value) })}
@@ -773,41 +774,62 @@ export const Products: React.FC = () => {
             />
           </div>
 
-          {/* Quality tiers — restaurant catalog only. Price above = Quality A. */}
-          {formData.isRestaurant && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p className="text-sm font-semibold text-amber-900 mb-1">Quality tiers (restaurant)</p>
-              <p className="text-xs text-amber-700 mb-3">
-                The <strong>Price</strong> above is <strong>Quality A</strong>. Set Quality B and C prices below
-                (leave blank if a tier isn&apos;t offered). Half/quarter-kg is derived from the chosen quality —
-                same logic as the consumer catalog.
+          {/* Optional Quality B & C — each tier has its OWN consumer price and its
+              OWN stock. Leave a price blank if the tier isn't offered. This very
+              stock is what restaurants draw from too (shared), if enabled below. */}
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Quality tiers B &amp; C (optional)</p>
+              <p className="text-xs text-gray-500">
+                Leave a quality&apos;s price blank if you don&apos;t offer it. Each quality keeps its
+                own stock; a consumer or a restaurant ordering that quality decrements the same stock.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Quality B price (Rs.)"
-                  type="number"
-                  value={formData.qualityBPrice ?? ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, qualityBPrice: e.target.value === '' ? null : parseFloat(e.target.value) })
-                  }
-                  min={0}
-                  step={0.01}
-                  helperText="Leave blank if not offered"
-                />
-                <Input
-                  label="Quality C price (Rs.)"
-                  type="number"
-                  value={formData.qualityCPrice ?? ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, qualityCPrice: e.target.value === '' ? null : parseFloat(e.target.value) })
-                  }
-                  min={0}
-                  step={0.01}
-                  helperText="Leave blank if not offered"
-                />
-              </div>
             </div>
-          )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Quality B price (Rs.)"
+                type="number"
+                value={formData.priceB ?? ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, priceB: e.target.value === '' ? null : parseFloat(e.target.value) })
+                }
+                min={0}
+                step={0.01}
+                helperText="Blank = not offered"
+              />
+              <Input
+                label="Quality B stock"
+                type="number"
+                value={formData.stockQuantityB ?? ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, stockQuantityB: e.target.value === '' ? null : parseFloat(e.target.value) })
+                }
+                min={0}
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Quality C price (Rs.)"
+                type="number"
+                value={formData.priceC ?? ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, priceC: e.target.value === '' ? null : parseFloat(e.target.value) })
+                }
+                min={0}
+                step={0.01}
+                helperText="Blank = not offered"
+              />
+              <Input
+                label="Quality C stock"
+                type="number"
+                value={formData.stockQuantityC ?? ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, stockQuantityC: e.target.value === '' ? null : parseFloat(e.target.value) })
+                }
+                min={0}
+              />
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -829,7 +851,18 @@ export const Products: React.FC = () => {
               </label>
               <Select
                 value={formData.categoryId}
-                onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                onChange={(e) => {
+                  const categoryId = e.target.value;
+                  const allows =
+                    categories?.find((c) => c.id === categoryId)?.availableForRestaurants ?? false;
+                  // A product can't stay "also for restaurants" if its new
+                  // category doesn't allow restaurants.
+                  setFormData({
+                    ...formData,
+                    categoryId,
+                    availableForRestaurants: allows ? (formData.availableForRestaurants ?? false) : false,
+                  });
+                }}
                 options={[
                   { value: '', label: 'Select Category' },
                   ...(categories?.map((c) => ({ value: c.id, label: c.nameEn })) || []),
@@ -839,6 +872,74 @@ export const Products: React.FC = () => {
                 <p className="mt-1 text-sm text-red-600">{formErrors.categoryId}</p>
               )}
             </div>
+          </div>
+
+          {/* Restaurant availability — only enabled when the chosen category is
+              flagged "also for restaurants". When on, the admin sets the
+              restaurant's own Quality A/B/C prices; stock stays the shared
+              consumer stock above. Blank restaurant price → consumer price. */}
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+            <label
+              className={`flex items-start gap-2 select-none ${
+                selectedCategoryAllowsRestaurants ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+              }`}
+            >
+              <input
+                type="checkbox"
+                disabled={!selectedCategoryAllowsRestaurants}
+                checked={selectedCategoryAllowsRestaurants && (formData.availableForRestaurants ?? false)}
+                onChange={(e) => setFormData({ ...formData, availableForRestaurants: e.target.checked })}
+                className="mt-0.5 w-4 h-4 text-primary-600 rounded"
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-800">
+                  Product also for restaurants
+                </span>
+                <span className="block text-xs text-gray-500">
+                  {selectedCategoryAllowsRestaurants
+                    ? 'Show this product on the restaurant storefront with its own quality rates.'
+                    : 'Enable “Category also for restaurants” on this product’s category first.'}
+                </span>
+              </span>
+            </label>
+
+            {selectedCategoryAllowsRestaurants && (formData.availableForRestaurants ?? false) && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Input
+                  label="Restaurant — Quality A price (Rs.)"
+                  type="number"
+                  value={formData.restaurantPriceA ?? ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, restaurantPriceA: e.target.value === '' ? null : parseFloat(e.target.value) })
+                  }
+                  min={0}
+                  step={0.01}
+                  helperText="Blank → consumer A price"
+                />
+                <Input
+                  label="Restaurant — Quality B price (Rs.)"
+                  type="number"
+                  value={formData.restaurantPriceB ?? ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, restaurantPriceB: e.target.value === '' ? null : parseFloat(e.target.value) })
+                  }
+                  min={0}
+                  step={0.01}
+                  helperText={formData.priceB == null ? 'Offer Quality B above first' : 'Blank → consumer B price'}
+                />
+                <Input
+                  label="Restaurant — Quality C price (Rs.)"
+                  type="number"
+                  value={formData.restaurantPriceC ?? ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, restaurantPriceC: e.target.value === '' ? null : parseFloat(e.target.value) })
+                  }
+                  min={0}
+                  step={0.01}
+                  helperText={formData.priceC == null ? 'Offer Quality C above first' : 'Blank → consumer C price'}
+                />
+              </div>
+            )}
           </div>
 
           {/* Optional fraction-of-unit pricing. Shown only for units where it

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ShoppingCart, Plus, Minus, Trash2, Leaf } from 'lucide-react'
-import { Product, ProductUnit } from '@/types'
+import { Product, ProductUnit, ProductQuality } from '@/types'
 import ProductPrice from './ProductPrice'
 import UnitSelector from './UnitSelector'
 import { useCartStore } from '@/store/cartStore'
@@ -11,7 +11,7 @@ import { useVariableWeightNotice } from '@/store/variableWeightNotice'
 import Badge from './Badge'
 import SmartImage from './SmartImage'
 import toast from 'react-hot-toast'
-import { getUnitOptions, unitLabelShort } from '@/lib/unitPricing'
+import { getUnitOptions, unitLabelShort, offeredQualities, qualityStock } from '@/lib/unitPricing'
 
 interface ProductCardProps {
   product: Product
@@ -31,7 +31,10 @@ function ImageFallback() {
 export default function ProductCard({ product, showAddToCart = true }: ProductCardProps) {
   const { addItem, updateQuantity, items } = useCartStore()
   const notifyVariableWeight = useVariableWeightNotice((s) => s.notify)
-  const unitOptions = useMemo(() => getUnitOptions(product), [product])
+  // Quality tiers (A/B/C). B/C only appear when the admin set their consumer price.
+  const qualities = useMemo(() => offeredQualities(product), [product])
+  const [selectedQuality, setSelectedQuality] = useState<ProductQuality>('A')
+  const unitOptions = useMemo(() => getUnitOptions(product, selectedQuality), [product, selectedQuality])
   const hasFractionUnits = unitOptions.length > 1
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
 
@@ -39,30 +42,36 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
     unitOptions.find((o) => o.unit === selectedUnit) || unitOptions[0]
   const displayPrice = activeOption?.price ?? product.price
 
+  // Stock is per-quality (shared with restaurants) — the selected tier's bucket.
+  const inStock = qualityStock(product, selectedQuality) > 0
+
   const cartItem = items.find(
     (item) =>
-      item.product.id === product.id && (item.unit || 'full') === selectedUnit
+      item.product.id === product.id &&
+      (item.unit || 'full') === selectedUnit &&
+      (item.quality || 'A') === selectedQuality
   )
   const quantity = cartItem?.quantity || 0
 
   const handleAddToCart = () => {
-    addItem(product, 1, selectedUnit)
+    addItem(product, 1, selectedUnit, selectedQuality)
     if (product.isVariableWeight) {
       notifyVariableWeight(product.id, product.variableWeightNote)
     }
     const suffix = unitLabelShort(selectedUnit)
+    const qLabel = qualities.length > 1 ? ` · Quality ${selectedQuality}` : ''
     toast.success(
-      `${product.name}${suffix ? ` (${suffix})` : ''} added to cart`,
+      `${product.name}${suffix ? ` (${suffix})` : ''}${qLabel} added to cart`,
       { duration: 2000, icon: '🛒' }
     )
   }
 
   const handleIncrement = () => {
-    updateQuantity(product.id, quantity + 1, selectedUnit)
+    updateQuantity(product.id, quantity + 1, selectedUnit, selectedQuality)
   }
 
   const handleDecrement = () => {
-    updateQuantity(product.id, quantity - 1, selectedUnit)
+    updateQuantity(product.id, quantity - 1, selectedUnit, selectedQuality)
   }
 
   const discountPercent =
@@ -92,7 +101,7 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
           />
 
           <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
-            {product.isFresh ? (
+            {inStock ? (
               <span className="bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-0.5">
                 <Leaf className="w-2.5 h-2.5" />
                 Fresh
@@ -123,11 +132,39 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
             )}
           </Link>
 
+          {qualities.length > 1 && (
+            <div className="my-1.5">
+              <div className="grid grid-cols-3 gap-1">
+                {qualities.map((q) => {
+                  const active = selectedQuality === q
+                  return (
+                    <button
+                      key={q}
+                      type="button"
+                      onClick={() => {
+                        setSelectedQuality(q)
+                        setSelectedUnit('full')
+                      }}
+                      className={`rounded-lg border px-1 py-1 text-[11px] font-semibold transition-colors ${
+                        active
+                          ? 'border-primary-600 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      Quality {q}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {hasFractionUnits && (
             <UnitSelector
               product={product}
               selectedUnit={selectedUnit}
               onChange={setSelectedUnit}
+              quality={selectedQuality}
               size="sm"
               fullWidth
               className="my-1.5"
@@ -150,7 +187,7 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               }
             />
 
-            {showAddToCart && product.isFresh && quantity > 0 && (
+            {showAddToCart && inStock && quantity > 0 && (
               <div className="flex justify-end mt-1">
                 <div className="inline-flex items-center bg-primary-50 rounded-xl p-0.5">
                   <button
@@ -182,7 +219,7 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               </div>
             )}
 
-            {showAddToCart && product.isFresh && quantity === 0 && (
+            {showAddToCart && inStock && quantity === 0 && (
               <button
                 type="button"
                 onClick={handleAddToCart}

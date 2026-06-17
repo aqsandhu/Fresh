@@ -26,9 +26,17 @@ const num = (v: unknown): number | null => {
 };
 
 function qualityBase(p: any, q: Quality): number | null {
-  if (q === 'B') return num(p?.qualityBPrice);
-  if (q === 'C') return num(p?.qualityCPrice);
-  return num(p?.price) ?? 0;
+  // Restaurant pays restaurant_price_* (falling back to the consumer price for
+  // that tier). A tier is offered only when its consumer price exists.
+  if (q === 'B') {
+    if (num(p?.priceB) == null) return null;
+    return num(p?.restaurantPriceB) ?? num(p?.priceB);
+  }
+  if (q === 'C') {
+    if (num(p?.priceC) == null) return null;
+    return num(p?.restaurantPriceC) ?? num(p?.priceC);
+  }
+  return num(p?.restaurantPriceA) ?? num(p?.price) ?? 0;
 }
 function availableQualities(p: any): Quality[] {
   const out: Quality[] = ['A'];
@@ -72,9 +80,10 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
 
   const { data: productsData } = useQuery({
     queryKey: ['products', 'restaurant-whatsapp'],
-    queryFn: () => productService.getProducts({ page: 1, limit: 300, restaurant: true }),
+    queryFn: () => productService.getProducts({ page: 1, limit: 300 }),
   });
-  const products = productsData?.products || [];
+  // Unified catalog: only products flagged "also for restaurants" can be ordered here.
+  const products = (productsData?.products || []).filter((p: any) => p.availableForRestaurants);
 
   const { data: settings } = useQuery({
     queryKey: ['restaurant-settings'],

@@ -110,15 +110,29 @@ const n = (v: unknown): number | null => {
 };
 
 export function qualityBasePrice(p: any, q: Quality): number | null {
-  if (q === 'B') return n(p?.quality_b_price);
-  if (q === 'C') return n(p?.quality_c_price);
-  return n(p?.price) ?? 0;
+  // Restaurant pays restaurant_price_* (falling back to the consumer price for
+  // that tier). A tier is offered only when its consumer price exists.
+  if (q === 'B') {
+    if (n(p?.price_b) == null) return null;
+    return n(p?.restaurant_price_b) ?? n(p?.price_b);
+  }
+  if (q === 'C') {
+    if (n(p?.price_c) == null) return null;
+    return n(p?.restaurant_price_c) ?? n(p?.price_c);
+  }
+  return n(p?.restaurant_price_a) ?? n(p?.price) ?? 0;
 }
 export function availableQualities(p: any): Quality[] {
   const out: Quality[] = ['A'];
   if (qualityBasePrice(p, 'B') != null) out.push('B');
   if (qualityBasePrice(p, 'C') != null) out.push('C');
   return out;
+}
+/** Shared stock for a quality tier (consumer + restaurant draw from the same bucket). */
+export function qualityStock(p: any, q: Quality): number {
+  if (q === 'B') return Number(p?.stock_quantity_b ?? 0) || 0;
+  if (q === 'C') return Number(p?.stock_quantity_c ?? 0) || 0;
+  return Number(p?.stock_quantity ?? 0) || 0;
 }
 export function availableUnits(p: any): { value: Unit; label: string; short: string }[] {
   const t = String(p?.unit_type || 'kg').toLowerCase();

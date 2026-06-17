@@ -120,9 +120,16 @@ const coerceProductFields = (req: any, res: any, next: any) => {
   if (body.is_variable_weight !== undefined) body.is_variable_weight = body.is_variable_weight === 'true' || body.is_variable_weight === true;
   if (body.allow_half_kg !== undefined) body.allow_half_kg = body.allow_half_kg === 'true' || body.allow_half_kg === true;
   if (body.allow_quarter_kg !== undefined) body.allow_quarter_kg = body.allow_quarter_kg === 'true' || body.allow_quarter_kg === true;
-  if (body.is_restaurant !== undefined) body.is_restaurant = body.is_restaurant === 'true' || body.is_restaurant === true;
-  if (body.quality_b_price !== undefined && body.quality_b_price !== '') body.quality_b_price = parseFloat(body.quality_b_price);
-  if (body.quality_c_price !== undefined && body.quality_c_price !== '') body.quality_c_price = parseFloat(body.quality_c_price);
+  // Quality tiers: consumer B/C price + per-quality stock, "also for restaurants"
+  // flag, and restaurant prices per tier. (A = price + stock_quantity above.)
+  if (body.available_for_restaurants !== undefined) body.available_for_restaurants = body.available_for_restaurants === 'true' || body.available_for_restaurants === true;
+  if (body.price_b !== undefined && body.price_b !== '') body.price_b = parseFloat(body.price_b);
+  if (body.price_c !== undefined && body.price_c !== '') body.price_c = parseFloat(body.price_c);
+  if (body.stock_quantity_b !== undefined && body.stock_quantity_b !== '') body.stock_quantity_b = parseFloat(body.stock_quantity_b);
+  if (body.stock_quantity_c !== undefined && body.stock_quantity_c !== '') body.stock_quantity_c = parseFloat(body.stock_quantity_c);
+  if (body.restaurant_price_a !== undefined && body.restaurant_price_a !== '') body.restaurant_price_a = parseFloat(body.restaurant_price_a);
+  if (body.restaurant_price_b !== undefined && body.restaurant_price_b !== '') body.restaurant_price_b = parseFloat(body.restaurant_price_b);
+  if (body.restaurant_price_c !== undefined && body.restaurant_price_c !== '') body.restaurant_price_c = parseFloat(body.restaurant_price_c);
   if (body.tags !== undefined) {
     body.tags = parseTagsInput(body.tags);
   }
@@ -144,6 +151,16 @@ const coerceCategoryFields = (req: any, res: any, next: any) => {
   }
   if (body.parentId !== undefined && body.parent_id === undefined) {
     body.parent_id = body.parentId;
+  }
+  // "Category also for restaurants" — accept either camelCase or snake_case.
+  if (body.availableForRestaurants !== undefined && body.available_for_restaurants === undefined) {
+    body.available_for_restaurants = body.availableForRestaurants;
+  }
+  if (body.available_for_restaurants !== undefined) {
+    body.available_for_restaurants = body.available_for_restaurants === 'true' || body.available_for_restaurants === true;
+  }
+  if (body.qualifiesForFreeDelivery !== undefined && body.qualifies_for_free_delivery === undefined) {
+    body.qualifies_for_free_delivery = body.qualifiesForFreeDelivery;
   }
 
   if (body.display_order !== undefined) {

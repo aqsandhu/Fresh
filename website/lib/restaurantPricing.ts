@@ -7,16 +7,22 @@ export interface RestaurantProduct {
   id: string
   name_en: string
   name_ur?: string
+  // Consumer prices per tier (used to know which tiers are offered + as the
+  // restaurant fallback when no restaurant price is set).
   price: number | string
-  quality_b_price?: number | string | null
-  quality_c_price?: number | string | null
-  half_kg_price?: number | string | null
-  quarter_kg_price?: number | string | null
-  half_dozen_price?: number | string | null
+  price_b?: number | string | null
+  price_c?: number | string | null
+  // Restaurant prices per tier (what the restaurant actually pays).
+  restaurant_price_a?: number | string | null
+  restaurant_price_b?: number | string | null
+  restaurant_price_c?: number | string | null
+  // Shared per-quality stock buckets (sold-out display).
+  stock_quantity?: number
+  stock_quantity_b?: number
+  stock_quantity_c?: number
   allow_half_kg?: boolean
   allow_quarter_kg?: boolean
   unit_type?: string
-  stock_quantity?: number
   primary_image?: string | null
   category_name?: string
 }
@@ -27,11 +33,29 @@ const n = (v: unknown): number | null => {
   return Number.isFinite(x) ? x : null
 }
 
-/** Base (per-unit) price for a quality tier — null when the tier isn't offered. */
+/**
+ * Restaurant base (per-unit) price for a quality tier — null when the tier isn't
+ * offered. Mirrors the backend: the tier is offered only when its CONSUMER price
+ * exists; the restaurant pays restaurant_price_* (falling back to that consumer
+ * price when blank).
+ */
 export function qualityBasePrice(product: RestaurantProduct, quality: Quality): number | null {
-  if (quality === 'B') return n(product.quality_b_price)
-  if (quality === 'C') return n(product.quality_c_price)
-  return n(product.price) ?? 0
+  if (quality === 'B') {
+    if (n(product.price_b) == null) return null
+    return n(product.restaurant_price_b) ?? n(product.price_b)
+  }
+  if (quality === 'C') {
+    if (n(product.price_c) == null) return null
+    return n(product.restaurant_price_c) ?? n(product.price_c)
+  }
+  return n(product.restaurant_price_a) ?? n(product.price) ?? 0
+}
+
+/** Shared stock for a quality tier (consumer + restaurant draw from the same bucket). */
+export function qualityStock(product: RestaurantProduct, quality: Quality): number {
+  if (quality === 'B') return Number(product.stock_quantity_b ?? 0) || 0
+  if (quality === 'C') return Number(product.stock_quantity_c ?? 0) || 0
+  return Number(product.stock_quantity ?? 0) || 0
 }
 
 /** Qualities a product offers (A always; B/C only when priced). */

@@ -60,20 +60,20 @@ export const CartScreen: React.FC = () => {
   const deliveryHint = getDeliveryHint(items, deliveryFreeThreshold);
   const freeDelivery = currentDeliveryCharge === 0;
 
-  const handleIncrement = async (productId: string, currentQuantity: number, unit?: StoreCartItem['unit']) => {
-    await updateQuantity(productId, currentQuantity + 1, unit);
+  const handleIncrement = async (productId: string, currentQuantity: number, unit?: StoreCartItem['unit'], quality?: StoreCartItem['quality']) => {
+    await updateQuantity(productId, currentQuantity + 1, unit, quality);
   };
 
-  const handleDecrement = async (productId: string, currentQuantity: number, unit?: StoreCartItem['unit']) => {
+  const handleDecrement = async (productId: string, currentQuantity: number, unit?: StoreCartItem['unit'], quality?: StoreCartItem['quality']) => {
     if (currentQuantity <= 1) {
-      await removeFromCart(productId, unit);
+      await removeFromCart(productId, unit, quality);
     } else {
-      await updateQuantity(productId, currentQuantity - 1, unit);
+      await updateQuantity(productId, currentQuantity - 1, unit, quality);
     }
   };
 
-  const handleRemove = async (productId: string, unit?: StoreCartItem['unit']) => {
-    await removeFromCart(productId, unit);
+  const handleRemove = async (productId: string, unit?: StoreCartItem['unit'], quality?: StoreCartItem['quality']) => {
+    await removeFromCart(productId, unit, quality);
     Toast.show({ type: 'success', text1: 'Item removed from cart' });
   };
 
@@ -100,10 +100,11 @@ export const CartScreen: React.FC = () => {
   };
 
   const lineKey = (item: StoreCartItem) =>
-    `${item.product.id}::${item.unit || 'full'}`;
+    `${item.product.id}::${item.unit || 'full'}::${item.quality || 'A'}`;
 
   const renderCartItem = (item: StoreCartItem) => {
     const unit = item.unit || 'full';
+    const quality = item.quality || 'A';
     const unitSuffix = unitLabelShort(unit);
 
     return (
@@ -125,6 +126,7 @@ export const CartScreen: React.FC = () => {
               <Text style={styles.itemName} numberOfLines={2}>
                 {item.product.name}
                 {unit !== 'full' ? ` (${unitPriceCaption(unit)})` : unitSuffix ? ` (${unitSuffix})` : ''}
+                {quality !== 'A' ? `  ·  Quality ${quality}` : ''}
               </Text>
               <ProductPrice
                 price={resolveLineUnitPrice(item)}
@@ -136,7 +138,7 @@ export const CartScreen: React.FC = () => {
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation?.();
-                handleRemove(item.product.id, unit);
+                handleRemove(item.product.id, unit, quality);
               }}
               style={styles.removeButton}
             >
@@ -146,8 +148,8 @@ export const CartScreen: React.FC = () => {
           <View style={styles.itemFooter}>
             <QuantitySelector
               quantity={item.quantity}
-              onIncrement={() => handleIncrement(item.product.id, item.quantity, unit)}
-              onDecrement={() => handleDecrement(item.product.id, item.quantity, unit)}
+              onIncrement={() => handleIncrement(item.product.id, item.quantity, unit, quality)}
+              onDecrement={() => handleDecrement(item.product.id, item.quantity, unit, quality)}
             />
           </View>
         </View>

@@ -16,7 +16,7 @@ import {
   requireCityScope,
 } from '../../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
-import { hasVariableWeightColumns, hasUnitToggleColumns, hasRestaurantCatalogColumns } from '../../config/productSchema';
+import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumns } from '../../config/productSchema';
 
 /** Default Urdu popup shown when a customer adds a variable-weight product. */
 export const DEFAULT_VARIABLE_WEIGHT_NOTE =
@@ -65,15 +65,8 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
     params.push(active); paramIndex++;
   }
 
-  // Restaurant (B2B) products vs consumer products — same table, tab decides.
-  // Default = consumer so all existing callers (incl. consumer WhatsApp orders)
-  // are unaffected.
-  const restaurantReady = await hasRestaurantCatalogColumns();
-  if (restaurantReady) {
-    sql += req.query.restaurant === 'true'
-      ? ` AND p.is_restaurant = TRUE`
-      : ` AND p.is_restaurant = FALSE`;
-  }
+  // Unified catalog: one set of products (no consumer/restaurant tab split).
+  const qualityReady = await hasQualityCatalogColumns();
 
   const productCity = cityIdClause(scope, 'p', params, paramIndex);
   sql += productCity.sql;
@@ -88,8 +81,10 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
   const order = allowedSortOrders.includes((sortOrder as string)?.toLowerCase()) ? (sortOrder as string).toUpperCase() : 'DESC';
 
   const listToggleCols = (await hasUnitToggleColumns()) ? 'p.allow_half_kg, p.allow_quarter_kg,' : '';
-  const listRestaurantCols = restaurantReady ? 'p.is_restaurant, p.quality_b_price, p.quality_c_price,' : '';
-  const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, c.qualifies_for_free_delivery, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.half_kg_price, p.quarter_kg_price, p.half_dozen_price, ${listToggleCols} ${listRestaurantCols} p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+  const listQualityCols = qualityReady
+    ? 'p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c, p.available_for_restaurants, p.restaurant_price_a, p.restaurant_price_b, p.restaurant_price_c,'
+    : '';
+  const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, c.qualifies_for_free_delivery, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.half_kg_price, p.quarter_kg_price, p.half_dozen_price, ${listToggleCols} ${listQualityCols} p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
   params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
 
   const result = await query(productsSql, params);
@@ -110,6 +105,11 @@ export const getAdminProductById = asyncHandler(async (req: Request, res: Respon
   const toggleCols = (await hasUnitToggleColumns())
     ? 'p.allow_half_kg, p.allow_quarter_kg,'
     : '';
+  const qualityCols = (await hasQualityCatalogColumns())
+    ? `p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c,
+       p.available_for_restaurants, p.restaurant_price_a, p.restaurant_price_b, p.restaurant_price_c,
+       c.available_for_restaurants as category_available_for_restaurants,`
+    : '';
   const result = await query(
     `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
@@ -117,6 +117,7 @@ export const getAdminProductById = asyncHandler(async (req: Request, res: Respon
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
       ${varCols}
       ${toggleCols}
+      ${qualityCols}
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory, p.primary_image, p.images,
       p.short_description, p.description_ur, p.description_en,
@@ -271,18 +272,38 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     result.rows[0].allow_quarter_kg = allowQuarter;
   }
 
-  // Restaurant flag + quality-tier prices (migration 31), via a follow-up update.
-  if (await hasRestaurantCatalogColumns()) {
-    const isRestaurant = toBool(req.body.is_restaurant);
-    const qB = normPrice(req.body.quality_b_price);
-    const qC = normPrice(req.body.quality_c_price);
+  // Quality tiers (migration 34): consumer B/C price + per-quality shared stock,
+  // the "also for restaurants" flag, and restaurant prices. Done as a follow-up
+  // update so the two INSERT branches above stay readable. Quality A = the base
+  // `price` + `stock_quantity` already inserted.
+  if (await hasQualityCatalogColumns()) {
+    const normStock = (v: any) => {
+      if (v === '' || v === null || v === undefined) return 0;
+      const n = parseFloat(String(v));
+      return Number.isFinite(n) && n >= 0 ? n : 0;
+    };
+    const priceB = normPrice(req.body.price_b);
+    const priceC = normPrice(req.body.price_c);
+    const stockB = normStock(req.body.stock_quantity_b);
+    const stockC = normStock(req.body.stock_quantity_c);
+    const availForRest = toBool(req.body.available_for_restaurants);
+    const rPriceA = normPrice(req.body.restaurant_price_a);
+    const rPriceB = normPrice(req.body.restaurant_price_b);
+    const rPriceC = normPrice(req.body.restaurant_price_c);
     await query(
-      `UPDATE products SET is_restaurant = $1, quality_b_price = $2, quality_c_price = $3 WHERE id = $4`,
-      [isRestaurant, qB, qC, result.rows[0].id]
+      `UPDATE products SET
+         price_b = $1, price_c = $2, stock_quantity_b = $3, stock_quantity_c = $4,
+         available_for_restaurants = $5,
+         restaurant_price_a = $6, restaurant_price_b = $7, restaurant_price_c = $8
+       WHERE id = $9`,
+      [priceB, priceC, stockB, stockC, availForRest, rPriceA, rPriceB, rPriceC, result.rows[0].id]
     );
-    result.rows[0].is_restaurant = isRestaurant;
-    result.rows[0].quality_b_price = qB;
-    result.rows[0].quality_c_price = qC;
+    Object.assign(result.rows[0], {
+      price_b: priceB, price_c: priceC,
+      stock_quantity_b: stockB, stock_quantity_c: stockC,
+      available_for_restaurants: availForRest,
+      restaurant_price_a: rPriceA, restaurant_price_b: rPriceB, restaurant_price_c: rPriceC,
+    });
   }
 
   logger.info('Product created', { productId: result.rows[0].id, createdBy: req.user?.id });
@@ -310,7 +331,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   // Build update query
   const varWeightReady = await hasVariableWeightColumns();
   const unitToggleReady = await hasUnitToggleColumns();
-  const restaurantReady = await hasRestaurantCatalogColumns();
+  const qualityReady = await hasQualityCatalogColumns();
   const allowedFields = [
     'name_ur', 'name_en', 'category_id', 'subcategory_id',
     'price', 'compare_at_price',
@@ -322,18 +343,23 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     ...(varWeightReady ? ['is_variable_weight', 'variable_weight_note'] : []),
     // Only writable once migration 25 has added the columns.
     ...(unitToggleReady ? ['allow_half_kg', 'allow_quarter_kg'] : []),
-    // Only writable once migration 31 has added the columns.
-    ...(restaurantReady ? ['is_restaurant', 'quality_b_price', 'quality_c_price'] : []),
+    // Quality tiers — only writable once migration 34 has added the columns.
+    ...(qualityReady
+      ? ['price_b', 'price_c', 'stock_quantity_b', 'stock_quantity_c',
+         'available_for_restaurants', 'restaurant_price_a', 'restaurant_price_b', 'restaurant_price_c']
+      : []),
   ];
   const booleanFields = new Set([
     'is_active', 'is_featured', 'is_new_arrival', 'is_variable_weight',
-    'allow_half_kg', 'allow_quarter_kg', 'is_restaurant',
+    'allow_half_kg', 'allow_quarter_kg', 'available_for_restaurants',
   ]);
   // These columns must always serialize as NULL when the admin clears them.
   const nullableNumberFields = new Set([
     'compare_at_price', 'half_kg_price', 'quarter_kg_price', 'half_dozen_price',
-    'quality_b_price', 'quality_c_price',
+    'price_b', 'price_c', 'restaurant_price_a', 'restaurant_price_b', 'restaurant_price_c',
   ]);
+  // Per-quality stock is NOT NULL (defaults 0) — a cleared field means 0, not NULL.
+  const nonNegativeStockFields = new Set(['stock_quantity_b', 'stock_quantity_c']);
 
   const setClauses: string[] = [];
   const values: any[] = [];
@@ -356,6 +382,9 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
           const n = parseFloat(String(value));
           normalised = Number.isFinite(n) && n > 0 ? n : null;
         }
+      } else if (nonNegativeStockFields.has(key)) {
+        const n = parseFloat(String(value));
+        normalised = Number.isFinite(n) && n >= 0 ? n : 0;
       }
       setClauses.push(`${key} = $${paramIndex++}`);
       values.push(normalised);
@@ -556,19 +585,14 @@ export const getAdminCategories = asyncHandler(async (req: Request, res: Respons
   whereSql += catCity.sql;
   paramIndex = catCity.nextIndex;
 
-  // Restaurant (B2B) categories vs consumer categories live on the same table;
-  // the tab decides which set to show. Default = consumer (backward compatible).
-  if (await hasRestaurantCatalogColumns()) {
-    whereSql += req.query.restaurant === 'true'
-      ? ' AND c.is_restaurant = TRUE'
-      : ' AND c.is_restaurant = FALSE';
-  }
-  const restCol = (await hasRestaurantCatalogColumns()) ? 'c.is_restaurant,' : '';
+  // Unified catalog: one set of categories. The "also for restaurants" flag is
+  // just an attribute on each category now (no consumer/restaurant tab split).
+  const availCol = (await hasQualityCatalogColumns()) ? 'c.available_for_restaurants,' : '';
 
   const result = await query(
     `SELECT
       c.id, c.name_ur, c.name_en, c.slug, c.icon_url, c.image_url,
-      c.parent_id, c.display_order, c.is_active, c.city_id, ${restCol}
+      c.parent_id, c.display_order, c.is_active, c.city_id, ${availCol}
       c.qualifies_for_free_delivery, c.minimum_order_for_free_delivery,
       COUNT(p.id) FILTER (WHERE p.is_active = TRUE) as product_count,
       COUNT(p.id) as total_product_count
@@ -651,10 +675,10 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
     is_active !== undefined ? is_active : true,
     qualifiesFreeDelivery, req.user?.id, scope.cityId,
   ];
-  // is_restaurant marks a B2B category (gated until migration 31 lands).
-  if (await hasRestaurantCatalogColumns()) {
-    cols.push('is_restaurant');
-    vals.push(toBool(req.body.is_restaurant));
+  // "Also available for restaurants" — additive flag (gated until migration 34).
+  if (await hasQualityCatalogColumns()) {
+    cols.push('available_for_restaurants');
+    vals.push(toBool(req.body.available_for_restaurants));
   }
   const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
 
@@ -694,7 +718,7 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
     'displayOrder': 'display_order',
     'isActive': 'is_active',
     'qualifiesForFreeDelivery': 'qualifies_for_free_delivery',
-    'isRestaurant': 'is_restaurant',
+    'availableForRestaurants': 'available_for_restaurants',
   };
 
   const allowedFields = [
@@ -702,9 +726,9 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
     'parent_id', 'display_order', 'is_active',
     'qualifies_for_free_delivery',
   ];
-  const booleanFields = new Set(['is_active', 'qualifies_for_free_delivery', 'is_restaurant']);
-  if (await hasRestaurantCatalogColumns()) {
-    allowedFields.push('is_restaurant');
+  const booleanFields = new Set(['is_active', 'qualifies_for_free_delivery', 'available_for_restaurants']);
+  if (await hasQualityCatalogColumns()) {
+    allowedFields.push('available_for_restaurants');
   }
 
   const setClauses: string[] = [];

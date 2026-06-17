@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown } from 'lucide-react'
-import type { Product, ProductUnit } from '@/types'
+import type { Product, ProductUnit, ProductQuality } from '@/types'
 import {
   getUnitOptions,
   getUnitPickerDisplayLabel,
@@ -14,6 +14,8 @@ interface UnitSelectorProps {
   product: Product
   selectedUnit: ProductUnit
   onChange: (unit: ProductUnit) => void
+  /** Quality tier the prices should reflect (defaults to 'A'). */
+  quality?: ProductQuality
   size?: 'sm' | 'md'
   className?: string
   /** Stretch chip to full card width (product grid). */
@@ -30,11 +32,12 @@ export default function UnitSelector({
   product,
   selectedUnit,
   onChange,
+  quality = 'A',
   size = 'sm',
   className = '',
   fullWidth = false,
 }: UnitSelectorProps) {
-  const unitOptions = useMemo(() => getUnitOptions(product), [product])
+  const unitOptions = useMemo(() => getUnitOptions(product, quality), [product, quality])
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
 
@@ -142,8 +145,9 @@ export default function UnitSelector({
 
 export function getSelectedUnitPrice(
   product: Product,
-  unit: ProductUnit
+  unit: ProductUnit,
+  quality: ProductQuality = 'A'
 ): number {
-  const opts = getUnitOptions(product)
+  const opts = getUnitOptions(product, quality)
   return opts.find((o) => o.unit === unit)?.price ?? product.price
 }

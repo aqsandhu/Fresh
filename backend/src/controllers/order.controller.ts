@@ -12,7 +12,15 @@ import {
 } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { calculateDeliveryCharge } from '../utils/deliveryCalculator';
-import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
+import {
+  resolveUnitPrice,
+  resolveConsumerUnitPrice,
+  stockUnitsNeeded,
+  qualityStockColumn,
+  normalizeQuality,
+  FRESH_CART_SUBTOTAL_SQL,
+} from '../utils/unitPricing';
+import { hasQualityCatalogColumns } from '../config/productSchema';
 import { roundMoney } from '../utils/money';
 import {
   hasCouponsTable,
@@ -403,11 +411,16 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       orderCityId = productCity.rows[0]?.city_id || null;
     }
 
+    // Quality tiers (A/B/C) gated until migration 34 lands. Each tier has its own
+    // shared stock bucket; consumer + restaurant orders draw from the same bucket.
+    const qualityReady = await hasQualityCatalogColumns();
+
     // Re-fetch current product prices — never trust stale cart_items.unit_price.
     for (const item of cartItemsResult.rows) {
       const priceResult = await client.query(
         `SELECT price, half_kg_price, quarter_kg_price, half_dozen_price,
                 stock_status, is_active, name_en
+                ${qualityReady ? ', price_b, price_c, stock_quantity_b, stock_quantity_c' : ''}
            FROM products
           WHERE id = $1
           FOR UPDATE`,
@@ -419,14 +432,19 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       }
 
       const product = priceResult.rows[0];
+      const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
       if (!product.is_active) {
         throw new BadRequestError(`Product unavailable: ${product.name_en}`);
       }
-      if (product.stock_status === 'out_of_stock') {
+      // out_of_stock is a Quality-A flag; B/C availability is enforced atomically
+      // by the decrement guard below.
+      if (quality === 'A' && product.stock_status === 'out_of_stock') {
         throw new BadRequestError(`Out of stock: ${product.name_en}`);
       }
 
-      const freshUnitPrice = resolveUnitPrice(product, item.unit);
+      const freshUnitPrice = qualityReady
+        ? (resolveConsumerUnitPrice(product, quality, item.unit) ?? resolveUnitPrice(product, item.unit))
+        : resolveUnitPrice(product, item.unit);
       await client.query(
         `UPDATE cart_items
             SET unit_price = $1, updated_at = NOW()
@@ -713,31 +731,51 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       }
 
       const product = productResult.rows[0];
+      const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
       const stockDeduction = stockUnitsNeeded(item.quantity, item.unit);
       const unitPrice = parseFloat(String(item.unit_price));
       const totalPrice = unitPrice * item.quantity;
 
-      await client.query(
-        `INSERT INTO order_items (
-          order_id, product_id, product_name, product_image, product_sku,
-          unit_price, quantity, total_price, weight_kg, unit
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          order.id, item.product_id, product.name_en, product.primary_image, product.sku,
-          unitPrice, item.quantity, totalPrice, item.weight_kg || null,
-          item.unit || 'full',
-        ]
-      );
+      if (qualityReady) {
+        await client.query(
+          `INSERT INTO order_items (
+            order_id, product_id, product_name, product_image, product_sku,
+            unit_price, quantity, total_price, weight_kg, unit, quality
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          [
+            order.id, item.product_id, product.name_en, product.primary_image, product.sku,
+            unitPrice, item.quantity, totalPrice, item.weight_kg || null,
+            item.unit || 'full', quality,
+          ]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO order_items (
+            order_id, product_id, product_name, product_image, product_sku,
+            unit_price, quantity, total_price, weight_kg, unit
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            order.id, item.product_id, product.name_en, product.primary_image, product.sku,
+            unitPrice, item.quantity, totalPrice, item.weight_kg || null,
+            item.unit || 'full',
+          ]
+        );
+      }
 
+      // Decrement the SHARED stock bucket for the chosen quality. The column is a
+      // whitelist literal (qualityStockColumn) so it's safe to interpolate. The
+      // `>= need` guard makes the decrement atomic — no oversell under races.
+      // stock_status is a Quality-A flag, so it's only recomputed for tier A.
+      const stockCol = qualityReady ? qualityStockColumn(quality) : 'stock_quantity';
+      const statusSet =
+        stockCol === 'stock_quantity'
+          ? `, stock_status = CASE WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
+          : '';
       const stockUpdate = await client.query(
         `UPDATE products
-            SET stock_quantity = stock_quantity - $1,
-                stock_status = CASE
-                  WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status
-                  ELSE 'active'::product_status
-                END,
+            SET ${stockCol} = ${stockCol} - $1${statusSet},
                 updated_at = NOW()
-          WHERE id = $2 AND stock_quantity >= $1
+          WHERE id = $2 AND ${stockCol} >= $1
           RETURNING id`,
         [stockDeduction, item.product_id]
       );

@@ -168,6 +168,7 @@ function CheckoutPage() {
           product_id: item.product.id,
           quantity: item.quantity,
           unit: item.unit || 'full',
+          quality: item.quality || 'A',
         }))
       )
       const cart = snapshot?.cart
@@ -319,6 +320,7 @@ function CheckoutPage() {
           product_id: item.product.id,
           quantity: item.quantity,
           unit: item.unit || 'full',
+          quality: item.quality || 'A',
         }))
       )
       const result = await cartApi.applyCoupon(trimmed)
@@ -400,6 +402,7 @@ function CheckoutPage() {
           product_id: item.product.id,
           quantity: item.quantity,
           unit: item.unit || 'full',
+          quality: item.quality || 'A',
         }))
       )
 

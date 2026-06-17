@@ -20,9 +20,17 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { roundMoney } from '../../utils/money';
-import { resolveUnitPrice, normalizeProductUnit, stockUnitsNeeded } from '../../utils/unitPricing';
+import {
+  resolveUnitPrice,
+  resolveConsumerUnitPrice,
+  normalizeProductUnit,
+  normalizeQuality,
+  qualityStockColumn,
+  offeredQualities,
+  stockUnitsNeeded,
+} from '../../utils/unitPricing';
 import { normalizePhoneNumber } from '../../utils/validators';
-import { hasVariableWeightColumns } from '../../config/productSchema';
+import { hasVariableWeightColumns, hasQualityCatalogColumns } from '../../config/productSchema';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
 import { hasUrgentDeliveryColumns, hasRestaurantOrderColumns } from '../../config/orderSchema';
 
@@ -831,7 +839,8 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
         if (cityRow.rows[0]?.id) orderCityId = cityRow.rows[0].id;
       }
 
-      // Price each line by its unit; track the free-delivery-eligible subtotal.
+      // Price each line by its unit + quality; track the free-delivery subtotal.
+      const qualityReady = await hasQualityCatalogColumns();
       let subtotal = 0;
       let vegFruitSubtotal = 0;
       const lines: any[] = [];
@@ -839,6 +848,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
         const pr = await client.query(
           `SELECT p.name_en, p.primary_image, p.sku, p.price, p.half_kg_price, p.quarter_kg_price,
                   p.half_dozen_price, cat.qualifies_for_free_delivery
+                  ${qualityReady ? ', p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c' : ''}
              FROM products p JOIN categories cat ON p.category_id = cat.id
             WHERE p.id = $1 AND p.is_active = TRUE FOR UPDATE`,
           [item.product_id]
@@ -848,12 +858,18 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
         }
         const p = pr.rows[0];
         const unit = normalizeProductUnit(item.unit);
+        const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
+        if (qualityReady && !offeredQualities(p).includes(quality)) {
+          throw Object.assign(new Error(`Quality ${quality} not available for ${p.name_en}.`), { http: 400 });
+        }
         const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);
-        const unitPrice = resolveUnitPrice(p, unit);
+        const unitPrice = qualityReady
+          ? (resolveConsumerUnitPrice(p, quality, unit) ?? resolveUnitPrice(p, unit))
+          : resolveUnitPrice(p, unit);
         const lineTotal = roundMoney(unitPrice * qty);
         subtotal += lineTotal;
         if (p.qualifies_for_free_delivery === true) vegFruitSubtotal += lineTotal;
-        lines.push({ product_id: item.product_id, name: p.name_en, image: p.primary_image, sku: p.sku, unit, unitPrice, qty, lineTotal });
+        lines.push({ product_id: item.product_id, name: p.name_en, image: p.primary_image, sku: p.sku, unit, quality, unitPrice, qty, lineTotal });
       }
       subtotal = roundMoney(subtotal);
 
@@ -929,14 +945,29 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
       }
 
       for (const l of lines) {
-        await client.query(
-          `INSERT INTO order_items (order_id, product_id, product_name, product_image, product_sku, unit_price, quantity, total_price, unit)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-          [o.id, l.product_id, l.name, l.image, l.sku, l.unitPrice, l.qty, l.lineTotal, l.unit]
-        );
+        if (qualityReady) {
+          await client.query(
+            `INSERT INTO order_items (order_id, product_id, product_name, product_image, product_sku, unit_price, quantity, total_price, unit, quality)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [o.id, l.product_id, l.name, l.image, l.sku, l.unitPrice, l.qty, l.lineTotal, l.unit, l.quality]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO order_items (order_id, product_id, product_name, product_image, product_sku, unit_price, quantity, total_price, unit)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+            [o.id, l.product_id, l.name, l.image, l.sku, l.unitPrice, l.qty, l.lineTotal, l.unit]
+          );
+        }
+        // Decrement the SHARED per-quality stock bucket. stock_status is a
+        // Quality-A flag, recomputed only for tier A.
         const need = stockUnitsNeeded(l.qty, l.unit);
+        const stockCol = qualityReady ? qualityStockColumn(l.quality) : 'stock_quantity';
+        const statusSet =
+          stockCol === 'stock_quantity'
+            ? `, stock_status = CASE WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
+            : '';
         await client.query(
-          `UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2`,
+          `UPDATE products SET ${stockCol} = GREATEST(0, ${stockCol} - $1)${statusSet}, updated_at = NOW() WHERE id = $2`,
           [need, l.product_id]
         );
       }

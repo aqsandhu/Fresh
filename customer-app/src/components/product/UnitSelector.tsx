@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { ProductUnit, StoreProduct } from '@app-types';
+import { ProductUnit, ProductQuality, StoreProduct } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { formatCurrency } from '@utils/helpers';
 import { getUnitOptions, getUnitPickerDisplayLabel, UNIT_PICKER_CHIP } from '@/lib/unitPricing';
@@ -10,11 +10,17 @@ interface UnitSelectorProps {
   product: StoreProduct;
   selectedUnit: ProductUnit;
   onChange: (unit: ProductUnit) => void;
+  /** Quality tier the prices should reflect (defaults to 'A'). */
+  quality?: ProductQuality;
   size?: 'sm' | 'md';
 }
 
-export function getSelectedUnitPrice(product: StoreProduct, unit: ProductUnit): number {
-  const opts = getUnitOptions(product);
+export function getSelectedUnitPrice(
+  product: StoreProduct,
+  unit: ProductUnit,
+  quality: ProductQuality = 'A'
+): number {
+  const opts = getUnitOptions(product, quality);
   return opts.find((o) => o.unit === unit)?.price ?? product.price;
 }
 
@@ -22,9 +28,10 @@ export const UnitSelector: React.FC<UnitSelectorProps> = ({
   product,
   selectedUnit,
   onChange,
+  quality = 'A',
   size = 'sm',
 }) => {
-  const unitOptions = useMemo(() => getUnitOptions(product), [product]);
+  const unitOptions = useMemo(() => getUnitOptions(product, quality), [product, quality]);
   const [open, setOpen] = useState(false);
 
   if (unitOptions.length <= 1) return null;

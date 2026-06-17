@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ProductUnit, StoreCartItem, StoreProduct } from '@app-types';
+import { ProductUnit, ProductQuality, StoreCartItem, StoreProduct } from '@app-types';
 import { priceForUnit, resolveLineUnitPrice } from '@/lib/unitPricing';
 import { getSelectedCityId } from '@/lib/cityStorage';
 import { withCityParams } from '@/lib/apiHelpers';
@@ -9,8 +9,8 @@ import { cartService } from '@services/cart.service';
 import { calculateDeliveryCharge as calcDeliveryCharge } from '@utils/helpers';
 import { API_BASE_URL } from '@utils/constants';
 
-const lineKey = (productId: string, unit: ProductUnit = 'full') =>
-  `${productId}::${unit}`;
+const lineKey = (productId: string, unit: ProductUnit = 'full', quality: ProductQuality = 'A') =>
+  `${productId}::${unit}::${quality}`;
 
 const persistActiveCityItems = (
   state: Pick<CartStore, 'items' | 'cartsByCity' | 'activeCityId'>,
@@ -65,20 +65,20 @@ interface CartStore {
   loadDeliverySettings: () => Promise<void>;
   loadCart: () => Promise<void>;
 
-  addItem: (product: StoreProduct, quantity?: number, unit?: ProductUnit) => Promise<void>;
-  removeItem: (productId: string, unit?: ProductUnit) => Promise<void>;
-  updateQuantity: (productId: string, quantity: number, unit?: ProductUnit) => Promise<void>;
+  addItem: (product: StoreProduct, quantity?: number, unit?: ProductUnit, quality?: ProductQuality) => Promise<void>;
+  removeItem: (productId: string, unit?: ProductUnit, quality?: ProductQuality) => Promise<void>;
+  updateQuantity: (productId: string, quantity: number, unit?: ProductUnit, quality?: ProductQuality) => Promise<void>;
   clearCart: () => Promise<void>;
   switchCity: (cityId: string) => void;
 
   /** Back-compat aliases used by existing screens */
-  addToCart: (product: StoreProduct, quantity?: number, unit?: ProductUnit) => Promise<void>;
-  removeFromCart: (productId: string, unit?: ProductUnit) => Promise<void>;
+  addToCart: (product: StoreProduct, quantity?: number, unit?: ProductUnit, quality?: ProductQuality) => Promise<void>;
+  removeFromCart: (productId: string, unit?: ProductUnit, quality?: ProductQuality) => Promise<void>;
 
   syncWithBackend: () => Promise<boolean>;
   mergeWithServerCart: () => Promise<void>;
-  isInCart: (productId: string, unit?: ProductUnit) => boolean;
-  getItemQuantity: (productId: string, unit?: ProductUnit) => number;
+  isInCart: (productId: string, unit?: ProductUnit, quality?: ProductQuality) => boolean;
+  getItemQuantity: (productId: string, unit?: ProductUnit, quality?: ProductQuality) => number;
 
   getTotalItems: () => number;
   itemCount: () => number;
@@ -129,19 +129,19 @@ export const useCartStore = create<CartStore>()(
         }
       },
 
-      addItem: async (product, quantity = 1, unit = 'full') => {
+      addItem: async (product, quantity = 1, unit = 'full', quality = 'A') => {
         set({ isLoading: true, syncError: null });
         try {
           set((state) => {
-            const targetKey = lineKey(product.id, unit);
+            const targetKey = lineKey(product.id, unit, quality);
             const existingItem = state.items.find(
-              (item) => lineKey(item.product.id, item.unit || 'full') === targetKey
+              (item) => lineKey(item.product.id, item.unit || 'full', item.quality || 'A') === targetKey
             );
 
             let nextItems: StoreCartItem[];
             if (existingItem) {
               nextItems = state.items.map((item) =>
-                lineKey(item.product.id, item.unit || 'full') === targetKey
+                lineKey(item.product.id, item.unit || 'full', item.quality || 'A') === targetKey
                   ? { ...item, quantity: item.quantity + quantity }
                   : item
               );
@@ -152,7 +152,8 @@ export const useCartStore = create<CartStore>()(
                   product,
                   quantity,
                   unit,
-                  unitPrice: priceForUnit(product, unit),
+                  quality,
+                  unitPrice: priceForUnit(product, unit, quality),
                 },
               ];
             }
@@ -173,12 +174,12 @@ export const useCartStore = create<CartStore>()(
         }
       },
 
-      removeItem: async (productId, unit = 'full') => {
+      removeItem: async (productId, unit = 'full', quality = 'A') => {
         set({ isLoading: true });
         try {
           set((state) => {
             const nextItems = state.items.filter(
-              (item) => lineKey(item.product.id, item.unit || 'full') !== lineKey(productId, unit)
+              (item) => lineKey(item.product.id, item.unit || 'full', item.quality || 'A') !== lineKey(productId, unit, quality)
             );
             return persistActiveCityItems(state, nextItems);
           });
@@ -188,9 +189,9 @@ export const useCartStore = create<CartStore>()(
         }
       },
 
-      updateQuantity: async (productId, quantity, unit = 'full') => {
+      updateQuantity: async (productId, quantity, unit = 'full', quality = 'A') => {
         if (quantity <= 0) {
-          await get().removeItem(productId, unit);
+          await get().removeItem(productId, unit, quality);
           return;
         }
 
@@ -198,7 +199,7 @@ export const useCartStore = create<CartStore>()(
         try {
           set((state) => {
             const nextItems = state.items.map((item) =>
-              lineKey(item.product.id, item.unit || 'full') === lineKey(productId, unit)
+              lineKey(item.product.id, item.unit || 'full', item.quality || 'A') === lineKey(productId, unit, quality)
                 ? { ...item, quantity }
                 : item
             );
@@ -236,8 +237,8 @@ export const useCartStore = create<CartStore>()(
         get().loadDeliverySettings().catch(() => {});
       },
 
-      addToCart: async (product, quantity, unit) => get().addItem(product, quantity, unit),
-      removeFromCart: async (productId, unit) => get().removeItem(productId, unit),
+      addToCart: async (product, quantity, unit, quality) => get().addItem(product, quantity, unit, quality),
+      removeFromCart: async (productId, unit, quality) => get().removeItem(productId, unit, quality),
 
       syncWithBackend: async () => {
         try {
@@ -259,15 +260,20 @@ export const useCartStore = create<CartStore>()(
         }
       },
 
-      isInCart: (productId, unit = 'full') =>
+      isInCart: (productId, unit = 'full', quality = 'A') =>
         get().items.some(
           (item) =>
-            item.product.id === productId && (item.unit || 'full') === unit
+            item.product.id === productId &&
+            (item.unit || 'full') === unit &&
+            (item.quality || 'A') === quality
         ),
 
-      getItemQuantity: (productId, unit = 'full') => {
+      getItemQuantity: (productId, unit = 'full', quality = 'A') => {
         const item = get().items.find(
-          (i) => i.product.id === productId && (i.unit || 'full') === unit
+          (i) =>
+            i.product.id === productId &&
+            (i.unit || 'full') === unit &&
+            (i.quality || 'A') === quality
         );
         return item?.quantity || 0;
       },

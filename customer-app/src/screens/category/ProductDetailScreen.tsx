@@ -12,7 +12,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import { ShopStackParamList, ProductUnit, StoreProduct } from '@app-types';
+import { ShopStackParamList, ProductUnit, ProductQuality, StoreProduct } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import {
   ErrorView,
@@ -22,6 +22,7 @@ import {
   ProductReviews,
 } from '@components';
 import { UnitSelector, getSelectedUnitPrice } from '@components/product/UnitSelector';
+import { offeredQualities, qualityStock } from '@/lib/unitPricing';
 import { productService } from '@services/product.service';
 import { orderService } from '@services/order.service';
 import { useCartStore, useWishlistStore } from '@store';
@@ -42,6 +43,7 @@ export const ProductDetailScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full');
+  const [selectedQuality, setSelectedQuality] = useState<ProductQuality>('A');
   const [quantity, setQuantity] = useState(1);
   const [freeThreshold, setFreeThreshold] = useState(500);
 
@@ -52,19 +54,24 @@ export const ProductDetailScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const scrollBottomPad = TAB_BAR_BASE_HEIGHT + insets.bottom + SPACING.md;
 
+  const qualities = useMemo(() => (product ? offeredQualities(product) : (['A'] as ProductQuality[])), [product]);
   const cartItem = useMemo(
     () =>
       product
         ? items.find(
             (item) =>
-              item.product.id === product.id && (item.unit || 'full') === selectedUnit
+              item.product.id === product.id &&
+              (item.unit || 'full') === selectedUnit &&
+              (item.quality || 'A') === selectedQuality
           )
         : undefined,
-    [items, product, selectedUnit]
+    [items, product, selectedUnit, selectedQuality]
   );
   const inCart = Boolean(cartItem);
   const wishlisted = product ? isWishlisted(product.id) : false;
-  const displayPrice = product ? getSelectedUnitPrice(product, selectedUnit) : 0;
+  const displayPrice = product ? getSelectedUnitPrice(product, selectedUnit, selectedQuality) : 0;
+  // Stock is per-quality (shared with restaurants) — the selected tier's bucket.
+  const qualityInStock = product ? qualityStock(product, selectedQuality) > 0 : false;
 
   const loadProduct = useCallback(async () => {
     try {
@@ -109,8 +116,8 @@ export const ProductDetailScreen: React.FC = () => {
   }, [selectedCityId]);
 
   const handleAddToCart = async () => {
-    if (!product || !product.inStock) return;
-    await addItem(product, quantity, selectedUnit);
+    if (!product || !qualityInStock) return;
+    await addItem(product, quantity, selectedUnit, selectedQuality);
     if (product.isVariableWeight) {
       notifyVariableWeight(product.id, product.variableWeightNote);
     }
@@ -131,7 +138,8 @@ export const ProductDetailScreen: React.FC = () => {
     navigation.push('ProductDetail', { productId: item.id });
   };
 
-  const maxQuantity = product?.stock && product.stock > 0 ? product.stock : 99;
+  const selectedQualityStock = product ? qualityStock(product, selectedQuality) : 0;
+  const maxQuantity = selectedQualityStock > 0 ? selectedQualityStock : 99;
 
   if (error && !loading) {
     return (
@@ -261,11 +269,36 @@ export const ProductDetailScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
+            {qualities.length > 1 && (
+              <View style={styles.qualityRow}>
+                {qualities.map((q) => {
+                  const active = selectedQuality === q;
+                  return (
+                    <TouchableOpacity
+                      key={q}
+                      style={[styles.qualityChip, active && styles.qualityChipActive]}
+                      onPress={() => {
+                        setSelectedQuality(q);
+                        setSelectedUnit('full');
+                        setQuantity(1);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.qualityChipText, active && styles.qualityChipTextActive]}>
+                        Quality {q}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+
             <View style={styles.unitPickerWrap}>
               <UnitSelector
                 product={product}
                 selectedUnit={selectedUnit}
                 onChange={setSelectedUnit}
+                quality={selectedQuality}
                 size="md"
               />
             </View>
@@ -287,19 +320,19 @@ export const ProductDetailScreen: React.FC = () => {
               </View>
             </View>
 
-            {!product.inStock ? (
+            {!qualityInStock ? (
               <View style={styles.stockBadgeDanger}>
                 <Text style={styles.stockBadgeDangerText}>Out of Stock</Text>
               </View>
-            ) : product.isFresh ? (
+            ) : (
               <View style={styles.stockBadgeSuccess}>
                 <Text style={styles.stockBadgeSuccessText}>
-                  In Stock ({product.stock ?? '—'} {product.unit}s available)
+                  In Stock ({selectedQualityStock || '—'} {product.unit}s available)
                 </Text>
               </View>
-            ) : null}
+            )}
 
-            {product.inStock && (
+            {qualityInStock && (
               <View style={styles.addToCartRow}>
                 <View style={styles.websiteQtyBox}>
                   <TouchableOpacity
@@ -504,6 +537,18 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   unitPickerWrap: { marginBottom: SPACING.sm },
+  qualityRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
+  qualityChip: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray200,
+    alignItems: 'center',
+  },
+  qualityChipActive: { borderColor: COLORS.primary600, backgroundColor: COLORS.primary50 },
+  qualityChipText: { fontSize: 13, fontWeight: '600', color: COLORS.gray600 },
+  qualityChipTextActive: { color: COLORS.primary700 },
   description: {
     fontSize: 14,
     color: COLORS.gray600,
