@@ -12,6 +12,7 @@ interface ProductFilters {
   categoryId?: string;
   search?: string;
   isActive?: boolean;
+  restaurant?: boolean;
 }
 
 export const productService = {
@@ -24,7 +25,8 @@ export const productService = {
       if (filters.categoryId) params.category = filters.categoryId;
       if (filters.search) params.search = filters.search;
       if (filters.isActive !== undefined) params.is_active = filters.isActive;
-      
+      if (filters.restaurant) params.restaurant = 'true';
+
       const response = await api.get<{ success: boolean; data: Product[]; meta: { page: number; limit: number; total: number; totalPages: number } }>('/admin/products', params);
       return { products: response.data, pagination: response.meta };
     } catch (error: any) {
@@ -67,6 +69,9 @@ export const productService = {
       formData.append('allow_half_kg', (data.allowHalfKg !== false).toString());
       formData.append('allow_quarter_kg', (data.allowQuarterKg !== false).toString());
       formData.append('tags', JSON.stringify(data.tags || []));
+      formData.append('is_restaurant', (data.isRestaurant === true).toString());
+      if (data.qualityBPrice != null) formData.append('quality_b_price', String(data.qualityBPrice));
+      if (data.qualityCPrice != null) formData.append('quality_c_price', String(data.qualityCPrice));
 
       if (data.images && data.images.length > 0) {
         data.images.forEach((image) => {
@@ -110,6 +115,9 @@ export const productService = {
       if (data.allowHalfKg !== undefined) formData.append('allow_half_kg', data.allowHalfKg.toString());
       if (data.allowQuarterKg !== undefined) formData.append('allow_quarter_kg', data.allowQuarterKg.toString());
       if (data.tags !== undefined) formData.append('tags', JSON.stringify(data.tags));
+      if (data.isRestaurant !== undefined) formData.append('is_restaurant', data.isRestaurant.toString());
+      if (data.qualityBPrice !== undefined) formData.append('quality_b_price', data.qualityBPrice == null ? '' : String(data.qualityBPrice));
+      if (data.qualityCPrice !== undefined) formData.append('quality_c_price', data.qualityCPrice == null ? '' : String(data.qualityCPrice));
       
       if (data.images && data.images.length > 0) {
         data.images.forEach((image) => {
