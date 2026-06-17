@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
-  Modal, TextInput, FlatList, Image,
+  FlatList, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -13,10 +13,11 @@ import { COLORS, SPACING, BORDER_RADIUS, API_BASE_URL } from '@utils/constants';
 import { Button } from '@components';
 import {
   restaurantApi, getRestaurantInfo, clearRestaurantSession,
-  availableQualities, availableUnits, unitPrice, qualityBasePrice, money, round2,
+  availableQualities, availableUnits, unitPrice, qualityBasePrice, money,
   type Quality, type Unit,
 } from '@services/restaurant.service';
 import { RestaurantTabBar } from './RestaurantTabBar';
+import { useRestaurantCart } from '@store/restaurantCartStore';
 
 const BACKEND_URL = API_BASE_URL.replace('/api', '');
 function imgUrl(path?: string | null): string {
@@ -35,12 +36,11 @@ export const RestaurantShopScreen: React.FC = () => {
   const [categories, setCategories] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [activeCat, setActiveCat] = useState('');
-  const [delivery, setDelivery] = useState({ base_charge: 100, free_delivery_threshold: 2000 });
-  const [cart, setCart] = useState<CartLine[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [notes, setNotes] = useState('');
-  const [placing, setPlacing] = useState(false);
   const [bizName, setBizName] = useState('');
+  const add = useRestaurantCart((s) => s.add);
+  const setStoreDelivery = useRestaurantCart((s) => s.setDelivery);
+  const cartCount = useRestaurantCart((s) => s.totalItems());
+  const cartTotal = useRestaurantCart((s) => s.total());
 
   useEffect(() => {
     (async () => {
@@ -58,7 +58,7 @@ export const RestaurantShopScreen: React.FC = () => {
         ]);
         setCategories(cats || []);
         setProducts(prods || []);
-        if (del) setDelivery(del);
+        if (del) setStoreDelivery(Number(del.base_charge) || 100, Number(del.free_delivery_threshold) || 2000);
       } catch (e: any) {
         if (e?.status === 401) navigation.replace('RestaurantLogin');
         else Toast.show({ type: 'error', text1: e?.message || 'Could not load catalog' });
@@ -79,36 +79,8 @@ export const RestaurantShopScreen: React.FC = () => {
   };
 
   const addToCart = (line: CartLine) => {
-    setCart((prev) => {
-      const ex = prev.find((l) => l.key === line.key);
-      return ex ? prev.map((l) => (l.key === line.key ? { ...l, qty: l.qty + line.qty } : l)) : [...prev, line];
-    });
+    add(line);
     Toast.show({ type: 'success', text1: 'Added to cart' });
-  };
-  const setQty = (key: string, qty: number) => setCart((p) => p.map((l) => (l.key === key ? { ...l, qty: Math.max(1, qty) } : l)));
-  const removeLine = (key: string) => setCart((p) => p.filter((l) => l.key !== key));
-
-  const subtotal = useMemo(() => round2(cart.reduce((s, l) => s + round2(l.unitPrice * l.qty), 0)), [cart]);
-  const deliveryCharge = subtotal === 0 ? 0 : subtotal >= delivery.free_delivery_threshold ? 0 : delivery.base_charge;
-  const total = round2(subtotal + deliveryCharge);
-  const cartCount = cart.reduce((s, l) => s + l.qty, 0);
-
-  const placeOrder = async () => {
-    if (cart.length === 0) return Toast.show({ type: 'error', text1: 'Cart is empty' });
-    setPlacing(true);
-    try {
-      await restaurantApi.placeOrder(
-        cart.map((l) => ({ product_id: l.productId, quantity: l.qty, unit: l.unit, quality: l.quality })),
-        notes.trim() || undefined
-      );
-      setCart([]); setNotes(''); setCartOpen(false);
-      Toast.show({ type: 'success', text1: 'Order placed!' });
-      navigation.navigate('RestaurantOrders');
-    } catch (e: any) {
-      Toast.show({ type: 'error', text1: e?.message || 'Could not place order' });
-    } finally {
-      setPlacing(false);
-    }
   };
 
   const logout = async () => {
@@ -156,74 +128,21 @@ export const RestaurantShopScreen: React.FC = () => {
         />
       )}
 
-      {/* Bottom cart bar (sits above the tab bar) */}
+      {/* Bottom view-cart bar (sits above the tab bar) */}
       {cartCount > 0 && (
-        <TouchableOpacity style={styles.cartBar} onPress={() => setCartOpen(true)}>
+        <TouchableOpacity style={styles.cartBar} onPress={() => navigation.navigate('RestaurantCart')}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <MaterialIcons name="shopping-cart" size={20} color={COLORS.white} />
             <Text style={styles.cartBarText}>{cartCount} item{cartCount > 1 ? 's' : ''}</Text>
           </View>
-          <Text style={styles.cartBarText}>{money(total)} · View cart</Text>
+          <Text style={styles.cartBarText}>{money(cartTotal)} · View cart</Text>
         </TouchableOpacity>
       )}
-
-      {/* Cart modal */}
-      <Modal visible={cartOpen} animationType="slide" onRequestClose={() => setCartOpen(false)}>
-        <SafeAreaView style={styles.container} edges={['top']}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Your cart</Text>
-            <TouchableOpacity onPress={() => setCartOpen(false)}>
-              <MaterialIcons name="close" size={24} color={COLORS.gray700} />
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={cart}
-            keyExtractor={(l) => l.key}
-            contentContainerStyle={{ padding: SPACING.md }}
-            ListEmptyComponent={<Text style={{ textAlign: 'center', color: COLORS.gray500, marginTop: SPACING.xl }}>Empty</Text>}
-            renderItem={({ item: l }) => (
-              <View style={styles.cartLine}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cartName}>{l.name}</Text>
-                  <Text style={styles.cartMeta}>Quality {l.quality} · {l.unitShort} · {money(l.unitPrice)}</Text>
-                  <View style={styles.stepper}>
-                    <TouchableOpacity onPress={() => setQty(l.key, l.qty - 1)} style={styles.stepBtn}><MaterialIcons name="remove" size={16} color={COLORS.gray700} /></TouchableOpacity>
-                    <Text style={styles.qtyText}>{l.qty}</Text>
-                    <TouchableOpacity onPress={() => setQty(l.key, l.qty + 1)} style={styles.stepBtn}><MaterialIcons name="add" size={16} color={COLORS.gray700} /></TouchableOpacity>
-                  </View>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.cartName}>{money(round2(l.unitPrice * l.qty))}</Text>
-                  <TouchableOpacity onPress={() => removeLine(l.key)} style={{ marginTop: 8 }}>
-                    <MaterialIcons name="delete-outline" size={20} color={COLORS.error} />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-          />
-          <View style={styles.cartFooter}>
-            <Row label="Subtotal" value={money(subtotal)} />
-            <Row label="Delivery" value={deliveryCharge === 0 ? 'FREE' : money(deliveryCharge)} valueColor={deliveryCharge === 0 ? COLORS.success : COLORS.gray900} />
-            <Row label="Total" value={money(total)} bold />
-            <TextInput value={notes} onChangeText={setNotes} placeholder="Order notes (optional)" style={styles.notes} multiline />
-            <Button title="Place Order" onPress={placeOrder} loading={placing} style={{ marginTop: SPACING.sm }} />
-          </View>
-        </SafeAreaView>
-      </Modal>
 
       <RestaurantTabBar active="shop" />
     </SafeAreaView>
   );
 };
-
-function Row({ label, value, bold, valueColor }: { label: string; value: string; bold?: boolean; valueColor?: string }) {
-  return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-      <Text style={{ color: COLORS.gray600, fontWeight: bold ? '700' : '400', fontSize: bold ? 16 : 14 }}>{label}</Text>
-      <Text style={{ color: valueColor || COLORS.gray900, fontWeight: bold ? '700' : '600', fontSize: bold ? 18 : 14 }}>{value}</Text>
-    </View>
-  );
-}
 
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (

@@ -12,6 +12,8 @@ export interface RestaurantInfo {
   business_name: string;
   owner_name?: string | null;
   phone: string;
+  email?: string | null;
+  address?: string | null;
   city?: string | null;
   status?: string;
 }
