@@ -45,6 +45,9 @@ export const Categories: React.FC = () => {
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // Consumer catalog vs restaurant (B2B) catalog — same CRUD, separate sets.
+  const [mode, setMode] = useState<'consumer' | 'restaurant'>('consumer');
+  const isRestaurantMode = mode === 'restaurant';
 
   const [formData, setFormData] = useState<CreateCategoryData>({
     nameEn: '',
@@ -56,8 +59,8 @@ export const Categories: React.FC = () => {
   });
 
   const { data: categories, isLoading } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => categoryService.getCategories(),
+    queryKey: ['categories', mode],
+    queryFn: () => categoryService.getCategories(isRestaurantMode),
   });
 
   const createMutation = useMutation({
@@ -248,6 +251,12 @@ export const Categories: React.FC = () => {
       return;
     }
 
+    // When editing, keep the category in its existing catalog; when creating,
+    // it belongs to the catalog of the active tab.
+    const isRestaurant = editingCategory
+      ? (editingCategory.isRestaurant ?? false)
+      : isRestaurantMode;
+
     const payload: CreateCategoryData = {
       nameEn: formData.nameEn,
       nameUr: formData.nameUr,
@@ -255,6 +264,7 @@ export const Categories: React.FC = () => {
       isActive: formData.isActive ?? true,
       displayOrder: formData.displayOrder ?? 0,
       qualifiesForFreeDelivery: formData.qualifiesForFreeDelivery ?? false,
+      isRestaurant,
     };
 
     if (editingCategory) {
@@ -266,6 +276,7 @@ export const Categories: React.FC = () => {
         submitData.append('is_active', String(formData.isActive ?? true));
         submitData.append('display_order', String(formData.displayOrder ?? 0));
         submitData.append('qualifies_for_free_delivery', String(formData.qualifiesForFreeDelivery ?? false));
+        submitData.append('is_restaurant', String(isRestaurant));
         submitData.append('image', selectedImage);
         updateWithImageMutation.mutate({ id: editingCategory.id, data: submitData });
       } else {
@@ -278,6 +289,8 @@ export const Categories: React.FC = () => {
       if (formData.icon) submitData.append('icon', formData.icon);
       submitData.append('is_active', String(formData.isActive ?? true));
       submitData.append('display_order', String(formData.displayOrder ?? 0));
+      submitData.append('qualifies_for_free_delivery', String(formData.qualifiesForFreeDelivery ?? false));
+      submitData.append('is_restaurant', String(isRestaurant));
       submitData.append('image', selectedImage);
       createWithImageMutation.mutate(submitData);
     } else {
@@ -312,10 +325,23 @@ export const Categories: React.FC = () => {
 
   return (
     <Layout title="Categories" subtitle="Manage product categories">
-      {/* Actions */}
-      <div className="flex justify-end mb-6">
+      {/* Consumer vs Restaurant catalog tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <div className="inline-flex rounded-lg bg-gray-100 p-1">
+          {(['consumer', 'restaurant'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                mode === m ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              {m === 'consumer' ? 'Consumer' : 'Restaurants'}
+            </button>
+          ))}
+        </div>
         <Button onClick={openAddModal} leftIcon={<Plus className="w-5 h-5" />}>
-          Add Category
+          Add {isRestaurantMode ? 'Restaurant ' : ''}Category
         </Button>
       </div>
 

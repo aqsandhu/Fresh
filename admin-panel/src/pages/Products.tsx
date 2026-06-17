@@ -61,6 +61,9 @@ export const Products: React.FC = () => {
   // /admin/categories so clicking a category lands you on its products.
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get('category') || '');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'all'>('active');
+  // Consumer catalog vs restaurant (B2B) catalog — same CRUD, separate sets.
+  const [mode, setMode] = useState<'consumer' | 'restaurant'>('consumer');
+  const isRestaurantMode = mode === 'restaurant';
 
   // Keep the URL in sync with the filter selection so the back button works
   // and the URL is shareable.
@@ -98,10 +101,12 @@ export const Products: React.FC = () => {
     allowHalfKg: true,
     allowQuarterKg: true,
     tags: [],
+    qualityBPrice: null,
+    qualityCPrice: null,
   });
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['products', { search: searchQuery, category: categoryFilter, status: statusFilter, page }],
+    queryKey: ['products', { search: searchQuery, category: categoryFilter, status: statusFilter, page, mode }],
     queryFn: () =>
       productService.getProducts({
         search: searchQuery || undefined,
@@ -109,12 +114,13 @@ export const Products: React.FC = () => {
         isActive: statusFilter === 'all' ? undefined : statusFilter === 'active',
         page,
         limit: 12,
+        restaurant: isRestaurantMode,
       }),
   });
 
   const { data: categories } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => categoryService.getCategories(),
+    queryKey: ['categories', mode],
+    queryFn: () => categoryService.getCategories(isRestaurantMode),
   });
 
   const createMutation = useMutation({
@@ -228,6 +234,9 @@ export const Products: React.FC = () => {
       allowHalfKg: true,
       allowQuarterKg: true,
       tags: [],
+      isRestaurant: isRestaurantMode,
+      qualityBPrice: null,
+      qualityCPrice: null,
     });
     setIsModalOpen(true);
   };
@@ -282,6 +291,9 @@ export const Products: React.FC = () => {
       allowHalfKg,
       allowQuarterKg,
       tags,
+      isRestaurant: product.isRestaurant ?? isRestaurantMode,
+      qualityBPrice: product.qualityBPrice ?? null,
+      qualityCPrice: product.qualityCPrice ?? null,
     });
     setIsModalOpen(true);
   };
@@ -380,7 +392,12 @@ export const Products: React.FC = () => {
       return;
     }
 
-    const submitData = { ...formData };
+    // A product stays in its own catalog on edit; new products belong to the
+    // catalog of the active tab.
+    const submitData: CreateProductData = {
+      ...formData,
+      isRestaurant: editingProduct ? (editingProduct.isRestaurant ?? false) : isRestaurantMode,
+    };
     if (selectedImages.length > 0) {
       submitData.images = selectedImages;
     }
@@ -443,6 +460,25 @@ export const Products: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Consumer vs Restaurant catalog tabs */}
+      <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
+        {(['consumer', 'restaurant'] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => {
+              setMode(m);
+              setCategoryFilter('');
+              setPage(1);
+            }}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mode === m ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            {m === 'consumer' ? 'Consumer' : 'Restaurants'}
+          </button>
+        ))}
+      </div>
 
       {/* Filters & Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
@@ -736,6 +772,42 @@ export const Products: React.FC = () => {
               required
             />
           </div>
+
+          {/* Quality tiers — restaurant catalog only. Price above = Quality A. */}
+          {formData.isRestaurant && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-semibold text-amber-900 mb-1">Quality tiers (restaurant)</p>
+              <p className="text-xs text-amber-700 mb-3">
+                The <strong>Price</strong> above is <strong>Quality A</strong>. Set Quality B and C prices below
+                (leave blank if a tier isn&apos;t offered). Half/quarter-kg is derived from the chosen quality —
+                same logic as the consumer catalog.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Input
+                  label="Quality B price (Rs.)"
+                  type="number"
+                  value={formData.qualityBPrice ?? ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, qualityBPrice: e.target.value === '' ? null : parseFloat(e.target.value) })
+                  }
+                  min={0}
+                  step={0.01}
+                  helperText="Leave blank if not offered"
+                />
+                <Input
+                  label="Quality C price (Rs.)"
+                  type="number"
+                  value={formData.qualityCPrice ?? ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, qualityCPrice: e.target.value === '' ? null : parseFloat(e.target.value) })
+                  }
+                  min={0}
+                  step={0.01}
+                  helperText="Leave blank if not offered"
+                />
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>

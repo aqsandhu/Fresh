@@ -53,6 +53,10 @@ export interface Product {
   allowHalfKg?: boolean;
   allowQuarterKg?: boolean;
   tags?: string[];
+  /** Restaurant (B2B) catalog flag + quality-tier prices (A = price). */
+  isRestaurant?: boolean;
+  qualityBPrice?: number | null;
+  qualityCPrice?: number | null;
 }
 
 export interface Category {
@@ -70,6 +74,7 @@ export interface Category {
   totalProductCount?: number;
   qualifiesForFreeDelivery?: boolean;
   minimumOrderForFreeDelivery?: number;
+  isRestaurant?: boolean;
 }
 
 export interface Order {
@@ -358,6 +363,9 @@ export interface CreateProductData {
   allowHalfKg?: boolean;
   allowQuarterKg?: boolean;
   tags?: string[];
+  isRestaurant?: boolean;
+  qualityBPrice?: number | null;
+  qualityCPrice?: number | null;
 }
 
 export interface CreateCategoryData {
@@ -368,6 +376,7 @@ export interface CreateCategoryData {
   isActive?: boolean;
   displayOrder?: number;
   qualifiesForFreeDelivery?: boolean;
+  isRestaurant?: boolean;
 }
 
 export interface CreateRiderData {
@@ -453,4 +462,5 @@ export interface ProductFilters {
   lowStock?: boolean;
   page?: number;
   limit?: number;
+  restaurant?: boolean;
 }
