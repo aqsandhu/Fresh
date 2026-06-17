@@ -13,6 +13,7 @@ import { whatsappService } from '@/services/whatsapp.service';
 import { productService } from '@/services/product.service';
 import { resolveImageUrl } from '@/utils/formatters';
 import type { WhatsAppOrderData, WhatsappCustomerAddress, ApiResponse } from '@/types';
+import { RestaurantWhatsAppOrder } from './RestaurantWhatsAppOrder';
 import toast from 'react-hot-toast';
 
 interface OrderItem {
@@ -119,6 +120,7 @@ function composeAddress(a: WhatsappCustomerAddress): string {
 
 export const WhatsAppOrders: React.FC = () => {
   const queryClient = useQueryClient();
+  const [mode, setMode] = useState<'customer' | 'restaurant'>('customer');
   const [items, setItems] = useState<OrderItem[]>([{ id: '1', productId: '', quantity: 1, unit: 'full' }]);
 
   // Editable customer + delivery fields (auto-filled by lookup, but always editable).
@@ -328,6 +330,28 @@ export const WhatsAppOrders: React.FC = () => {
   return (
     <Layout title="WhatsApp Orders" subtitle="Place an order on a customer's behalf — it appears in Orders">
       <div className="max-w-4xl mx-auto">
+        {/* Customer vs Restaurant order */}
+        <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
+          {(['customer', 'restaurant'] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                mode === m ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              {m === 'customer' ? 'Customer' : 'Restaurant'}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'restaurant' ? (
+          <Card>
+            <RestaurantWhatsAppOrder />
+          </Card>
+        ) : (
+        <>
         <Card>
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Customer */}
@@ -773,6 +797,8 @@ export const WhatsAppOrders: React.FC = () => {
             <li>Place the order — it appears in <strong>Orders</strong> with a green WhatsApp badge</li>
           </ul>
         </Card>
+        </>
+        )}
       </div>
     </Layout>
   );

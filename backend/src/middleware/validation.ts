@@ -490,7 +490,21 @@ export const adminSchemas = {
       'any.required': 'Password is required',
     }),
   }),
-  
+
+  // Admin-placed restaurant (WhatsApp) order.
+  createRestaurantOrder: Joi.object({
+    restaurant_id: commonSchemas.uuid.required(),
+    items: Joi.array().items(
+      Joi.object({
+        product_id: commonSchemas.uuid.required(),
+        quantity: commonSchemas.quantity.required(),
+        unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
+        quality: Joi.string().valid('A', 'B', 'C').default('A'),
+      })
+    ).min(1).required(),
+    customer_notes: Joi.string().max(1000).allow('', null),
+  }),
+
   createProduct: productSchemas.create,
   updateProduct: productSchemas.update,
   
