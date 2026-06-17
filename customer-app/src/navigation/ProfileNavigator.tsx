@@ -27,6 +27,8 @@ import {
   RestaurantLoginScreen,
   RestaurantRegisterScreen,
   RestaurantShopScreen,
+  RestaurantCartScreen,
+  RestaurantCheckoutScreen,
   RestaurantOrdersScreen,
   RestaurantProfileScreen,
 } from '@screens/restaurant';
@@ -63,6 +65,8 @@ export const ProfileNavigator: React.FC = () => {
       <Stack.Screen name="RestaurantLogin" component={RestaurantLoginScreen} />
       <Stack.Screen name="RestaurantRegister" component={RestaurantRegisterScreen} />
       <Stack.Screen name="RestaurantShop" component={RestaurantShopScreen} />
+      <Stack.Screen name="RestaurantCart" component={RestaurantCartScreen} />
+      <Stack.Screen name="RestaurantCheckout" component={RestaurantCheckoutScreen} />
       <Stack.Screen name="RestaurantOrders" component={RestaurantOrdersScreen} />
       <Stack.Screen name="RestaurantProfile" component={RestaurantProfileScreen} />
       <Stack.Screen name="AddAddress" component={AddAddressScreen} />
