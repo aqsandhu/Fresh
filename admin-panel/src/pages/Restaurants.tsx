@@ -25,7 +25,42 @@ const STATUS_BADGE: Record<string, 'warning' | 'success' | 'info' | 'error'> = {
   banned: 'error',
 };
 
+const SECTIONS = [
+  { value: 'accounts', label: 'Accounts' },
+  { value: 'orders', label: 'Orders' },
+  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'settings', label: 'Delivery Settings' },
+];
+
 export const Restaurants: React.FC = () => {
+  const [section, setSection] = useState('accounts');
+
+  return (
+    <Layout title="Restaurants" subtitle="Restaurant accounts, orders, dashboard and delivery settings">
+      {/* Section switcher */}
+      <div className="mb-4 inline-flex flex-wrap rounded-lg bg-gray-100 p-1">
+        {SECTIONS.map((s) => (
+          <button
+            key={s.value}
+            onClick={() => setSection(s.value)}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              section === s.value ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {section === 'accounts' && <AccountsSection />}
+      {section === 'orders' && <OrdersSection />}
+      {section === 'dashboard' && <DashboardSection />}
+      {section === 'settings' && <SettingsSection />}
+    </Layout>
+  );
+};
+
+function AccountsSection() {
   const [tab, setTab] = useState('pending');
 
   const { data, isLoading } = useQuery({
@@ -37,7 +72,7 @@ export const Restaurants: React.FC = () => {
   const counts = data?.counts ?? {};
 
   return (
-    <Layout title="Restaurants" subtitle="Review restaurant requests and manage approved restaurants">
+    <>
       <Card className="mb-4">
         <div className="flex flex-wrap gap-2">
           {TABS.map((t) => {
@@ -77,9 +112,210 @@ export const Restaurants: React.FC = () => {
           ))}
         </div>
       )}
-    </Layout>
+    </>
   );
+}
+
+const ORDER_TABS = [
+  { value: '', label: 'All' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'confirmed', label: 'Confirmed' },
+  { value: 'preparing', label: 'Preparing' },
+  { value: 'out_for_delivery', label: 'Out for delivery' },
+  { value: 'delivered', label: 'Delivered' },
+];
+
+const ORDER_STATUS_BADGE: Record<string, 'warning' | 'info' | 'success' | 'error' | 'default'> = {
+  pending: 'warning',
+  confirmed: 'info',
+  preparing: 'info',
+  ready_for_pickup: 'info',
+  out_for_delivery: 'info',
+  delivered: 'success',
+  cancelled: 'error',
 };
+
+function OrdersSection() {
+  const queryClient = useQueryClient();
+  const [status, setStatus] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['restaurant-orders', status],
+    queryFn: () => restaurantService.getOrders(status || undefined),
+  });
+  const orders = data?.orders ?? [];
+  const counts = data?.counts ?? {};
+
+  const mutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => restaurantService.updateOrderStatus(id, { status }),
+    onSuccess: () => {
+      toast.success('Order updated');
+      queryClient.invalidateQueries({ queryKey: ['restaurant-orders'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Update failed'),
+  });
+
+  const NEXT: Record<string, { label: string; status: string } | undefined> = {
+    pending: { label: 'Confirm', status: 'confirmed' },
+    confirmed: { label: 'Start preparing', status: 'preparing' },
+    preparing: { label: 'Out for delivery', status: 'out_for_delivery' },
+    out_for_delivery: { label: 'Mark delivered', status: 'delivered' },
+  };
+
+  return (
+    <>
+      <Card className="mb-4">
+        <div className="flex flex-wrap gap-2">
+          {ORDER_TABS.map((t) => {
+            const active = status === t.value;
+            const count = t.value ? counts[t.value] : undefined;
+            return (
+              <button
+                key={t.value || 'all'}
+                onClick={() => setStatus(t.value)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  active ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {t.label}
+                {count != null && count > 0 ? ` (${count})` : ''}
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {isLoading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+        </div>
+      ) : orders.length === 0 ? (
+        <Card><div className="text-center py-12 text-gray-500">No restaurant orders.</div></Card>
+      ) : (
+        <div className="space-y-3">
+          {orders.map((o: any) => {
+            const next = NEXT[o.status];
+            return (
+              <Card key={o.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-gray-900">#{o.order_number}</span>
+                      <Badge variant={ORDER_STATUS_BADGE[o.status] || 'default'}>{String(o.status).replace(/_/g, ' ')}</Badge>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-0.5">
+                      {o.restaurant_name}{o.restaurant_phone ? ` · ${o.restaurant_phone}` : ''}
+                    </p>
+                    <div className="mt-2 text-sm text-gray-600 space-y-0.5">
+                      {(o.items || []).map((it: any, i: number) => (
+                        <div key={i}>
+                          {it.product_name} <span className="text-gray-400">· Q{it.quality} · {String(it.unit).replace('_', ' ')} × {it.quantity}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs text-gray-400">{formatDateTime(o.created_at)}</p>
+                    <p className="font-bold text-gray-900 mt-1">Rs. {Number(o.total_amount).toLocaleString('en-PK')}</p>
+                    <p className="text-xs text-gray-500">Delivery Rs. {Number(o.delivery_charge).toLocaleString('en-PK')}</p>
+                    {next && (
+                      <Button size="sm" className="mt-2" disabled={mutation.isPending}
+                        onClick={() => mutation.mutate({ id: o.id, status: next.status })}>
+                        {next.label}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+function DashboardSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['restaurant-dashboard'],
+    queryFn: () => restaurantService.getDashboard(),
+  });
+  const d: any = data || {};
+
+  if (isLoading) {
+    return <div className="flex justify-center py-16"><Loader2 className="w-7 h-7 animate-spin text-primary-600" /></div>;
+  }
+
+  const cards = [
+    { label: 'Total orders', value: d.total_orders ?? 0 },
+    { label: "Today's orders", value: d.today_orders ?? 0 },
+    { label: 'Pending', value: d.pending_orders ?? 0 },
+    { label: 'Delivered', value: d.delivered_orders ?? 0 },
+    { label: 'Revenue (delivered)', value: `Rs. ${Number(d.revenue ?? 0).toLocaleString('en-PK')}` },
+    { label: "Today's revenue", value: `Rs. ${Number(d.today_revenue ?? 0).toLocaleString('en-PK')}` },
+    { label: 'Approved restaurants', value: d.approved_restaurants ?? 0 },
+    { label: 'Pending requests', value: d.pending_restaurants ?? 0 },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {cards.map((c) => (
+        <Card key={c.label}>
+          <p className="text-sm text-gray-500">{c.label}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">{c.value}</p>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function SettingsSection() {
+  const queryClient = useQueryClient();
+  const [base, setBase] = useState('');
+  const [threshold, setThreshold] = useState('');
+
+  const { data } = useQuery({ queryKey: ['restaurant-settings'], queryFn: () => restaurantService.getSettings() });
+  React.useEffect(() => {
+    if (data) {
+      setBase(String(data.baseCharge));
+      setThreshold(String(data.freeDeliveryThreshold));
+    }
+  }, [data]);
+
+  const mutation = useMutation({
+    mutationFn: () => restaurantService.updateSettings({ baseCharge: parseFloat(base) || 0, freeDeliveryThreshold: parseFloat(threshold) || 0 }),
+    onSuccess: () => {
+      toast.success('Settings saved');
+      queryClient.invalidateQueries({ queryKey: ['restaurant-settings'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Save failed'),
+  });
+
+  return (
+    <Card className="max-w-lg">
+      <h3 className="font-semibold text-gray-800 mb-1">Global restaurant delivery</h3>
+      <p className="text-xs text-gray-500 mb-4">
+        Applies to all restaurants unless a restaurant has its own override (set per-restaurant under Accounts).
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Delivery base charge (Rs.)</label>
+          <input type="number" value={base} onChange={(e) => setBase(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Free-delivery threshold (Rs.)</label>
+          <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+        </div>
+      </div>
+      <Button className="mt-4" onClick={() => mutation.mutate()} disabled={mutation.isPending}
+        leftIcon={mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}>
+        Save
+      </Button>
+    </Card>
+  );
+}
 
 function RestaurantCard({ r }: { r: Restaurant }) {
   const queryClient = useQueryClient();
