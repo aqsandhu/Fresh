@@ -254,6 +254,7 @@ router.get('/restaurants', restaurantsController.getRestaurants);
 // Specific sub-routes MUST precede '/restaurants/:id' so 'orders'/'dashboard'/
 // 'settings' aren't captured as an :id.
 router.get('/restaurants/orders', restaurantsController.getRestaurantOrders);
+router.post('/restaurants/orders', adminRateLimiter, validate(adminSchemas.createRestaurantOrder), restaurantsController.createAdminRestaurantOrder);
 router.put('/restaurants/orders/:id/status', adminRateLimiter, restaurantsController.updateRestaurantOrderStatus);
 router.get('/restaurants/dashboard', restaurantsController.getRestaurantDashboard);
 router.get('/restaurants/settings', restaurantsController.getRestaurantSettings);

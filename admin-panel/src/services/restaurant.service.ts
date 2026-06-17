@@ -70,6 +70,20 @@ export const restaurantService = {
     return res.data;
   },
 
+  // Admin places a restaurant order on its behalf (WhatsApp restaurant portion).
+  placeOrder: async (data: {
+    restaurantId: string;
+    items: { productId: string; quantity: number; unit: string; quality: string }[];
+    customerNotes?: string;
+  }): Promise<any> => {
+    const res = await api.post<ApiResponse<any>>('/admin/restaurants/orders', {
+      restaurantId: data.restaurantId,
+      items: data.items,
+      customerNotes: data.customerNotes,
+    });
+    return res.data;
+  },
+
   // ── Dashboard + global delivery settings ───────────────────────────────
   getDashboard: async (): Promise<Record<string, number>> => {
     const res = await api.get<ApiResponse<Record<string, number>>>('/admin/restaurants/dashboard');

@@ -9,11 +9,13 @@ import {
   successResponse,
   errorResponse,
   notFoundResponse,
+  createdResponse,
 } from '../../utils/response';
 import { resolveCityScope, cityIdClause, cityRowInScope, orderInScope } from '../../utils/cityScope';
 import { emitToAdmins } from '../../config/socket';
 import { isValidOrderTransition, ORDER_STATUS_TIMESTAMPS } from '../../utils/orderStatus';
 import { upsertGlobalSiteSetting } from '../../utils/siteSettings';
+import { placeRestaurantOrder } from '../../utils/restaurantOrders';
 import logger from '../../utils/logger';
 
 const RESTAURANT_PUBLIC_COLUMNS = `
@@ -207,6 +209,44 @@ export const getRestaurantOrders = asyncHandler(async (req: Request, res: Respon
   for (const r of counts.rows) countMap[r.status] = r.n;
 
   return successResponse(res, { orders: result.rows, counts: countMap }, 'Orders');
+});
+
+/** POST /api/admin/restaurants/orders — place a restaurant order on its behalf (WhatsApp entry). */
+export const createAdminRestaurantOrder = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const { restaurant_id, items, customer_notes } = req.body;
+
+  if (!restaurant_id) return errorResponse(res, 'Select a restaurant.', 400);
+
+  // City isolation: only an approved restaurant in the admin's scope.
+  const r = await query(
+    `SELECT id, city_id, status FROM restaurants WHERE id = $1 AND deleted_at IS NULL`,
+    [restaurant_id]
+  );
+  if (r.rows.length === 0) return errorResponse(res, 'Restaurant not found.', 400);
+  if (!cityRowInScope(scope, r.rows[0].city_id)) return notFoundResponse(res, 'Restaurant not found');
+  if (r.rows[0].status !== 'approved') return errorResponse(res, 'Restaurant is not approved.', 400);
+
+  let order: any;
+  let restaurant: any;
+  try {
+    ({ order, restaurant } = await placeRestaurantOrder(restaurant_id, items, customer_notes));
+  } catch (err: any) {
+    if (err?.http === 400) return errorResponse(res, err.message, 400);
+    throw err;
+  }
+
+  logger.info('Admin placed restaurant order', { orderId: order.id, restaurantId: restaurant.id, by: req.user?.id });
+  emitToAdmins('order:new', {
+    orderId: order.id,
+    orderNumber: order.order_number,
+    status: order.status,
+    totalAmount: parseFloat(order.total_amount),
+    source: 'restaurant',
+    message: `New restaurant order #${order.order_number} from ${restaurant.business_name}`,
+  });
+
+  return createdResponse(res, order, 'Restaurant order placed');
 });
 
 /** PUT /api/admin/restaurants/orders/:id/status — status / rider for a restaurant order. */

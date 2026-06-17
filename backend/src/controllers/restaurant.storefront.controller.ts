@@ -5,42 +5,14 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
-import { query, withTransaction } from '../config/database';
+import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, createdResponse, errorResponse } from '../utils/response';
-import { roundMoney } from '../utils/money';
-import {
-  normalizeProductUnit,
-  normalizeQuality,
-  resolveQualityUnitPrice,
-  stockUnitsNeeded,
-} from '../utils/unitPricing';
 import { hasRestaurantCatalogColumns } from '../config/productSchema';
 import { hasRestaurantOrderColumns } from '../config/orderSchema';
 import { emitToAdmins } from '../config/socket';
+import { placeRestaurantOrder, getRestaurantDelivery } from '../utils/restaurantOrders';
 import logger from '../utils/logger';
-
-/** Resolve the effective delivery config for a restaurant. */
-async function getRestaurantDelivery(restaurant: { free_delivery_threshold?: any; delivery_base_charge?: any }) {
-  const s = await query(
-    `SELECT key, value FROM site_settings WHERE key IN ('restaurant_delivery_base_charge','restaurant_free_delivery_threshold')`
-  );
-  let baseChargeGlobal = 100;
-  let freeThresholdGlobal = 2000;
-  for (const row of s.rows) {
-    if (row.key === 'restaurant_delivery_base_charge') baseChargeGlobal = parseFloat(row.value) || baseChargeGlobal;
-    if (row.key === 'restaurant_free_delivery_threshold') freeThresholdGlobal = parseFloat(row.value) || freeThresholdGlobal;
-  }
-  const num = (v: any, fb: number) => {
-    if (v === null || v === undefined || v === '') return fb;
-    const n = parseFloat(String(v));
-    return Number.isFinite(n) && n >= 0 ? n : fb;
-  };
-  return {
-    baseCharge: num(restaurant.delivery_base_charge, baseChargeGlobal),
-    freeThreshold: num(restaurant.free_delivery_threshold, freeThresholdGlobal),
-  };
-}
 
 /** GET /api/restaurant/categories — restaurant categories in the restaurant's city. */
 export const getRestaurantCategories = asyncHandler(async (req: Request, res: Response) => {
@@ -113,95 +85,11 @@ export const createRestaurantOrder = asyncHandler(async (req: Request, res: Resp
   }
 
   const { items, customer_notes } = req.body;
-  if (!Array.isArray(items) || items.length === 0) {
-    return errorResponse(res, 'Add at least one item.', 400);
-  }
-
-  const restRow = await query(
-    `SELECT id, business_name, owner_name, phone, address, city, city_id, free_delivery_threshold, delivery_base_charge,
-            ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
-       FROM restaurants WHERE id = $1 AND deleted_at IS NULL`,
-    [req.restaurant!.id]
-  );
-  const restaurant = restRow.rows[0];
-  if (!restaurant) return errorResponse(res, 'Restaurant account not found.', 400);
-
-  const delivery = await getRestaurantDelivery(restaurant);
 
   let order: any;
+  let restaurant: any;
   try {
-    order = await withTransaction(async (client) => {
-      let subtotal = 0;
-      const lines: any[] = [];
-      for (const item of items) {
-        const pr = await client.query(
-          `SELECT id, name_en, primary_image, sku, price, quality_b_price, quality_c_price,
-                  half_kg_price, quarter_kg_price, half_dozen_price
-             FROM products
-            WHERE id = $1 AND is_active = TRUE AND is_restaurant = TRUE
-              AND ($2::uuid IS NULL OR city_id = $2)
-            FOR UPDATE`,
-          [item.product_id, restaurant.city_id]
-        );
-        if (pr.rows.length === 0) {
-          throw Object.assign(new Error(`Product not available: ${item.product_id}`), { http: 400 });
-        }
-        const p = pr.rows[0];
-        const unit = normalizeProductUnit(item.unit);
-        const quality = normalizeQuality(item.quality);
-        const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);
-        const unitPrice = resolveQualityUnitPrice(p, quality, unit);
-        if (unitPrice == null) {
-          throw Object.assign(new Error(`Quality ${quality} is not available for ${p.name_en}.`), { http: 400 });
-        }
-        const lineTotal = roundMoney(unitPrice * qty);
-        subtotal += lineTotal;
-        lines.push({ product_id: p.id, name: p.name_en, image: p.primary_image, sku: p.sku, unit, quality, unitPrice, qty, lineTotal });
-      }
-      subtotal = roundMoney(subtotal);
-
-      const deliveryCharge = subtotal >= delivery.freeThreshold ? 0 : roundMoney(delivery.baseCharge);
-      const totalAmount = roundMoney(subtotal + deliveryCharge);
-
-      const snapshot = JSON.stringify({
-        business_name: restaurant.business_name,
-        owner_name: restaurant.owner_name,
-        phone: restaurant.phone,
-        written_address: restaurant.address || '',
-        city: restaurant.city || '',
-        location: { latitude: restaurant.lat ?? null, longitude: restaurant.lng ?? null },
-        is_restaurant: true,
-      });
-
-      const orderRes = await client.query(
-        `INSERT INTO orders (
-          restaurant_id, delivery_address_snapshot,
-          subtotal, discount_amount, delivery_charge, tax_amount, total_amount,
-          payment_method, payment_status, status, source, customer_notes, city_id
-        ) VALUES ($1,$2,$3,0,$4,0,$5,'cash_on_delivery','pending','pending','website',$6,$7)
-        RETURNING *`,
-        [
-          restaurant.id, snapshot, subtotal, deliveryCharge, totalAmount,
-          customer_notes ? String(customer_notes).slice(0, 1000) : null,
-          restaurant.city_id,
-        ]
-      );
-      const o = orderRes.rows[0];
-
-      for (const l of lines) {
-        await client.query(
-          `INSERT INTO order_items (order_id, product_id, product_name, product_image, product_sku, unit_price, quantity, total_price, unit, quality)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-          [o.id, l.product_id, l.name, l.image, l.sku, l.unitPrice, l.qty, l.lineTotal, l.unit, l.quality]
-        );
-        const need = stockUnitsNeeded(l.qty, l.unit);
-        await client.query(
-          `UPDATE products SET stock_quantity = GREATEST(0, stock_quantity - $1), updated_at = NOW() WHERE id = $2`,
-          [need, l.product_id]
-        );
-      }
-      return o;
-    });
+    ({ order, restaurant } = await placeRestaurantOrder(req.restaurant!.id, items, customer_notes));
   } catch (err: any) {
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
