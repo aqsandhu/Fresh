@@ -628,6 +628,7 @@ export const restaurantApi = {
     email?: string
     address?: string
     city?: string
+    city_id?: string
   }) => {
     const response = await api.post('/restaurant/register', input)
     return response.data?.data || response.data

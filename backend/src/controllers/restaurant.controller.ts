@@ -44,7 +44,7 @@ export const registerRestaurant = asyncHandler(async (req: Request, res: Respons
     return errorResponse(res, 'Restaurant onboarding is being set up. Please try again shortly.', 503);
   }
 
-  const { business_name, owner_name, email, address, city, pin } = req.body;
+  const { business_name, owner_name, email, address, city, city_id: cityIdInput, pin } = req.body;
 
   let normPhone: string;
   try {
@@ -73,18 +73,34 @@ export const registerRestaurant = asyncHandler(async (req: Request, res: Respons
     );
   }
 
-  // Resolve the city to a service city when possible (keeps admin scoping intact).
+  // Resolve to a real service city. A restaurant is city-bound: its request goes
+  // to that city's admin, and it only ever sees that city's catalog/orders — so
+  // a valid city is REQUIRED. The website/app pre-fill this from the selected
+  // city (changed only via the city switcher), so it always resolves.
   let cityId: string | null = null;
-  let cityName: string | null = typeof city === 'string' && city.trim() ? city.trim() : null;
-  if (cityName) {
+  let cityName: string | null = null;
+  if (typeof cityIdInput === 'string' && cityIdInput.trim()) {
     const c = await query(
-      `SELECT id, name FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1`,
-      [cityName]
+      `SELECT id, name FROM service_cities WHERE id = $1 AND is_active = TRUE LIMIT 1`,
+      [cityIdInput.trim()]
     );
     if (c.rows[0]) {
       cityId = c.rows[0].id;
       cityName = c.rows[0].name;
     }
+  }
+  if (!cityId && typeof city === 'string' && city.trim()) {
+    const c = await query(
+      `SELECT id, name FROM service_cities WHERE LOWER(name) = LOWER($1) AND is_active = TRUE LIMIT 1`,
+      [city.trim()]
+    );
+    if (c.rows[0]) {
+      cityId = c.rows[0].id;
+      cityName = c.rows[0].name;
+    }
+  }
+  if (!cityId) {
+    return errorResponse(res, 'Please select your city (use the city button) before registering.', 400);
   }
 
   const pinHash = await bcrypt.hash(String(pin), PIN_BCRYPT_ROUNDS);

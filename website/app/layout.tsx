@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import Header from '@/components/layout/Header'
+import ConditionalHeader from '@/components/layout/ConditionalHeader'
 import ConditionalFooter from '@/components/layout/ConditionalFooter'
-import MobileNav from '@/components/layout/MobileNav'
+import ConditionalMobileNav from '@/components/layout/ConditionalMobileNav'
 import { Toaster } from 'react-hot-toast'
 import AppProviders from '@/components/providers/AppProviders'
 import BrandFavicon from '@/components/BrandFavicon'
@@ -59,10 +59,10 @@ export default function RootLayout({
           <AppProviders>
             <BrandFavicon />
             <div className="min-h-screen flex flex-col">
-              <Header />
+              <ConditionalHeader />
               <main className="flex-1">{children}</main>
               <ConditionalFooter />
-              <MobileNav />
+              <ConditionalMobileNav />
             </div>
             <Toaster
               position="top-center"

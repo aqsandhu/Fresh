@@ -120,6 +120,9 @@ const coerceProductFields = (req: any, res: any, next: any) => {
   if (body.is_variable_weight !== undefined) body.is_variable_weight = body.is_variable_weight === 'true' || body.is_variable_weight === true;
   if (body.allow_half_kg !== undefined) body.allow_half_kg = body.allow_half_kg === 'true' || body.allow_half_kg === true;
   if (body.allow_quarter_kg !== undefined) body.allow_quarter_kg = body.allow_quarter_kg === 'true' || body.allow_quarter_kg === true;
+  if (body.is_restaurant !== undefined) body.is_restaurant = body.is_restaurant === 'true' || body.is_restaurant === true;
+  if (body.quality_b_price !== undefined && body.quality_b_price !== '') body.quality_b_price = parseFloat(body.quality_b_price);
+  if (body.quality_c_price !== undefined && body.quality_c_price !== '') body.quality_c_price = parseFloat(body.quality_c_price);
   if (body.tags !== undefined) {
     body.tags = parseTagsInput(body.tags);
   }

@@ -71,8 +71,10 @@ export default function RestaurantLoginPage() {
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
               placeholder="••••"
+              type="password"
               inputMode="numeric"
               maxLength={4}
+              autoComplete="off"
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg tracking-[0.5em] text-center focus:ring-2 focus:ring-primary-500"
               required
             />

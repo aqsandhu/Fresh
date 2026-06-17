@@ -78,6 +78,7 @@ export const restaurantApi = {
     email?: string;
     address?: string;
     city?: string;
+    city_id?: string;
   }) => rfetch('/restaurant/register', { method: 'POST', body: JSON.stringify(input) }),
 
   login: (phone: string, pin: string): Promise<{ token: string; restaurant: RestaurantInfo }> =>

@@ -9,7 +9,7 @@ import { resolveImageUrl } from '@/lib/utils'
 import { getRestaurantInfo, clearRestaurantSession } from '@/lib/restaurantSession'
 import { restaurantShopApi } from '@/lib/restaurantApi'
 import {
-  availableQualities, availableUnits, unitPrice, money, round2,
+  availableQualities, availableUnits, unitPrice, qualityBasePrice, money, round2,
   type RestaurantProduct, type Quality, type Unit,
 } from '@/lib/restaurantPricing'
 
@@ -330,33 +330,59 @@ function ProductCard({ product, onAdd }: { product: RestaurantProduct; onAdd: (l
         </div>
       </div>
 
-      <div className="px-3 pb-3 mt-auto space-y-2">
-        <div className="flex gap-2">
-          <select
-            value={quality}
-            onChange={(e) => setQuality(e.target.value as Quality)}
-            disabled={qualities.length <= 1}
-            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
-          >
-            {qualities.map((q) => (
-              <option key={q} value={q}>Quality {q}</option>
-            ))}
-          </select>
-          <select
-            value={unit}
-            onChange={(e) => setUnit(e.target.value as Unit)}
-            disabled={units.length <= 1}
-            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50"
-          >
-            {units.map((u) => (
-              <option key={u.value} value={u.value}>{u.label}</option>
-            ))}
-          </select>
+      <div className="px-3 pb-3 mt-auto space-y-2.5">
+        {/* Quality selector — each tier shows its per-unit base price */}
+        {qualities.length > 1 && (
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Quality</p>
+            <div className="flex flex-wrap gap-1.5">
+              {qualities.map((q) => {
+                const qp = qualityBasePrice(product, q)
+                const active = quality === q
+                return (
+                  <button
+                    key={q}
+                    onClick={() => setQuality(q)}
+                    className={`flex flex-col items-center rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+                      active ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-primary-300'
+                    }`}
+                  >
+                    <span className="font-bold">{q}</span>
+                    <span className="text-[11px]">{qp != null ? money(qp) : '—'}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Unit selector — each shows the price for the chosen quality */}
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Quantity unit</p>
+          <div className="flex flex-wrap gap-1.5">
+            {units.map((u) => {
+              const upr = unitPrice(product, quality, u.value)
+              const active = unit === u.value
+              return (
+                <button
+                  key={u.value}
+                  onClick={() => setUnit(u.value)}
+                  className={`flex flex-col items-center rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+                    active ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-primary-300'
+                  }`}
+                >
+                  <span className="font-semibold">{u.short}</span>
+                  <span className="text-[11px]">{upr != null ? money(upr) : '—'}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        <div className="flex items-center justify-between">
+        {/* Selected rate + qty */}
+        <div className="flex items-center justify-between pt-1">
           <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-sm font-semibold text-primary-700">
-            {price != null ? money(price) : '—'} <span className="text-primary-400">/ {selectedUnit.short}</span>
+            {price != null ? money(price) : '—'} <span className="text-primary-400">/ {selectedUnit.short} · Q{quality}</span>
           </span>
           <div className="flex items-center rounded-lg border border-gray-300">
             <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="px-2 py-1 text-gray-600 hover:bg-gray-100">
