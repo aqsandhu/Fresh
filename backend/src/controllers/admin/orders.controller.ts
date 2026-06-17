@@ -49,13 +49,21 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
     search,
   } = req.query;
 
-  let whereSql = `WHERE o.deleted_at IS NULL`;
+  // Restaurant (B2B) orders share this table. `?restaurant=true` shows ONLY
+  // them (with the restaurant as the "customer"); the default shows only
+  // consumer orders. The same rich Orders UI is reused for both.
+  const restaurantReady = await hasRestaurantOrderColumns();
+  const isRestaurantMode = restaurantReady && req.query.restaurant === 'true';
+  const restJoin = restaurantReady ? 'LEFT JOIN restaurants rest ON o.restaurant_id = rest.id' : '';
+  const userJoin = isRestaurantMode
+    ? 'LEFT JOIN users u ON o.user_id = u.id'
+    : 'JOIN users u ON o.user_id = u.id';
+  const custName = restaurantReady ? 'COALESCE(u.full_name, rest.business_name)' : 'u.full_name';
+  const custPhone = restaurantReady ? 'COALESCE(u.phone, rest.phone)' : 'u.phone';
 
-  // Restaurant (B2B) orders live in this same table but belong to the admin
-  // Restaurants → Orders tab, never the consumer Orders list. (They are also
-  // excluded by the INNER JOIN on users since they carry no user_id.)
-  if (await hasRestaurantOrderColumns()) {
-    whereSql += ` AND o.restaurant_id IS NULL`;
+  let whereSql = `WHERE o.deleted_at IS NULL`;
+  if (restaurantReady) {
+    whereSql += isRestaurantMode ? ` AND o.restaurant_id IS NOT NULL` : ` AND o.restaurant_id IS NULL`;
   }
 
   const params: any[] = [];
@@ -87,7 +95,7 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
   }
 
   if (search) {
-    whereSql += ` AND (o.order_number ILIKE $${paramIndex} OR u.full_name ILIKE $${paramIndex} OR u.phone ILIKE $${paramIndex})`;
+    whereSql += ` AND (o.order_number ILIKE $${paramIndex} OR ${custName} ILIKE $${paramIndex} OR ${custPhone} ILIKE $${paramIndex})`;
     params.push(`%${search}%`);
     paramIndex++;
   }
@@ -98,7 +106,7 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
 
   // Count total
   const countResult = await query(
-    `SELECT COUNT(*) FROM orders o JOIN users u ON o.user_id = u.id LEFT JOIN riders r ON o.rider_id = r.id LEFT JOIN users ru ON r.user_id = ru.id LEFT JOIN addresses addr ON o.address_id = addr.id ${whereSql}`,
+    `SELECT COUNT(*) FROM orders o ${userJoin} ${restJoin} LEFT JOIN riders r ON o.rider_id = r.id LEFT JOIN users ru ON r.user_id = ru.id LEFT JOIN addresses addr ON o.address_id = addr.id ${whereSql}`,
     params
   );
   const total = parseInt(countResult.rows[0].count);
@@ -116,7 +124,7 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
       o.payment_method, o.payment_status, o.paid_amount,
       o.placed_at, o.delivered_at, o.show_customer_phone,
       o.address_id, o.delivery_address_snapshot,
-      u.id as customer_id, u.full_name as customer_name, u.phone as customer_phone,
+      u.id as customer_id, ${custName} as customer_name, ${custPhone} as customer_phone,
       r.id as rider_id, ru.full_name as rider_name,
       ts.slot_name, o.requested_delivery_date,
       ST_Y(addr.location::geometry) as address_latitude,
@@ -126,7 +134,8 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
         o.delivery_address_snapshot->>'door_picture_url'
       ) as address_door_picture_url
     FROM orders o
-    JOIN users u ON o.user_id = u.id
+    ${userJoin}
+    ${restJoin}
     LEFT JOIN riders r ON o.rider_id = r.id
     LEFT JOIN users ru ON r.user_id = ru.id
     LEFT JOIN time_slots ts ON o.time_slot_id = ts.id
@@ -165,10 +174,17 @@ export const getOrderDetails = asyncHandler(async (req: Request, res: Response) 
     return notFoundResponse(res, 'Order not found');
   }
 
+  // Restaurant orders carry no consumer user — LEFT JOIN users + JOIN restaurants
+  // so the same detail query serves both, with the restaurant as the customer.
+  const restaurantReady = await hasRestaurantOrderColumns();
+  const restJoin = restaurantReady ? 'LEFT JOIN restaurants rest ON o.restaurant_id = rest.id' : '';
+  const custName = restaurantReady ? 'COALESCE(u.full_name, rest.business_name)' : 'u.full_name';
+  const custPhone = restaurantReady ? 'COALESCE(u.phone, rest.phone)' : 'u.phone';
+
   const orderResult = await query(
-    `SELECT 
+    `SELECT
       o.*,
-      u.full_name as customer_name, u.phone as customer_phone, u.email as customer_email,
+      ${custName} as customer_name, ${custPhone} as customer_phone, u.email as customer_email,
       r.id as rider_id, ru.full_name as rider_name, ru.phone as rider_phone,
       ts.slot_name, ts.start_time, ts.end_time,
       dcr.rule_name as delivery_rule_applied,
@@ -179,7 +195,8 @@ export const getOrderDetails = asyncHandler(async (req: Request, res: Response) 
         o.delivery_address_snapshot->>'door_picture_url'
       ) as address_door_picture_url
     FROM orders o
-    JOIN users u ON o.user_id = u.id
+    LEFT JOIN users u ON o.user_id = u.id
+    ${restJoin}
     LEFT JOIN riders r ON o.rider_id = r.id
     LEFT JOIN users ru ON r.user_id = ru.id
     LEFT JOIN time_slots ts ON o.time_slot_id = ts.id
