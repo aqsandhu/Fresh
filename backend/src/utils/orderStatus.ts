@@ -11,7 +11,8 @@
 // ============================================================================
 
 import { PoolClient } from 'pg';
-import { stockUnitsNeeded } from './unitPricing';
+import { stockUnitsNeeded, qualityStockColumn } from './unitPricing';
+import { hasQualityCatalogColumns } from '../config/productSchema';
 
 /**
  * Allowed forward transitions. Anything not in this map is rejected so no
@@ -63,8 +64,11 @@ export async function restoreOrderInventory(
     );
   }
 
+  // Quality tiers (migration 34): restore into the SAME per-quality bucket the
+  // order drew from, not always Quality A.
+  const qualityReady = await hasQualityCatalogColumns();
   const items = await client.query(
-    'SELECT product_id, quantity, unit FROM order_items WHERE order_id = $1',
+    `SELECT product_id, quantity, unit${qualityReady ? ', quality' : ''} FROM order_items WHERE order_id = $1`,
     [order.id]
   );
 
@@ -73,13 +77,15 @@ export async function restoreOrderInventory(
     // to restore stock into.
     if (!item.product_id) continue;
     const restoreAmount = stockUnitsNeeded(item.quantity, item.unit);
+    const stockCol = qualityReady ? qualityStockColumn(item.quality) : 'stock_quantity';
+    // stock_status is a Quality-A flag, so it's only recomputed for tier A.
+    const statusSet =
+      stockCol === 'stock_quantity'
+        ? `, stock_status = CASE WHEN stock_quantity + $1 > 0 THEN 'active'::product_status ELSE 'out_of_stock'::product_status END`
+        : '';
     await client.query(
       `UPDATE products
-          SET stock_quantity = stock_quantity + $1,
-              stock_status = CASE
-                WHEN stock_quantity + $1 > 0 THEN 'active'::product_status
-                ELSE 'out_of_stock'::product_status
-              END,
+          SET ${stockCol} = ${stockCol} + $1${statusSet},
               updated_at = NOW()
         WHERE id = $2`,
       [restoreAmount, item.product_id]

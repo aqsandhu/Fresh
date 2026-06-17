@@ -133,28 +133,29 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
           </Link>
 
           {qualities.length > 1 && (
-            <div className="my-1.5">
-              <div className="grid grid-cols-3 gap-1">
-                {qualities.map((q) => {
-                  const active = selectedQuality === q
-                  return (
-                    <button
-                      key={q}
-                      type="button"
-                      onClick={() => {
-                        setSelectedQuality(q)
-                        setSelectedUnit('full')
-                      }}
-                      className={`rounded-lg border px-1 py-1 text-[11px] font-semibold transition-colors ${
-                        active
-                          ? 'border-primary-600 bg-primary-50 text-primary-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      Quality {q}
-                    </button>
-                  )
-                })}
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0">
+                Quality
+              </span>
+              <div className="inline-flex flex-1 rounded-lg bg-gray-100 p-0.5">
+                {qualities.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => {
+                      setSelectedQuality(q)
+                      setSelectedUnit('full')
+                    }}
+                    className={`flex-1 rounded-md py-1 text-xs font-bold transition-all ${
+                      selectedQuality === q
+                        ? 'bg-white text-primary-700 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    aria-pressed={selectedQuality === q}
+                  >
+                    {q}
+                  </button>
+                ))}
               </div>
             </div>
           )}

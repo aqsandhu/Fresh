@@ -11,7 +11,7 @@ import { priceForUnit, unitLabelShort } from '@/lib/unitPricing'
 import { resolveImageUrl } from '@/lib/utils'
 import { useRestaurantCartStore } from '@/store/restaurantCartStore'
 import {
-  availableQualities, qualityBasePrice, qualityStock, money,
+  availableQualities, qualityBasePrice, qualityStock,
   type RestaurantProduct, type Quality,
 } from '@/lib/restaurantPricing'
 
@@ -106,30 +106,29 @@ export default function RestaurantProductCard({ product }: Props) {
             </p>
           )}
 
-          {/* Quality tier selector */}
+          {/* Quality tier selector — segmented control; the active tier's price
+              shows in the price row below (no wrapping). */}
           {qualities.length > 1 && (
-            <div className="mt-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Quality</p>
-              <div className="grid grid-cols-3 gap-1">
-                {qualities.map((q) => {
-                  const qp = qualityBasePrice(product, q)
-                  const active = quality === q
-                  return (
-                    <button
-                      key={q}
-                      type="button"
-                      onClick={() => setQuality(q)}
-                      className={`flex flex-col items-center rounded-lg border px-1 py-1 transition-colors ${
-                        active
-                          ? 'border-primary-500 bg-primary-50 text-primary-700'
-                          : 'border-gray-200 text-gray-600 hover:border-primary-300'
-                      }`}
-                    >
-                      <span className="text-xs font-bold leading-none">{q}</span>
-                      <span className="text-[10px] mt-0.5 leading-none">{qp != null ? money(qp) : '—'}</span>
-                    </button>
-                  )
-                })}
+            <div className="mt-1.5 flex items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0">
+                Quality
+              </span>
+              <div className="inline-flex flex-1 rounded-lg bg-gray-100 p-0.5">
+                {qualities.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setQuality(q)}
+                    className={`flex-1 rounded-md py-1 text-xs font-bold transition-all ${
+                      quality === q
+                        ? 'bg-white text-primary-700 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    aria-pressed={quality === q}
+                  >
+                    {q}
+                  </button>
+                ))}
               </div>
             </div>
           )}
