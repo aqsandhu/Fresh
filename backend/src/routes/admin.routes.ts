@@ -251,6 +251,13 @@ router.put('/work-as-rider', adminRateLimiter, riderAppController.updateWorkAsRi
 
 // Restaurants (B2B accounts): review requests + manage approved restaurants
 router.get('/restaurants', restaurantsController.getRestaurants);
+// Specific sub-routes MUST precede '/restaurants/:id' so 'orders'/'dashboard'/
+// 'settings' aren't captured as an :id.
+router.get('/restaurants/orders', restaurantsController.getRestaurantOrders);
+router.put('/restaurants/orders/:id/status', adminRateLimiter, restaurantsController.updateRestaurantOrderStatus);
+router.get('/restaurants/dashboard', restaurantsController.getRestaurantDashboard);
+router.get('/restaurants/settings', restaurantsController.getRestaurantSettings);
+router.put('/restaurants/settings', adminRateLimiter, restaurantsController.updateRestaurantSettings);
 router.post('/restaurants/:id/approve', adminRateLimiter, restaurantsController.approveRestaurant);
 router.post('/restaurants/:id/disable', adminRateLimiter, restaurantsController.disableRestaurant);
 router.post('/restaurants/:id/ban', adminRateLimiter, restaurantsController.banRestaurant);

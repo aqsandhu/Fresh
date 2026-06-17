@@ -10,8 +10,10 @@ import {
   errorResponse,
   notFoundResponse,
 } from '../../utils/response';
-import { resolveCityScope, cityIdClause, cityRowInScope } from '../../utils/cityScope';
+import { resolveCityScope, cityIdClause, cityRowInScope, orderInScope } from '../../utils/cityScope';
 import { emitToAdmins } from '../../config/socket';
+import { isValidOrderTransition, ORDER_STATUS_TIMESTAMPS } from '../../utils/orderStatus';
+import { upsertGlobalSiteSetting } from '../../utils/siteSettings';
 import logger from '../../utils/logger';
 
 const RESTAURANT_PUBLIC_COLUMNS = `
@@ -152,4 +154,166 @@ export const updateRestaurant = asyncHandler(async (req: Request, res: Response)
 
   logger.info('Restaurant updated', { restaurantId: req.params.id, by: req.user?.id });
   return successResponse(res, result.rows[0], 'Restaurant updated');
+});
+
+// ── Restaurant orders (admin) ───────────────────────────────────────────────
+
+/** GET /api/admin/restaurants/orders — restaurant orders only, city-scoped. */
+export const getRestaurantOrders = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) return successResponse(res, { orders: [], counts: {} }, 'Orders');
+
+  const params: any[] = [];
+  let where = 'WHERE o.restaurant_id IS NOT NULL AND o.deleted_at IS NULL';
+  if (typeof req.query.status === 'string' && req.query.status) {
+    params.push(req.query.status);
+    where += ` AND o.status = $${params.length}`;
+  }
+  const cityFilter = cityIdClause(scope, 'o', params, params.length + 1);
+  where += cityFilter.sql;
+
+  const result = await query(
+    `SELECT o.id, o.order_number, o.status, o.subtotal, o.delivery_charge, o.total_amount,
+            o.payment_status, o.created_at, o.placed_at, o.rider_id,
+            rest.business_name AS restaurant_name, rest.phone AS restaurant_phone,
+            o.delivery_address_snapshot,
+            ru.full_name AS rider_name,
+            COALESCE(json_agg(json_build_object(
+              'product_name', oi.product_name, 'quantity', oi.quantity, 'unit', oi.unit,
+              'quality', oi.quality, 'unit_price', oi.unit_price, 'total_price', oi.total_price
+            )) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
+       FROM orders o
+       JOIN restaurants rest ON rest.id = o.restaurant_id
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       LEFT JOIN riders r ON o.rider_id = r.id
+       LEFT JOIN users ru ON r.user_id = ru.id
+      ${where}
+      GROUP BY o.id, rest.business_name, rest.phone, ru.full_name
+      ORDER BY o.created_at DESC
+      LIMIT 200`,
+    params
+  );
+
+  // Status counts (same scope).
+  const cParams: any[] = [];
+  const cCity = cityIdClause(scope, 'o', cParams, 1);
+  const counts = await query(
+    `SELECT o.status, COUNT(*)::int AS n FROM orders o
+      WHERE o.restaurant_id IS NOT NULL AND o.deleted_at IS NULL${cCity.sql}
+      GROUP BY o.status`,
+    cParams
+  );
+  const countMap: Record<string, number> = {};
+  for (const r of counts.rows) countMap[r.status] = r.n;
+
+  return successResponse(res, { orders: result.rows, counts: countMap }, 'Orders');
+});
+
+/** PUT /api/admin/restaurants/orders/:id/status — status / rider for a restaurant order. */
+export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const { id } = req.params;
+  const { status, rider_id } = req.body;
+
+  if (!(await orderInScope(scope, id))) return notFoundResponse(res, 'Order not found');
+
+  const cur = await query(
+    `SELECT status, restaurant_id FROM orders WHERE id = $1 AND restaurant_id IS NOT NULL AND deleted_at IS NULL`,
+    [id]
+  );
+  if (cur.rows.length === 0) return notFoundResponse(res, 'Restaurant order not found');
+
+  const sets: string[] = ['updated_at = NOW()'];
+  const params: any[] = [];
+
+  if (status) {
+    if (!isValidOrderTransition(cur.rows[0].status, status)) {
+      return errorResponse(res, `Cannot change status from ${cur.rows[0].status} to ${status}`, 400);
+    }
+    params.push(status);
+    sets.push(`status = $${params.length}`);
+    const tsCol = ORDER_STATUS_TIMESTAMPS[status as keyof typeof ORDER_STATUS_TIMESTAMPS];
+    if (tsCol) sets.push(`${tsCol} = NOW()`);
+  }
+  if (rider_id !== undefined) {
+    params.push(rider_id || null);
+    sets.push(`rider_id = $${params.length}`);
+  }
+  if (params.length === 0) return errorResponse(res, 'Nothing to update', 400);
+
+  params.push(id);
+  const result = await query(
+    `UPDATE orders SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id, status, rider_id`,
+    params
+  );
+
+  logger.info('Restaurant order updated', { orderId: id, by: req.user?.id, status, rider_id });
+  return successResponse(res, result.rows[0], 'Order updated');
+});
+
+/** GET /api/admin/restaurants/dashboard — restaurant order stats, city-scoped. */
+export const getRestaurantDashboard = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) return successResponse(res, {}, 'Dashboard');
+
+  const params: any[] = [];
+  const cCity = cityIdClause(scope, 'o', params, 1);
+  const stats = await query(
+    `SELECT
+       COUNT(*)::int AS total_orders,
+       COUNT(*) FILTER (WHERE o.status = 'pending')::int AS pending_orders,
+       COUNT(*) FILTER (WHERE o.status = 'delivered')::int AS delivered_orders,
+       COUNT(*) FILTER (WHERE DATE(o.created_at) = CURRENT_DATE)::int AS today_orders,
+       COALESCE(SUM(o.total_amount) FILTER (WHERE o.status = 'delivered'), 0) AS revenue,
+       COALESCE(SUM(o.total_amount) FILTER (WHERE DATE(o.created_at) = CURRENT_DATE), 0) AS today_revenue
+     FROM orders o
+     WHERE o.restaurant_id IS NOT NULL AND o.deleted_at IS NULL${cCity.sql}`,
+    params
+  );
+
+  const rParams: any[] = [];
+  const rCity = cityIdClause(scope, 'r', rParams, 1);
+  const restCount = await query(
+    `SELECT
+       COUNT(*) FILTER (WHERE r.status = 'approved')::int AS approved_restaurants,
+       COUNT(*) FILTER (WHERE r.status = 'pending')::int AS pending_restaurants
+     FROM restaurants r WHERE r.deleted_at IS NULL${rCity.sql}`,
+    rParams
+  );
+
+  return successResponse(res, { ...stats.rows[0], ...restCount.rows[0] }, 'Dashboard');
+});
+
+// ── Global restaurant delivery settings (admin Restaurants topbar) ───────────
+
+/** GET /api/admin/restaurants/settings — global restaurant delivery config. */
+export const getRestaurantSettings = asyncHandler(async (_req: Request, res: Response) => {
+  const s = await query(
+    `SELECT key, value FROM site_settings WHERE key IN ('restaurant_delivery_base_charge','restaurant_free_delivery_threshold')`
+  );
+  let base = 100;
+  let threshold = 2000;
+  for (const r of s.rows) {
+    if (r.key === 'restaurant_delivery_base_charge') base = parseFloat(r.value) || base;
+    if (r.key === 'restaurant_free_delivery_threshold') threshold = parseFloat(r.value) || threshold;
+  }
+  return successResponse(res, { base_charge: base, free_delivery_threshold: threshold }, 'Settings');
+});
+
+/** PUT /api/admin/restaurants/settings — update global restaurant delivery config. */
+export const updateRestaurantSettings = asyncHandler(async (req: Request, res: Response) => {
+  const { base_charge, free_delivery_threshold } = req.body;
+  const num = (v: unknown, fb: number) => {
+    const n = parseFloat(String(v));
+    return Number.isFinite(n) && n >= 0 ? n : fb;
+  };
+  const entries: [string, number][] = [];
+  if (base_charge !== undefined) entries.push(['restaurant_delivery_base_charge', num(base_charge, 100)]);
+  if (free_delivery_threshold !== undefined) entries.push(['restaurant_free_delivery_threshold', num(free_delivery_threshold, 2000)]);
+
+  for (const [key, value] of entries) {
+    await upsertGlobalSiteSetting(key, String(value), req.user?.id);
+  }
+  logger.info('Restaurant delivery settings updated', { by: req.user?.id });
+  return successResponse(res, { updated: entries.length }, 'Settings updated');
 });

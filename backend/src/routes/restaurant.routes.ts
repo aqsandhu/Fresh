@@ -12,6 +12,13 @@ import {
   loginRestaurant,
   getRestaurantMe,
 } from '../controllers/restaurant.controller';
+import {
+  getRestaurantCategories,
+  getRestaurantProducts,
+  getRestaurantDeliverySettings,
+  createRestaurantOrder,
+  getRestaurantOrders,
+} from '../controllers/restaurant.storefront.controller';
 
 const router = Router();
 
@@ -29,6 +36,13 @@ const loginLimiter = createRateLimiter(
 
 router.post('/register', registerLimiter, validate(restaurantSchemas.register), registerRestaurant);
 router.post('/login', loginLimiter, validate(restaurantSchemas.login), loginRestaurant);
+
+// Restaurant-authed storefront + orders.
 router.get('/me', authenticateRestaurant, getRestaurantMe);
+router.get('/categories', authenticateRestaurant, getRestaurantCategories);
+router.get('/products', authenticateRestaurant, getRestaurantProducts);
+router.get('/delivery', authenticateRestaurant, getRestaurantDeliverySettings);
+router.get('/orders', authenticateRestaurant, getRestaurantOrders);
+router.post('/orders', authenticateRestaurant, validate(restaurantSchemas.placeOrder), createRestaurantOrder);
 
 export default router;

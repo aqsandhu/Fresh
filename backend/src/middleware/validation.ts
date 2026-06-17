@@ -465,6 +465,18 @@ export const restaurantSchemas = {
       'string.pattern.base': 'PIN must contain only digits (0-9)',
     }),
   }),
+
+  placeOrder: Joi.object({
+    items: Joi.array().items(
+      Joi.object({
+        product_id: commonSchemas.uuid.required(),
+        quantity: commonSchemas.quantity.required(),
+        unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
+        quality: Joi.string().valid('A', 'B', 'C').default('A'),
+      })
+    ).min(1).required(),
+    customer_notes: Joi.string().max(1000).allow('', null),
+  }),
 };
 
 // Admin validation schemas

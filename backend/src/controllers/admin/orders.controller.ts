@@ -24,7 +24,7 @@ import { resolveUnitPrice, normalizeProductUnit, stockUnitsNeeded } from '../../
 import { normalizePhoneNumber } from '../../utils/validators';
 import { hasVariableWeightColumns } from '../../config/productSchema';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
-import { hasUrgentDeliveryColumns } from '../../config/orderSchema';
+import { hasUrgentDeliveryColumns, hasRestaurantOrderColumns } from '../../config/orderSchema';
 
 /**
  * Fire-and-forget: when an order reaches `delivered`, check whether the
@@ -50,6 +50,13 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
   } = req.query;
 
   let whereSql = `WHERE o.deleted_at IS NULL`;
+
+  // Restaurant (B2B) orders live in this same table but belong to the admin
+  // Restaurants → Orders tab, never the consumer Orders list. (They are also
+  // excluded by the INNER JOIN on users since they carry no user_id.)
+  if (await hasRestaurantOrderColumns()) {
+    whereSql += ` AND o.restaurant_id IS NULL`;
+  }
 
   const params: any[] = [];
   let paramIndex = 1;

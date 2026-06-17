@@ -59,6 +59,56 @@ export function resolveUnitPrice(
   }
 }
 
+export type ProductQuality = 'A' | 'B' | 'C';
+
+export function normalizeQuality(raw: unknown): ProductQuality {
+  const q = String(raw ?? 'A').toUpperCase();
+  return q === 'B' || q === 'C' ? (q as ProductQuality) : 'A';
+}
+
+/**
+ * Base (per-unit) price for a restaurant product at a given quality tier.
+ * Quality A always uses `price`; B/C use their column and return null when the
+ * tier isn't offered for that product (so callers can reject the selection).
+ */
+export function resolveQualityBasePrice(
+  product: { price: string | number; quality_b_price?: string | number | null; quality_c_price?: string | number | null },
+  quality: unknown
+): number | null {
+  const q = normalizeQuality(quality);
+  if (q === 'B') {
+    return product.quality_b_price == null || product.quality_b_price === ''
+      ? null
+      : parseFloat(String(product.quality_b_price)) || 0;
+  }
+  if (q === 'C') {
+    return product.quality_c_price == null || product.quality_c_price === ''
+      ? null
+      : parseFloat(String(product.quality_c_price)) || 0;
+  }
+  return parseFloat(String(product.price)) || 0;
+}
+
+/** Per-unit price for a restaurant product at a quality tier (null if tier N/A). */
+export function resolveQualityUnitPrice(
+  product: { price: string | number; quality_b_price?: string | number | null; quality_c_price?: string | number | null },
+  quality: unknown,
+  unit: string | null | undefined
+): number | null {
+  const base = resolveQualityBasePrice(product, quality);
+  if (base == null) return null;
+  switch (normalizeProductUnit(unit)) {
+    case 'half_kg':
+      return base * 0.5;
+    case 'quarter_kg':
+      return base * 0.25;
+    case 'half_dozen':
+      return base * 0.5;
+    default:
+      return base;
+  }
+}
+
 /** Live line unit price from products — used in SQL subtotal (never stale cart_items). */
 export const FRESH_CART_LINE_UNIT_PRICE_SQL = `
   CASE COALESCE(ci.unit, 'full')
