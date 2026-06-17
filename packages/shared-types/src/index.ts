@@ -214,6 +214,8 @@ export interface Category {
   isFeatured: boolean;
   qualifiesForFreeDelivery: boolean;
   minimumOrderForFreeDelivery?: number;
+  /** "Category also for restaurants" — also surfaced on the restaurant storefront. */
+  availableForRestaurants?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -232,6 +234,17 @@ export interface Product {
   price: number;
   compareAtPrice?: number;
   costPrice?: number;
+  // Quality tiers (A = price/stockQuantity). Consumer B/C price + per-quality
+  // shared stock; "also for restaurants" flag + restaurant price per tier. The
+  // SAME bucket is decremented whether a consumer or a restaurant orders that tier.
+  priceB?: number | null;
+  priceC?: number | null;
+  stockQuantityB?: number;
+  stockQuantityC?: number;
+  availableForRestaurants?: boolean;
+  restaurantPriceA?: number | null;
+  restaurantPriceB?: number | null;
+  restaurantPriceC?: number | null;
   unitType: UnitType;
   unitValue: number;
   stockQuantity: number;

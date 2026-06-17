@@ -80,6 +80,12 @@ export interface Product {
   /** Per-product availability of the half/quarter-kg units (default true). */
   allowHalfKg?: boolean;
   allowQuarterKg?: boolean;
+  /** Quality tiers. A = `price` + `stock`/`stockQuantity`. B/C optional; each has
+   *  its own consumer price and its own stock bucket (shared with restaurants). */
+  priceB?: number | null;
+  priceC?: number | null;
+  stockQuantityB?: number;
+  stockQuantityC?: number;
   /** Whether this product's category counts toward the free-delivery threshold. */
   qualifiesForFreeDelivery?: boolean;
   /** Weight may differ at packing — show the note popup when adding. */
@@ -89,6 +95,9 @@ export interface Product {
 
 /** Which unit fraction of the product the customer picked. */
 export type ProductUnit = 'full' | 'half_kg' | 'quarter_kg' | 'half_dozen';
+
+/** Quality tier the customer picked. A is always offered; B/C only when priced. */
+export type ProductQuality = 'A' | 'B' | 'C';
 
 export interface Category {
   id: string;
@@ -117,7 +126,9 @@ export interface CartStoreItem {
   product: Product;
   quantity: number;
   unit?: ProductUnit;
-  /** Price per `unit` at the time of adding. Mirrors what the server uses. */
+  /** Quality tier (A/B/C). Defaults to 'A' for old lines / single-quality products. */
+  quality?: ProductQuality;
+  /** Price per `unit` (at the chosen quality) at add time. Mirrors the server. */
   unitPrice?: number;
 }
 
@@ -350,11 +361,11 @@ export interface CartState {
    * the line is keyed separately and uses the product's unit-specific price
    * (admin override or derived from `price`).
    */
-  addItem: (product: Product, quantity?: number, unit?: ProductUnit) => void;
-  /** Remove by composite key (productId + unit). */
-  removeItem: (productId: string, unit?: ProductUnit) => void;
-  /** Update qty by composite key (productId + unit). */
-  updateQuantity: (productId: string, quantity: number, unit?: ProductUnit) => void;
+  addItem: (product: Product, quantity?: number, unit?: ProductUnit, quality?: ProductQuality) => void;
+  /** Remove by composite key (productId + unit + quality). */
+  removeItem: (productId: string, unit?: ProductUnit, quality?: ProductQuality) => void;
+  /** Update qty by composite key (productId + unit + quality). */
+  updateQuantity: (productId: string, quantity: number, unit?: ProductUnit, quality?: ProductQuality) => void;
   clearCart: () => void;
   /** Swap to another city's saved cart (persists current cart first). */
   switchCity: (cityId: string) => void;

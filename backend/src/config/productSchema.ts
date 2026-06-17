@@ -15,8 +15,8 @@ let ensurePromise: Promise<boolean> | null = null;
 let unitToggleCached: boolean | null = null;
 let unitTogglePromise: Promise<boolean> | null = null;
 
-let restaurantCatalogCached: boolean | null = null;
-let restaurantCatalogPromise: Promise<boolean> | null = null;
+let qualityCatalogCached: boolean | null = null;
+let qualityCatalogPromise: Promise<boolean> | null = null;
 
 function getMigrationConnectionString(): string | null {
   const direct = process.env.DATABASE_MIGRATION_URL || process.env.DIRECT_DATABASE_URL;
@@ -186,27 +186,31 @@ export async function ensureVariableWeightColumns(): Promise<boolean> {
   return ensurePromise;
 }
 
-// ── Restaurant catalog (migration 31) ───────────────────────────────────────
-// `is_restaurant` separates the B2B catalog from the consumer catalog on the
-// SAME tables; restaurant products carry up to three quality tiers
-// (A = existing `price`, B = quality_b_price, C = quality_c_price).
-export async function hasRestaurantCatalogColumns(): Promise<boolean> {
-  if (restaurantCatalogCached !== null) return restaurantCatalogCached;
+// ── Unified quality catalog (migration 34) ───────────────────────────────────
+// ONE product row, ONE shared stock, per QUALITY tier (A/B/C). Replaces the old
+// separate-restaurant model (is_restaurant / quality_b_price / quality_c_price).
+//   * Consumer price per tier:  price (A), price_b, price_c
+//   * Shared stock per tier:    stock_quantity (A), stock_quantity_b, stock_quantity_c
+//   * Restaurant price per tier: restaurant_price_a / _b / _c
+//   * categories/products.available_for_restaurants — show on restaurant storefront
+// Probed via products.available_for_restaurants.
+export async function hasQualityCatalogColumns(): Promise<boolean> {
+  if (qualityCatalogCached !== null) return qualityCatalogCached;
   try {
     const result = await query(
       `SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = 'products'
-          AND column_name = 'is_restaurant' LIMIT 1`
+          AND column_name = 'available_for_restaurants' LIMIT 1`
     );
-    restaurantCatalogCached = (result.rowCount ?? 0) > 0;
+    qualityCatalogCached = (result.rowCount ?? 0) > 0;
   } catch (error: any) {
-    logger.warn('Could not probe products.is_restaurant', { error: error?.message });
-    restaurantCatalogCached = false;
+    logger.warn('Could not probe products.available_for_restaurants', { error: error?.message });
+    qualityCatalogCached = false;
   }
-  return restaurantCatalogCached;
+  return qualityCatalogCached;
 }
 
-async function runRestaurantCatalogAlter(connectionString: string): Promise<void> {
+async function runQualityCatalogAlter(connectionString: string): Promise<void> {
   const pool = new Pool({
     connectionString,
     ssl:
@@ -217,46 +221,79 @@ async function runRestaurantCatalogAlter(connectionString: string): Promise<void
     connectionTimeoutMillis: 15000,
   });
   try {
-    await pool.query(`ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_restaurant BOOLEAN NOT NULL DEFAULT FALSE`);
-    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS is_restaurant BOOLEAN NOT NULL DEFAULT FALSE`);
-    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS quality_b_price NUMERIC(10,2)`);
-    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS quality_c_price NUMERIC(10,2)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS products_is_restaurant_idx ON products (is_restaurant)`);
-    await pool.query(`CREATE INDEX IF NOT EXISTS categories_is_restaurant_idx ON categories (is_restaurant)`);
-    // Order items capture the chosen quality for restaurant orders.
+    // Mirror of database/migrations/34-unified-quality-catalog.sql.
+    // 1) Remove the OLD separate-restaurant catalog rows (history-safe: order_items
+    //    keeps its own snapshot and its product_id FK is ON DELETE SET NULL).
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='products' AND column_name='is_restaurant') THEN
+          DELETE FROM cart_items WHERE product_id IN (SELECT id FROM products WHERE is_restaurant = TRUE);
+          DELETE FROM products WHERE is_restaurant = TRUE;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema='public' AND table_name='categories' AND column_name='is_restaurant') THEN
+          DELETE FROM categories WHERE is_restaurant = TRUE;
+        END IF;
+      END $$;`);
+
+    // 2) Drop the old model's columns + indexes.
+    await pool.query(`DROP INDEX IF EXISTS products_is_restaurant_idx`);
+    await pool.query(`DROP INDEX IF EXISTS categories_is_restaurant_idx`);
+    await pool.query(`ALTER TABLE products   DROP COLUMN IF EXISTS is_restaurant`);
+    await pool.query(`ALTER TABLE products   DROP COLUMN IF EXISTS quality_b_price`);
+    await pool.query(`ALTER TABLE products   DROP COLUMN IF EXISTS quality_c_price`);
+    await pool.query(`ALTER TABLE categories DROP COLUMN IF EXISTS is_restaurant`);
+
+    // 3) Add the new unified-quality columns.
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS price_b NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS price_c NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity_b NUMERIC(10,3) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity_c NUMERIC(10,3) NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS restaurant_price_a NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS restaurant_price_b NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS restaurant_price_c NUMERIC(10,2)`);
+    await pool.query(`ALTER TABLE products   ADD COLUMN IF NOT EXISTS available_for_restaurants BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE categories ADD COLUMN IF NOT EXISTS available_for_restaurants BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE cart_items  ADD COLUMN IF NOT EXISTS quality VARCHAR(1) NOT NULL DEFAULT 'A'`);
     await pool.query(`ALTER TABLE order_items ADD COLUMN IF NOT EXISTS quality VARCHAR(1)`);
+
+    // 4) Restaurant-storefront filter indexes.
+    await pool.query(`CREATE INDEX IF NOT EXISTS products_avail_restaurants_idx   ON products (available_for_restaurants)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS categories_avail_restaurants_idx ON categories (available_for_restaurants)`);
   } finally {
     await pool.end().catch(() => undefined);
   }
 }
 
-/** Apply migration 31 if needed. Returns true when the columns exist. */
-export async function ensureRestaurantCatalogColumns(): Promise<boolean> {
-  if (restaurantCatalogCached === true) return true;
-  if (restaurantCatalogPromise) return restaurantCatalogPromise;
+/** Apply migration 34 if needed. Returns true when the new columns exist. */
+export async function ensureQualityCatalogColumns(): Promise<boolean> {
+  if (qualityCatalogCached === true) return true;
+  if (qualityCatalogPromise) return qualityCatalogPromise;
 
-  restaurantCatalogPromise = (async () => {
-    if (await hasRestaurantCatalogColumns()) return true;
+  qualityCatalogPromise = (async () => {
+    if (await hasQualityCatalogColumns()) return true;
     const connectionString = getMigrationConnectionString();
     if (!connectionString) {
-      logger.warn('restaurant-catalog columns missing and no DB URL available for migration');
+      logger.warn('quality-catalog columns missing and no DB URL available for migration');
       return false;
     }
     try {
-      await runRestaurantCatalogAlter(connectionString);
-      restaurantCatalogCached = true;
-      logger.info('restaurant-catalog columns ensured (migration 31 applied)');
+      await runQualityCatalogAlter(connectionString);
+      qualityCatalogCached = true;
+      logger.info('quality-catalog columns ensured (migration 34 applied)');
       return true;
     } catch (error: any) {
-      logger.warn('Could not apply restaurant-catalog migration — run database/migrations/31 manually', {
+      logger.warn('Could not apply quality-catalog migration — run database/migrations/34 manually', {
         error: error?.message,
       });
-      restaurantCatalogCached = false;
+      qualityCatalogCached = false;
       return false;
     } finally {
-      restaurantCatalogPromise = null;
+      qualityCatalogPromise = null;
     }
   })();
 
-  return restaurantCatalogPromise;
+  return qualityCatalogPromise;
 }

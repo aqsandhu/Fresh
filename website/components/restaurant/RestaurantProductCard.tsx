@@ -11,7 +11,7 @@ import { priceForUnit, unitLabelShort } from '@/lib/unitPricing'
 import { resolveImageUrl } from '@/lib/utils'
 import { useRestaurantCartStore } from '@/store/restaurantCartStore'
 import {
-  availableQualities, qualityBasePrice, money,
+  availableQualities, qualityBasePrice, qualityStock, money,
   type RestaurantProduct, type Quality,
 } from '@/lib/restaurantPricing'
 
@@ -36,7 +36,8 @@ export default function RestaurantProductCard({ product }: Props) {
   const [quality, setQuality] = useState<Quality>(qualities[0])
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
 
-  const inStock = (product.stock_quantity ?? 0) > 0
+  // Stock is per-quality (shared with consumers) — the selected tier's bucket.
+  const inStock = qualityStock(product, quality) > 0
 
   // Map the restaurant product (at the chosen quality) onto the consumer Product
   // shape so we can reuse UnitSelector + ProductPrice + their pricing logic. The

@@ -150,6 +150,11 @@ function mapBackendProduct(raw: any): Product {
     halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),
     quarterKgPrice: toOptionalPrice(raw.quarter_kg_price ?? raw.quarterKgPrice),
     halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
+    // Quality tiers (B/C optional). Each tier has its own consumer price + stock.
+    priceB: toOptionalPrice(raw.price_b ?? raw.priceB),
+    priceC: toOptionalPrice(raw.price_c ?? raw.priceC),
+    stockQuantityB: parseFloat(raw.stock_quantity_b ?? raw.stockQuantityB) || 0,
+    stockQuantityC: parseFloat(raw.stock_quantity_c ?? raw.stockQuantityC) || 0,
     // Default true when the field is absent (pre-migration / older payloads).
     allowHalfKg: (raw.allow_half_kg ?? raw.allowHalfKg) !== false,
     allowQuarterKg: (raw.allow_quarter_kg ?? raw.allowQuarterKg) !== false,
@@ -419,7 +424,7 @@ export const cartApi = {
    * Atomically replace the server cart with the local cart in ONE request.
    * Returns the server cart snapshot (server-priced).
    */
-  sync: async (items: Array<{ product_id: string; quantity: number; unit?: string }>) => {
+  sync: async (items: Array<{ product_id: string; quantity: number; unit?: string; quality?: string }>) => {
     const response = await api.post('/cart/sync', { items })
     return response.data?.data || response.data
   },

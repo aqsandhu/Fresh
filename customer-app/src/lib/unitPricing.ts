@@ -1,4 +1,4 @@
-import type { ProductUnit, StoreProduct } from '@app-types';
+import type { ProductUnit, ProductQuality, StoreProduct } from '@app-types';
 
 export interface UnitOption {
   unit: ProductUnit;
@@ -13,15 +13,40 @@ const toNumber = (v: unknown): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-/** Returns the unit options to show in the storefront for a product. */
-export function getUnitOptions(product: StoreProduct): UnitOption[] {
-  const base = toNumber(product.price) ?? 0;
+/** Consumer base (per-full-unit) price for a quality tier (null = not offered). */
+export function qualityBasePrice(product: StoreProduct, quality: ProductQuality = 'A'): number | null {
+  if (quality === 'B') return toNumber(product.priceB);
+  if (quality === 'C') return toNumber(product.priceC);
+  return toNumber(product.price) ?? 0;
+}
+
+/** Quality tiers a product offers: A always; B/C only when a consumer price is set. */
+export function offeredQualities(product: StoreProduct): ProductQuality[] {
+  const out: ProductQuality[] = ['A'];
+  if (qualityBasePrice(product, 'B') != null) out.push('B');
+  if (qualityBasePrice(product, 'C') != null) out.push('C');
+  return out;
+}
+
+/** Shared stock for a quality tier (consumer + restaurant draw from the same bucket). */
+export function qualityStock(product: StoreProduct, quality: ProductQuality = 'A'): number {
+  if (quality === 'B') return Number(product.stockQuantityB ?? 0) || 0;
+  if (quality === 'C') return Number(product.stockQuantityC ?? 0) || 0;
+  return Number(product.stock ?? 0) || 0;
+}
+
+/** Returns the unit options to show for a product at a quality tier.
+ *  Quality A honours the admin's explicit half/quarter overrides; B/C derive the
+ *  fraction from the tier's base price (×0.5 / ×0.25). */
+export function getUnitOptions(product: StoreProduct, quality: ProductQuality = 'A'): UnitOption[] {
+  const base = qualityBasePrice(product, quality) ?? 0;
   if (base <= 0) return [];
 
+  const useOverrides = quality === 'A';
   const unit = String(product.unit || '').toLowerCase();
 
   if (unit === 'dozen') {
-    const halfDozenOverride = toNumber(product.halfDozenPrice);
+    const halfDozenOverride = useOverrides ? toNumber(product.halfDozenPrice) : null;
     return [
       { unit: 'full', label: 'Per Dozen', price: base, derived: false },
       {
@@ -34,8 +59,8 @@ export function getUnitOptions(product: StoreProduct): UnitOption[] {
   }
 
   if (unit === 'kg' || unit === 'gram') {
-    const halfKgOverride = toNumber(product.halfKgPrice);
-    const quarterKgOverride = toNumber(product.quarterKgPrice);
+    const halfKgOverride = useOverrides ? toNumber(product.halfKgPrice) : null;
+    const quarterKgOverride = useOverrides ? toNumber(product.quarterKgPrice) : null;
     const options: UnitOption[] = [
       { unit: 'full', label: 'Per Kg', price: base, derived: false },
     ];
@@ -62,20 +87,25 @@ export function getUnitOptions(product: StoreProduct): UnitOption[] {
   return [{ unit: 'full', label: `Per ${unit || 'Unit'}`, price: base, derived: false }];
 }
 
-export function priceForUnit(product: StoreProduct, unit: ProductUnit = 'full'): number {
-  const opts = getUnitOptions(product);
+export function priceForUnit(
+  product: StoreProduct,
+  unit: ProductUnit = 'full',
+  quality: ProductQuality = 'A'
+): number {
+  const opts = getUnitOptions(product, quality);
   const found = opts.find((o) => o.unit === unit);
-  return found?.price ?? product.price;
+  return found?.price ?? (qualityBasePrice(product, quality) ?? product.price);
 }
 
 export function resolveLineUnitPrice(item: {
   product: StoreProduct;
   unit?: ProductUnit;
+  quality?: ProductQuality;
   unitPrice?: number;
 }): number {
   const unit = item.unit || 'full';
   if (item.unitPrice != null && item.unitPrice > 0) return item.unitPrice;
-  return priceForUnit(item.product, unit);
+  return priceForUnit(item.product, unit, item.quality || 'A');
 }
 
 export function unitLabelShort(unit: ProductUnit | undefined): string {

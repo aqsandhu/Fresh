@@ -53,10 +53,19 @@ export interface Product {
   allowHalfKg?: boolean;
   allowQuarterKg?: boolean;
   tags?: string[];
-  /** Restaurant (B2B) catalog flag + quality-tier prices (A = price). */
-  isRestaurant?: boolean;
-  qualityBPrice?: number | null;
-  qualityCPrice?: number | null;
+  // Quality tiers (A = price + stockQuantity). Consumer B/C price + per-quality
+  // shared stock; "also for restaurants" flag + restaurant price per tier. The
+  // SAME stock bucket is decremented whether a consumer or a restaurant orders it.
+  priceB?: number | null;
+  priceC?: number | null;
+  stockQuantityB?: number;
+  stockQuantityC?: number;
+  availableForRestaurants?: boolean;
+  restaurantPriceA?: number | null;
+  restaurantPriceB?: number | null;
+  restaurantPriceC?: number | null;
+  /** Set by GET /admin/products/:id — whether the product's category allows restaurants. */
+  categoryAvailableForRestaurants?: boolean;
 }
 
 export interface Category {
@@ -74,7 +83,8 @@ export interface Category {
   totalProductCount?: number;
   qualifiesForFreeDelivery?: boolean;
   minimumOrderForFreeDelivery?: number;
-  isRestaurant?: boolean;
+  /** "Category also for restaurants" — also shown on the restaurant storefront. */
+  availableForRestaurants?: boolean;
 }
 
 export interface Order {
@@ -363,9 +373,15 @@ export interface CreateProductData {
   allowHalfKg?: boolean;
   allowQuarterKg?: boolean;
   tags?: string[];
-  isRestaurant?: boolean;
-  qualityBPrice?: number | null;
-  qualityCPrice?: number | null;
+  // Quality tiers (A = price + stockQuantity).
+  priceB?: number | null;
+  priceC?: number | null;
+  stockQuantityB?: number | null;
+  stockQuantityC?: number | null;
+  availableForRestaurants?: boolean;
+  restaurantPriceA?: number | null;
+  restaurantPriceB?: number | null;
+  restaurantPriceC?: number | null;
 }
 
 export interface CreateCategoryData {
@@ -376,7 +392,7 @@ export interface CreateCategoryData {
   isActive?: boolean;
   displayOrder?: number;
   qualifiesForFreeDelivery?: boolean;
-  isRestaurant?: boolean;
+  availableForRestaurants?: boolean;
 }
 
 export interface CreateRiderData {

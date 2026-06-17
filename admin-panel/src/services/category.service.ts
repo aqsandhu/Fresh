@@ -6,12 +6,9 @@ import type {
 } from '@/types';
 
 export const categoryService = {
-  getCategories: async (restaurant = false): Promise<Category[]> => {
+  getCategories: async (): Promise<Category[]> => {
     try {
-      const response = await api.get<ApiResponse<Category[]>>(
-        '/admin/categories',
-        restaurant ? { restaurant: 'true' } : undefined
-      );
+      const response = await api.get<ApiResponse<Category[]>>('/admin/categories');
       return response.data;
     } catch (error: any) {
       console.error('Error fetching categories:', error);

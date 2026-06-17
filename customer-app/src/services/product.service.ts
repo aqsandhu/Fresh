@@ -103,6 +103,11 @@ function mapBackendProduct(raw: any): StoreProduct {
     halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),
     quarterKgPrice: toOptionalPrice(raw.quarter_kg_price ?? raw.quarterKgPrice),
     halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
+    // Quality tiers (B/C optional). Each tier has its own consumer price + stock.
+    priceB: toOptionalPrice(raw.price_b ?? raw.priceB),
+    priceC: toOptionalPrice(raw.price_c ?? raw.priceC),
+    stockQuantityB: parseFloat(raw.stock_quantity_b ?? raw.stockQuantityB) || 0,
+    stockQuantityC: parseFloat(raw.stock_quantity_c ?? raw.stockQuantityC) || 0,
     allowHalfKg: (raw.allow_half_kg ?? raw.allowHalfKg) !== false,
     allowQuarterKg: (raw.allow_quarter_kg ?? raw.allowQuarterKg) !== false,
     qualifiesForFreeDelivery:

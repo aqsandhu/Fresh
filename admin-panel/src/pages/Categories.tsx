@@ -45,9 +45,6 @@ export const Categories: React.FC = () => {
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  // Consumer catalog vs restaurant (B2B) catalog — same CRUD, separate sets.
-  const [mode, setMode] = useState<'consumer' | 'restaurant'>('consumer');
-  const isRestaurantMode = mode === 'restaurant';
 
   const [formData, setFormData] = useState<CreateCategoryData>({
     nameEn: '',
@@ -56,11 +53,12 @@ export const Categories: React.FC = () => {
     isActive: true,
     displayOrder: 0,
     qualifiesForFreeDelivery: false,
+    availableForRestaurants: false,
   });
 
   const { data: categories, isLoading } = useQuery({
-    queryKey: ['categories', mode],
-    queryFn: () => categoryService.getCategories(isRestaurantMode),
+    queryKey: ['categories'],
+    queryFn: () => categoryService.getCategories(),
   });
 
   const createMutation = useMutation({
@@ -147,6 +145,7 @@ export const Categories: React.FC = () => {
       isActive: true,
       displayOrder: 0,
       qualifiesForFreeDelivery: false,
+      availableForRestaurants: false,
     });
     setIsModalOpen(true);
   };
@@ -162,6 +161,7 @@ export const Categories: React.FC = () => {
       isActive: category.isActive,
       displayOrder: category.displayOrder,
       qualifiesForFreeDelivery: category.qualifiesForFreeDelivery ?? false,
+      availableForRestaurants: category.availableForRestaurants ?? false,
     });
     // Set image preview if category has an image
     setImagePreview(category.imageUrl ? resolveImageUrl(category.imageUrl) : null);
@@ -251,11 +251,7 @@ export const Categories: React.FC = () => {
       return;
     }
 
-    // When editing, keep the category in its existing catalog; when creating,
-    // it belongs to the catalog of the active tab.
-    const isRestaurant = editingCategory
-      ? (editingCategory.isRestaurant ?? false)
-      : isRestaurantMode;
+    const availableForRestaurants = formData.availableForRestaurants ?? false;
 
     const payload: CreateCategoryData = {
       nameEn: formData.nameEn,
@@ -264,7 +260,7 @@ export const Categories: React.FC = () => {
       isActive: formData.isActive ?? true,
       displayOrder: formData.displayOrder ?? 0,
       qualifiesForFreeDelivery: formData.qualifiesForFreeDelivery ?? false,
-      isRestaurant,
+      availableForRestaurants,
     };
 
     if (editingCategory) {
@@ -276,7 +272,7 @@ export const Categories: React.FC = () => {
         submitData.append('is_active', String(formData.isActive ?? true));
         submitData.append('display_order', String(formData.displayOrder ?? 0));
         submitData.append('qualifies_for_free_delivery', String(formData.qualifiesForFreeDelivery ?? false));
-        submitData.append('is_restaurant', String(isRestaurant));
+        submitData.append('available_for_restaurants', String(availableForRestaurants));
         submitData.append('image', selectedImage);
         updateWithImageMutation.mutate({ id: editingCategory.id, data: submitData });
       } else {
@@ -290,7 +286,7 @@ export const Categories: React.FC = () => {
       submitData.append('is_active', String(formData.isActive ?? true));
       submitData.append('display_order', String(formData.displayOrder ?? 0));
       submitData.append('qualifies_for_free_delivery', String(formData.qualifiesForFreeDelivery ?? false));
-      submitData.append('is_restaurant', String(isRestaurant));
+      submitData.append('available_for_restaurants', String(availableForRestaurants));
       submitData.append('image', selectedImage);
       createWithImageMutation.mutate(submitData);
     } else {
@@ -325,23 +321,9 @@ export const Categories: React.FC = () => {
 
   return (
     <Layout title="Categories" subtitle="Manage product categories">
-      {/* Consumer vs Restaurant catalog tabs */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="inline-flex rounded-lg bg-gray-100 p-1">
-          {(['consumer', 'restaurant'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setMode(m)}
-              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                mode === m ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              {m === 'consumer' ? 'Consumer' : 'Restaurants'}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3 mb-6">
         <Button onClick={openAddModal} leftIcon={<Plus className="w-5 h-5" />}>
-          Add {isRestaurantMode ? 'Restaurant ' : ''}Category
+          Add Category
         </Button>
       </div>
 
@@ -519,6 +501,28 @@ export const Categories: React.FC = () => {
                 <span className="block text-xs text-gray-500">
                   Only items in checked categories count toward the free-delivery amount.
                   Free-delivery time slots stay free for every category.
+                </span>
+              </span>
+            </label>
+          </div>
+
+          {/* Restaurant availability — only products in a restaurant-enabled
+              category can be marked "also for restaurants". */}
+          <div className="rounded-lg border border-gray-200 bg-amber-50 p-3">
+            <label className="flex items-start gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={formData.availableForRestaurants ?? false}
+                onChange={(e) => setFormData({ ...formData, availableForRestaurants: e.target.checked })}
+                className="mt-0.5 w-4 h-4 text-primary-600 rounded"
+              />
+              <span>
+                <span className="block text-sm font-medium text-gray-800">
+                  Category also for restaurants
+                </span>
+                <span className="block text-xs text-gray-500">
+                  Show this category on the restaurant storefront. Only products inside such a
+                  category can be offered to restaurants (with separate Quality A/B/C rates).
                 </span>
               </span>
             </label>

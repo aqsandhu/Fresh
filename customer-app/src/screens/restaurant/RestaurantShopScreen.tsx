@@ -13,7 +13,7 @@ import { COLORS, SPACING, BORDER_RADIUS, API_BASE_URL } from '@utils/constants';
 import { Button } from '@components';
 import {
   restaurantApi, getRestaurantInfo, clearRestaurantSession,
-  availableQualities, availableUnits, unitPrice, qualityBasePrice, money,
+  availableQualities, availableUnits, unitPrice, qualityBasePrice, qualityStock, money,
   type Quality, type Unit,
 } from '@services/restaurant.service';
 import { RestaurantTabBar } from './RestaurantTabBar';
@@ -160,7 +160,8 @@ function ProductCard({ product, onAdd }: { product: any; onAdd: (l: CartLine) =>
   const [qty, setQty] = useState(1);
   const selUnit = units.find((u) => u.value === unit) || units[0];
   const price = unitPrice(product, quality, unit);
-  const out = (product.stock_quantity ?? 0) <= 0;
+  // Stock is per-quality (shared with consumers) — the selected tier's bucket.
+  const out = qualityStock(product, quality) <= 0;
 
   const image = imgUrl(product.primary_image);
 

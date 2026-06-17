@@ -85,12 +85,13 @@ export default function CartPage() {
             <AnimatePresence mode="popLayout">
               {items.map((item) => {
                 const unit = item.unit || 'full'
+                const quality = item.quality || 'A'
                 const unitSuffix = unitLabelShort(unit)
                 const linePrice = resolveLineUnitPrice(item)
                 const caption = unitPriceCaption(unit)
                 return (
                   <motion.div
-                    key={`${item.product.id}::${unit}`}
+                    key={`${item.product.id}::${unit}::${quality}`}
                     layout
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -124,6 +125,11 @@ export default function CartPage() {
                                 ({unitSuffix})
                               </span>
                             )}
+                            {quality !== 'A' && (
+                              <span className="ml-2 text-xs text-amber-700 font-semibold">
+                                Quality {quality}
+                              </span>
+                            )}
                           </h3>
                         </Link>
                         <div className="mt-1">
@@ -149,7 +155,7 @@ export default function CartPage() {
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() =>
-                                updateQuantity(item.product.id, item.quantity - 1, unit)
+                                updateQuantity(item.product.id, item.quantity - 1, unit, quality)
                               }
                               className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200"
                               aria-label="Decrease quantity"
@@ -161,7 +167,7 @@ export default function CartPage() {
                             </span>
                             <button
                               onClick={() =>
-                                updateQuantity(item.product.id, item.quantity + 1, unit)
+                                updateQuantity(item.product.id, item.quantity + 1, unit, quality)
                               }
                               className="w-8 h-8 flex items-center justify-center rounded-full bg-primary-100 hover:bg-primary-200"
                               aria-label="Increase quantity"
@@ -172,7 +178,7 @@ export default function CartPage() {
 
                           <button
                             onClick={() => {
-                              removeItem(item.product.id, unit)
+                              removeItem(item.product.id, unit, quality)
                               toast.success('Item removed from cart')
                             }}
                             className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"

@@ -12,8 +12,17 @@ import {
 } from '../middleware';
 import { successResponse, errorResponse } from '../utils/response';
 import { calculateDeliveryCharge, updateCartDeliveryCharge } from '../utils/deliveryCalculator';
-import { resolveUnitPrice, stockUnitsNeeded, FRESH_CART_SUBTOTAL_SQL } from '../utils/unitPricing';
-import { loadCartSnapshotFromClient } from '../utils/cartResponse';
+import {
+  resolveUnitPrice,
+  resolveConsumerUnitPrice,
+  stockUnitsNeeded,
+  qualityStockColumn,
+  normalizeQuality,
+  offeredQualities,
+  FRESH_CART_SUBTOTAL_SQL,
+} from '../utils/unitPricing';
+import { hasQualityCatalogColumns } from '../config/productSchema';
+import { loadCartSnapshotFromClient, buildCartResponse } from '../utils/cartResponse';
 import { roundMoney } from '../utils/money';
 import {
   hasCouponsTable,
@@ -27,6 +36,15 @@ import { hasUserCouponsTable } from '../utils/autoCoupons';
 /**
  * Get or create cart for user
  */
+/** Per-quality columns appended to product SELECTs once migration 34 lands. */
+const QUALITY_PRODUCT_COLS = ', price_b, price_c, stock_quantity_b, stock_quantity_c';
+
+/** Shared stock available for the chosen quality tier on a product row. */
+const qualityStock = (product: Record<string, any>, quality: string): number => {
+  const col = qualityStockColumn(quality);
+  return parseFloat(String(product[col] ?? 0)) || 0;
+};
+
 const getOrCreateCart = async (userId: string) => {
   // Check for existing active cart
   let cartResult = await query(
@@ -67,40 +85,9 @@ export const getCart = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'Unauthorized access to cart', 403);
   }
 
-  // Get cart items with product details
-  const itemsResult = await query(
-    `SELECT 
-      ci.id, ci.product_id, ci.quantity, ci.unit_price, ci.total_price,
-      ci.special_instructions, ci.unit,
-      p.name_en, p.name_ur, p.slug, p.primary_image, p.stock_quantity,
-      p.unit_type, p.unit_value, p.stock_status
-    FROM cart_items ci
-    JOIN products p ON ci.product_id = p.id
-    WHERE ci.cart_id = $1
-    ORDER BY ci.created_at DESC`,
-    [cart.id]
-  );
-
-  const response = {
-    cart: {
-      id: cart.id,
-      subtotal: parseFloat(cart.subtotal),
-      discount_amount: parseFloat(cart.discount_amount),
-      delivery_charge: parseFloat(cart.delivery_charge),
-      total_amount: parseFloat(cart.total_amount),
-      coupon_code: cart.coupon_code,
-      coupon_discount: parseFloat(cart.coupon_discount),
-      item_count: cart.item_count,
-      total_weight_kg: parseFloat(cart.total_weight_kg),
-      expires_at: cart.expires_at,
-    },
-    items: itemsResult.rows.map(item => ({
-      ...item,
-      unit_price: parseFloat(item.unit_price),
-      total_price: parseFloat(item.total_price),
-    })),
-  };
-
+  // buildCartResponse is self-gating: it surfaces the chosen quality + matching
+  // per-quality stock once migration 34 lands, else falls back to quality 'A'.
+  const response = await buildCartResponse(cart.id, cart);
   successResponse(res, response, 'Cart retrieved successfully');
 });
 
@@ -121,6 +108,10 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
   const unit = ['full', 'half_kg', 'quarter_kg', 'half_dozen'].includes(rawUnit)
     ? rawUnit
     : 'full';
+
+  // Quality tier (A/B/C) gated until migration 34 lands; old clients omit it.
+  const qualityReady = await hasQualityCatalogColumns();
+  const quality = qualityReady ? normalizeQuality(req.body?.quality) : 'A';
 
   const transactionResult = await withTransaction(async (client) => {
     // Get or create cart
@@ -149,7 +140,8 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     const productResult = await client.query(
       `SELECT id, price, half_kg_price, quarter_kg_price, half_dozen_price,
               stock_quantity, stock_status, unit_value, unit_type
-         FROM products 
+              ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
+         FROM products
         WHERE id = $1 AND is_active = TRUE`,
       [product_id]
     );
@@ -159,19 +151,32 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     }
 
     const product = productResult.rows[0];
-    const unitPrice = resolveUnitPrice(product, unit);
-    const stockNeeded = stockUnitsNeeded(quantity, unit);
 
-    // Check stock (kg/dozen units, not cart line count)
-    if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
+    // The chosen quality tier must actually be offered by the product.
+    if (qualityReady && !offeredQualities(product).includes(quality)) {
+      throw new BadRequestError('Selected quality is not available for this product');
+    }
+
+    const unitPrice = qualityReady
+      ? (resolveConsumerUnitPrice(product, quality, unit) ?? resolveUnitPrice(product, unit))
+      : resolveUnitPrice(product, unit);
+    const stockNeeded = stockUnitsNeeded(quantity, unit);
+    // Stock is per-quality (shared with restaurant). Quality A also respects the
+    // legacy out_of_stock flag; B/C rely purely on their own bucket.
+    const availableStock = qualityReady
+      ? qualityStock(product, quality)
+      : parseFloat(String(product.stock_quantity)) || 0;
+
+    if ((quality === 'A' && product.stock_status === 'out_of_stock') || availableStock < stockNeeded) {
       throw new BadRequestError('Insufficient stock');
     }
 
-    // Check if item already exists in cart (same product AND same unit).
+    // A cart line is unique per (product, unit, quality).
     const existingItemResult = await client.query(
-      `SELECT id, quantity FROM cart_items 
-        WHERE cart_id = $1 AND product_id = $2 AND COALESCE(unit, 'full') = $3`,
-      [cart.id, product_id, unit]
+      `SELECT id, quantity FROM cart_items
+        WHERE cart_id = $1 AND product_id = $2 AND COALESCE(unit, 'full') = $3
+          ${qualityReady ? `AND COALESCE(quality, 'A') = $4` : ''}`,
+      qualityReady ? [cart.id, product_id, unit, quality] : [cart.id, product_id, unit]
     );
 
     if (existingItemResult.rows.length > 0) {
@@ -180,18 +185,23 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
       const newQuantity = existingItem.quantity + quantity;
       const totalStockNeeded = stockUnitsNeeded(newQuantity, unit);
 
-      if (product.stock_quantity < totalStockNeeded) {
+      if (availableStock < totalStockNeeded) {
         throw new BadRequestError('Insufficient stock for requested quantity');
       }
 
       await client.query(
-        `UPDATE cart_items 
+        `UPDATE cart_items
          SET quantity = $1, unit_price = $2, unit = $3, updated_at = NOW()
          WHERE id = $4`,
         [newQuantity, unitPrice, unit, existingItem.id]
       );
+    } else if (qualityReady) {
+      await client.query(
+        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, unit, quality, special_instructions)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [cart.id, product_id, quantity, unitPrice, unit, quality, special_instructions || null]
+      );
     } else {
-      // Add new item
       await client.query(
         `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, unit, special_instructions)
          VALUES ($1, $2, $3, $4, $5, $6)`,
@@ -223,7 +233,10 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
     product_id: string;
     quantity: number;
     unit?: string;
+    quality?: string;
   }>;
+
+  const qualityReady = await hasQualityCatalogColumns();
 
   const transactionResult = await withTransaction(async (client) => {
     let cartResult = await client.query(
@@ -251,10 +264,12 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
       const unit = ['full', 'half_kg', 'quarter_kg', 'half_dozen'].includes(item.unit || '')
         ? item.unit!
         : 'full';
+      const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
 
       const productResult = await client.query(
         `SELECT id, name_en, price, half_kg_price, quarter_kg_price, half_dozen_price,
                 stock_quantity, stock_status
+                ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
            FROM products
           WHERE id = $1 AND is_active = TRUE`,
         [item.product_id]
@@ -265,18 +280,37 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
       }
 
       const product = productResult.rows[0];
-      const stockNeeded = stockUnitsNeeded(item.quantity, unit);
 
-      if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
+      if (qualityReady && !offeredQualities(product).includes(quality)) {
+        throw new BadRequestError(`Selected quality is not available: ${product.name_en}`);
+      }
+
+      const stockNeeded = stockUnitsNeeded(item.quantity, unit);
+      const availableStock = qualityReady
+        ? qualityStock(product, quality)
+        : parseFloat(String(product.stock_quantity)) || 0;
+
+      if ((quality === 'A' && product.stock_status === 'out_of_stock') || availableStock < stockNeeded) {
         throw new BadRequestError(`Insufficient stock: ${product.name_en}`);
       }
 
-      const unitPrice = resolveUnitPrice(product, unit);
-      await client.query(
-        `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, unit)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [cart.id, item.product_id, item.quantity, unitPrice, unit]
-      );
+      const unitPrice = qualityReady
+        ? (resolveConsumerUnitPrice(product, quality, unit) ?? resolveUnitPrice(product, unit))
+        : resolveUnitPrice(product, unit);
+
+      if (qualityReady) {
+        await client.query(
+          `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, unit, quality)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [cart.id, item.product_id, item.quantity, unitPrice, unit, quality]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO cart_items (cart_id, product_id, quantity, unit_price, unit)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [cart.id, item.product_id, item.quantity, unitPrice, unit]
+        );
+      }
     }
 
     return loadCartSnapshotFromClient(client, cart.id);
@@ -320,9 +354,13 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
       throw new ForbiddenError('You do not have permission to modify this cart item');
     }
 
+    const qualityReady = await hasQualityCatalogColumns();
+    const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
+
     const productResult = await client.query(
       `SELECT id, price, half_kg_price, quarter_kg_price, half_dozen_price,
               stock_quantity, stock_status, unit_value, unit_type
+              ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
        FROM products WHERE id = $1`,
       [item.product_id]
     );
@@ -332,10 +370,15 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     }
 
     const product = productResult.rows[0];
-    const unitPrice = resolveUnitPrice(product, item.unit);
+    const unitPrice = qualityReady
+      ? (resolveConsumerUnitPrice(product, quality, item.unit) ?? resolveUnitPrice(product, item.unit))
+      : resolveUnitPrice(product, item.unit);
     const stockNeeded = stockUnitsNeeded(quantity, item.unit);
+    const availableStock = qualityReady
+      ? qualityStock(product, quality)
+      : parseFloat(String(product.stock_quantity)) || 0;
 
-    if (product.stock_status === 'out_of_stock' || product.stock_quantity < stockNeeded) {
+    if ((quality === 'A' && product.stock_status === 'out_of_stock') || availableStock < stockNeeded) {
       throw new BadRequestError('Insufficient stock');
     }
 

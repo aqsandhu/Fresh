@@ -1,4 +1,4 @@
-import type { Product, ProductUnit } from '@/types'
+import type { Product, ProductUnit, ProductQuality } from '@/types'
 
 export interface UnitOption {
   unit: ProductUnit
@@ -16,18 +16,43 @@ const toNumber = (v: unknown): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
-/** Returns the unit options to show in the storefront for a product.
- * Mirrors the server's pricing logic in backend/src/utils/unitPricing.ts.
+/** Consumer base (per-full-unit) price for a quality tier (null = not offered). */
+export function qualityBasePrice(product: Product, quality: ProductQuality = 'A'): number | null {
+  if (quality === 'B') return toNumber(product.priceB)
+  if (quality === 'C') return toNumber(product.priceC)
+  return toNumber(product.price) ?? 0
+}
+
+/** Quality tiers a product offers: A always; B/C only when a consumer price is set. */
+export function offeredQualities(product: Product): ProductQuality[] {
+  const out: ProductQuality[] = ['A']
+  if (qualityBasePrice(product, 'B') != null) out.push('B')
+  if (qualityBasePrice(product, 'C') != null) out.push('C')
+  return out
+}
+
+/** Shared stock for a quality tier (consumer + restaurant draw from the same bucket). */
+export function qualityStock(product: Product, quality: ProductQuality = 'A'): number {
+  if (quality === 'B') return Number(product.stockQuantityB ?? 0) || 0
+  if (quality === 'C') return Number(product.stockQuantityC ?? 0) || 0
+  return Number(product.stockQuantity ?? product.stock ?? product.stock_quantity ?? 0) || 0
+}
+
+/** Returns the unit options to show in the storefront for a product at a quality.
+ * Mirrors the server's pricing logic in backend/src/utils/unitPricing.ts. Quality
+ * A honours the admin's explicit half/quarter overrides; B/C derive the fraction
+ * from the tier's base price (×0.5 / ×0.25).
  */
-export function getUnitOptions(product: Product): UnitOption[] {
-  const base = toNumber(product.price) ?? 0
+export function getUnitOptions(product: Product, quality: ProductQuality = 'A'): UnitOption[] {
+  const base = qualityBasePrice(product, quality) ?? 0
   if (base <= 0) return []
 
+  const useOverrides = quality === 'A'
   const unit = String(product.unit || '').toLowerCase()
 
   // Only kg-based products get half/quarter kg; only dozen-based get half dozen.
   if (unit === 'dozen') {
-    const halfDozenOverride = toNumber(product.halfDozenPrice)
+    const halfDozenOverride = useOverrides ? toNumber(product.halfDozenPrice) : null
     return [
       { unit: 'full', label: 'Per Dozen', price: base, derived: false },
       {
@@ -40,8 +65,8 @@ export function getUnitOptions(product: Product): UnitOption[] {
   }
 
   if (unit === 'kg' || unit === 'gram') {
-    const halfKgOverride = toNumber(product.halfKgPrice)
-    const quarterKgOverride = toNumber(product.quarterKgPrice)
+    const halfKgOverride = useOverrides ? toNumber(product.halfKgPrice) : null
+    const quarterKgOverride = useOverrides ? toNumber(product.quarterKgPrice) : null
     const options: UnitOption[] = [
       { unit: 'full', label: 'Per Kg', price: base, derived: false },
     ]
@@ -69,22 +94,27 @@ export function getUnitOptions(product: Product): UnitOption[] {
   return [{ unit: 'full', label: `Per ${unit || 'unit'}`, price: base, derived: false }]
 }
 
-/** Price for one cart/order line of the given unit. */
-export function priceForUnit(product: Product, unit: ProductUnit = 'full'): number {
-  const opts = getUnitOptions(product)
+/** Price for one cart/order line of the given unit + quality. */
+export function priceForUnit(
+  product: Product,
+  unit: ProductUnit = 'full',
+  quality: ProductQuality = 'A'
+): number {
+  const opts = getUnitOptions(product, quality)
   const found = opts.find((o) => o.unit === unit)
-  return found?.price ?? product.price
+  return found?.price ?? (qualityBasePrice(product, quality) ?? product.price)
 }
 
-/** Prefer stored line price; fall back to product unit pricing. */
+/** Prefer stored line price; fall back to product unit + quality pricing. */
 export function resolveLineUnitPrice(item: {
   product: Product
   unit?: ProductUnit
+  quality?: ProductQuality
   unitPrice?: number
 }): number {
   const unit = item.unit || 'full'
   if (item.unitPrice != null && item.unitPrice > 0) return item.unitPrice
-  return priceForUnit(item.product, unit)
+  return priceForUnit(item.product, unit, item.quality || 'A')
 }
 
 /** Suffix for ProductPrice, e.g. "/kg", "/half kg", "/½ kg". */

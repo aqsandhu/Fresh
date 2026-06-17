@@ -8,7 +8,7 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, createdResponse, errorResponse } from '../utils/response';
-import { hasRestaurantCatalogColumns } from '../config/productSchema';
+import { hasQualityCatalogColumns } from '../config/productSchema';
 import { hasRestaurantOrderColumns } from '../config/orderSchema';
 import { emitToAdmins } from '../config/socket';
 import { placeRestaurantOrder, getRestaurantDelivery } from '../utils/restaurantOrders';
@@ -16,16 +16,16 @@ import logger from '../utils/logger';
 
 /** GET /api/restaurant/categories — restaurant categories in the restaurant's city. */
 export const getRestaurantCategories = asyncHandler(async (req: Request, res: Response) => {
-  if (!(await hasRestaurantCatalogColumns())) return successResponse(res, [], 'Categories');
+  if (!(await hasQualityCatalogColumns())) return successResponse(res, [], 'Categories');
   // City-bound: a restaurant only ever sees its own city's catalog. Filtering on
   // city_id = NULL (no city) returns nothing, which is the correct safe default.
   const cityId = req.restaurant!.city_id;
   const result = await query(
     `SELECT c.id, c.name_ur, c.name_en, c.slug, c.icon_url, c.image_url, c.display_order,
-            COUNT(p.id) FILTER (WHERE p.is_active = TRUE AND p.is_restaurant = TRUE) AS product_count
+            COUNT(p.id) FILTER (WHERE p.is_active = TRUE AND p.available_for_restaurants = TRUE) AS product_count
        FROM categories c
        LEFT JOIN products p ON c.id = p.category_id
-      WHERE c.is_active = TRUE AND c.is_restaurant = TRUE AND c.city_id = $1
+      WHERE c.is_active = TRUE AND c.available_for_restaurants = TRUE AND c.city_id = $1
       GROUP BY c.id
       ORDER BY c.display_order ASC, c.name_en ASC`,
     [cityId]
@@ -35,20 +35,25 @@ export const getRestaurantCategories = asyncHandler(async (req: Request, res: Re
 
 /** GET /api/restaurant/products?category= — restaurant products with quality prices. */
 export const getRestaurantProducts = asyncHandler(async (req: Request, res: Response) => {
-  if (!(await hasRestaurantCatalogColumns())) return successResponse(res, [], 'Products');
+  if (!(await hasQualityCatalogColumns())) return successResponse(res, [], 'Products');
   // City-bound: only the restaurant's own city catalog (NULL city → empty).
   const cityId = req.restaurant!.city_id;
   const params: any[] = [cityId];
+  // Unified catalog: a product appears here when available_for_restaurants. The
+  // restaurant pays restaurant_price_* (falling back to the consumer price per
+  // tier); the offered tiers and the SHARED stock come from the consumer side.
   let sql = `
-    SELECT p.id, p.name_ur, p.name_en, p.slug, p.price, p.quality_b_price, p.quality_c_price,
-           p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
+    SELECT p.id, p.name_ur, p.name_en, p.slug,
+           p.price, p.price_b, p.price_c,
+           p.restaurant_price_a, p.restaurant_price_b, p.restaurant_price_c,
+           p.stock_quantity, p.stock_quantity_b, p.stock_quantity_c,
            p.allow_half_kg, p.allow_quarter_kg,
-           p.unit_type, p.unit_value, p.stock_quantity, p.primary_image, p.images,
+           p.unit_type, p.unit_value, p.primary_image, p.images,
            p.short_description, p.description_en,
            c.name_en AS category_name, c.slug AS category_slug, p.category_id
       FROM products p
       JOIN categories c ON p.category_id = c.id
-     WHERE p.is_active = TRUE AND p.is_restaurant = TRUE AND p.city_id = $1`;
+     WHERE p.is_active = TRUE AND p.available_for_restaurants = TRUE AND p.city_id = $1`;
   if (typeof req.query.category === 'string' && req.query.category) {
     params.push(req.query.category);
     sql += ` AND p.category_id = $${params.length}`;
@@ -73,7 +78,7 @@ export const getRestaurantDeliverySettings = asyncHandler(async (req: Request, r
  * quality + unit pricing) into the unified orders pipeline.
  */
 export const createRestaurantOrder = asyncHandler(async (req: Request, res: Response) => {
-  if (!(await hasRestaurantOrderColumns()) || !(await hasRestaurantCatalogColumns())) {
+  if (!(await hasRestaurantOrderColumns()) || !(await hasQualityCatalogColumns())) {
     return errorResponse(res, 'Restaurant ordering is being set up. Please try again shortly.', 503);
   }
 

@@ -32,7 +32,7 @@ import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
 import { ensurePinColumns } from './config/pinAuth';
 import { ensureAddressColumns } from './config/addressSchema';
 import { ensureOrderCouponColumns, ensureUrgentDeliveryColumns, ensureRestaurantOrderColumns } from './config/orderSchema';
-import { ensureVariableWeightColumns, ensureUnitToggleColumns, ensureRestaurantCatalogColumns } from './config/productSchema';
+import { ensureVariableWeightColumns, ensureUnitToggleColumns, ensureQualityCatalogColumns } from './config/productSchema';
 import { ensureFeedbackTables, ensureComplaintImagesColumn } from './config/feedbackSchema';
 import { ensureTipsTable } from './config/tipsSchema';
 import { ensureWhatsappLinkColumns } from './config/whatsappOrderSchema';
@@ -311,7 +311,7 @@ const startServer = async () => {
         await ensureOrderCouponColumns();
         await ensureVariableWeightColumns();
         await ensureUnitToggleColumns();
-        await ensureRestaurantCatalogColumns();
+        await ensureQualityCatalogColumns();
         await ensureFeedbackTables();
         await ensureComplaintImagesColumn();
         await ensureTipsTable();

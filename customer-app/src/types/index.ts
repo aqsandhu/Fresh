@@ -17,6 +17,9 @@ export type {
 
 export type ProductUnit = 'full' | 'half_kg' | 'quarter_kg' | 'half_dozen';
 
+/** Quality tier the customer picked. A is always offered; B/C only when priced. */
+export type ProductQuality = 'A' | 'B' | 'C';
+
 export type OrderStatus =
   | 'pending'
   | 'confirmed'
@@ -117,12 +120,20 @@ export interface StoreProduct {
   isFresh?: boolean;
   isVariableWeight?: boolean;
   variableWeightNote?: string | null;
+  // Quality tiers. A = price + stock. B/C optional; each has its own consumer
+  // price and its own stock bucket (shared with restaurants).
+  priceB?: number | null;
+  priceC?: number | null;
+  stockQuantityB?: number;
+  stockQuantityC?: number;
 }
 
 export interface StoreCartItem {
   product: StoreProduct;
   quantity: number;
   unit?: ProductUnit;
+  /** Quality tier (A/B/C). Defaults to 'A' for old lines / single-quality products. */
+  quality?: ProductQuality;
   unitPrice?: number;
 }
 

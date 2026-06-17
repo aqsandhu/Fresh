@@ -30,8 +30,8 @@ import { useCityContext } from '@/context/CityContext'
 import { productsApi } from '@/lib/api'
 import api from '@/lib/api'
 import UnitSelector, { getSelectedUnitPrice } from '@/components/ui/UnitSelector'
-import { unitLabelShort } from '@/lib/unitPricing'
-import { Product, ProductUnit } from '@/types'
+import { unitLabelShort, offeredQualities, qualityStock } from '@/lib/unitPricing'
+import { Product, ProductUnit, ProductQuality } from '@/types'
 
 export default function ProductDetailPage() {
   const params = useParams()
@@ -39,6 +39,7 @@ export default function ProductDetailPage() {
   const id = params.id as string
   const [quantity, setQuantity] = useState(1)
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
+  const [selectedQuality, setSelectedQuality] = useState<ProductQuality>('A')
   const [freeThreshold, setFreeThreshold] = useState(500)
   const { addItem, items } = useCartStore()
   const notifyVariableWeight = useVariableWeightNotice((s) => s.notify)
@@ -49,13 +50,17 @@ export default function ProductDetailPage() {
     queryFn: () => productsApi.getById(id),
   })
 
+  const qualities = product ? offeredQualities(product) : (['A'] as ProductQuality[])
+
   const displayPrice = product
-    ? getSelectedUnitPrice(product, selectedUnit)
+    ? getSelectedUnitPrice(product, selectedUnit, selectedQuality)
     : 0
 
   const cartItem = items.find(
     (item) =>
-      item.product.id === id && (item.unit || 'full') === selectedUnit
+      item.product.id === id &&
+      (item.unit || 'full') === selectedUnit &&
+      (item.quality || 'A') === selectedQuality
   )
 
   const { data: relatedData } = useQuery({
@@ -81,25 +86,23 @@ export default function ProductDetailPage() {
 
   const categorySlug = product?.category || product?.categoryId
   const categoryName = product?.category || 'Category'
-  const stockQty =
-    (product as Product & { stock?: number })?.stock ??
-    product?.stock_quantity ??
-    0
-  const isFresh =
-    (product as Product & { isFresh?: boolean })?.isFresh ?? stockQty > 0
+  // Stock is per-quality (shared with restaurants) — the selected tier's bucket.
+  const stockQty = product ? qualityStock(product, selectedQuality) : 0
+  const isFresh = stockQty > 0
   const maxQuantity = stockQty > 0 ? stockQty : 99
 
   const inCart = Boolean(cartItem)
 
   const handleAddToCart = () => {
     if (!isFresh || !product) return
-    addItem(product, quantity, selectedUnit)
+    addItem(product, quantity, selectedUnit, selectedQuality)
     if (product.isVariableWeight) {
       notifyVariableWeight(product.id, product.variableWeightNote)
     }
     const suffix = unitLabelShort(selectedUnit)
+    const qLabel = qualities.length > 1 ? ` · Quality ${selectedQuality}` : ''
     toast.success(
-      `${product.name}${suffix ? ` (${suffix})` : ''} added to cart!`
+      `${product.name}${suffix ? ` (${suffix})` : ''}${qLabel} added to cart!`
     )
   }
 
@@ -250,10 +253,40 @@ export default function ProductDetailPage() {
             </button>
           </div>
 
+          {qualities.length > 1 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Quality</p>
+              <div className="grid grid-cols-3 gap-2">
+                {qualities.map((q) => {
+                  const active = selectedQuality === q
+                  return (
+                    <button
+                      key={q}
+                      type="button"
+                      onClick={() => {
+                        setSelectedQuality(q)
+                        setSelectedUnit('full')
+                        setQuantity(1)
+                      }}
+                      className={`rounded-lg border px-2 py-2 text-sm font-semibold transition-colors ${
+                        active
+                          ? 'border-primary-600 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      Quality {q}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <UnitSelector
             product={product}
             selectedUnit={selectedUnit}
             onChange={setSelectedUnit}
+            quality={selectedQuality}
             size="md"
             fullWidth
           />

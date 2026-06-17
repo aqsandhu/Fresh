@@ -60,6 +60,8 @@ describe('GET /api/cart', () => {
       .mockResolvedValueOnce(ok([ACTIVE_USER_ROW]))
       // getOrCreateCart → existing active cart
       .mockResolvedValueOnce(ok([{ id: 'cart-1', user_id: 'user-1', status: 'active' }]))
+      // hasQualityCatalogColumns probe (migration 34) → not present → legacy path
+      .mockResolvedValueOnce(ok([]))
       // cart items
       .mockResolvedValueOnce(
         ok([{ id: 'item-1', product_id: VALID_PRODUCT, quantity: 2, unit_price: '150', total_price: '300' }])
