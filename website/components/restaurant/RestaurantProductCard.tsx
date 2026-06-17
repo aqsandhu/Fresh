@@ -9,28 +9,14 @@ import SmartImage from '@/components/ui/SmartImage'
 import Badge from '@/components/ui/Badge'
 import { priceForUnit, unitLabelShort } from '@/lib/unitPricing'
 import { resolveImageUrl } from '@/lib/utils'
+import { useRestaurantCartStore } from '@/store/restaurantCartStore'
 import {
   availableQualities, qualityBasePrice, money,
   type RestaurantProduct, type Quality,
 } from '@/lib/restaurantPricing'
 
-export interface RestaurantCartLine {
-  key: string
-  productId: string
-  name: string
-  image?: string | null
-  quality: Quality
-  unit: ProductUnit
-  unitShort: string
-  qty: number
-  unitPrice: number
-}
-
 interface Props {
   product: RestaurantProduct
-  cart: RestaurantCartLine[]
-  onAdd: (line: RestaurantCartLine) => void
-  onSetQty: (key: string, qty: number) => void
 }
 
 function ImageFallback() {
@@ -44,7 +30,8 @@ function ImageFallback() {
 
 /** Restaurant storefront card — mirrors the consumer ProductCard, with a quality
  *  tier selector and the same half/quarter-kg unit selector. */
-export default function RestaurantProductCard({ product, cart, onAdd, onSetQty }: Props) {
+export default function RestaurantProductCard({ product }: Props) {
+  const { items, addItem, updateQuantity } = useRestaurantCartStore()
   const qualities = availableQualities(product)
   const [quality, setQuality] = useState<Quality>(qualities[0])
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
@@ -75,21 +62,15 @@ export default function RestaurantProductCard({ product, cart, onAdd, onSetQty }
   const displayPrice = priceForUnit(mapped, selectedUnit)
   const baseUnitLabel = String(product.unit_type || 'kg')
 
-  const key = `${product.id}|${quality}|${selectedUnit}`
-  const line = cart.find((l) => l.key === key)
-  const quantity = line?.qty || 0
+  const line = items.find(
+    (l) => l.product.id === product.id && l.quality === quality && (l.unit || 'full') === selectedUnit
+  )
+  const quantity = line?.quantity || 0
 
-  const buildLine = (): RestaurantCartLine => ({
-    key,
-    productId: product.id,
-    name: product.name_en,
-    image: product.primary_image,
-    quality,
-    unit: selectedUnit,
-    unitShort: selectedUnit === 'full' ? baseUnitLabel : unitLabelShort(selectedUnit),
-    qty: 1,
-    unitPrice: displayPrice,
-  })
+  const handleAdd = () =>
+    addItem({ product, quantity: 1, unit: selectedUnit, quality, unitPrice: displayPrice })
+  const handleInc = () => updateQuantity(product.id, quality, selectedUnit, (line?.quantity || 0) + 1)
+  const handleDec = () => updateQuantity(product.id, quality, selectedUnit, (line?.quantity || 0) - 1)
 
   return (
     <div className="h-full w-full">
@@ -174,7 +155,7 @@ export default function RestaurantProductCard({ product, cart, onAdd, onSetQty }
                 <div className="inline-flex items-center bg-primary-50 rounded-xl p-0.5">
                   <button
                     type="button"
-                    onClick={() => onSetQty(key, quantity - 1)}
+                    onClick={handleDec}
                     className="w-7 h-7 flex items-center justify-center rounded-lg bg-white border border-gray-100 shrink-0"
                     aria-label={quantity === 1 ? 'Remove' : 'Decrease'}
                   >
@@ -189,7 +170,7 @@ export default function RestaurantProductCard({ product, cart, onAdd, onSetQty }
                   </span>
                   <button
                     type="button"
-                    onClick={() => onSetQty(key, quantity + 1)}
+                    onClick={handleInc}
                     className="w-7 h-7 flex items-center justify-center rounded-lg bg-primary-600 hover:bg-primary-700 shrink-0"
                     aria-label="Increase"
                   >
@@ -202,7 +183,7 @@ export default function RestaurantProductCard({ product, cart, onAdd, onSetQty }
             {inStock && quantity === 0 && (
               <button
                 type="button"
-                onClick={() => onAdd(buildLine())}
+                onClick={handleAdd}
                 className="w-full mt-1 inline-flex items-center justify-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-[13px] font-bold py-2 rounded-lg transition-colors"
               >
                 <ShoppingCart className="w-4 h-4" /> Add to Cart
