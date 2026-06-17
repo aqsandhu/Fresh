@@ -428,4 +428,8 @@ export type ProfileStackParamList = {
   MyComplaints: undefined;
   NewComplaint: { orderId?: string; orderNumber?: string } | undefined;
   WorkAsRider: undefined;
+  RestaurantLogin: undefined;
+  RestaurantRegister: undefined;
+  RestaurantShop: undefined;
+  RestaurantOrders: undefined;
 };
