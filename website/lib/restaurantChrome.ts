@@ -8,6 +8,8 @@ export function hideConsumerChrome(pathname: string | null | undefined): boolean
     pathname === '/restaurant' ||
     pathname.startsWith('/restaurant/shop') ||
     pathname.startsWith('/restaurant/orders') ||
-    pathname.startsWith('/restaurant/profile')
+    pathname.startsWith('/restaurant/profile') ||
+    pathname.startsWith('/restaurant/cart') ||
+    pathname.startsWith('/restaurant/checkout')
   )
 }
