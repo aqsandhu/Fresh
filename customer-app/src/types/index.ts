@@ -432,4 +432,5 @@ export type ProfileStackParamList = {
   RestaurantRegister: undefined;
   RestaurantShop: undefined;
   RestaurantOrders: undefined;
+  RestaurantProfile: undefined;
 };

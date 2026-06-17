@@ -3,29 +3,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { UtensilsCrossed, ShoppingCart, Plus, Minus, Trash2, Loader2, ClipboardList, LogOut } from 'lucide-react'
+import { UtensilsCrossed, ShoppingCart, Plus, Minus, Trash2, Loader2, ClipboardList, User } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { resolveImageUrl } from '@/lib/utils'
-import { getRestaurantInfo, clearRestaurantSession } from '@/lib/restaurantSession'
+import { getRestaurantInfo } from '@/lib/restaurantSession'
 import { restaurantShopApi } from '@/lib/restaurantApi'
-import {
-  availableQualities, availableUnits, unitPrice, qualityBasePrice, money, round2,
-  type RestaurantProduct, type Quality, type Unit,
-} from '@/lib/restaurantPricing'
+import { money, round2, type RestaurantProduct } from '@/lib/restaurantPricing'
+import RestaurantProductCard, { type RestaurantCartLine } from '@/components/restaurant/RestaurantProductCard'
+import RestaurantMobileNav from '@/components/restaurant/RestaurantMobileNav'
 
 const CART_KEY = 'restaurant_cart'
-
-interface CartLine {
-  key: string
-  productId: string
-  name: string
-  image?: string | null
-  quality: Quality
-  unit: Unit
-  unitShort: string
-  qty: number
-  unitPrice: number
-}
 
 export default function RestaurantShopPage() {
   const router = useRouter()
@@ -35,11 +21,10 @@ export default function RestaurantShopPage() {
   const [products, setProducts] = useState<RestaurantProduct[]>([])
   const [activeCat, setActiveCat] = useState<string>('')
   const [delivery, setDelivery] = useState({ base_charge: 100, free_delivery_threshold: 2000 })
-  const [cart, setCart] = useState<CartLine[]>([])
+  const [cart, setCart] = useState<RestaurantCartLine[]>([])
   const [notes, setNotes] = useState('')
   const [placing, setPlacing] = useState(false)
 
-  // Guard + initial load
   useEffect(() => {
     if (!getRestaurantInfo()) {
       router.replace('/restaurant/login')
@@ -71,7 +56,6 @@ export default function RestaurantShopPage() {
     })()
   }, [router])
 
-  // Persist cart
   useEffect(() => {
     if (ready) {
       try {
@@ -86,8 +70,7 @@ export default function RestaurantShopPage() {
     setActiveCat(catId)
     setLoading(true)
     try {
-      const prods = await restaurantShopApi.getProducts(catId || undefined)
-      setProducts(prods || [])
+      setProducts((await restaurantShopApi.getProducts(catId || undefined)) || [])
     } catch (e: any) {
       toast.error(e?.message || 'Could not load products')
     } finally {
@@ -95,19 +78,16 @@ export default function RestaurantShopPage() {
     }
   }
 
-  const addToCart = (line: CartLine) => {
+  const addToCart = (line: RestaurantCartLine) => {
     setCart((prev) => {
       const existing = prev.find((l) => l.key === line.key)
-      if (existing) {
-        return prev.map((l) => (l.key === line.key ? { ...l, qty: l.qty + line.qty } : l))
-      }
+      if (existing) return prev.map((l) => (l.key === line.key ? { ...l, qty: l.qty + line.qty } : l))
       return [...prev, line]
     })
-    toast.success('Added to cart')
+    toast.success('Added to cart', { duration: 1500, icon: '🛒' })
   }
-
   const setQty = (key: string, qty: number) =>
-    setCart((prev) => prev.map((l) => (l.key === key ? { ...l, qty: Math.max(1, qty) } : l)))
+    setCart((prev) => (qty <= 0 ? prev.filter((l) => l.key !== key) : prev.map((l) => (l.key === key ? { ...l, qty } : l))))
   const removeLine = (key: string) => setCart((prev) => prev.filter((l) => l.key !== key))
 
   const subtotal = useMemo(() => round2(cart.reduce((s, l) => s + round2(l.unitPrice * l.qty), 0)), [cart])
@@ -134,40 +114,35 @@ export default function RestaurantShopPage() {
     }
   }
 
-  const logout = () => {
-    clearRestaurantSession()
-    router.replace('/restaurant/login')
-  }
-
   if (!ready) return null
   const info = getRestaurantInfo()
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-20 lg:pb-0">
       {/* Header */}
-      <div className="bg-white border-b sticky top-0 z-10">
+      <div className="bg-white border-b sticky top-0 z-20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
             <UtensilsCrossed className="w-5 h-5 text-primary-600 shrink-0" />
             <span className="font-bold text-gray-900 truncate">{info?.business_name}</span>
             <span className="text-xs text-gray-400 hidden sm:inline">Restaurant store</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="hidden sm:flex items-center gap-4">
             <Link href="/restaurant/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-primary-600">
-              <ClipboardList className="w-4 h-4" /> <span className="hidden sm:inline">My Orders</span>
+              <ClipboardList className="w-4 h-4" /> Orders
             </Link>
-            <button onClick={logout} className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-red-600">
-              <LogOut className="w-4 h-4" /> <span className="hidden sm:inline">Logout</span>
-            </button>
+            <Link href="/restaurant/profile" className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-primary-600">
+              <User className="w-4 h-4" /> Profile
+            </Link>
           </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 grid lg:grid-cols-3 gap-6">
+      <div className="max-w-6xl mx-auto px-4 py-5 grid lg:grid-cols-3 gap-6">
         {/* Catalog */}
         <div className="lg:col-span-2">
           {/* Category chips */}
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-4">
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
             <CatChip label="All" active={activeCat === ''} onClick={() => loadCategory('')} />
             {categories.map((c) => (
               <CatChip key={c.id} label={c.name_en} active={activeCat === c.id} onClick={() => loadCategory(c.id)} />
@@ -184,9 +159,9 @@ export default function RestaurantShopPage() {
               No products in this catalog yet.
             </div>
           ) : (
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {products.map((p) => (
-                <ProductCard key={p.id} product={p} onAdd={addToCart} />
+                <RestaurantProductCard key={p.id} product={p} cart={cart} onAdd={addToCart} onSetQty={setQty} />
               ))}
             </div>
           )}
@@ -267,6 +242,8 @@ export default function RestaurantShopPage() {
           </div>
         </div>
       </div>
+
+      <RestaurantMobileNav />
     </div>
   )
 }
@@ -275,134 +252,13 @@ function CatChip({ label, active, onClick }: { label: string; active: boolean; o
   return (
     <button
       onClick={onClick}
-      className={`whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-        active ? 'bg-primary-600 text-white' : 'bg-white text-gray-700 border border-gray-200 hover:border-primary-300'
+      className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold border transition-colors shadow-sm ${
+        active
+          ? 'bg-primary-600 text-white border-primary-600'
+          : 'bg-white text-gray-700 border-gray-200 hover:border-primary-300 hover:text-primary-700'
       }`}
     >
       {label}
     </button>
-  )
-}
-
-function ProductCard({ product, onAdd }: { product: RestaurantProduct; onAdd: (l: CartLine) => void }) {
-  const qualities = availableQualities(product)
-  const units = availableUnits(product)
-  const [quality, setQuality] = useState<Quality>(qualities[0])
-  const [unit, setUnit] = useState<Unit>(units[0].value)
-  const [qty, setQty] = useState(1)
-
-  const selectedUnit = units.find((u) => u.value === unit) || units[0]
-  const price = unitPrice(product, quality, unit)
-  const outOfStock = (product.stock_quantity ?? 0) <= 0
-  const img = resolveImageUrl(product.primary_image || '')
-
-  const add = () => {
-    if (price == null) return
-    onAdd({
-      key: `${product.id}|${quality}|${unit}`,
-      productId: product.id,
-      name: product.name_en,
-      image: product.primary_image,
-      quality,
-      unit,
-      unitShort: selectedUnit.short,
-      qty,
-      unitPrice: price,
-    })
-    setQty(1)
-  }
-
-  return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
-      <div className="flex gap-3 p-3">
-        {img ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={img} alt={product.name_en} className="h-16 w-16 rounded-lg object-cover border border-gray-100 shrink-0" />
-        ) : (
-          <div className="h-16 w-16 rounded-lg bg-gray-100 flex items-center justify-center shrink-0">
-            <UtensilsCrossed className="w-6 h-6 text-gray-300" />
-          </div>
-        )}
-        <div className="min-w-0">
-          <p className="font-semibold text-gray-900 leading-tight">{product.name_en}</p>
-          {product.name_ur && <p className="text-sm text-gray-500" dir="rtl">{product.name_ur}</p>}
-          {product.category_name && <p className="text-xs text-gray-400 mt-0.5">{product.category_name}</p>}
-        </div>
-      </div>
-
-      <div className="px-3 pb-3 mt-auto space-y-2.5">
-        {/* Quality selector — each tier shows its per-unit base price */}
-        {qualities.length > 1 && (
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Quality</p>
-            <div className="flex flex-wrap gap-1.5">
-              {qualities.map((q) => {
-                const qp = qualityBasePrice(product, q)
-                const active = quality === q
-                return (
-                  <button
-                    key={q}
-                    onClick={() => setQuality(q)}
-                    className={`flex flex-col items-center rounded-lg border px-2.5 py-1 text-xs transition-colors ${
-                      active ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-primary-300'
-                    }`}
-                  >
-                    <span className="font-bold">{q}</span>
-                    <span className="text-[11px]">{qp != null ? money(qp) : '—'}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Unit selector — each shows the price for the chosen quality */}
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1">Quantity unit</p>
-          <div className="flex flex-wrap gap-1.5">
-            {units.map((u) => {
-              const upr = unitPrice(product, quality, u.value)
-              const active = unit === u.value
-              return (
-                <button
-                  key={u.value}
-                  onClick={() => setUnit(u.value)}
-                  className={`flex flex-col items-center rounded-lg border px-2.5 py-1 text-xs transition-colors ${
-                    active ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-primary-300'
-                  }`}
-                >
-                  <span className="font-semibold">{u.short}</span>
-                  <span className="text-[11px]">{upr != null ? money(upr) : '—'}</span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Selected rate + qty */}
-        <div className="flex items-center justify-between pt-1">
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-1 text-sm font-semibold text-primary-700">
-            {price != null ? money(price) : '—'} <span className="text-primary-400">/ {selectedUnit.short} · Q{quality}</span>
-          </span>
-          <div className="flex items-center rounded-lg border border-gray-300">
-            <button onClick={() => setQty((q) => Math.max(1, q - 1))} className="px-2 py-1 text-gray-600 hover:bg-gray-100">
-              <Minus className="w-3.5 h-3.5" />
-            </button>
-            <span className="w-7 text-center text-sm tabular-nums">{qty}</span>
-            <button onClick={() => setQty((q) => q + 1)} className="px-2 py-1 text-gray-600 hover:bg-gray-100">
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        <button
-          onClick={add}
-          disabled={outOfStock || price == null}
-          className="w-full rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
-        >
-          {outOfStock ? 'Out of stock' : 'Add to cart'}
-        </button>
-      </div>
-    </div>
   )
 }

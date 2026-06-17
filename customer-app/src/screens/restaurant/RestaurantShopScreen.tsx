@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
-  Modal, TextInput, FlatList,
+  Modal, TextInput, FlatList, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -9,13 +9,21 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { ProfileStackParamList } from '@app-types';
-import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
+import { COLORS, SPACING, BORDER_RADIUS, API_BASE_URL } from '@utils/constants';
 import { Button } from '@components';
 import {
   restaurantApi, getRestaurantInfo, clearRestaurantSession,
   availableQualities, availableUnits, unitPrice, qualityBasePrice, money, round2,
   type Quality, type Unit,
 } from '@services/restaurant.service';
+import { RestaurantTabBar } from './RestaurantTabBar';
+
+const BACKEND_URL = API_BASE_URL.replace('/api', '');
+function imgUrl(path?: string | null): string {
+  if (!path) return '';
+  if (path.startsWith('http') || path.startsWith('data:')) return path;
+  return `${BACKEND_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+}
 
 interface CartLine {
   key: string; productId: string; name: string; quality: Quality; unit: Unit; unitShort: string; qty: number; unitPrice: number;
@@ -141,12 +149,14 @@ export const RestaurantShopScreen: React.FC = () => {
         <FlatList
           data={products}
           keyExtractor={(p) => p.id}
-          contentContainerStyle={{ padding: SPACING.md, paddingBottom: 100 }}
+          numColumns={2}
+          columnWrapperStyle={{ gap: SPACING.sm, paddingHorizontal: SPACING.md }}
+          contentContainerStyle={{ paddingVertical: SPACING.md, paddingBottom: 180, gap: SPACING.sm }}
           renderItem={({ item }) => <ProductCard product={item} onAdd={addToCart} />}
         />
       )}
 
-      {/* Bottom cart bar */}
+      {/* Bottom cart bar (sits above the tab bar) */}
       {cartCount > 0 && (
         <TouchableOpacity style={styles.cartBar} onPress={() => setCartOpen(true)}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -200,6 +210,8 @@ export const RestaurantShopScreen: React.FC = () => {
           </View>
         </SafeAreaView>
       </Modal>
+
+      <RestaurantTabBar active="shop" />
     </SafeAreaView>
   );
 };
@@ -231,10 +243,26 @@ function ProductCard({ product, onAdd }: { product: any; onAdd: (l: CartLine) =>
   const price = unitPrice(product, quality, unit);
   const out = (product.stock_quantity ?? 0) <= 0;
 
+  const image = imgUrl(product.primary_image);
+
   return (
     <View style={styles.card}>
-      <Text style={styles.cardName}>{product.name_en}</Text>
-      {!!product.name_ur && <Text style={styles.cardNameUr}>{product.name_ur}</Text>}
+      <View style={styles.cardImageWrap}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.cardImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.cardImagePlaceholder}>
+            <MaterialIcons name="restaurant" size={28} color={COLORS.gray300} />
+          </View>
+        )}
+        {!out ? (
+          <View style={styles.freshBadge}><Text style={styles.freshText}>Fresh</Text></View>
+        ) : (
+          <View style={styles.outBadge}><Text style={styles.outText}>Out of stock</Text></View>
+        )}
+      </View>
+      <Text style={styles.cardName} numberOfLines={1}>{product.name_en}</Text>
+      {!!product.name_ur && <Text style={styles.cardNameUr} numberOfLines={1}>{product.name_ur}</Text>}
 
       {qualities.length > 1 && (
         <>
@@ -303,9 +331,16 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13, fontWeight: '600', color: COLORS.gray700 },
   chipTextActive: { color: COLORS.white },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  card: { backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.gray100 },
-  cardName: { fontSize: 15, fontWeight: '700', color: COLORS.gray900 },
-  cardNameUr: { fontSize: 14, color: COLORS.gray500, textAlign: 'right', writingDirection: 'rtl' },
+  card: { flex: 1, backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.md, padding: SPACING.sm, borderWidth: 1, borderColor: COLORS.gray200 },
+  cardImageWrap: { width: '100%', aspectRatio: 1, borderRadius: BORDER_RADIUS.sm, overflow: 'hidden', backgroundColor: COLORS.gray50, marginBottom: 6 },
+  cardImage: { width: '100%', height: '100%' },
+  cardImagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  freshBadge: { position: 'absolute', top: 6, left: 6, backgroundColor: COLORS.primaryDark, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  freshText: { color: COLORS.white, fontSize: 9, fontWeight: '700' },
+  outBadge: { position: 'absolute', top: 6, left: 6, backgroundColor: COLORS.error, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  outText: { color: COLORS.white, fontSize: 9, fontWeight: '700' },
+  cardName: { fontSize: 14, fontWeight: '700', color: COLORS.gray900 },
+  cardNameUr: { fontSize: 13, color: COLORS.gray500, textAlign: 'right', writingDirection: 'rtl' },
   optLabel: { fontSize: 11, fontWeight: '700', color: COLORS.gray400, textTransform: 'uppercase', marginTop: SPACING.sm, letterSpacing: 0.5 },
   optRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
   opt: { alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: BORDER_RADIUS.sm, borderWidth: 1, borderColor: COLORS.gray300, marginRight: 8, marginBottom: 4 },
@@ -319,9 +354,10 @@ const styles = StyleSheet.create({
   stepBtn: { paddingHorizontal: 10, paddingVertical: 6 },
   qtyText: { width: 28, textAlign: 'center', fontSize: 14, fontWeight: '600', color: COLORS.gray900 },
   cartBar: {
-    position: 'absolute', left: SPACING.md, right: SPACING.md, bottom: SPACING.md,
+    position: 'absolute', left: SPACING.md, right: SPACING.md, bottom: 72,
     backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.md,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 4,
   },
   cartBarText: { color: COLORS.white, fontWeight: '700', fontSize: 15 },
   cartLine: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.gray100 },

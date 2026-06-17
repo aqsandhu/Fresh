@@ -7,6 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { restaurantApi, getRestaurantInfo, money } from '@services/restaurant.service';
+import { RestaurantTabBar } from './RestaurantTabBar';
 
 const STATUS_COLOR: Record<string, string> = {
   pending: COLORS.warning,
@@ -56,7 +57,7 @@ export const RestaurantOrdersScreen: React.FC = () => {
         <FlatList
           data={orders}
           keyExtractor={(o) => o.id}
-          contentContainerStyle={{ padding: SPACING.md }}
+          contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xl }}
           renderItem={({ item: o }) => (
             <View style={styles.card}>
               <View style={styles.cardHead}>
@@ -80,6 +81,7 @@ export const RestaurantOrdersScreen: React.FC = () => {
           )}
         />
       )}
+      <RestaurantTabBar active="orders" />
     </SafeAreaView>
   );
 };
