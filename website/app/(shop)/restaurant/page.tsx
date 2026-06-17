@@ -22,6 +22,8 @@ export default function RestaurantHomePage() {
       router.replace('/restaurant/login')
       return
     }
+    // Approved restaurants land straight in their storefront.
+    router.replace('/restaurant/shop')
     setInfo(i)
     setReady(true)
   }, [router])
