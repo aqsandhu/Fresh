@@ -70,7 +70,9 @@ export async function ensureRestaurantsTable(): Promise<boolean> {
           id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
           business_name   VARCHAR(255) NOT NULL,
           owner_name      VARCHAR(255),
-          phone           VARCHAR(20)  NOT NULL UNIQUE,
+          -- Phone uniqueness is enforced by the PARTIAL index below (one LIVE
+          -- account per phone) so a soft-removed restaurant can re-register.
+          phone           VARCHAR(20)  NOT NULL,
           pin_hash        VARCHAR(255) NOT NULL,
           email           VARCHAR(255),
           address         TEXT,
@@ -120,4 +122,51 @@ export async function ensureRestaurantsTable(): Promise<boolean> {
   })();
 
   return ensurePromise;
+}
+
+// ── Migration 33: relax phone uniqueness to LIVE rows only ──────────────────
+// The original table created a plain UNIQUE column constraint on phone
+// (restaurants_phone_key), which counts soft-deleted rows and so blocks a
+// removed restaurant from re-registering. Drop it and rely on the partial
+// unique index (one live account per phone). Runs idempotently each boot.
+let phoneUniqueCached = false;
+let phoneUniquePromise: Promise<void> | null = null;
+
+export async function ensureRestaurantPhoneUnique(): Promise<void> {
+  if (phoneUniqueCached) return;
+  if (phoneUniquePromise) return phoneUniquePromise;
+
+  phoneUniquePromise = (async () => {
+    if (!(await hasRestaurantsTable())) return;
+    const connectionString = getMigrationConnectionString();
+    if (!connectionString) return;
+    const pool = new Pool({
+      connectionString,
+      ssl:
+        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
+          ? false
+          : { rejectUnauthorized: false },
+      max: 1,
+      connectionTimeoutMillis: 15000,
+    });
+    try {
+      // Partial index = the real uniqueness rule (one LIVE account per phone).
+      await pool.query(
+        `CREATE UNIQUE INDEX IF NOT EXISTS restaurants_phone_live_idx ON restaurants (phone) WHERE deleted_at IS NULL`
+      );
+      // Drop the legacy plain UNIQUE constraint if it still exists.
+      await pool.query(`ALTER TABLE restaurants DROP CONSTRAINT IF EXISTS restaurants_phone_key`);
+      phoneUniqueCached = true;
+      logger.info('restaurants phone uniqueness relaxed to live rows (migration 33)');
+    } catch (error: any) {
+      logger.warn('Could not relax restaurants phone uniqueness — run migration 33 manually', {
+        error: error?.message,
+      });
+    } finally {
+      await pool.end().catch(() => undefined);
+      phoneUniquePromise = null;
+    }
+  })();
+
+  return phoneUniquePromise;
 }

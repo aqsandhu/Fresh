@@ -105,21 +105,31 @@ export const registerRestaurant = asyncHandler(async (req: Request, res: Respons
 
   const pinHash = await bcrypt.hash(String(pin), PIN_BCRYPT_ROUNDS);
 
-  const result = await query(
-    `INSERT INTO restaurants (business_name, owner_name, phone, pin_hash, email, address, city, city_id, status)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
-     RETURNING *`,
-    [
-      String(business_name).trim(),
-      owner_name ? String(owner_name).trim() : null,
-      normPhone,
-      pinHash,
-      email ? String(email).trim() : null,
-      address ? String(address).trim() : null,
-      cityName,
-      cityId,
-    ]
-  );
+  let result;
+  try {
+    result = await query(
+      `INSERT INTO restaurants (business_name, owner_name, phone, pin_hash, email, address, city, city_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
+       RETURNING *`,
+      [
+        String(business_name).trim(),
+        owner_name ? String(owner_name).trim() : null,
+        normPhone,
+        pinHash,
+        email ? String(email).trim() : null,
+        address ? String(address).trim() : null,
+        cityName,
+        cityId,
+      ]
+    );
+  } catch (err: any) {
+    // Unique violation (a live account with this phone already exists) — turn the
+    // raw 23505 into a clean message instead of a 500.
+    if (err?.code === '23505') {
+      return errorResponse(res, 'This number is already registered as a restaurant. Please log in instead.', 409);
+    }
+    throw err;
+  }
 
   logger.info('Restaurant registration submitted', { restaurantId: result.rows[0].id, phone: normPhone });
 
