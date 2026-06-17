@@ -28,6 +28,7 @@ import {
   RestaurantRegisterScreen,
   RestaurantShopScreen,
   RestaurantOrdersScreen,
+  RestaurantProfileScreen,
 } from '@screens/restaurant';
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -63,6 +64,7 @@ export const ProfileNavigator: React.FC = () => {
       <Stack.Screen name="RestaurantRegister" component={RestaurantRegisterScreen} />
       <Stack.Screen name="RestaurantShop" component={RestaurantShopScreen} />
       <Stack.Screen name="RestaurantOrders" component={RestaurantOrdersScreen} />
+      <Stack.Screen name="RestaurantProfile" component={RestaurantProfileScreen} />
       <Stack.Screen name="AddAddress" component={AddAddressScreen} />
       <Stack.Screen name="StaticPage" component={StaticPageScreen} />
     </Stack.Navigator>

@@ -7,6 +7,7 @@ import { ClipboardList, Loader2, ArrowLeft } from 'lucide-react'
 import { getRestaurantInfo } from '@/lib/restaurantSession'
 import { restaurantShopApi } from '@/lib/restaurantApi'
 import { money } from '@/lib/restaurantPricing'
+import RestaurantMobileNav from '@/components/restaurant/RestaurantMobileNav'
 
 const STATUS_STYLE: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-800',
@@ -44,7 +45,7 @@ export default function RestaurantOrdersPage() {
   if (!ready) return null
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-6">
+    <div className="min-h-screen bg-gray-50 px-4 py-6 pb-20">
       <div className="max-w-3xl mx-auto">
         <div className="flex items-center gap-2 mb-5">
           <Link href="/restaurant/shop" className="text-gray-500 hover:text-primary-600">
@@ -97,6 +98,7 @@ export default function RestaurantOrdersPage() {
           </div>
         )}
       </div>
+      <RestaurantMobileNav />
     </div>
   )
 }
