@@ -190,6 +190,9 @@ export const Orders: React.FC = () => {
   const isSuperAdmin = user?.role === 'super_admin';
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
+  // Consumer orders vs restaurant (B2B) orders — same UI, separate sets.
+  const [mode, setMode] = useState<'customer' | 'restaurant'>('customer');
+  const isRestaurantMode = mode === 'restaurant';
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [weightInputs, setWeightInputs] = useState<Record<string, string>>({});
   const [savingWeightId, setSavingWeightId] = useState<string | null>(null);
@@ -211,13 +214,14 @@ export const Orders: React.FC = () => {
   const prevOrdersRef = useRef<string[]>([]);
 
   const { data: ordersData, isLoading } = useQuery({
-    queryKey: ['orders', { status: statusFilter, search: searchQuery, page }],
+    queryKey: ['orders', { status: statusFilter, search: searchQuery, page, mode }],
     queryFn: () =>
       orderService.getOrders({
         status: statusFilter || undefined,
         search: searchQuery || undefined,
         page,
         limit: 10,
+        restaurant: isRestaurantMode ? true : undefined,
       }),
   });
 
@@ -734,6 +738,25 @@ export const Orders: React.FC = () => {
       searchPlaceholder="Search orders..."
       onSearch={setSearchQuery}
     >
+      {/* Consumer vs Restaurant orders */}
+      <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
+        {(['customer', 'restaurant'] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => {
+              setMode(m);
+              setPage(1);
+              setSelectedOrderIds(new Set());
+            }}
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mode === m ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            {m === 'customer' ? 'Customer' : 'Restaurants'}
+          </button>
+        ))}
+      </div>
+
       {/* Connection Status & New Order Badge */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">

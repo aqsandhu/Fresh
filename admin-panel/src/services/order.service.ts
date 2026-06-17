@@ -14,6 +14,7 @@ interface OrderFilters {
   dateFrom?: string;
   dateTo?: string;
   riderId?: string;
+  restaurant?: boolean;
 }
 
 export const orderService = {
