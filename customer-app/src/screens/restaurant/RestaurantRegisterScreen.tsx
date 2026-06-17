@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform,
@@ -12,12 +12,18 @@ import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button } from '@components';
 import { restaurantApi } from '@services/restaurant.service';
+import { getStoredCity } from '@/lib/cityStorage';
 
 export const RestaurantRegisterScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
-  const [form, setForm] = useState({ business_name: '', owner_name: '', phone: '', pin: '', city: '', address: '' });
+  const [form, setForm] = useState({ business_name: '', owner_name: '', phone: '', pin: '', address: '' });
+  const [city, setCity] = useState<{ id: string; name: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+
+  useEffect(() => {
+    getStoredCity().then((c) => c && setCity({ id: c.id, name: c.name }));
+  }, []);
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -27,6 +33,7 @@ export const RestaurantRegisterScreen: React.FC = () => {
       return Toast.show({ type: 'error', text1: 'Enter a valid phone number' });
     }
     if (!/^\d{4}$/.test(form.pin)) return Toast.show({ type: 'error', text1: 'PIN must be 4 digits' });
+    if (!city?.id) return Toast.show({ type: 'error', text1: 'Select your city first (use the city button on Home)' });
     setSaving(true);
     try {
       await restaurantApi.register({
@@ -34,7 +41,8 @@ export const RestaurantRegisterScreen: React.FC = () => {
         owner_name: form.owner_name.trim() || undefined,
         phone: form.phone.trim(),
         pin: form.pin,
-        city: form.city.trim() || undefined,
+        city: city?.name || undefined,
+        city_id: city?.id || undefined,
         address: form.address.trim() || undefined,
       });
       setDone(true);
@@ -78,7 +86,16 @@ export const RestaurantRegisterScreen: React.FC = () => {
           <Field label="Owner / contact person"><TextInput value={form.owner_name} onChangeText={(t) => set('owner_name', t)} placeholder="Full name" style={styles.input} /></Field>
           <Field label="Phone number *"><TextInput value={form.phone} onChangeText={(t) => set('phone', t)} placeholder="03001234567" keyboardType="phone-pad" style={styles.input} /></Field>
           <Field label="4-digit PIN *"><TextInput value={form.pin} onChangeText={(t) => set('pin', t.replace(/\D/g, '').slice(0, 4))} placeholder="••••" keyboardType="number-pad" secureTextEntry maxLength={4} style={[styles.input, { letterSpacing: 8, textAlign: 'center' }]} /></Field>
-          <Field label="City"><TextInput value={form.city} onChangeText={(t) => set('city', t)} placeholder="e.g. Gujrat" style={styles.input} /></Field>
+          <Field label="City">
+            <View style={styles.cityBox}>
+              <MaterialIcons name="location-on" size={18} color={COLORS.primary} />
+              <Text style={styles.cityText}>{city?.name || 'No city selected'}</Text>
+            </View>
+            <Text style={styles.cityNote}>
+              Your restaurant is registered in {city?.name || 'this city'} — its request goes to this city's admin and
+              you'll only see this city's catalog. Change it from the city button on the Home screen.
+            </Text>
+          </Field>
           <Field label="Address"><TextInput value={form.address} onChangeText={(t) => set('address', t)} placeholder="Complete address" multiline style={[styles.input, { height: 70, textAlignVertical: 'top' }]} /></Field>
           <Button title="Submit request" onPress={submit} loading={saving} style={{ marginTop: SPACING.md }} />
         </ScrollView>
@@ -109,6 +126,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.gray300, borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: 16, color: COLORS.gray900,
   },
+  cityBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderWidth: 1, borderColor: COLORS.gray300, borderRadius: BORDER_RADIUS.md,
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, backgroundColor: COLORS.gray50,
+  },
+  cityText: { fontSize: 16, fontWeight: '700', color: COLORS.gray900 },
+  cityNote: { fontSize: 12, color: COLORS.gray500, marginTop: 6, lineHeight: 18 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: SPACING.lg },
   successIcon: { marginBottom: SPACING.md },
   successTitle: { fontSize: 20, fontWeight: '700', color: COLORS.gray900, marginBottom: SPACING.md },

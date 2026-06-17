@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Store, Loader2, CheckCircle2, Home } from 'lucide-react'
+import { Store, Loader2, CheckCircle2, Home, MapPin } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { restaurantApi } from '@/lib/api'
+import { useCityContext } from '@/context/CityContext'
 
 export default function RestaurantRegisterPage() {
+  const { selectedCity } = useCityContext()
   const [form, setForm] = useState({
     business_name: '',
     owner_name: '',
@@ -15,7 +17,6 @@ export default function RestaurantRegisterPage() {
     pin: '',
     email: '',
     address: '',
-    city: '',
   })
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
@@ -29,6 +30,7 @@ export default function RestaurantRegisterPage() {
       return toast.error('Enter a valid phone number (e.g. 03001234567)')
     }
     if (!/^\d{4}$/.test(form.pin)) return toast.error('PIN must be exactly 4 digits')
+    if (!selectedCity?.id) return toast.error('Select your city with the city button first')
 
     setSaving(true)
     try {
@@ -39,7 +41,8 @@ export default function RestaurantRegisterPage() {
         pin: form.pin,
         email: form.email.trim() || undefined,
         address: form.address.trim() || undefined,
-        city: form.city.trim() || undefined,
+        city: selectedCity?.name || undefined,
+        city_id: selectedCity?.id || undefined,
       })
       setDone(true)
     } catch (err: any) {
@@ -101,18 +104,24 @@ export default function RestaurantRegisterPage() {
             </Field>
             <Field label="4-digit PIN *">
               <input value={form.pin} onChange={(e) => set('pin', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                inputMode="numeric" maxLength={4}
+                type="password" inputMode="numeric" maxLength={4} autoComplete="off"
                 className={`${inputCls} tracking-[0.5em] text-center`} placeholder="••••" required />
             </Field>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="City">
-              <input value={form.city} onChange={(e) => set('city', e.target.value)} className={inputCls} placeholder="e.g. Gujrat" />
-            </Field>
-            <Field label="Email">
-              <input value={form.email} onChange={(e) => set('email', e.target.value)} type="email" className={inputCls} placeholder="optional" />
-            </Field>
-          </div>
+          {/* City — bound to the selected city (changeable only via the city button) */}
+          <Field label="City">
+            <div className="flex items-center gap-2 rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5">
+              <MapPin className="w-4 h-4 text-primary-600" />
+              <span className="font-medium text-gray-900">{selectedCity?.name || 'No city selected'}</span>
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Your restaurant is registered in <strong>{selectedCity?.name || 'this city'}</strong> — its request goes to
+              this city&apos;s admin and you&apos;ll only see this city&apos;s catalog. To change it, use the floating city button.
+            </p>
+          </Field>
+          <Field label="Email">
+            <input value={form.email} onChange={(e) => set('email', e.target.value)} type="email" className={inputCls} placeholder="optional" />
+          </Field>
           <Field label="Restaurant address">
             <textarea value={form.address} onChange={(e) => set('address', e.target.value)} rows={2}
               className={inputCls} placeholder="Complete address" />

@@ -17,22 +17,18 @@ import logger from '../utils/logger';
 /** GET /api/restaurant/categories — restaurant categories in the restaurant's city. */
 export const getRestaurantCategories = asyncHandler(async (req: Request, res: Response) => {
   if (!(await hasRestaurantCatalogColumns())) return successResponse(res, [], 'Categories');
+  // City-bound: a restaurant only ever sees its own city's catalog. Filtering on
+  // city_id = NULL (no city) returns nothing, which is the correct safe default.
   const cityId = req.restaurant!.city_id;
-  const params: any[] = [];
-  let cityClause = '';
-  if (cityId) {
-    params.push(cityId);
-    cityClause = ` AND c.city_id = $${params.length}`;
-  }
   const result = await query(
     `SELECT c.id, c.name_ur, c.name_en, c.slug, c.icon_url, c.image_url, c.display_order,
             COUNT(p.id) FILTER (WHERE p.is_active = TRUE AND p.is_restaurant = TRUE) AS product_count
        FROM categories c
        LEFT JOIN products p ON c.id = p.category_id
-      WHERE c.is_active = TRUE AND c.is_restaurant = TRUE${cityClause}
+      WHERE c.is_active = TRUE AND c.is_restaurant = TRUE AND c.city_id = $1
       GROUP BY c.id
       ORDER BY c.display_order ASC, c.name_en ASC`,
-    params
+    [cityId]
   );
   return successResponse(res, result.rows, 'Categories');
 });
@@ -40,8 +36,9 @@ export const getRestaurantCategories = asyncHandler(async (req: Request, res: Re
 /** GET /api/restaurant/products?category= — restaurant products with quality prices. */
 export const getRestaurantProducts = asyncHandler(async (req: Request, res: Response) => {
   if (!(await hasRestaurantCatalogColumns())) return successResponse(res, [], 'Products');
+  // City-bound: only the restaurant's own city catalog (NULL city → empty).
   const cityId = req.restaurant!.city_id;
-  const params: any[] = [];
+  const params: any[] = [cityId];
   let sql = `
     SELECT p.id, p.name_ur, p.name_en, p.slug, p.price, p.quality_b_price, p.quality_c_price,
            p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
@@ -51,11 +48,7 @@ export const getRestaurantProducts = asyncHandler(async (req: Request, res: Resp
            c.name_en AS category_name, c.slug AS category_slug, p.category_id
       FROM products p
       JOIN categories c ON p.category_id = c.id
-     WHERE p.is_active = TRUE AND p.is_restaurant = TRUE`;
-  if (cityId) {
-    params.push(cityId);
-    sql += ` AND p.city_id = $${params.length}`;
-  }
+     WHERE p.is_active = TRUE AND p.is_restaurant = TRUE AND p.city_id = $1`;
   if (typeof req.query.category === 'string' && req.query.category) {
     params.push(req.query.category);
     sql += ` AND p.category_id = $${params.length}`;

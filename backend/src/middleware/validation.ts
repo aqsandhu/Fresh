@@ -268,6 +268,10 @@ export const productSchemas = {
     allow_half_kg: Joi.boolean().optional(),
     allow_quarter_kg: Joi.boolean().optional(),
     tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
+    // Restaurant (B2B) catalog flag + quality-tier prices (A = price).
+    is_restaurant: Joi.boolean().optional(),
+    quality_b_price: commonSchemas.price.allow(null, '', 0).optional(),
+    quality_c_price: commonSchemas.price.allow(null, '', 0).optional(),
   }),
 
   update: Joi.object({
@@ -280,6 +284,9 @@ export const productSchemas = {
     half_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
     quarter_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
     half_dozen_price: commonSchemas.price.allow(null, '', 0).optional(),
+    is_restaurant: Joi.boolean().optional(),
+    quality_b_price: commonSchemas.price.allow(null, '', 0).optional(),
+    quality_c_price: commonSchemas.price.allow(null, '', 0).optional(),
     unit_type: Joi.string().valid('kg', 'gram', 'piece', 'dozen', 'liter', 'ml', 'pack'),
     unit_value: Joi.number().positive(),
     stock_quantity: Joi.number().integer().min(0),
@@ -456,6 +463,7 @@ export const restaurantSchemas = {
     email: commonSchemas.email.allow('', null),
     address: Joi.string().max(1000).allow('', null),
     city: Joi.string().max(120).allow('', null),
+    city_id: commonSchemas.uuid.optional().allow(null, ''),
   }),
 
   login: Joi.object({

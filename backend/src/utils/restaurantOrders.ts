@@ -82,11 +82,12 @@ export async function placeRestaurantOrder(
     const lines: any[] = [];
     for (const item of items) {
       const pr = await client.query(
+        // City-bound: a restaurant can only order its own city's catalog.
         `SELECT id, name_en, primary_image, sku, price, quality_b_price, quality_c_price,
                 half_kg_price, quarter_kg_price, half_dozen_price
            FROM products
           WHERE id = $1 AND is_active = TRUE AND is_restaurant = TRUE
-            AND ($2::uuid IS NULL OR city_id = $2)
+            AND city_id = $2
           FOR UPDATE`,
         [item.product_id, restaurant.city_id]
       );

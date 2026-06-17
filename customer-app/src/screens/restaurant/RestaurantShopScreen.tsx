@@ -13,7 +13,7 @@ import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button } from '@components';
 import {
   restaurantApi, getRestaurantInfo, clearRestaurantSession,
-  availableQualities, availableUnits, unitPrice, money, round2,
+  availableQualities, availableUnits, unitPrice, qualityBasePrice, money, round2,
   type Quality, type Unit,
 } from '@services/restaurant.service';
 
@@ -236,19 +236,35 @@ function ProductCard({ product, onAdd }: { product: any; onAdd: (l: CartLine) =>
       <Text style={styles.cardName}>{product.name_en}</Text>
       {!!product.name_ur && <Text style={styles.cardNameUr}>{product.name_ur}</Text>}
 
+      {qualities.length > 1 && (
+        <>
+          <Text style={styles.optLabel}>Quality</Text>
+          <View style={styles.optRow}>
+            {qualities.map((q) => {
+              const qp = qualityBasePrice(product, q);
+              const active = quality === q;
+              return (
+                <TouchableOpacity key={q} onPress={() => setQuality(q)} style={[styles.opt, active && styles.optActive]}>
+                  <Text style={[styles.optText, active && styles.optTextActive, { fontWeight: '700' }]}>{q}</Text>
+                  <Text style={[styles.optPrice, active && styles.optTextActive]}>{qp != null ? money(qp) : '—'}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </>
+      )}
+      <Text style={styles.optLabel}>Quantity unit</Text>
       <View style={styles.optRow}>
-        {qualities.map((q) => (
-          <TouchableOpacity key={q} onPress={() => setQuality(q)} style={[styles.opt, quality === q && styles.optActive]}>
-            <Text style={[styles.optText, quality === q && styles.optTextActive]}>Q{q}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      <View style={styles.optRow}>
-        {units.map((u) => (
-          <TouchableOpacity key={u.value} onPress={() => setUnit(u.value)} style={[styles.opt, unit === u.value && styles.optActive]}>
-            <Text style={[styles.optText, unit === u.value && styles.optTextActive]}>{u.label}</Text>
-          </TouchableOpacity>
-        ))}
+        {units.map((u) => {
+          const upr = unitPrice(product, quality, u.value);
+          const active = unit === u.value;
+          return (
+            <TouchableOpacity key={u.value} onPress={() => setUnit(u.value)} style={[styles.opt, active && styles.optActive]}>
+              <Text style={[styles.optText, active && styles.optTextActive, { fontWeight: '600' }]}>{u.short}</Text>
+              <Text style={[styles.optPrice, active && styles.optTextActive]}>{upr != null ? money(upr) : '—'}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       <View style={styles.cardBottom}>
@@ -290,11 +306,13 @@ const styles = StyleSheet.create({
   card: { backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: COLORS.gray100 },
   cardName: { fontSize: 15, fontWeight: '700', color: COLORS.gray900 },
   cardNameUr: { fontSize: 14, color: COLORS.gray500, textAlign: 'right', writingDirection: 'rtl' },
-  optRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: SPACING.sm },
-  opt: { paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: BORDER_RADIUS.sm, borderWidth: 1, borderColor: COLORS.gray300, marginRight: 8, marginBottom: 4 },
+  optLabel: { fontSize: 11, fontWeight: '700', color: COLORS.gray400, textTransform: 'uppercase', marginTop: SPACING.sm, letterSpacing: 0.5 },
+  optRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 },
+  opt: { alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: 6, borderRadius: BORDER_RADIUS.sm, borderWidth: 1, borderColor: COLORS.gray300, marginRight: 8, marginBottom: 4 },
   optActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary50 },
   optText: { fontSize: 13, color: COLORS.gray700 },
-  optTextActive: { color: COLORS.primary600, fontWeight: '700' },
+  optPrice: { fontSize: 11, color: COLORS.gray500, marginTop: 1 },
+  optTextActive: { color: COLORS.primary600 },
   cardBottom: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.sm },
   rate: { fontSize: 15, fontWeight: '700', color: COLORS.primary600 },
   stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: COLORS.gray300, borderRadius: BORDER_RADIUS.sm },
