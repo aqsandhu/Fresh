@@ -117,6 +117,13 @@ export const ProfileScreen: React.FC = () => {
 
   const menuItems: MenuItem[] = [
     {
+      icon: 'restaurant',
+      title: 'Order as Restaurant',
+      subtitle: 'Wholesale catalog for restaurants',
+      onPress: () => navigation.navigate('RestaurantLogin'),
+      showArrow: true,
+    },
+    {
       icon: 'grain',
       title: 'Atta Chakki',
       subtitle: 'Grind your wheat at our mill',
