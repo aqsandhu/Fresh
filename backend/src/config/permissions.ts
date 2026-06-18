@@ -54,6 +54,9 @@ export const PERMISSION_CODES = [
   'rider_applications.manage',
   'roles.manage',
   'admins.manage',
+  'ocp.manage',
+  'ocp.stock.send',
+  'ocp.settlements.receive',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];
@@ -113,4 +116,7 @@ export const PERMISSION_CATALOGUE: PermissionCatalogueRow[] = [
   { code: 'rider_applications.manage', description: 'Manage rider applications + page content', category: 'Riders' },
   { code: 'roles.manage',        description: 'Create / manage admin roles',     category: 'Admins' },
   { code: 'admins.manage',       description: 'Invite / manage admin users',     category: 'Admins' },
+  { code: 'ocp.manage',              description: 'Create / manage Order Collection Points', category: 'OCP' },
+  { code: 'ocp.stock.send',          description: 'Send stock to an OCP',                    category: 'OCP' },
+  { code: 'ocp.settlements.receive', description: 'Receive OCP cash settlements',            category: 'OCP' },
 ];

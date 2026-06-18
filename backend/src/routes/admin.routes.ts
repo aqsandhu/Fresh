@@ -11,6 +11,7 @@ import * as complaintController from '../controllers/complaint.controller';
 import * as tipsController from '../controllers/tips.controller';
 import * as riderAppController from '../controllers/riderApplication.controller';
 import * as restaurantsController from '../controllers/admin/restaurants.controller';
+import * as ocpController from '../controllers/admin/ocp.controller';
 import {
   authenticate,
   requireAdmin,
@@ -284,6 +285,12 @@ router.post('/restaurants/:id/disable', adminRateLimiter, restaurantsController.
 router.post('/restaurants/:id/ban', adminRateLimiter, restaurantsController.banRestaurant);
 router.put('/restaurants/:id', adminRateLimiter, restaurantsController.updateRestaurant);
 router.delete('/restaurants/:id', adminRateLimiter, restaurantsController.removeRestaurant);
+
+// Order Collection Points (OCP) — cross-city management (perm: ocp.manage)
+router.get('/ocp', ocpController.listOcps);
+router.post('/ocp', adminRateLimiter, ocpController.createOcp);
+router.put('/ocp/:id', adminRateLimiter, ocpController.updateOcp);
+router.delete('/ocp/:id', adminRateLimiter, ocpController.deleteOcp);
 
 // User guidance tips (per-city; global tips are super-admin only)
 router.get('/tips', tipsController.listTips);

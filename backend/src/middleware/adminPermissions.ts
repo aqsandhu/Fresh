@@ -135,6 +135,13 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
       ? ['restaurants.view', 'restaurants.manage']
       : ['restaurants.manage'];
   }
+  // Order Collection Points: stock-send + settlement-receive have their own
+  // codes; everything else under /ocp is general OCP management.
+  if (p.startsWith('/ocp')) {
+    if (p.includes('/stock')) return ['ocp.stock.send', 'ocp.manage'];
+    if (p.includes('/settlements')) return ['ocp.settlements.receive', 'ocp.manage'];
+    return ['ocp.manage'];
+  }
   if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
   if (p.startsWith('/cities')) {
     if (m === 'GET') return ANY_ADMIN; // city list needed by header switcher
