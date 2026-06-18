@@ -23,6 +23,7 @@ import complaintRoutes from './complaint.routes';
 import tipsRoutes from './tips.routes';
 import workAsRiderRoutes from './workAsRider.routes';
 import restaurantRoutes from './restaurant.routes';
+import ocpRoutes from './ocp.routes';
 
 const router = Router();
 
@@ -47,5 +48,6 @@ router.use('/complaints', complaintRoutes);
 router.use('/tips', tipsRoutes);
 router.use('/work-as-rider', workAsRiderRoutes);
 router.use('/restaurant', restaurantRoutes);
+router.use('/ocp', ocpRoutes);
 
 export default router;

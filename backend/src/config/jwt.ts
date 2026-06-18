@@ -204,6 +204,36 @@ export const verifyRestaurantToken = (token: string): RestaurantTokenPayload => 
   return decoded as unknown as RestaurantTokenPayload;
 };
 
+// ── OCP (Order Collection Point) tokens ─────────────────────────────────────
+// Fully isolated like restaurant tokens: payload carries `type: 'ocp'` + `ocpId`
+// and NO userId/role — an OCP token can only satisfy `authenticateOcp`, never the
+// user/admin/restaurant guards.
+const OCP_JWT_EXPIRES_IN = process.env.OCP_JWT_EXPIRES_IN || '12h';
+
+export interface OcpTokenPayload {
+  ocpId: string;
+  phone: string;
+  type: 'ocp';
+  iat?: number;
+  exp?: number;
+}
+
+export const generateOcpToken = (ocpId: string, phone: string): string => {
+  return jwt.sign(
+    { ocpId, phone, type: 'ocp' },
+    jwtSecret,
+    { expiresIn: OCP_JWT_EXPIRES_IN } as SignOptions
+  );
+};
+
+export const verifyOcpToken = (token: string): OcpTokenPayload => {
+  const decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+  if (decoded?.type !== 'ocp' || typeof decoded?.ocpId !== 'string') {
+    throw new Error('Not an OCP token');
+  }
+  return decoded as unknown as OcpTokenPayload;
+};
+
 // Decode token without verification (for debugging)
 export const decodeToken = (token: string): JwtPayload | null => {
   try {

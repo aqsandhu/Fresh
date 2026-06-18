@@ -38,6 +38,7 @@ import { ensureTipsTable } from './config/tipsSchema';
 import { ensureWhatsappLinkColumns } from './config/whatsappOrderSchema';
 import { ensureRiderApplicationsTable } from './config/riderApplicationSchema';
 import { ensureRestaurantsTable, ensureRestaurantPhoneUnique, ensureRestaurantDeliveryColumns } from './config/restaurantSchema';
+import { ensureOcpTables } from './config/ocpSchema';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -322,6 +323,7 @@ const startServer = async () => {
         await ensureRestaurantPhoneUnique();
         await ensureRestaurantDeliveryColumns();
         await ensureRestaurantOrderColumns();
+        await ensureOcpTables();
         // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars
         // are set. Safe to call on every boot — idempotently upserts the row.
         const adminResult = await bootstrapAdmin();
