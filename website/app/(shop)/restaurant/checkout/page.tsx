@@ -10,6 +10,14 @@ import { formatPriceShort } from '@/lib/utils'
 import { getRestaurantInfo, type RestaurantInfo } from '@/lib/restaurantSession'
 import { restaurantShopApi } from '@/lib/restaurantApi'
 import { useRestaurantCartStore } from '@/store/restaurantCartStore'
+import { getSlotAvailability } from '@/lib/timeSlots'
+
+function localDateStr(day: 'today' | 'tomorrow'): string {
+  const d = new Date()
+  if (day === 'tomorrow') d.setDate(d.getDate() + 1)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
 
 function unitShort(unit: string): string {
   if (unit === 'half_kg') return '½ kg'
@@ -35,9 +43,10 @@ export default function RestaurantCheckoutPage() {
   const [placing, setPlacing] = useState(false)
 
   // Delivery config + slots.
-  const [delivery, setDelivery] = useState({ base_charge: 100, free_delivery_threshold: 2000, urgent_charge: 0, urgent_eta: '' })
+  const [delivery, setDelivery] = useState({ base_charge: 100, free_delivery_threshold: 2000, urgent_charge: 0, urgent_eta: '', slot_cutoff_percent: 60 })
   const [slots, setSlots] = useState<any[]>([])
   const [timeSlotId, setTimeSlotId] = useState('')
+  const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
   const [urgent, setUrgent] = useState(false)
 
   // Editable profile.
@@ -60,13 +69,11 @@ export default function RestaurantCheckoutPage() {
     setReady(true)
     ;(async () => {
       try {
-        const [d, s, me] = await Promise.all([
+        const [d, me] = await Promise.all([
           restaurantShopApi.getDelivery(),
-          restaurantShopApi.getTimeSlots(),
           restaurantShopApi.getMe().catch(() => null),
         ])
         setDelivery(d)
-        setSlots(s || [])
         if (me) {
           if (me.address) setAddress((prev) => prev || me.address)
           if (me.latitude != null && me.longitude != null) setCoords({ lat: Number(me.latitude), lng: Number(me.longitude) })
@@ -77,6 +84,18 @@ export default function RestaurantCheckoutPage() {
       }
     })()
   }, [router])
+
+  // (Re)load slots whenever the day changes; reset the picked slot.
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    setTimeSlotId('')
+    restaurantShopApi
+      .getTimeSlots(localDateStr(selectedDay))
+      .then((s) => { if (!cancelled) setSlots(s || []) })
+      .catch(() => { if (!cancelled) setSlots([]) })
+    return () => { cancelled = true }
+  }, [ready, selectedDay])
 
   const urgentEnabled = delivery.urgent_charge > 0
 
@@ -132,6 +151,7 @@ export default function RestaurantCheckoutPage() {
         {
           customer_notes: notes.trim() || undefined,
           time_slot_id: urgent ? null : timeSlotId,
+          requested_delivery_date: urgent ? undefined : localDateStr(selectedDay),
           urgent_delivery: urgent,
           address: address.trim() || undefined,
           ...(coords ? { latitude: coords.lat, longitude: coords.lng } : {}),
@@ -241,33 +261,56 @@ export default function RestaurantCheckoutPage() {
               )}
 
               {!urgent && (
-                slots.length === 0 ? (
-                  <p className="text-sm text-gray-500">No delivery slots available right now. Please contact support.</p>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {slots.map((s) => {
-                      const active = timeSlotId === s.id
-                      const full = (s.available_slots ?? 1) <= 0
-                      return (
-                        <button
-                          key={s.id}
-                          type="button"
-                          disabled={full}
-                          onClick={() => setTimeSlotId(s.id)}
-                          className={`rounded-lg border px-2 py-2 text-sm transition-colors ${
-                            active ? 'border-primary-600 bg-primary-50 text-primary-700 font-semibold'
-                              : full ? 'border-gray-100 text-gray-300 cursor-not-allowed'
-                              : 'border-gray-200 text-gray-700 hover:border-primary-300'
-                          }`}
-                        >
-                          {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
-                          {s.is_free_delivery_slot ? <span className="block text-[10px] text-green-600">Free delivery</span> : null}
-                          {full ? <span className="block text-[10px]">Full</span> : null}
-                        </button>
-                      )
-                    })}
+                <>
+                  {/* Today / Tomorrow */}
+                  <div className="inline-flex rounded-lg bg-gray-100 p-1 mb-3">
+                    {(['today', 'tomorrow'] as const).map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        onClick={() => setSelectedDay(d)}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                          selectedDay === d ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                      >
+                        {d === 'today' ? 'Today' : 'Tomorrow'}
+                      </button>
+                    ))}
                   </div>
-                )
+
+                  {slots.length === 0 ? (
+                    <p className="text-sm text-gray-500">No delivery slots available {selectedDay === 'today' ? 'today' : 'tomorrow'}.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {slots.map((s) => {
+                        const active = timeSlotId === s.id
+                        const avail = getSlotAvailability(s, selectedDay, delivery.slot_cutoff_percent)
+                        const disabled = (s.available_slots ?? 1) <= 0 || avail.unavailable
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            disabled={disabled}
+                            onClick={() => setTimeSlotId(s.id)}
+                            className={`rounded-lg border px-2 py-2 text-sm transition-colors ${
+                              active ? 'border-primary-600 bg-primary-50 text-primary-700 font-semibold'
+                                : disabled ? 'border-gray-100 text-gray-300 cursor-not-allowed'
+                                : 'border-gray-200 text-gray-700 hover:border-primary-300'
+                            }`}
+                          >
+                            {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
+                            {s.is_free_delivery_slot ? <span className="block text-[10px] text-green-600">Free delivery</span> : null}
+                            {(s.available_slots ?? 1) <= 0
+                              ? <span className="block text-[10px]">Full</span>
+                              : avail.unavailable
+                              ? <span className="block text-[10px]">{avail.reason === 'expired' ? 'Passed' : 'Closing'}</span>
+                              : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

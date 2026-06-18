@@ -85,6 +85,8 @@ router.get('/delivery', asyncHandler(async (req, res) => {
     urgent_charge: num('urgent_charge', 0),
     urgent_eta: (map['urgent_eta'] || '').trim(),
     urgent_enabled: num('urgent_charge', 0) > 0,
+    // % of a TODAY slot's window that may elapse before it becomes unselectable.
+    slot_cutoff_percent: num('slot_cutoff_percent', 60),
   };
   successResponse(res, settings, 'Delivery settings retrieved');
 }));

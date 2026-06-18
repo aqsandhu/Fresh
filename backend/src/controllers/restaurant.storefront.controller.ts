@@ -78,6 +78,7 @@ export const getRestaurantDeliverySettings = asyncHandler(async (req: Request, r
       free_delivery_threshold: conf.freeThreshold,
       urgent_charge: conf.urgentCharge,
       urgent_eta: conf.urgentEta,
+      slot_cutoff_percent: conf.slotCutoffPercent,
     },
     'Delivery settings'
   );
@@ -104,10 +105,12 @@ export const updateRestaurantFrontImage = asyncHandler(async (req: Request, res:
   return successResponse(res, { front_image_url: url }, 'Front image updated');
 });
 
-/** GET /api/restaurant/time-slots — active restaurant slots for today. */
-export const getRestaurantTimeSlots = asyncHandler(async (_req: Request, res: Response) => {
+/** GET /api/restaurant/time-slots?date=YYYY-MM-DD — active restaurant slots for the day. */
+export const getRestaurantTimeSlots = asyncHandler(async (req: Request, res: Response) => {
   if (!(await hasRestaurantDeliveryColumns())) return successResponse(res, [], 'Time slots');
-  const dayOfWeek = new Date().getDay();
+  const dateStr = typeof req.query.date === 'string' ? req.query.date : '';
+  const target = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? new Date(`${dateStr}T00:00:00`) : new Date();
+  const dayOfWeek = Number.isNaN(target.getTime()) ? new Date().getDay() : target.getDay();
   const result = await query(
     `SELECT id, slot_name, start_time, end_time,
             is_free_delivery_slot, is_express_slot,
@@ -134,7 +137,7 @@ export const createRestaurantOrder = asyncHandler(async (req: Request, res: Resp
     return errorResponse(res, 'Restaurant ordering is being set up. Please try again shortly.', 503);
   }
 
-  const { items, customer_notes, time_slot_id, urgent_delivery, address, latitude, longitude, front_image_url } = req.body;
+  const { items, customer_notes, time_slot_id, requested_delivery_date, urgent_delivery, address, latitude, longitude, front_image_url } = req.body;
 
   let order: any;
   let restaurant: any;
@@ -142,6 +145,7 @@ export const createRestaurantOrder = asyncHandler(async (req: Request, res: Resp
     ({ order, restaurant } = await placeRestaurantOrder(req.restaurant!.id, items, {
       customerNotes: customer_notes,
       timeSlotId: time_slot_id || null,
+      requestedDeliveryDate: requested_delivery_date || null,
       isUrgent: urgent_delivery === true || urgent_delivery === 'true',
       address: address ?? undefined,
       lat: latitude != null && latitude !== '' ? Number(latitude) : undefined,

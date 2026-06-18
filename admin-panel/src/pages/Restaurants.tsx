@@ -275,6 +275,7 @@ function SettingsSection() {
   const [threshold, setThreshold] = useState('');
   const [urgent, setUrgent] = useState('');
   const [urgentEta, setUrgentEta] = useState('');
+  const [slotCutoff, setSlotCutoff] = useState('60');
 
   const { data } = useQuery({ queryKey: ['restaurant-settings'], queryFn: () => restaurantService.getSettings() });
   React.useEffect(() => {
@@ -283,6 +284,7 @@ function SettingsSection() {
       setThreshold(String(data.freeDeliveryThreshold));
       setUrgent(String(data.urgentCharge ?? 0));
       setUrgentEta(String(data.urgentEta ?? ''));
+      setSlotCutoff(String(data.slotCutoffPercent ?? 60));
     }
   }, [data]);
 
@@ -292,6 +294,7 @@ function SettingsSection() {
       freeDeliveryThreshold: parseFloat(threshold) || 0,
       urgentCharge: parseFloat(urgent) || 0,
       urgentEta: urgentEta.trim(),
+      slotCutoffPercent: Math.min(100, Math.max(0, parseFloat(slotCutoff) || 60)),
     }),
     onSuccess: () => {
       toast.success('Settings saved');
@@ -330,6 +333,13 @@ function SettingsSection() {
             <input type="text" value={urgentEta} onChange={(e) => setUrgentEta(e.target.value)}
               placeholder="e.g. 45–60 min"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Slot cutoff (% elapsed)</label>
+            <input type="number" min={0} max={100} value={slotCutoff} onChange={(e) => setSlotCutoff(e.target.value)}
+              placeholder="60"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+            <p className="mt-1 text-xs text-gray-400">A today-slot locks once this % of its window has passed.</p>
           </div>
         </div>
         <Button className="mt-4" onClick={() => mutation.mutate()} disabled={mutation.isPending}

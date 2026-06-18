@@ -71,7 +71,7 @@ export const CheckoutScreen: React.FC = () => {
   const cityName = useOptionalCityName() || 'Your City';
   const newAddressFormRef = useRef<CheckoutAddressFormHandle>(null);
 
-  const { items, subtotal, getDeliveryCharge, loadDeliverySettings, clearCart, hasHydrated } =
+  const { items, subtotal, getDeliveryCharge, loadDeliverySettings, clearCart, hasHydrated, deliverySlotCutoffPercent } =
     useCartStore();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -208,7 +208,8 @@ export const CheckoutScreen: React.FC = () => {
             start_time: slot.startTime,
             end_time: slot.endTime,
           },
-          day
+          day,
+          deliverySlotCutoffPercent
         );
         return !availability.unavailable;
       });
@@ -324,7 +325,8 @@ export const CheckoutScreen: React.FC = () => {
             startTime: selectedSlotForOrder.startTime,
             endTime: selectedSlotForOrder.endTime,
           },
-          activeDay
+          activeDay,
+          deliverySlotCutoffPercent
         ).unavailable)
     ) {
       Toast.show({
@@ -614,7 +616,8 @@ export const CheckoutScreen: React.FC = () => {
               {timeSlots.map((slot) => {
                 const availability = getSlotAvailability(
                   { id: slot.id, startTime: slot.startTime, endTime: slot.endTime },
-                  activeDay
+                  activeDay,
+                  deliverySlotCutoffPercent
                 );
                 const availableSlots = slot.available_slots ?? 0;
                 const disabled = availableSlots <= 0 || availability.unavailable;

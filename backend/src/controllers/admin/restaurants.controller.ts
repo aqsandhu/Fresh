@@ -331,29 +331,32 @@ export const getRestaurantSettings = asyncHandler(async (_req: Request, res: Res
   const s = await query(
     `SELECT key, value FROM site_settings WHERE key IN (
        'restaurant_delivery_base_charge','restaurant_free_delivery_threshold',
-       'restaurant_delivery_urgent_charge','restaurant_delivery_urgent_eta'
+       'restaurant_delivery_urgent_charge','restaurant_delivery_urgent_eta',
+       'restaurant_slot_cutoff_percent'
      )`
   );
   let base = 100;
   let threshold = 2000;
   let urgentCharge = 0;
   let urgentEta = '';
+  let slotCutoff = 60;
   for (const r of s.rows) {
     if (r.key === 'restaurant_delivery_base_charge') base = parseFloat(r.value) || base;
     if (r.key === 'restaurant_free_delivery_threshold') threshold = parseFloat(r.value) || threshold;
     if (r.key === 'restaurant_delivery_urgent_charge') urgentCharge = parseFloat(r.value) || 0;
     if (r.key === 'restaurant_delivery_urgent_eta') urgentEta = String(r.value || '').trim();
+    if (r.key === 'restaurant_slot_cutoff_percent') { const n = parseFloat(r.value); if (Number.isFinite(n)) slotCutoff = n; }
   }
   return successResponse(
     res,
-    { base_charge: base, free_delivery_threshold: threshold, urgent_charge: urgentCharge, urgent_eta: urgentEta },
+    { base_charge: base, free_delivery_threshold: threshold, urgent_charge: urgentCharge, urgent_eta: urgentEta, slot_cutoff_percent: slotCutoff },
     'Settings'
   );
 });
 
 /** PUT /api/admin/restaurants/settings — update global restaurant delivery config. */
 export const updateRestaurantSettings = asyncHandler(async (req: Request, res: Response) => {
-  const { base_charge, free_delivery_threshold, urgent_charge, urgent_eta } = req.body;
+  const { base_charge, free_delivery_threshold, urgent_charge, urgent_eta, slot_cutoff_percent } = req.body;
   const num = (v: unknown, fb: number) => {
     const n = parseFloat(String(v));
     return Number.isFinite(n) && n >= 0 ? n : fb;
@@ -363,6 +366,7 @@ export const updateRestaurantSettings = asyncHandler(async (req: Request, res: R
   if (free_delivery_threshold !== undefined) entries.push(['restaurant_free_delivery_threshold', String(num(free_delivery_threshold, 2000))]);
   if (urgent_charge !== undefined) entries.push(['restaurant_delivery_urgent_charge', String(num(urgent_charge, 0))]);
   if (urgent_eta !== undefined) entries.push(['restaurant_delivery_urgent_eta', String(urgent_eta ?? '').slice(0, 120)]);
+  if (slot_cutoff_percent !== undefined) entries.push(['restaurant_slot_cutoff_percent', String(Math.min(100, Math.max(0, num(slot_cutoff_percent, 60))))]);
 
   for (const [key, value] of entries) {
     await upsertGlobalSiteSetting(key, value, req.user?.id);

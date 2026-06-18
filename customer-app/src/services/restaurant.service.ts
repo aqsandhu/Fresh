@@ -24,6 +24,7 @@ export interface RestaurantInfo {
 export interface RestaurantCheckoutExtras {
   customer_notes?: string;
   time_slot_id?: string | null;
+  requested_delivery_date?: string;
   urgent_delivery?: boolean;
   address?: string;
   latitude?: number;
@@ -103,9 +104,10 @@ export const restaurantApi = {
   getCategories: (): Promise<any[]> => rfetch('/restaurant/categories'),
   getProducts: (categoryId?: string): Promise<any[]> =>
     rfetch(`/restaurant/products${categoryId ? `?category=${encodeURIComponent(categoryId)}` : ''}`),
-  getDelivery: (): Promise<{ base_charge: number; free_delivery_threshold: number; urgent_charge: number; urgent_eta: string }> =>
+  getDelivery: (): Promise<{ base_charge: number; free_delivery_threshold: number; urgent_charge: number; urgent_eta: string; slot_cutoff_percent: number }> =>
     rfetch('/restaurant/delivery'),
-  getTimeSlots: (): Promise<any[]> => rfetch('/restaurant/time-slots'),
+  getTimeSlots: (date?: string): Promise<any[]> =>
+    rfetch(`/restaurant/time-slots${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   uploadFrontImage: async (uri: string): Promise<{ front_image_url: string }> => {
     const token = await getRestaurantToken();
     const fd = new FormData();

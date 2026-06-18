@@ -106,6 +106,7 @@ export const Settings: React.FC = () => {
     expressCharge: 100,
     urgentCharge: 0,
     urgentEta: '',
+    slotCutoffPercent: 60,
   });
 
   // Time Slots State
@@ -417,6 +418,20 @@ export const Settings: React.FC = () => {
             min={0}
             helperText="Additional charge for express delivery"
             required
+          />
+          <Input
+            label="Slot cutoff (% elapsed)"
+            type="number"
+            value={deliverySettings.slotCutoffPercent ?? 60}
+            onChange={(e) =>
+              setDeliverySettings({
+                ...deliverySettings,
+                slotCutoffPercent: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)),
+              })
+            }
+            min={0}
+            max={100}
+            helperText="A today-slot locks once this % of its window has passed (default 60)"
           />
         </div>
 

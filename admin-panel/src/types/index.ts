@@ -297,6 +297,8 @@ export interface DeliverySettings {
   /** Urgent (on-demand) delivery — super admin only. */
   urgentCharge?: number;
   urgentEta?: string;
+  /** % of a today-slot's window allowed to elapse before it locks (default 60). */
+  slotCutoffPercent?: number;
 }
 
 export interface TimeSlot {
