@@ -34,6 +34,7 @@ import { normalizePhoneNumber } from '../../utils/validators';
 import { hasVariableWeightColumns, hasQualityCatalogColumns } from '../../config/productSchema';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
 import { hasUrgentDeliveryColumns, hasRestaurantOrderColumns } from '../../config/orderSchema';
+import { hasOcpTables } from '../../config/ocpSchema';
 
 /**
  * Fire-and-forget: when an order reaches `delivered`, check whether the
@@ -123,12 +124,16 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
   const urgentCol = (await hasUrgentDeliveryColumns())
     ? 'o.is_urgent_delivery, o.urgent_delivery_eta,'
     : '';
+  const ocpReady = await hasOcpTables();
+  const ocpCol = ocpReady ? 'o.ocp_id, o.phone_visible_to_ocp, ocp.name AS ocp_name,' : '';
+  const ocpJoin = ocpReady ? 'LEFT JOIN order_collection_points ocp ON o.ocp_id = ocp.id' : '';
 
   // Get orders
   const ordersSql = `
     SELECT
       o.id, o.order_number, o.status, o.source,
       ${urgentCol}
+      ${ocpCol}
       o.subtotal, o.discount_amount, o.delivery_charge, o.tax_amount, o.total_amount,
       o.payment_method, o.payment_status, o.paid_amount,
       o.placed_at, o.delivered_at, o.show_customer_phone,
@@ -149,6 +154,7 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
     LEFT JOIN users ru ON r.user_id = ru.id
     LEFT JOIN time_slots ts ON o.time_slot_id = ts.id
     LEFT JOIN addresses addr ON o.address_id = addr.id
+    ${ocpJoin}
     ${whereSql}
     ORDER BY o.placed_at DESC
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
