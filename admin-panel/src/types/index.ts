@@ -432,6 +432,7 @@ export interface WhatsAppOrderData {
     productId: string;
     quantity: number;
     unit?: string;
+    quality?: 'A' | 'B' | 'C';
   }[];
   urgentDelivery?: boolean;
   timeSlotId?: string;

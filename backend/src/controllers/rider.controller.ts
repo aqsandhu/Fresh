@@ -7,6 +7,7 @@ import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
 import { isValidOrderTransition } from '../utils/orderStatus';
+import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
@@ -865,9 +866,10 @@ export const pinLocation = asyncHandler(async (req: Request, res: Response) => {
 
   const riderId = riderResult.rows[0].id;
 
-  // Get the task and its order's address_id
+  // Get the task and its order (consumer orders carry address_id; restaurant
+  // orders carry restaurant_id + a JSONB snapshot instead).
   const taskResult = await query(
-    `SELECT rt.id, o.address_id, o.user_id as customer_user_id
+    `SELECT rt.id, o.id AS order_id, o.address_id, o.restaurant_id, o.user_id as customer_user_id
      FROM rider_tasks rt
      JOIN orders o ON rt.order_id = o.id
      WHERE rt.id = $1 AND rt.rider_id = $2`,
@@ -878,11 +880,31 @@ export const pinLocation = asyncHandler(async (req: Request, res: Response) => {
     return notFoundResponse(res, 'Task not found');
   }
 
-  const { address_id } = taskResult.rows[0];
+  const { address_id, restaurant_id, order_id } = taskResult.rows[0];
+
+  // Restaurant order: update the restaurant's MASTER location (shows everywhere)
+  // + patch this order's snapshot. No addresses row exists for these.
+  if (restaurant_id) {
+    await query(
+      `UPDATE restaurants
+          SET location = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, updated_at = NOW()
+        WHERE id = $3`,
+      [longitude, latitude, restaurant_id]
+    );
+    await query(
+      `UPDATE orders
+          SET delivery_address_snapshot = jsonb_set(
+                COALESCE(delivery_address_snapshot, '{}'::jsonb), '{location}', $1::jsonb, true)
+        WHERE id = $2`,
+      [JSON.stringify({ latitude, longitude }), order_id]
+    );
+    logger.info('Rider pinned restaurant location', { riderId, taskId: id, restaurantId: restaurant_id, latitude, longitude });
+    return successResponse(res, { latitude, longitude }, 'Location pinned successfully');
+  }
 
   // Update the address location
   await query(
-    `UPDATE addresses 
+    `UPDATE addresses
      SET location = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
          location_added_by = 'rider',
          updated_at = NOW()
@@ -935,9 +957,9 @@ export const uploadDoorPicture = asyncHandler(async (req: Request, res: Response
   if (riderResult.rows.length === 0) return notFoundResponse(res, 'Rider not found');
   const riderId = riderResult.rows[0].id;
 
-  // Get the task and its order's address_id
+  // Get the task and its order (restaurant orders carry restaurant_id + snapshot).
   const taskResult = await query(
-    `SELECT rt.id, o.address_id
+    `SELECT rt.id, o.id AS order_id, o.address_id, o.restaurant_id
      FROM rider_tasks rt
      JOIN orders o ON rt.order_id = o.id
      WHERE rt.id = $1 AND rt.rider_id = $2`,
@@ -948,11 +970,28 @@ export const uploadDoorPicture = asyncHandler(async (req: Request, res: Response
     return notFoundResponse(res, 'Task not found');
   }
 
-  const { address_id } = taskResult.rows[0];
+  const { address_id, restaurant_id, order_id } = taskResult.rows[0];
   // Supabase Storage URL set by the upload middleware.
   const imageUrl = req.file.url || '';
   if (!imageUrl) {
     return errorResponse(res, 'Image upload failed (storage misconfigured)', 500);
+  }
+
+  // Restaurant order: the "door picture" is the restaurant's storefront photo.
+  // Update the MASTER restaurant row (shows everywhere) + this order's snapshot.
+  if (restaurant_id) {
+    if (await hasRestaurantDeliveryColumns()) {
+      await query(`UPDATE restaurants SET front_image_url = $1, updated_at = NOW() WHERE id = $2`, [imageUrl, restaurant_id]);
+    }
+    await query(
+      `UPDATE orders
+          SET delivery_address_snapshot = jsonb_set(
+                COALESCE(delivery_address_snapshot, '{}'::jsonb), '{front_image_url}', $1::jsonb, true)
+        WHERE id = $2`,
+      [JSON.stringify(imageUrl), order_id]
+    );
+    logger.info('Rider updated restaurant front image', { riderId, taskId: id, restaurantId: restaurant_id });
+    return successResponse(res, { url: imageUrl }, 'Front image uploaded successfully');
   }
 
   // Update the address door_picture_url

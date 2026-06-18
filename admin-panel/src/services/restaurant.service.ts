@@ -89,17 +89,57 @@ export const restaurantService = {
     const res = await api.get<ApiResponse<Record<string, number>>>('/admin/restaurants/dashboard');
     return res.data || {};
   },
-  getSettings: async (): Promise<{ baseCharge: number; freeDeliveryThreshold: number }> => {
-    const res = await api.get<ApiResponse<{ baseCharge: number; freeDeliveryThreshold: number }>>(
-      '/admin/restaurants/settings'
-    );
+  getSettings: async (): Promise<{ baseCharge: number; freeDeliveryThreshold: number; urgentCharge: number; urgentEta: string }> => {
+    const res = await api.get<ApiResponse<any>>('/admin/restaurants/settings');
     const d = res.data as any;
-    return { baseCharge: Number(d?.baseCharge ?? 100), freeDeliveryThreshold: Number(d?.freeDeliveryThreshold ?? 2000) };
+    return {
+      baseCharge: Number(d?.baseCharge ?? 100),
+      freeDeliveryThreshold: Number(d?.freeDeliveryThreshold ?? 2000),
+      urgentCharge: Number(d?.urgentCharge ?? 0),
+      urgentEta: String(d?.urgentEta ?? ''),
+    };
   },
-  updateSettings: async (data: { baseCharge: number; freeDeliveryThreshold: number }): Promise<void> => {
+  updateSettings: async (data: {
+    baseCharge: number;
+    freeDeliveryThreshold: number;
+    urgentCharge?: number;
+    urgentEta?: string;
+  }): Promise<void> => {
     await api.put('/admin/restaurants/settings', {
       base_charge: data.baseCharge,
       free_delivery_threshold: data.freeDeliveryThreshold,
+      ...(data.urgentCharge !== undefined ? { urgent_charge: data.urgentCharge } : {}),
+      ...(data.urgentEta !== undefined ? { urgent_eta: data.urgentEta } : {}),
     });
+  },
+
+  // Restaurant time slots — reuse the admin settings slot CRUD with audience=restaurant.
+  listTimeSlots: async (): Promise<any[]> => {
+    const res = await api.get<ApiResponse<any[]>>('/admin/settings/time-slots', { audience: 'restaurant' });
+    return res.data || [];
+  },
+  createTimeSlot: async (data: {
+    startTime: string;
+    endTime: string;
+    maxOrders?: number;
+    isActive?: boolean;
+    isFreeDeliverySlot?: boolean;
+  }): Promise<any> => {
+    const res = await api.post<ApiResponse<any>>('/admin/settings/time-slots', {
+      start_time: data.startTime,
+      end_time: data.endTime,
+      max_orders: data.maxOrders ?? 50,
+      is_active: data.isActive !== false,
+      is_free_delivery_slot: data.isFreeDeliverySlot === true,
+      audience: 'restaurant',
+    });
+    return res.data;
+  },
+  updateTimeSlot: async (id: string, data: Record<string, any>): Promise<any> => {
+    const res = await api.put<ApiResponse<any>>(`/admin/settings/time-slots/${id}`, data);
+    return res.data;
+  },
+  deleteTimeSlot: async (id: string): Promise<void> => {
+    await api.delete(`/admin/settings/time-slots/${id}`);
   },
 };

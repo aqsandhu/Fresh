@@ -16,11 +16,14 @@ import type { WhatsAppOrderData, WhatsappCustomerAddress, ApiResponse } from '@/
 import { RestaurantWhatsAppOrder } from './RestaurantWhatsAppOrder';
 import toast from 'react-hot-toast';
 
+type Quality = 'A' | 'B' | 'C';
+
 interface OrderItem {
   id: string;
   productId: string;
   quantity: number;
   unit: string;
+  quality: Quality;
 }
 
 interface UnitOption {
@@ -87,21 +90,43 @@ function allowedUnitsFor(product: any): UnitOption[] {
   return units;
 }
 
-/** Per-unit price — mirrors backend resolveUnitPrice (no rounding here). */
-function unitPriceFor(product: any, unit: string): number {
-  const base = Number(product?.price) || 0;
+const optNum = (v: unknown): number | null => {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+/** Consumer base (per-full-unit) price for a quality tier (null = not offered). */
+function qualityBaseConsumer(product: any, quality: Quality): number | null {
+  if (quality === 'B') return optNum(product?.priceB);
+  if (quality === 'C') return optNum(product?.priceC);
+  return Number(product?.price) || 0;
+}
+
+/** Quality tiers a product offers: A always; B/C only when a consumer price is set. */
+function offeredQualities(product: any): Quality[] {
+  const out: Quality[] = ['A'];
+  if (qualityBaseConsumer(product, 'B') != null) out.push('B');
+  if (qualityBaseConsumer(product, 'C') != null) out.push('C');
+  return out;
+}
+
+/** Per-unit price — mirrors backend resolveConsumerUnitPrice (no rounding here).
+ *  Quality A honours the admin's half/quarter overrides; B/C derive from base. */
+function unitPriceFor(product: any, unit: string, quality: Quality = 'A'): number {
+  const base = qualityBaseConsumer(product, quality) ?? (Number(product?.price) || 0);
+  const useOverrides = quality === 'A';
   const opt = (v: unknown, fb: number) => {
-    if (v == null || v === '') return fb;
-    const n = Number(v);
-    return Number.isFinite(n) && n >= 0 ? n : fb;
+    const n = optNum(v);
+    return n == null ? fb : n;
   };
   switch (unit) {
     case 'half_kg':
-      return opt(product?.halfKgPrice, base * 0.5);
+      return useOverrides ? opt(product?.halfKgPrice, base * 0.5) : base * 0.5;
     case 'quarter_kg':
-      return opt(product?.quarterKgPrice, base * 0.25);
+      return useOverrides ? opt(product?.quarterKgPrice, base * 0.25) : base * 0.25;
     case 'half_dozen':
-      return opt(product?.halfDozenPrice, base * 0.5);
+      return useOverrides ? opt(product?.halfDozenPrice, base * 0.5) : base * 0.5;
     default:
       return base;
   }
@@ -121,7 +146,7 @@ function composeAddress(a: WhatsappCustomerAddress): string {
 export const WhatsAppOrders: React.FC = () => {
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<'customer' | 'restaurant'>('customer');
-  const [items, setItems] = useState<OrderItem[]>([{ id: '1', productId: '', quantity: 1, unit: 'full' }]);
+  const [items, setItems] = useState<OrderItem[]>([{ id: '1', productId: '', quantity: 1, unit: 'full', quality: 'A' }]);
 
   // Editable customer + delivery fields (auto-filled by lookup, but always editable).
   const [whatsappNumber, setWhatsappNumber] = useState('');
@@ -198,7 +223,7 @@ export const WhatsAppOrders: React.FC = () => {
     setUserId('');
     setAddressId('');
     setFoundCustomer(false);
-    setItems([{ id: '1', productId: '', quantity: 1, unit: 'full' }]);
+    setItems([{ id: '1', productId: '', quantity: 1, unit: 'full', quality: 'A' }]);
     setAddresses([]);
     setLookupDone(false);
     setUrgentOn(false);
@@ -258,7 +283,7 @@ export const WhatsAppOrders: React.FC = () => {
     }
   };
 
-  const addItem = () => setItems([...items, { id: Date.now().toString(), productId: '', quantity: 1, unit: 'full' }]);
+  const addItem = () => setItems([...items, { id: Date.now().toString(), productId: '', quantity: 1, unit: 'full', quality: 'A' }]);
   const removeItem = (id: string) => {
     if (items.length > 1) setItems(items.filter((i) => i.id !== id));
   };
@@ -275,7 +300,7 @@ export const WhatsAppOrders: React.FC = () => {
     for (const it of validItems) {
       const product = (products as any[]).find((p: any) => p.id === it.productId);
       if (!product) continue;
-      const unitPrice = unitPriceFor(product, it.unit);
+      const unitPrice = unitPriceFor(product, it.unit, it.quality);
       const lineTotal = round2(unitPrice * it.quantity);
       subtotal += lineTotal;
       if (product.qualifiesForFreeDelivery === true) vegFruitSubtotal += lineTotal;
@@ -315,7 +340,7 @@ export const WhatsAppOrders: React.FC = () => {
       ...(!addressId && latitude.trim() ? { latitude: latitude.trim() } : {}),
       ...(!addressId && longitude.trim() ? { longitude: longitude.trim() } : {}),
       ...(!addressId && doorPictureUrl ? { doorPictureUrl } : {}),
-      items: pricing.validItems.map(({ productId, quantity, unit }) => ({ productId, quantity, unit })),
+      items: pricing.validItems.map(({ productId, quantity, unit, quality }) => ({ productId, quantity, unit, quality })),
       urgentDelivery: urgentOn,
       ...(!urgentOn && timeSlotId ? { timeSlotId } : {}),
       ...(!urgentOn && timeSlotId && selectedDay === 'tomorrow' ? { requestedDeliveryDate: dateStr('tomorrow') } : {}),
@@ -525,7 +550,8 @@ export const WhatsAppOrders: React.FC = () => {
                   const product = (products as any[]).find((p: any) => p.id === item.productId);
                   const units = product ? allowedUnitsFor(product) : [{ value: 'full', label: 'Per unit', short: 'unit' }];
                   const selectedUnit = units.find((u) => u.value === item.unit) || units[0];
-                  const unitPrice = product ? unitPriceFor(product, item.unit) : 0;
+                  const qualities = product ? offeredQualities(product) : (['A'] as Quality[]);
+                  const unitPrice = product ? unitPriceFor(product, item.unit, item.quality) : 0;
                   const lineTotal = round2(unitPrice * item.quantity);
                   return (
                     <div key={item.id} className="rounded-lg border border-gray-100 p-2.5">
@@ -534,8 +560,8 @@ export const WhatsAppOrders: React.FC = () => {
                         <select
                           value={item.productId}
                           onChange={(e) => {
-                            // New product resets the unit to its base unit.
-                            setItems(items.map((i) => (i.id === item.id ? { ...i, productId: e.target.value, unit: 'full' } : i)));
+                            // New product resets unit + quality to defaults.
+                            setItems(items.map((i) => (i.id === item.id ? { ...i, productId: e.target.value, unit: 'full', quality: 'A' } : i)));
                           }}
                           className="flex-1 min-w-[180px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                         >
@@ -543,6 +569,21 @@ export const WhatsAppOrders: React.FC = () => {
                           {(products as any[]).map((p: any) => (
                             <option key={p.id} value={p.id}>
                               {p.nameEn}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Quality — shown only when the product offers B/C tiers */}
+                        <select
+                          value={item.quality}
+                          onChange={(e) => updateItem(item.id, 'quality', e.target.value)}
+                          disabled={!item.productId || qualities.length <= 1}
+                          className="px-2 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 disabled:bg-gray-50 disabled:text-gray-400"
+                          title="Quality tier"
+                        >
+                          {qualities.map((q) => (
+                            <option key={q} value={q}>
+                              Quality {q}
                             </option>
                           ))}
                         </select>

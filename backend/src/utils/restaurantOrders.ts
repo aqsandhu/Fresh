@@ -6,6 +6,8 @@
 
 import { query, withTransaction } from '../config/database';
 import { roundMoney } from './money';
+import { hasUrgentDeliveryColumns } from '../config/orderSchema';
+import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import {
   normalizeProductUnit,
   normalizeQuality,
@@ -21,19 +23,38 @@ export interface RestaurantOrderItemInput {
   quality?: string;
 }
 
+/** Optional checkout context: time slot / urgent delivery and editable profile. */
+export interface PlaceRestaurantOrderOpts {
+  customerNotes?: string | null;
+  timeSlotId?: string | null;
+  isUrgent?: boolean;
+  /** Editable restaurant profile — persisted to the master row (shows everywhere). */
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  frontImageUrl?: string | null;
+}
+
 /** Effective delivery config for a restaurant (per-restaurant override or global default). */
 export async function getRestaurantDelivery(restaurant: {
   free_delivery_threshold?: any;
   delivery_base_charge?: any;
-}): Promise<{ baseCharge: number; freeThreshold: number }> {
+}): Promise<{ baseCharge: number; freeThreshold: number; urgentCharge: number; urgentEta: string }> {
   const s = await query(
-    `SELECT key, value FROM site_settings WHERE key IN ('restaurant_delivery_base_charge','restaurant_free_delivery_threshold')`
+    `SELECT key, value FROM site_settings WHERE key IN (
+       'restaurant_delivery_base_charge','restaurant_free_delivery_threshold',
+       'restaurant_delivery_urgent_charge','restaurant_delivery_urgent_eta'
+     )`
   );
   let baseChargeGlobal = 100;
   let freeThresholdGlobal = 2000;
+  let urgentCharge = 0;
+  let urgentEta = '';
   for (const row of s.rows) {
     if (row.key === 'restaurant_delivery_base_charge') baseChargeGlobal = parseFloat(row.value) || baseChargeGlobal;
     if (row.key === 'restaurant_free_delivery_threshold') freeThresholdGlobal = parseFloat(row.value) || freeThresholdGlobal;
+    if (row.key === 'restaurant_delivery_urgent_charge') urgentCharge = parseFloat(row.value) || 0;
+    if (row.key === 'restaurant_delivery_urgent_eta') urgentEta = String(row.value || '').trim();
   }
   const num = (v: any, fb: number) => {
     if (v === null || v === undefined || v === '') return fb;
@@ -43,6 +64,8 @@ export async function getRestaurantDelivery(restaurant: {
   return {
     baseCharge: num(restaurant.delivery_base_charge, baseChargeGlobal),
     freeThreshold: num(restaurant.free_delivery_threshold, freeThresholdGlobal),
+    urgentCharge,
+    urgentEta,
   };
 }
 
@@ -60,15 +83,18 @@ class RestaurantOrderError extends Error {
 export async function placeRestaurantOrder(
   restaurantId: string,
   items: RestaurantOrderItemInput[],
-  customerNotes?: string | null
+  opts: PlaceRestaurantOrderOpts = {}
 ): Promise<any> {
   if (!Array.isArray(items) || items.length === 0) {
     throw new RestaurantOrderError('Add at least one item.');
   }
+  const customerNotes = opts.customerNotes;
 
+  const deliveryReady = await hasRestaurantDeliveryColumns();
+  const frontCol = deliveryReady ? ', front_image_url' : '';
   const restRow = await query(
     `SELECT id, business_name, owner_name, phone, address, city, city_id,
-            free_delivery_threshold, delivery_base_charge,
+            free_delivery_threshold, delivery_base_charge${frontCol},
             ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
        FROM restaurants WHERE id = $1 AND deleted_at IS NULL AND status = 'approved'`,
     [restaurantId]
@@ -77,6 +103,7 @@ export async function placeRestaurantOrder(
   if (!restaurant) throw new RestaurantOrderError('Restaurant not available.');
 
   const delivery = await getRestaurantDelivery(restaurant);
+  const urgentReady = await hasUrgentDeliveryColumns();
 
   return withTransaction(async (client) => {
     let subtotal = 0;
@@ -110,33 +137,115 @@ export async function placeRestaurantOrder(
     }
     subtotal = roundMoney(subtotal);
 
-    const deliveryCharge = subtotal >= delivery.freeThreshold ? 0 : roundMoney(delivery.baseCharge);
+    // ── Editable profile (address / location pin / front image) ───────────────
+    // Persist edits to the MASTER restaurant row so they become the new default
+    // everywhere (storefront, admin, future orders); the order then snapshots the
+    // fresh values. Front-image column is gated until migration 35 lands.
+    const trimmedAddr =
+      opts.address != null && String(opts.address).trim() ? String(opts.address).trim() : null;
+    const hasPin = opts.lat != null && opts.lng != null && Number.isFinite(opts.lat) && Number.isFinite(opts.lng);
+    const profileSets: string[] = [];
+    const profileVals: any[] = [];
+    let pIdx = 1;
+    if (trimmedAddr) { profileSets.push(`address = $${pIdx++}`); profileVals.push(trimmedAddr); }
+    if (hasPin) {
+      profileSets.push(`location = ST_SetSRID(ST_MakePoint($${pIdx++}, $${pIdx++}), 4326)::geography`);
+      profileVals.push(opts.lng, opts.lat);
+    }
+    if (deliveryReady && opts.frontImageUrl !== undefined) {
+      profileSets.push(`front_image_url = $${pIdx++}`);
+      profileVals.push(opts.frontImageUrl || null);
+    }
+    if (profileSets.length > 0) {
+      profileVals.push(restaurant.id);
+      await client.query(
+        `UPDATE restaurants SET ${profileSets.join(', ')}, updated_at = NOW() WHERE id = $${pIdx}`,
+        profileVals
+      );
+    }
+    const effAddress = trimmedAddr ?? restaurant.address;
+    const effLat = hasPin ? opts.lat : restaurant.lat;
+    const effLng = hasPin ? opts.lng : restaurant.lng;
+    const effFront =
+      opts.frontImageUrl !== undefined ? (opts.frontImageUrl || null) : (restaurant.front_image_url ?? null);
+
+    // ── Delivery: urgent (flat fee, no slot) | slot (required) | legacy flat ──
+    let deliveryCharge: number;
+    let effectiveSlotId: string | null = null;
+    let urgentEta = '';
+    if (opts.isUrgent) {
+      if (delivery.urgentCharge <= 0) {
+        throw new RestaurantOrderError('Urgent delivery is not available right now.');
+      }
+      deliveryCharge = roundMoney(delivery.urgentCharge);
+      urgentEta = delivery.urgentEta;
+    } else if (opts.timeSlotId) {
+      const slot = await client.query(
+        `SELECT id, is_free_delivery_slot FROM time_slots
+          WHERE id = $1 AND audience = 'restaurant' AND status = 'available'`,
+        [opts.timeSlotId]
+      );
+      if (slot.rows.length === 0) {
+        throw new RestaurantOrderError('Selected time slot is not available. Please pick another.');
+      }
+      effectiveSlotId = opts.timeSlotId;
+      deliveryCharge = slot.rows[0].is_free_delivery_slot === true
+        ? 0
+        : (subtotal >= delivery.freeThreshold ? 0 : roundMoney(delivery.baseCharge));
+    } else {
+      // Admin / legacy path (no slot): flat threshold-based charge.
+      deliveryCharge = subtotal >= delivery.freeThreshold ? 0 : roundMoney(delivery.baseCharge);
+    }
     const totalAmount = roundMoney(subtotal + deliveryCharge);
 
     const snapshot = JSON.stringify({
       business_name: restaurant.business_name,
       owner_name: restaurant.owner_name,
       phone: restaurant.phone,
-      written_address: restaurant.address || '',
+      written_address: effAddress || '',
       city: restaurant.city || '',
-      location: { latitude: restaurant.lat ?? null, longitude: restaurant.lng ?? null },
+      location: { latitude: effLat ?? null, longitude: effLng ?? null },
+      front_image_url: effFront,
       is_restaurant: true,
     });
 
     const orderRes = await client.query(
       `INSERT INTO orders (
-        restaurant_id, delivery_address_snapshot,
+        restaurant_id, delivery_address_snapshot, time_slot_id,
         subtotal, discount_amount, delivery_charge, tax_amount, total_amount,
         payment_method, payment_status, status, source, customer_notes, city_id
-      ) VALUES ($1,$2,$3,0,$4,0,$5,'cash_on_delivery','pending','pending','website',$6,$7)
+      ) VALUES ($1,$2,$3,$4,0,$5,0,$6,'cash_on_delivery','pending','pending','website',$7,$8)
       RETURNING *`,
       [
-        restaurant.id, snapshot, subtotal, deliveryCharge, totalAmount,
+        restaurant.id, snapshot, effectiveSlotId, subtotal, deliveryCharge, totalAmount,
         customerNotes ? String(customerNotes).slice(0, 1000) : null,
         restaurant.city_id,
       ]
     );
     const order = orderRes.rows[0];
+
+    // Stamp urgent flag/eta (gated by migration 28) so admin + rider see it.
+    if (opts.isUrgent && urgentReady) {
+      await client.query(
+        `UPDATE orders SET is_urgent_delivery = TRUE, urgent_delivery_eta = $1 WHERE id = $2`,
+        [urgentEta || null, order.id]
+      );
+      order.is_urgent_delivery = true;
+      order.urgent_delivery_eta = urgentEta || null;
+    }
+
+    // Atomically claim the slot seat — prevents overbooking under races.
+    if (effectiveSlotId) {
+      const claim = await client.query(
+        `UPDATE time_slots SET booked_orders = booked_orders + 1
+          WHERE id = $1 AND (max_orders IS NULL OR booked_orders < max_orders)
+          RETURNING id`,
+        [effectiveSlotId]
+      );
+      if (claim.rowCount === 0) {
+        throw new RestaurantOrderError('Selected time slot is fully booked. Please pick another.');
+      }
+    }
 
     for (const l of lines) {
       await client.query(

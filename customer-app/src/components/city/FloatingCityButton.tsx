@@ -44,7 +44,13 @@ export const FloatingCityButton: React.FC = () => {
     'ChangePin',
     'SetPin',
   ];
-  const shouldHide = !isReady || !selectedCityId || hideOnScreens.includes(activeRoute);
+  // A restaurant is bound to ONE city — never offer city switching anywhere in
+  // the restaurant storefront (all its screens are named "Restaurant…").
+  const shouldHide =
+    !isReady ||
+    !selectedCityId ||
+    hideOnScreens.includes(activeRoute) ||
+    activeRoute.startsWith('Restaurant');
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

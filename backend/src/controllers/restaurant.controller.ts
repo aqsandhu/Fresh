@@ -31,6 +31,9 @@ function publicRestaurant(r: any) {
     city: r.city,
     city_id: r.city_id,
     status: r.status,
+    front_image_url: r.front_image_url ?? null,
+    latitude: r.lat ?? null,
+    longitude: r.lng ?? null,
   };
 }
 
@@ -201,7 +204,8 @@ export const loginRestaurant = asyncHandler(async (req: Request, res: Response) 
  */
 export const getRestaurantMe = asyncHandler(async (req: Request, res: Response) => {
   const result = await query(
-    `SELECT * FROM restaurants WHERE id = $1 AND deleted_at IS NULL`,
+    `SELECT *, ST_X(location::geometry) AS lng, ST_Y(location::geometry) AS lat
+       FROM restaurants WHERE id = $1 AND deleted_at IS NULL`,
     [req.restaurant!.id]
   );
   if (!result.rows[0]) return unauthorizedResponse(res, 'Restaurant account not found');

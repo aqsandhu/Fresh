@@ -124,6 +124,68 @@ export async function ensureRestaurantsTable(): Promise<boolean> {
   return ensurePromise;
 }
 
+// ── Migration 35: restaurant delivery config + editable profile ─────────────
+// time_slots.audience separates restaurant slots from consumer slots;
+// restaurants.front_image_url stores the storefront photo. Probed via
+// time_slots.audience. Runs idempotently each boot.
+let deliveryColsCached: boolean | null = null;
+let deliveryColsPromise: Promise<boolean> | null = null;
+
+export async function hasRestaurantDeliveryColumns(): Promise<boolean> {
+  if (deliveryColsCached !== null) return deliveryColsCached;
+  try {
+    const result = await query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'time_slots'
+          AND column_name = 'audience' LIMIT 1`
+    );
+    deliveryColsCached = (result.rowCount ?? 0) > 0;
+  } catch (error: any) {
+    logger.warn('Could not probe time_slots.audience', { error: error?.message });
+    deliveryColsCached = false;
+  }
+  return deliveryColsCached;
+}
+
+export async function ensureRestaurantDeliveryColumns(): Promise<boolean> {
+  if (deliveryColsCached === true) return true;
+  if (deliveryColsPromise) return deliveryColsPromise;
+
+  deliveryColsPromise = (async () => {
+    if (await hasRestaurantDeliveryColumns()) return true;
+    const connectionString = getMigrationConnectionString();
+    if (!connectionString) return false;
+    const pool = new Pool({
+      connectionString,
+      ssl:
+        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
+          ? false
+          : { rejectUnauthorized: false },
+      max: 1,
+      connectionTimeoutMillis: 15000,
+    });
+    try {
+      await pool.query(`ALTER TABLE time_slots  ADD COLUMN IF NOT EXISTS audience VARCHAR(20) NOT NULL DEFAULT 'consumer'`);
+      await pool.query(`ALTER TABLE restaurants ADD COLUMN IF NOT EXISTS front_image_url TEXT`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS time_slots_audience_idx ON time_slots (audience)`);
+      deliveryColsCached = true;
+      logger.info('restaurant delivery columns ensured (migration 35 applied)');
+      return true;
+    } catch (error: any) {
+      logger.warn('Could not apply restaurant-delivery migration — run database/migrations/35 manually', {
+        error: error?.message,
+      });
+      deliveryColsCached = false;
+      return false;
+    } finally {
+      await pool.end().catch(() => undefined);
+      deliveryColsPromise = null;
+    }
+  })();
+
+  return deliveryColsPromise;
+}
+
 // ── Migration 33: relax phone uniqueness to LIVE rows only ──────────────────
 // The original table created a plain UNIQUE column constraint on phone
 // (restaurants_phone_key), which counts soft-deleted rows and so blocks a

@@ -21,6 +21,7 @@ import {
   FRESH_CART_SUBTOTAL_SQL,
 } from '../utils/unitPricing';
 import { hasQualityCatalogColumns } from '../config/productSchema';
+import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { roundMoney } from '../utils/money';
 import {
   hasCouponsTable,
@@ -962,14 +963,16 @@ export const getTimeSlots = asyncHandler(async (req: Request, res: Response) => 
   }
   const dayOfWeek = targetDate.getDay();
 
+  const audienceClause = (await hasRestaurantDeliveryColumns()) ? `AND audience = 'consumer'` : '';
   const result = await query(
-    `SELECT 
+    `SELECT
       id, slot_name, start_time, end_time,
       max_orders, booked_orders,
       (max_orders - booked_orders) as available_slots,
       is_free_delivery_slot, is_express_slot
     FROM time_slots
     WHERE status = 'available'
+    ${audienceClause}
     AND (applicable_days IS NULL OR $1 = ANY(applicable_days))
     ORDER BY start_time ASC`,
     [dayOfWeek]

@@ -31,6 +31,7 @@ import {
   deleteHeroImageFromStorage,
   clearHeroImageSettings,
 } from '../../utils/siteSettings';
+import { hasRestaurantDeliveryColumns } from '../../config/restaurantSchema';
 
 export const getBrandLogoSettings = asyncHandler(async (req: Request, res: Response) => {
   const brand = await fetchBrandLogoSettings();
@@ -547,12 +548,19 @@ export const updateDeliverySettings = asyncHandler(async (req: Request, res: Res
  */
 
 export const getTimeSlots = asyncHandler(async (req: Request, res: Response) => {
+  // audience = 'consumer' (default) | 'restaurant'. Restaurant slots are managed
+  // from the admin Restaurants tab; consumer slots from Settings.
+  const audienceReady = await hasRestaurantDeliveryColumns();
+  const audience = req.query.audience === 'restaurant' ? 'restaurant' : 'consumer';
+  const params = audienceReady ? [audience] : [];
   const result = await query(
     `SELECT id, slot_name, start_time, end_time, max_orders,
             booked_orders, status, is_free_delivery_slot, is_express_slot,
             CASE WHEN status = 'available' THEN true ELSE false END as is_active
      FROM time_slots
-     ORDER BY start_time ASC`
+     ${audienceReady ? 'WHERE audience = $1' : ''}
+     ORDER BY start_time ASC`,
+    params
   );
 
   successResponse(res, result.rows, 'Time slots retrieved');
@@ -567,13 +575,23 @@ export const createTimeSlot = asyncHandler(async (req: Request, res: Response) =
   const { start_time, end_time, max_orders, is_active, is_free_delivery_slot } = req.body;
   const slotName = `${start_time} - ${end_time}`;
   const status = is_active !== false ? 'available' : 'unavailable';
+  const audienceReady = await hasRestaurantDeliveryColumns();
+  const audience = req.body.audience === 'restaurant' ? 'restaurant' : 'consumer';
+
+  const cols = ['slot_name', 'start_time', 'end_time', 'max_orders', 'status', 'is_free_delivery_slot'];
+  const vals: any[] = [slotName, start_time, end_time, max_orders || 50, status, is_free_delivery_slot === true];
+  if (audienceReady) {
+    cols.push('audience');
+    vals.push(audience);
+  }
+  const placeholders = vals.map((_, i) => `$${i + 1}`).join(', ');
 
   const result = await query(
-    `INSERT INTO time_slots (slot_name, start_time, end_time, max_orders, status, is_free_delivery_slot)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO time_slots (${cols.join(', ')})
+     VALUES (${placeholders})
      RETURNING id, slot_name, start_time, end_time, max_orders, status, is_free_delivery_slot,
                CASE WHEN status = 'available' THEN true ELSE false END as is_active`,
-    [slotName, start_time, end_time, max_orders || 50, status, is_free_delivery_slot === true]
+    vals
   );
 
   createdResponse(res, result.rows[0], 'Time slot created');

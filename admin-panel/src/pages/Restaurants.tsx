@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  UtensilsCrossed, Loader2, ChevronDown, ChevronUp, CheckCircle, Ban, Slash, Trash2, Save, Phone, Mail, MapPin,
+  UtensilsCrossed, Loader2, ChevronDown, ChevronUp, CheckCircle, Ban, Slash, Trash2, Save, Phone, Mail, MapPin, Plus, Clock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Layout } from '@/components/layout';
@@ -273,17 +273,26 @@ function SettingsSection() {
   const queryClient = useQueryClient();
   const [base, setBase] = useState('');
   const [threshold, setThreshold] = useState('');
+  const [urgent, setUrgent] = useState('');
+  const [urgentEta, setUrgentEta] = useState('');
 
   const { data } = useQuery({ queryKey: ['restaurant-settings'], queryFn: () => restaurantService.getSettings() });
   React.useEffect(() => {
     if (data) {
       setBase(String(data.baseCharge));
       setThreshold(String(data.freeDeliveryThreshold));
+      setUrgent(String(data.urgentCharge ?? 0));
+      setUrgentEta(String(data.urgentEta ?? ''));
     }
   }, [data]);
 
   const mutation = useMutation({
-    mutationFn: () => restaurantService.updateSettings({ baseCharge: parseFloat(base) || 0, freeDeliveryThreshold: parseFloat(threshold) || 0 }),
+    mutationFn: () => restaurantService.updateSettings({
+      baseCharge: parseFloat(base) || 0,
+      freeDeliveryThreshold: parseFloat(threshold) || 0,
+      urgentCharge: parseFloat(urgent) || 0,
+      urgentEta: urgentEta.trim(),
+    }),
     onSuccess: () => {
       toast.success('Settings saved');
       queryClient.invalidateQueries({ queryKey: ['restaurant-settings'] });
@@ -292,27 +301,143 @@ function SettingsSection() {
   });
 
   return (
-    <Card className="max-w-lg">
-      <h3 className="font-semibold text-gray-800 mb-1">Global restaurant delivery</h3>
+    <div className="space-y-6 max-w-2xl">
+      <Card>
+        <h3 className="font-semibold text-gray-800 mb-1">Global restaurant delivery</h3>
+        <p className="text-xs text-gray-500 mb-4">
+          Applies to all restaurants unless a restaurant has its own override (set per-restaurant under Accounts).
+          Separate from the consumer delivery settings.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Delivery base charge (Rs.)</label>
+            <input type="number" value={base} onChange={(e) => setBase(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Free-delivery threshold (Rs.)</label>
+            <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Urgent delivery fee (Rs.)</label>
+            <input type="number" value={urgent} onChange={(e) => setUrgent(e.target.value)}
+              placeholder="0 = urgent disabled"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Urgent delivery ETA</label>
+            <input type="text" value={urgentEta} onChange={(e) => setUrgentEta(e.target.value)}
+              placeholder="e.g. 45–60 min"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          </div>
+        </div>
+        <Button className="mt-4" onClick={() => mutation.mutate()} disabled={mutation.isPending}
+          leftIcon={mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}>
+          Save
+        </Button>
+      </Card>
+
+      <RestaurantTimeSlots />
+    </div>
+  );
+}
+
+/** Restaurant-only delivery time slots (audience='restaurant'). */
+function RestaurantTimeSlots() {
+  const queryClient = useQueryClient();
+  const [start, setStart] = useState('09:00');
+  const [end, setEnd] = useState('12:00');
+  const [maxOrders, setMaxOrders] = useState('50');
+  const [freeDelivery, setFreeDelivery] = useState(false);
+
+  const { data: slots = [], isLoading } = useQuery({
+    queryKey: ['restaurant-time-slots'],
+    queryFn: () => restaurantService.listTimeSlots(),
+  });
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['restaurant-time-slots'] });
+
+  const create = useMutation({
+    mutationFn: () => restaurantService.createTimeSlot({
+      startTime: start, endTime: end, maxOrders: parseInt(maxOrders, 10) || 50, isFreeDeliverySlot: freeDelivery,
+    }),
+    onSuccess: () => { toast.success('Slot added'); invalidate(); },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not add slot'),
+  });
+  const toggle = useMutation({
+    mutationFn: (s: any) => restaurantService.updateTimeSlot(s.id, { is_active: !(s.isActive ?? s.is_active) }),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => restaurantService.deleteTimeSlot(id),
+    onSuccess: () => { toast.success('Slot removed'); invalidate(); },
+  });
+
+  return (
+    <Card>
+      <h3 className="font-semibold text-gray-800 mb-1 flex items-center gap-2">
+        <Clock className="w-4 h-4 text-primary-600" /> Restaurant delivery time slots
+      </h3>
       <p className="text-xs text-gray-500 mb-4">
-        Applies to all restaurants unless a restaurant has its own override (set per-restaurant under Accounts).
+        Restaurants must pick one of these slots at checkout (unless they choose urgent delivery). Separate from consumer slots.
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+      <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Delivery base charge (Rs.)</label>
-          <input type="number" value={base} onChange={(e) => setBase(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          <label className="block text-xs font-medium text-gray-600 mb-1">Start</label>
+          <input type="time" value={start} onChange={(e) => setStart(e.target.value)}
+            className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Free-delivery threshold (Rs.)</label>
-          <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          <label className="block text-xs font-medium text-gray-600 mb-1">End</label>
+          <input type="time" value={end} onChange={(e) => setEnd(e.target.value)}
+            className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
         </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Max orders</label>
+          <input type="number" value={maxOrders} onChange={(e) => setMaxOrders(e.target.value)}
+            className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
+        </div>
+        <label className="flex items-center gap-1.5 text-sm text-gray-700 pb-1.5 cursor-pointer">
+          <input type="checkbox" checked={freeDelivery} onChange={(e) => setFreeDelivery(e.target.checked)}
+            className="w-4 h-4 rounded text-primary-600" />
+          Free delivery
+        </label>
+        <Button size="sm" onClick={() => create.mutate()} disabled={create.isPending}
+          leftIcon={create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}>
+          Add slot
+        </Button>
       </div>
-      <Button className="mt-4" onClick={() => mutation.mutate()} disabled={mutation.isPending}
-        leftIcon={mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}>
-        Save
-      </Button>
+
+      {isLoading ? (
+        <p className="text-sm text-gray-500">Loading slots…</p>
+      ) : slots.length === 0 ? (
+        <p className="text-sm text-gray-500">No restaurant slots yet — add one above so restaurants can order.</p>
+      ) : (
+        <div className="space-y-2">
+          {slots.map((s: any) => (
+            <div key={s.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
+              <div className="text-sm">
+                <span className="font-medium text-gray-900">{s.slotName || s.slot_name}</span>
+                <span className="text-gray-400"> · max {s.maxOrders ?? s.max_orders}</span>
+                {(s.isFreeDeliverySlot ?? s.is_free_delivery_slot) && (
+                  <span className="ml-2 text-green-600 font-medium">Free delivery</span>
+                )}
+                {!(s.isActive ?? s.is_active) && <span className="ml-2 text-gray-400">(inactive)</span>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => toggle.mutate(s)} className="text-xs text-gray-500 hover:text-primary-600">
+                  {(s.isActive ?? s.is_active) ? 'Disable' : 'Enable'}
+                </button>
+                <button onClick={() => remove.mutate(s.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }

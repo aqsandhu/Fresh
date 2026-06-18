@@ -10,6 +10,7 @@ import {
   fetchHeroImageSettings,
 } from '../utils/siteSettings';
 import { query } from '../config/database';
+import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 
 const router = Router();
 
@@ -98,15 +99,18 @@ router.get('/maps-key', asyncHandler(async (_req, res) => {
   successResponse(res, { key: key || null }, 'Maps key retrieved');
 }));
 
-// Public: Get available time slots (no auth required)
+// Public: Get available time slots (no auth required). Consumer slots only —
+// restaurant slots (audience='restaurant') are served by /api/restaurant/time-slots.
 router.get('/time-slots', asyncHandler(async (req, res) => {
   const dayOfWeek = new Date().getDay();
+  const audienceClause = (await hasRestaurantDeliveryColumns()) ? `AND audience = 'consumer'` : '';
   const result = await query(
-    `SELECT id, slot_name, start_time, end_time, 
+    `SELECT id, slot_name, start_time, end_time,
             is_free_delivery_slot, is_express_slot,
             (max_orders - booked_orders) as available_slots
      FROM time_slots
      WHERE status = 'available'
+     ${audienceClause}
      AND (applicable_days IS NULL OR $1 = ANY(applicable_days))
      ORDER BY start_time ASC`,
     [dayOfWeek]
