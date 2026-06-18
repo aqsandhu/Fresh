@@ -497,6 +497,14 @@ export const restaurantSchemas = {
       })
     ).min(1).required(),
     customer_notes: Joi.string().max(1000).allow('', null),
+    // Delivery: a slot is required unless urgent delivery is chosen (controller enforces).
+    time_slot_id: commonSchemas.uuid.optional().allow(null, ''),
+    urgent_delivery: Joi.boolean().truthy('true', '1', 1).falsy('false', '0', 0).default(false),
+    // Editable restaurant profile (persisted to the master row + snapshot).
+    address: Joi.string().max(1000).optional().allow('', null),
+    latitude: commonSchemas.latitude.optional().allow(null, ''),
+    longitude: commonSchemas.longitude.optional().allow(null, ''),
+    front_image_url: Joi.string().uri().max(1000).optional().allow('', null),
   }),
 };
 

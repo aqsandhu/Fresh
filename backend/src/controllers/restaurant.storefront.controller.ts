@@ -10,6 +10,7 @@ import { asyncHandler } from '../middleware';
 import { successResponse, createdResponse, errorResponse } from '../utils/response';
 import { hasQualityCatalogColumns } from '../config/productSchema';
 import { hasRestaurantOrderColumns } from '../config/orderSchema';
+import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { emitToAdmins } from '../config/socket';
 import { placeRestaurantOrder, getRestaurantDelivery } from '../utils/restaurantOrders';
 import logger from '../utils/logger';
@@ -70,7 +71,54 @@ export const getRestaurantDeliverySettings = asyncHandler(async (req: Request, r
     [req.restaurant!.id]
   );
   const conf = await getRestaurantDelivery(r.rows[0] || {});
-  return successResponse(res, { base_charge: conf.baseCharge, free_delivery_threshold: conf.freeThreshold }, 'Delivery settings');
+  return successResponse(
+    res,
+    {
+      base_charge: conf.baseCharge,
+      free_delivery_threshold: conf.freeThreshold,
+      urgent_charge: conf.urgentCharge,
+      urgent_eta: conf.urgentEta,
+    },
+    'Delivery settings'
+  );
+});
+
+/**
+ * POST /api/restaurant/profile/front-image — upload the restaurant's storefront
+ * photo. Updates the master row (shows everywhere) and returns the URL so the
+ * checkout can snapshot it onto the order. Image already pushed to storage by the
+ * upload middleware (req.file.url).
+ */
+export const updateRestaurantFrontImage = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await hasRestaurantDeliveryColumns())) {
+    return errorResponse(res, 'Profile image is being set up. Please try again shortly.', 503);
+  }
+  const url = (req.file as any)?.url as string | undefined;
+  if (!url) {
+    return errorResponse(res, 'Image upload failed. Please try again.', 400);
+  }
+  await query(`UPDATE restaurants SET front_image_url = $1, updated_at = NOW() WHERE id = $2`, [
+    url,
+    req.restaurant!.id,
+  ]);
+  return successResponse(res, { front_image_url: url }, 'Front image updated');
+});
+
+/** GET /api/restaurant/time-slots — active restaurant slots for today. */
+export const getRestaurantTimeSlots = asyncHandler(async (_req: Request, res: Response) => {
+  if (!(await hasRestaurantDeliveryColumns())) return successResponse(res, [], 'Time slots');
+  const dayOfWeek = new Date().getDay();
+  const result = await query(
+    `SELECT id, slot_name, start_time, end_time,
+            is_free_delivery_slot, is_express_slot,
+            (max_orders - booked_orders) AS available_slots
+       FROM time_slots
+      WHERE status = 'available' AND audience = 'restaurant'
+        AND (applicable_days IS NULL OR $1 = ANY(applicable_days))
+      ORDER BY start_time ASC`,
+    [dayOfWeek]
+  );
+  return successResponse(res, result.rows, 'Time slots');
 });
 
 /**
@@ -78,16 +126,28 @@ export const getRestaurantDeliverySettings = asyncHandler(async (req: Request, r
  * quality + unit pricing) into the unified orders pipeline.
  */
 export const createRestaurantOrder = asyncHandler(async (req: Request, res: Response) => {
-  if (!(await hasRestaurantOrderColumns()) || !(await hasQualityCatalogColumns())) {
+  if (
+    !(await hasRestaurantOrderColumns()) ||
+    !(await hasQualityCatalogColumns()) ||
+    !(await hasRestaurantDeliveryColumns())
+  ) {
     return errorResponse(res, 'Restaurant ordering is being set up. Please try again shortly.', 503);
   }
 
-  const { items, customer_notes } = req.body;
+  const { items, customer_notes, time_slot_id, urgent_delivery, address, latitude, longitude, front_image_url } = req.body;
 
   let order: any;
   let restaurant: any;
   try {
-    ({ order, restaurant } = await placeRestaurantOrder(req.restaurant!.id, items, customer_notes));
+    ({ order, restaurant } = await placeRestaurantOrder(req.restaurant!.id, items, {
+      customerNotes: customer_notes,
+      timeSlotId: time_slot_id || null,
+      isUrgent: urgent_delivery === true || urgent_delivery === 'true',
+      address: address ?? undefined,
+      lat: latitude != null && latitude !== '' ? Number(latitude) : undefined,
+      lng: longitude != null && longitude !== '' ? Number(longitude) : undefined,
+      frontImageUrl: front_image_url ?? undefined,
+    }));
   } catch (err: any) {
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;

@@ -16,6 +16,19 @@ export interface RestaurantInfo {
   address?: string | null;
   city?: string | null;
   status?: string;
+  front_image_url?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export interface RestaurantCheckoutExtras {
+  customer_notes?: string;
+  time_slot_id?: string | null;
+  urgent_delivery?: boolean;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  front_image_url?: string | null;
 }
 
 export async function setRestaurantSession(token: string, info: RestaurantInfo): Promise<void> {
@@ -86,15 +99,33 @@ export const restaurantApi = {
   login: (phone: string, pin: string): Promise<{ token: string; restaurant: RestaurantInfo }> =>
     rfetch('/restaurant/login', { method: 'POST', body: JSON.stringify({ phone, pin }) }),
 
+  getMe: (): Promise<RestaurantInfo> => rfetch('/restaurant/me'),
   getCategories: (): Promise<any[]> => rfetch('/restaurant/categories'),
   getProducts: (categoryId?: string): Promise<any[]> =>
     rfetch(`/restaurant/products${categoryId ? `?category=${encodeURIComponent(categoryId)}` : ''}`),
-  getDelivery: (): Promise<{ base_charge: number; free_delivery_threshold: number }> =>
+  getDelivery: (): Promise<{ base_charge: number; free_delivery_threshold: number; urgent_charge: number; urgent_eta: string }> =>
     rfetch('/restaurant/delivery'),
-  placeOrder: (items: RestaurantOrderItemInput[], customer_notes?: string): Promise<any> =>
+  getTimeSlots: (): Promise<any[]> => rfetch('/restaurant/time-slots'),
+  uploadFrontImage: async (uri: string): Promise<{ front_image_url: string }> => {
+    const token = await getRestaurantToken();
+    const fd = new FormData();
+    const name = uri.split('/').pop() || 'front.jpg';
+    const ext = (name.split('.').pop() || 'jpg').toLowerCase();
+    // RN FormData file shape.
+    fd.append('image', { uri, name, type: `image/${ext === 'jpg' ? 'jpeg' : ext}` } as any);
+    const res = await fetch(`${API_BASE_URL}/restaurant/profile/front-image`, {
+      method: 'POST',
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: fd,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body?.message || 'Upload failed');
+    return body?.data ?? body;
+  },
+  placeOrder: (items: RestaurantOrderItemInput[], extras: RestaurantCheckoutExtras = {}): Promise<any> =>
     rfetch('/restaurant/orders', {
       method: 'POST',
-      body: JSON.stringify({ items, ...(customer_notes ? { customer_notes } : {}) }),
+      body: JSON.stringify({ items, ...extras }),
     }),
   getOrders: (): Promise<any[]> => rfetch('/restaurant/orders'),
 };

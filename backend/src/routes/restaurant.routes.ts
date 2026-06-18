@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { validate, restaurantSchemas } from '../middleware';
 import { createRateLimiter } from '../middleware/rateLimiter';
 import { authenticateRestaurant } from '../middleware/restaurantAuth';
+import { uploadSingle } from '../middleware/upload';
 import {
   registerRestaurant,
   loginRestaurant,
@@ -16,6 +17,8 @@ import {
   getRestaurantCategories,
   getRestaurantProducts,
   getRestaurantDeliverySettings,
+  getRestaurantTimeSlots,
+  updateRestaurantFrontImage,
   createRestaurantOrder,
   getRestaurantOrders,
 } from '../controllers/restaurant.storefront.controller';
@@ -42,6 +45,8 @@ router.get('/me', authenticateRestaurant, getRestaurantMe);
 router.get('/categories', authenticateRestaurant, getRestaurantCategories);
 router.get('/products', authenticateRestaurant, getRestaurantProducts);
 router.get('/delivery', authenticateRestaurant, getRestaurantDeliverySettings);
+router.get('/time-slots', authenticateRestaurant, getRestaurantTimeSlots);
+router.post('/profile/front-image', authenticateRestaurant, ...uploadSingle('image', 'restaurants/front'), updateRestaurantFrontImage);
 router.get('/orders', authenticateRestaurant, getRestaurantOrders);
 router.post('/orders', authenticateRestaurant, validate(restaurantSchemas.placeOrder), createRestaurantOrder);
 

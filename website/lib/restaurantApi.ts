@@ -36,16 +36,56 @@ export interface RestaurantOrderItemInput {
   quality: string
 }
 
+export interface RestaurantCheckoutExtras {
+  customer_notes?: string
+  time_slot_id?: string | null
+  urgent_delivery?: boolean
+  address?: string
+  latitude?: number | string
+  longitude?: number | string
+  front_image_url?: string | null
+}
+
+/** Multipart upload (browser sets the multipart boundary — don't set Content-Type). */
+async function rupload(path: string, form: FormData): Promise<any> {
+  const token = getRestaurantToken()
+  const res = await fetch(`${getApiBaseUrl()}${path}`, {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: form,
+  })
+  let body: any = {}
+  try {
+    body = await res.json()
+  } catch {
+    /* empty body */
+  }
+  if (!res.ok) {
+    if (res.status === 401) clearRestaurantSession()
+    const err: any = new Error(body?.message || 'Upload failed')
+    err.status = res.status
+    throw err
+  }
+  return body?.data ?? body
+}
+
 export const restaurantShopApi = {
+  getMe: (): Promise<any> => rfetch('/restaurant/me'),
+  uploadFrontImage: (file: File): Promise<{ front_image_url: string }> => {
+    const fd = new FormData()
+    fd.append('image', file, file.name || 'front.jpg')
+    return rupload('/restaurant/profile/front-image', fd)
+  },
   getCategories: (): Promise<any[]> => rfetch('/restaurant/categories'),
   getProducts: (categoryId?: string): Promise<any[]> =>
     rfetch(`/restaurant/products${categoryId ? `?category=${encodeURIComponent(categoryId)}` : ''}`),
-  getDelivery: (): Promise<{ base_charge: number; free_delivery_threshold: number }> =>
+  getDelivery: (): Promise<{ base_charge: number; free_delivery_threshold: number; urgent_charge: number; urgent_eta: string }> =>
     rfetch('/restaurant/delivery'),
-  placeOrder: (items: RestaurantOrderItemInput[], customer_notes?: string): Promise<any> =>
+  getTimeSlots: (): Promise<any[]> => rfetch('/restaurant/time-slots'),
+  placeOrder: (items: RestaurantOrderItemInput[], extras: RestaurantCheckoutExtras = {}): Promise<any> =>
     rfetch('/restaurant/orders', {
       method: 'POST',
-      body: JSON.stringify({ items, ...(customer_notes ? { customer_notes } : {}) }),
+      body: JSON.stringify({ items, ...extras }),
     }),
   getOrders: (): Promise<any[]> => rfetch('/restaurant/orders'),
 }

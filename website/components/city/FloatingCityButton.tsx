@@ -27,7 +27,9 @@ export default function FloatingCityButton() {
     pathname === '/register' ||
     pathname.startsWith('/settings/pin') ||
     pathname === '/cart' ||
-    pathname === '/checkout'
+    pathname === '/checkout' ||
+    // A restaurant is bound to ONE city — never offer city switching in its storefront.
+    pathname.startsWith('/restaurant')
 
   if (hideOnPaths || !selectedCity) {
     return null

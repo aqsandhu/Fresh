@@ -230,7 +230,7 @@ export const createAdminRestaurantOrder = asyncHandler(async (req: Request, res:
   let order: any;
   let restaurant: any;
   try {
-    ({ order, restaurant } = await placeRestaurantOrder(restaurant_id, items, customer_notes));
+    ({ order, restaurant } = await placeRestaurantOrder(restaurant_id, items, { customerNotes: customer_notes }));
   } catch (err: any) {
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
@@ -329,30 +329,43 @@ export const getRestaurantDashboard = asyncHandler(async (req: Request, res: Res
 /** GET /api/admin/restaurants/settings — global restaurant delivery config. */
 export const getRestaurantSettings = asyncHandler(async (_req: Request, res: Response) => {
   const s = await query(
-    `SELECT key, value FROM site_settings WHERE key IN ('restaurant_delivery_base_charge','restaurant_free_delivery_threshold')`
+    `SELECT key, value FROM site_settings WHERE key IN (
+       'restaurant_delivery_base_charge','restaurant_free_delivery_threshold',
+       'restaurant_delivery_urgent_charge','restaurant_delivery_urgent_eta'
+     )`
   );
   let base = 100;
   let threshold = 2000;
+  let urgentCharge = 0;
+  let urgentEta = '';
   for (const r of s.rows) {
     if (r.key === 'restaurant_delivery_base_charge') base = parseFloat(r.value) || base;
     if (r.key === 'restaurant_free_delivery_threshold') threshold = parseFloat(r.value) || threshold;
+    if (r.key === 'restaurant_delivery_urgent_charge') urgentCharge = parseFloat(r.value) || 0;
+    if (r.key === 'restaurant_delivery_urgent_eta') urgentEta = String(r.value || '').trim();
   }
-  return successResponse(res, { base_charge: base, free_delivery_threshold: threshold }, 'Settings');
+  return successResponse(
+    res,
+    { base_charge: base, free_delivery_threshold: threshold, urgent_charge: urgentCharge, urgent_eta: urgentEta },
+    'Settings'
+  );
 });
 
 /** PUT /api/admin/restaurants/settings — update global restaurant delivery config. */
 export const updateRestaurantSettings = asyncHandler(async (req: Request, res: Response) => {
-  const { base_charge, free_delivery_threshold } = req.body;
+  const { base_charge, free_delivery_threshold, urgent_charge, urgent_eta } = req.body;
   const num = (v: unknown, fb: number) => {
     const n = parseFloat(String(v));
     return Number.isFinite(n) && n >= 0 ? n : fb;
   };
-  const entries: [string, number][] = [];
-  if (base_charge !== undefined) entries.push(['restaurant_delivery_base_charge', num(base_charge, 100)]);
-  if (free_delivery_threshold !== undefined) entries.push(['restaurant_free_delivery_threshold', num(free_delivery_threshold, 2000)]);
+  const entries: [string, string][] = [];
+  if (base_charge !== undefined) entries.push(['restaurant_delivery_base_charge', String(num(base_charge, 100))]);
+  if (free_delivery_threshold !== undefined) entries.push(['restaurant_free_delivery_threshold', String(num(free_delivery_threshold, 2000))]);
+  if (urgent_charge !== undefined) entries.push(['restaurant_delivery_urgent_charge', String(num(urgent_charge, 0))]);
+  if (urgent_eta !== undefined) entries.push(['restaurant_delivery_urgent_eta', String(urgent_eta ?? '').slice(0, 120)]);
 
   for (const [key, value] of entries) {
-    await upsertGlobalSiteSetting(key, String(value), req.user?.id);
+    await upsertGlobalSiteSetting(key, value, req.user?.id);
   }
   logger.info('Restaurant delivery settings updated', { by: req.user?.id });
   return successResponse(res, { updated: entries.length }, 'Settings updated');
