@@ -499,6 +499,7 @@ export const restaurantSchemas = {
     customer_notes: Joi.string().max(1000).allow('', null),
     // Delivery: a slot is required unless urgent delivery is chosen (controller enforces).
     time_slot_id: commonSchemas.uuid.optional().allow(null, ''),
+    requested_delivery_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional().allow(null, ''),
     urgent_delivery: Joi.boolean().truthy('true', '1', 1).falsy('false', '0', 0).default(false),
     // Editable restaurant profile (persisted to the master row + snapshot).
     address: Joi.string().max(1000).optional().allow('', null),

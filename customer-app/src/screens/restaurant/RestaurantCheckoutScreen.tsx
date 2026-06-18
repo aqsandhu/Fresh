@@ -12,6 +12,7 @@ import { getRestaurantInfo, restaurantApi, money, round2, type RestaurantInfo } 
 import { useRestaurantCart } from '@store/restaurantCartStore';
 import { getAccuratePosition } from '@/lib/geolocation';
 import { pickDoorPhotoFromLibrary } from '@/lib/pickDoorPhoto';
+import { getSlotAvailability } from '@/lib/timeSlots';
 
 function fmtTime(t?: string): string {
   if (!t) return '';
@@ -22,6 +23,13 @@ function fmtTime(t?: string): string {
   return `${hh}:${m || '00'} ${ampm}`;
 }
 
+function localDateStr(day: 'today' | 'tomorrow'): string {
+  const d = new Date();
+  if (day === 'tomorrow') d.setDate(d.getDate() + 1);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export const RestaurantCheckoutScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const { items, subtotal, clear } = useRestaurantCart();
@@ -29,9 +37,11 @@ export const RestaurantCheckoutScreen: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [placing, setPlacing] = useState(false);
 
-  const [delivery, setDelivery] = useState({ base_charge: 100, free_delivery_threshold: 2000, urgent_charge: 0, urgent_eta: '' });
+  const [delivery, setDelivery] = useState({ base_charge: 100, free_delivery_threshold: 2000, urgent_charge: 0, urgent_eta: '', slot_cutoff_percent: 60 });
   const [slots, setSlots] = useState<any[]>([]);
   const [timeSlotId, setTimeSlotId] = useState('');
+  const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today');
+  const [ready, setReady] = useState(false);
   const [urgent, setUrgent] = useState(false);
 
   const [address, setAddress] = useState('');
@@ -47,16 +57,15 @@ export const RestaurantCheckoutScreen: React.FC = () => {
       if (!i) { navigation.replace('RestaurantLogin'); return; }
       setInfo(i);
       setAddress(i.address || '');
+      setReady(true);
     });
     (async () => {
       try {
-        const [d, s, me] = await Promise.all([
+        const [d, me] = await Promise.all([
           restaurantApi.getDelivery(),
-          restaurantApi.getTimeSlots(),
           restaurantApi.getMe().catch(() => null),
         ]);
         setDelivery(d);
-        setSlots(s || []);
         if (me) {
           if (me.address) setAddress((prev) => prev || me.address || '');
           if (me.latitude != null && me.longitude != null) setCoords({ lat: Number(me.latitude), lng: Number(me.longitude) });
@@ -67,6 +76,18 @@ export const RestaurantCheckoutScreen: React.FC = () => {
       }
     })();
   }, [navigation]);
+
+  // (Re)load slots whenever the day changes; reset the picked slot.
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    setTimeSlotId('');
+    restaurantApi
+      .getTimeSlots(localDateStr(selectedDay))
+      .then((s) => { if (!cancelled) setSlots(s || []); })
+      .catch(() => { if (!cancelled) setSlots([]); });
+    return () => { cancelled = true; };
+  }, [ready, selectedDay]);
 
   const urgentEnabled = delivery.urgent_charge > 0;
 
@@ -118,6 +139,7 @@ export const RestaurantCheckoutScreen: React.FC = () => {
         {
           customer_notes: notes.trim() || undefined,
           time_slot_id: urgent ? null : timeSlotId,
+          requested_delivery_date: urgent ? undefined : localDateStr(selectedDay),
           urgent_delivery: urgent,
           address: address.trim() || undefined,
           ...(coords ? { latitude: coords.lat, longitude: coords.lng } : {}),
@@ -190,27 +212,46 @@ export const RestaurantCheckoutScreen: React.FC = () => {
             </TouchableOpacity>
           )}
           {!urgent && (
-            slots.length === 0 ? (
-              <Text style={styles.addrMeta}>No delivery slots available right now. Please contact support.</Text>
-            ) : (
-              <View style={styles.slotWrap}>
-                {slots.map((s) => {
-                  const active = timeSlotId === s.id;
-                  const full = (s.available_slots ?? 1) <= 0;
-                  return (
-                    <TouchableOpacity key={s.id} disabled={full}
-                      onPress={() => setTimeSlotId(s.id)}
-                      style={[styles.slot, active && styles.slotActive, full && styles.slotFull]}>
-                      <Text style={[styles.slotText, active && styles.slotTextActive]}>
-                        {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
-                      </Text>
-                      {s.is_free_delivery_slot ? <Text style={styles.slotFree}>Free delivery</Text> : null}
-                      {full ? <Text style={styles.slotFreeMuted}>Full</Text> : null}
-                    </TouchableOpacity>
-                  );
-                })}
+            <>
+              {/* Today / Tomorrow */}
+              <View style={styles.dayToggle}>
+                {(['today', 'tomorrow'] as const).map((d) => (
+                  <TouchableOpacity key={d} onPress={() => setSelectedDay(d)}
+                    style={[styles.dayBtn, selectedDay === d && styles.dayBtnActive]}>
+                    <Text style={[styles.dayBtnText, selectedDay === d && styles.dayBtnTextActive]}>
+                      {d === 'today' ? 'Today' : 'Tomorrow'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-            )
+
+              {slots.length === 0 ? (
+                <Text style={styles.addrMeta}>No delivery slots available {selectedDay === 'today' ? 'today' : 'tomorrow'}.</Text>
+              ) : (
+                <View style={styles.slotWrap}>
+                  {slots.map((s) => {
+                    const active = timeSlotId === s.id;
+                    const avail = getSlotAvailability(s, selectedDay, delivery.slot_cutoff_percent);
+                    const disabled = (s.available_slots ?? 1) <= 0 || avail.unavailable;
+                    return (
+                      <TouchableOpacity key={s.id} disabled={disabled}
+                        onPress={() => setTimeSlotId(s.id)}
+                        style={[styles.slot, active && styles.slotActive, disabled && styles.slotFull]}>
+                        <Text style={[styles.slotText, active && styles.slotTextActive]}>
+                          {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
+                        </Text>
+                        {s.is_free_delivery_slot ? <Text style={styles.slotFree}>Free delivery</Text> : null}
+                        {(s.available_slots ?? 1) <= 0
+                          ? <Text style={styles.slotFreeMuted}>Full</Text>
+                          : avail.unavailable
+                          ? <Text style={styles.slotFreeMuted}>{avail.reason === 'expired' ? 'Passed' : 'Closing'}</Text>
+                          : null}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </>
           )}
         </Section>
 
@@ -295,6 +336,11 @@ const styles = StyleSheet.create({
   urgentRowActive: { borderColor: COLORS.warning || '#f59e0b', backgroundColor: '#fffbeb' },
   urgentText: { fontSize: 14, fontWeight: '600', color: COLORS.gray900 },
   urgentPrice: { fontSize: 14, fontWeight: '700', color: COLORS.gray900 },
+  dayToggle: { flexDirection: 'row', backgroundColor: COLORS.gray100, borderRadius: BORDER_RADIUS.sm, padding: 3, marginBottom: SPACING.sm, alignSelf: 'flex-start' },
+  dayBtn: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: BORDER_RADIUS.sm - 2 },
+  dayBtnActive: { backgroundColor: COLORS.white },
+  dayBtnText: { fontSize: 13, fontWeight: '600', color: COLORS.gray600 },
+  dayBtnTextActive: { color: COLORS.primary700 || COLORS.primary },
   slotWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   slot: { borderWidth: 1, borderColor: COLORS.gray200, borderRadius: BORDER_RADIUS.sm, paddingVertical: 8, paddingHorizontal: 10, minWidth: '30%', alignItems: 'center' },
   slotActive: { borderColor: COLORS.primary, backgroundColor: COLORS.primary50 },

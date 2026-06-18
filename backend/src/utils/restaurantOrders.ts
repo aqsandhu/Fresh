@@ -27,6 +27,7 @@ export interface RestaurantOrderItemInput {
 export interface PlaceRestaurantOrderOpts {
   customerNotes?: string | null;
   timeSlotId?: string | null;
+  requestedDeliveryDate?: string | null;
   isUrgent?: boolean;
   /** Editable restaurant profile — persisted to the master row (shows everywhere). */
   address?: string | null;
@@ -39,22 +40,28 @@ export interface PlaceRestaurantOrderOpts {
 export async function getRestaurantDelivery(restaurant: {
   free_delivery_threshold?: any;
   delivery_base_charge?: any;
-}): Promise<{ baseCharge: number; freeThreshold: number; urgentCharge: number; urgentEta: string }> {
+}): Promise<{ baseCharge: number; freeThreshold: number; urgentCharge: number; urgentEta: string; slotCutoffPercent: number }> {
   const s = await query(
     `SELECT key, value FROM site_settings WHERE key IN (
        'restaurant_delivery_base_charge','restaurant_free_delivery_threshold',
-       'restaurant_delivery_urgent_charge','restaurant_delivery_urgent_eta'
+       'restaurant_delivery_urgent_charge','restaurant_delivery_urgent_eta',
+       'restaurant_slot_cutoff_percent'
      )`
   );
   let baseChargeGlobal = 100;
   let freeThresholdGlobal = 2000;
   let urgentCharge = 0;
   let urgentEta = '';
+  let slotCutoffPercent = 60;
   for (const row of s.rows) {
     if (row.key === 'restaurant_delivery_base_charge') baseChargeGlobal = parseFloat(row.value) || baseChargeGlobal;
     if (row.key === 'restaurant_free_delivery_threshold') freeThresholdGlobal = parseFloat(row.value) || freeThresholdGlobal;
     if (row.key === 'restaurant_delivery_urgent_charge') urgentCharge = parseFloat(row.value) || 0;
     if (row.key === 'restaurant_delivery_urgent_eta') urgentEta = String(row.value || '').trim();
+    if (row.key === 'restaurant_slot_cutoff_percent') {
+      const n = parseFloat(row.value);
+      if (Number.isFinite(n)) slotCutoffPercent = Math.min(100, Math.max(0, n));
+    }
   }
   const num = (v: any, fb: number) => {
     if (v === null || v === undefined || v === '') return fb;
@@ -66,6 +73,7 @@ export async function getRestaurantDelivery(restaurant: {
     freeThreshold: num(restaurant.free_delivery_threshold, freeThresholdGlobal),
     urgentCharge,
     urgentEta,
+    slotCutoffPercent,
   };
 }
 
@@ -209,15 +217,17 @@ export async function placeRestaurantOrder(
       is_restaurant: true,
     });
 
+    // Urgent ignores the slot/date; otherwise honour the chosen delivery date.
+    const reqDate = opts.isUrgent ? null : (opts.requestedDeliveryDate || null);
     const orderRes = await client.query(
       `INSERT INTO orders (
-        restaurant_id, delivery_address_snapshot, time_slot_id,
+        restaurant_id, delivery_address_snapshot, time_slot_id, requested_delivery_date,
         subtotal, discount_amount, delivery_charge, tax_amount, total_amount,
         payment_method, payment_status, status, source, customer_notes, city_id
-      ) VALUES ($1,$2,$3,$4,0,$5,0,$6,'cash_on_delivery','pending','pending','website',$7,$8)
+      ) VALUES ($1,$2,$3,$4,$5,0,$6,0,$7,'cash_on_delivery','pending','pending','website',$8,$9)
       RETURNING *`,
       [
-        restaurant.id, snapshot, effectiveSlotId, subtotal, deliveryCharge, totalAmount,
+        restaurant.id, snapshot, effectiveSlotId, reqDate, subtotal, deliveryCharge, totalAmount,
         customerNotes ? String(customerNotes).slice(0, 1000) : null,
         restaurant.city_id,
       ]

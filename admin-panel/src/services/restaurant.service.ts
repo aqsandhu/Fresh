@@ -89,7 +89,7 @@ export const restaurantService = {
     const res = await api.get<ApiResponse<Record<string, number>>>('/admin/restaurants/dashboard');
     return res.data || {};
   },
-  getSettings: async (): Promise<{ baseCharge: number; freeDeliveryThreshold: number; urgentCharge: number; urgentEta: string }> => {
+  getSettings: async (): Promise<{ baseCharge: number; freeDeliveryThreshold: number; urgentCharge: number; urgentEta: string; slotCutoffPercent: number }> => {
     const res = await api.get<ApiResponse<any>>('/admin/restaurants/settings');
     const d = res.data as any;
     return {
@@ -97,6 +97,7 @@ export const restaurantService = {
       freeDeliveryThreshold: Number(d?.freeDeliveryThreshold ?? 2000),
       urgentCharge: Number(d?.urgentCharge ?? 0),
       urgentEta: String(d?.urgentEta ?? ''),
+      slotCutoffPercent: Number(d?.slotCutoffPercent ?? 60),
     };
   },
   updateSettings: async (data: {
@@ -104,12 +105,14 @@ export const restaurantService = {
     freeDeliveryThreshold: number;
     urgentCharge?: number;
     urgentEta?: string;
+    slotCutoffPercent?: number;
   }): Promise<void> => {
     await api.put('/admin/restaurants/settings', {
       base_charge: data.baseCharge,
       free_delivery_threshold: data.freeDeliveryThreshold,
       ...(data.urgentCharge !== undefined ? { urgent_charge: data.urgentCharge } : {}),
       ...(data.urgentEta !== undefined ? { urgent_eta: data.urgentEta } : {}),
+      ...(data.slotCutoffPercent !== undefined ? { slot_cutoff_percent: data.slotCutoffPercent } : {}),
     });
   },
 

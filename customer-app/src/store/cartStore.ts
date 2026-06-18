@@ -34,19 +34,21 @@ const persistActiveCityItems = (
 const DEFAULT_BASE_CHARGE = 100;
 const DEFAULT_FREE_THRESHOLD = 500;
 
-async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThreshold: number }> {
+async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThreshold: number; slotCutoffPercent: number }> {
   try {
     const params = withCityParams();
     const qs = params.city_id ? `?city_id=${encodeURIComponent(params.city_id)}` : '';
     const res = await fetch(`${API_BASE_URL}/site-settings/delivery${qs}`);
     const json = await res.json();
     const data = json?.data || json;
+    const cutoff = parseFloat(data?.slot_cutoff_percent);
     return {
       baseCharge: parseFloat(data?.base_charge) || DEFAULT_BASE_CHARGE,
       freeThreshold: parseFloat(data?.free_delivery_threshold) || DEFAULT_FREE_THRESHOLD,
+      slotCutoffPercent: Number.isFinite(cutoff) ? cutoff : 60,
     };
   } catch {
-    return { baseCharge: DEFAULT_BASE_CHARGE, freeThreshold: DEFAULT_FREE_THRESHOLD };
+    return { baseCharge: DEFAULT_BASE_CHARGE, freeThreshold: DEFAULT_FREE_THRESHOLD, slotCutoffPercent: 60 };
   }
 }
 
@@ -59,6 +61,7 @@ interface CartStore {
   lastSyncedAt: number | null;
   deliveryBaseCharge: number;
   deliveryFreeThreshold: number;
+  deliverySlotCutoffPercent: number;
   hasHydrated: boolean;
 
   setHasHydrated: (h: boolean) => void;
@@ -101,6 +104,7 @@ export const useCartStore = create<CartStore>()(
       lastSyncedAt: null,
       deliveryBaseCharge: DEFAULT_BASE_CHARGE,
       deliveryFreeThreshold: DEFAULT_FREE_THRESHOLD,
+      deliverySlotCutoffPercent: 60,
       hasHydrated: false,
 
       setHasHydrated: (h) => set({ hasHydrated: h }),
@@ -110,6 +114,7 @@ export const useCartStore = create<CartStore>()(
         set({
           deliveryBaseCharge: settings.baseCharge,
           deliveryFreeThreshold: settings.freeThreshold,
+          deliverySlotCutoffPercent: settings.slotCutoffPercent,
         });
       },
 

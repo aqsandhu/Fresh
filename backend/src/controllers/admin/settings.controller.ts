@@ -492,6 +492,7 @@ export const getSettings = asyncHandler(async (req: Request, res: Response) => {
     express_charge: num('express_charge', 100),
     urgent_charge: num('urgent_charge', 0),
     urgent_eta: (map['urgent_eta'] || '').trim(),
+    slot_cutoff_percent: num('slot_cutoff_percent', 60),
   };
 
   successResponse(res, { delivery }, 'Settings retrieved');
@@ -504,13 +505,20 @@ export const getSettings = asyncHandler(async (req: Request, res: Response) => {
 
 export const updateDeliverySettings = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.id;
-  const { base_charge, free_delivery_threshold, express_charge, urgent_charge, urgent_eta } = req.body;
+  const { base_charge, free_delivery_threshold, express_charge, urgent_charge, urgent_eta, slot_cutoff_percent } = req.body;
 
   const updates = [
     { key: 'delivery_base_charge', value: String(base_charge ?? 50) },
     { key: 'delivery_free_delivery_threshold', value: String(free_delivery_threshold ?? 500) },
     { key: 'delivery_express_charge', value: String(express_charge ?? 100) },
   ];
+
+  // Slot cutoff % (0–100): how much of a TODAY slot may elapse before it locks.
+  if (slot_cutoff_percent !== undefined) {
+    const n = parseFloat(String(slot_cutoff_percent));
+    const clamped = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 60;
+    updates.push({ key: 'delivery_slot_cutoff_percent', value: String(clamped) });
+  }
 
   // Urgent (on-demand) delivery is a SUPER-ADMIN-only setting. Ignore these
   // fields for any other admin so a city admin can't change the urgent rate.

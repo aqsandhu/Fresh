@@ -15,9 +15,13 @@ function parseTimeOnDate(time: string, date: Date): Date {
   return d;
 }
 
+/** Default % of a today-slot's window allowed to elapse before it locks. */
+export const DEFAULT_SLOT_CUTOFF_PERCENT = 60;
+
 export function getSlotAvailability(
   slot: TimeSlotLike,
   day: 'today' | 'tomorrow',
+  cutoffPercent: number = DEFAULT_SLOT_CUTOFF_PERCENT,
   now: Date = new Date()
 ): { unavailable: boolean; reason?: 'expired' | 'mostly_passed' | 'full' } {
   if (day === 'tomorrow') {
@@ -42,8 +46,9 @@ export function getSlotAvailability(
   const durationMs = Math.max(end.getTime() - start.getTime(), 1);
   const elapsedMs = now.getTime() - start.getTime();
   const elapsedRatio = elapsedMs / durationMs;
+  const cutoffRatio = Math.min(1, Math.max(0, (Number.isFinite(cutoffPercent) ? cutoffPercent : DEFAULT_SLOT_CUTOFF_PERCENT) / 100));
 
-  if (elapsedRatio > 0.4) {
+  if (elapsedRatio > cutoffRatio) {
     return { unavailable: true, reason: 'mostly_passed' };
   }
 
@@ -52,12 +57,13 @@ export function getSlotAvailability(
 
 export function slotStatusLabel(
   slot: TimeSlotLike & { available?: boolean; available_slots?: number },
-  day: 'today' | 'tomorrow'
+  day: 'today' | 'tomorrow',
+  cutoffPercent: number = DEFAULT_SLOT_CUTOFF_PERCENT
 ): string | null {
   if (slot.available === false || (slot.available_slots !== undefined && slot.available_slots <= 0)) {
     return 'FULL';
   }
-  const avail = getSlotAvailability(slot, day);
+  const avail = getSlotAvailability(slot, day, cutoffPercent);
   if (avail.unavailable) {
     return avail.reason === 'mostly_passed' ? 'Passed' : 'Unavailable';
   }

@@ -123,6 +123,7 @@ function CheckoutPage() {
   const [urgentInfo, setUrgentInfo] = useState<{ charge: number; eta: string; enabled: boolean }>({
     charge: 0, eta: '', enabled: false,
   })
+  const [slotCutoffPercent, setSlotCutoffPercent] = useState(60)
 
   useEffect(() => {
     settingsApi
@@ -130,6 +131,8 @@ function CheckoutPage() {
       .then((s: any) => {
         const charge = Number(s?.urgent_charge) || 0
         setUrgentInfo({ charge, eta: String(s?.urgent_eta || ''), enabled: charge > 0 })
+        const cutoff = Number(s?.slot_cutoff_percent)
+        if (Number.isFinite(cutoff)) setSlotCutoffPercent(cutoff)
       })
       .catch(() => {})
   }, [])
@@ -251,7 +254,7 @@ function CheckoutPage() {
       const slots = await settingsApi.getTimeSlots(date)
       setTimeSlots(slots)
       const firstAvailable = slots.find(
-        (slot) => !getSlotAvailability(slot, day).unavailable
+        (slot) => !getSlotAvailability(slot, day, slotCutoffPercent).unavailable
       )
       if (firstAvailable) setSelectedTimeSlot(firstAvailable.id)
     } catch {
@@ -360,7 +363,7 @@ function CheckoutPage() {
       !urgent &&
       selectedSlot &&
       (selectedSlot.available_slots <= 0 ||
-        getSlotAvailability(selectedSlot, selectedDay).unavailable)
+        getSlotAvailability(selectedSlot, selectedDay, slotCutoffPercent).unavailable)
     ) {
       toast.error('Selected time slot is no longer available. Please pick another.')
       return
@@ -737,7 +740,7 @@ function CheckoutPage() {
                   </p>
                 ) : (
                   timeSlots.map((slot) => {
-                    const availability = getSlotAvailability(slot, selectedDay)
+                    const availability = getSlotAvailability(slot, selectedDay, slotCutoffPercent)
                     const slotDisabled =
                       slot.available_slots <= 0 || availability.unavailable
                     return (

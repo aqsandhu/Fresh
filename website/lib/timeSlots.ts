@@ -1,6 +1,8 @@
 /**
- * Delivery slot availability helpers. Slots that have already ended, or are
- * more than 40% elapsed for today, are treated as unavailable in the UI.
+ * Delivery slot availability helpers. Slots that have already ended, or whose
+ * elapsed fraction (for today) exceeds the admin-set cutoff %, are treated as
+ * unavailable in the UI. The cutoff defaults to 60% and is configurable per
+ * audience (consumer vs restaurant).
  */
 
 export interface TimeSlotLike {
@@ -8,6 +10,9 @@ export interface TimeSlotLike {
   start_time: string
   end_time: string
 }
+
+/** Default % of a today-slot's window allowed to elapse before it locks. */
+export const DEFAULT_SLOT_CUTOFF_PERCENT = 60
 
 function parseTimeOnDate(time: string, date: Date): Date {
   const [h, m, s] = time.split(':').map((v) => parseInt(v, 10) || 0)
@@ -19,6 +24,7 @@ function parseTimeOnDate(time: string, date: Date): Date {
 export function getSlotAvailability(
   slot: TimeSlotLike,
   day: 'today' | 'tomorrow',
+  cutoffPercent: number = DEFAULT_SLOT_CUTOFF_PERCENT,
   now: Date = new Date()
 ): { unavailable: boolean; reason?: 'expired' | 'mostly_passed' } {
   if (day === 'tomorrow') {
@@ -39,8 +45,9 @@ export function getSlotAvailability(
   const durationMs = Math.max(end.getTime() - start.getTime(), 1)
   const elapsedMs = now.getTime() - start.getTime()
   const elapsedRatio = elapsedMs / durationMs
+  const cutoffRatio = Math.min(1, Math.max(0, (Number.isFinite(cutoffPercent) ? cutoffPercent : DEFAULT_SLOT_CUTOFF_PERCENT) / 100))
 
-  if (elapsedRatio > 0.4) {
+  if (elapsedRatio > cutoffRatio) {
     return { unavailable: true, reason: 'mostly_passed' }
   }
 
