@@ -8,6 +8,7 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
 import { isValidOrderTransition } from '../utils/orderStatus';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
+import { deductOcpStockOnDelivery } from '../utils/ocpStock';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
@@ -549,6 +550,9 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
              WHERE id = $2`,
             [riderId, task.order_id]
           );
+          // If this order belongs to an OCP, deduct its items from the OCP's
+          // stock (idempotent; floors at 0). Same locked transaction.
+          await deductOcpStockOnDelivery(client, task.order_id);
           deliveredOrder = { id: order.id, order_number: order.order_number, user_id: order.user_id };
         }
 

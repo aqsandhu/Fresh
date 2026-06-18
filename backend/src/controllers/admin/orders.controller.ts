@@ -19,6 +19,7 @@ import {
   ORDER_STATUS_TIMESTAMPS,
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
+import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
 import { roundMoney } from '../../utils/money';
 import {
   resolveUnitPrice,
@@ -569,149 +570,96 @@ export const assignRider = asyncHandler(async (req: Request, res: Response) => {
     return notFoundResponse(res, 'Order not found');
   }
 
-  // Check if rider exists and is verified (allow busy riders for multiple orders)
-  const riderResult = await query(
-    `SELECT r.id, r.status, u.full_name 
-     FROM riders r
-     JOIN users u ON r.user_id = u.id
-     WHERE r.id = $1 AND r.verification_status = 'verified' AND r.deleted_at IS NULL`,
-    [rider_id]
-  );
-
-  if (riderResult.rows.length === 0) {
-    return notFoundResponse(res, 'Rider not found or not verified');
-  }
-
-  const rider = riderResult.rows[0];
-
-  // Only reject offline/on_leave riders — allow available and busy (multiple orders per rider)
-  if (rider.status === 'offline' || rider.status === 'on_leave') {
-    return errorResponse(res, `Rider is ${rider.status}. Cannot assign orders.`, 400);
-  }
-
-  // All writes (order update + rider status + task swap) must be atomic — a
-  // partial failure previously left the order marked out_for_delivery while
-  // the rider/task rows said otherwise. The row lock also serialises two
-  // admins assigning the same order at once.
-  let result: { rows: any[] };
   try {
-    result = await withTransaction(async (client) => {
-      const orderCheck = await client.query(
-        'SELECT time_slot_id, status FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
-        [id]
-      );
-      if (orderCheck.rows.length === 0) {
-        throw Object.assign(new Error('Order not found'), { http: 404 });
-      }
-      if (['delivered', 'cancelled', 'refunded'].includes(orderCheck.rows[0].status)) {
-        throw Object.assign(
-          new Error('Cannot assign rider to a completed or cancelled order'),
-          { http: 400 }
-        );
-      }
-
-      const timeSlotId = orderCheck.rows[0].time_slot_id;
-
-      // Snapshot rider delivery charge at assignment time (only successful orders count later)
-      let riderCharge = 0;
-      if (timeSlotId) {
-        const chargeResult = await client.query(
-          'SELECT charge_per_order FROM rider_delivery_charges WHERE rider_id = $1 AND time_slot_id = $2',
-          [rider_id, timeSlotId]
-        );
-        if (chargeResult.rows.length > 0) {
-          riderCharge = parseFloat(chargeResult.rows[0].charge_per_order) || 0;
-        }
-      }
-
-      // Deliberate fast-path outside the strict state machine: assigning a rider
-      // implies the order is on its way, so any live status (pending/confirmed/
-      // preparing/ready) jumps straight to out_for_delivery. Dead orders are
-      // rejected above.
-      const updated = await client.query(
-        `UPDATE orders
-         SET rider_id = $1,
-             assigned_at = NOW(),
-             rider_delivery_charge = $3,
-             status = 'out_for_delivery',
-             out_for_delivery_at = COALESCE(out_for_delivery_at, NOW()),
-             updated_at = NOW()
-         WHERE id = $2
-         RETURNING *`,
-        [rider_id, id, riderCharge]
-      );
-
-      // Update rider status to busy
-      await client.query(
-        "UPDATE riders SET status = 'busy', updated_at = NOW() WHERE id = $1",
-        [rider_id]
-      );
-
-      // Cancel any previous rider task for this order, then create new one
-      await client.query(
-        `UPDATE rider_tasks SET status = 'cancelled', completed_at = NOW()
-         WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
-        [id]
-      );
-      await client.query(
-        `INSERT INTO rider_tasks (rider_id, task_type, order_id, status, assigned_at)
-         VALUES ($1, 'delivery', $2, 'assigned', NOW())`,
-        [rider_id, id]
-      );
-
-      return updated;
-    });
+    const { order, rider } = await assignRiderToOrder(id, rider_id, req.user?.id);
+    successResponse(res, { order, rider }, 'Rider assigned successfully');
   } catch (err: any) {
-    if (err?.http === 404) return notFoundResponse(res, 'Order not found');
+    if (err?.http === 404) return notFoundResponse(res, err.message || 'Order not found');
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
   }
+});
 
-  if (result.rows.length === 0) {
+/**
+ * Assign an order to an Order Collection Point (alternative to a direct rider).
+ * PATCH /api/admin/orders/:id/assign-ocp   Body: { ocp_id }
+ * The OCP then assigns a rider + collects payment. Pass ocp_id = null to unassign.
+ */
+export const assignOrderToOcp = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { ocp_id } = req.body;
+
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) {
     return notFoundResponse(res, 'Order not found');
   }
 
-  logger.info('Rider assigned to order', { orderId: id, riderId: rider_id, assignedBy: req.user?.id });
-
-  // Emit real-time events
-  const assignedOrder = result.rows[0];
-  emitOrderUpdate(id, {
-    orderId: id,
-    status: 'out_for_delivery',
-    riderId: rider_id,
-    riderName: rider.full_name,
-    message: `Rider ${rider.full_name} assigned to order #${assignedOrder.order_number}`,
-  });
-
-  // Notify customer
-  emitToUser(assignedOrder.user_id, 'order:rider_assigned', {
-    orderId: id,
-    orderNumber: assignedOrder.order_number,
-    riderName: rider.full_name,
-    status: 'out_for_delivery',
-    message: `Rider ${rider.full_name} is on the way with your order #${assignedOrder.order_number}!`,
-  });
-
-  // Notify rider
-  const riderUserResult = await query(
-    'SELECT user_id FROM riders WHERE id = $1',
-    [rider_id]
-  );
-  if (riderUserResult.rows.length > 0) {
-    emitToUser(riderUserResult.rows[0].user_id, 'rider:new_assignment', {
-      orderId: id,
-      orderNumber: assignedOrder.order_number,
-      message: `New delivery assignment: Order #${assignedOrder.order_number}`,
-    });
+  if (!ocp_id) {
+    const cleared = await query(
+      `UPDATE orders SET ocp_id = NULL, updated_at = NOW()
+        WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
+      [id]
+    );
+    if (cleared.rows.length === 0) return notFoundResponse(res, 'Order not found');
+    return successResponse(res, { id, ocp_id: null }, 'Order unassigned from OCP');
   }
 
-  successResponse(res, {
-    order: result.rows[0],
-    rider: {
-      id: rider.id,
-      name: rider.full_name,
-    },
-  }, 'Rider assigned successfully');
+  // The OCP must be active and in the SAME city as the order (city isolation).
+  const result = await withTransaction(async (client) => {
+    const ord = await client.query(
+      `SELECT id, city_id, status FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      [id]
+    );
+    if (ord.rows.length === 0) throw Object.assign(new Error('Order not found'), { http: 404 });
+    if (['delivered', 'cancelled', 'refunded'].includes(ord.rows[0].status)) {
+      throw Object.assign(new Error('Cannot reassign a completed or cancelled order'), { http: 400 });
+    }
+    const ocp = await client.query(
+      `SELECT id, city_id, status FROM order_collection_points WHERE id = $1 AND deleted_at IS NULL`,
+      [ocp_id]
+    );
+    if (ocp.rows.length === 0) throw Object.assign(new Error('OCP not found'), { http: 404 });
+    if (ocp.rows[0].status !== 'active') throw Object.assign(new Error('OCP is disabled'), { http: 400 });
+    if (ord.rows[0].city_id && ocp.rows[0].city_id && ord.rows[0].city_id !== ocp.rows[0].city_id) {
+      throw Object.assign(new Error('OCP is in a different city than the order'), { http: 400 });
+    }
+    const upd = await client.query(
+      `UPDATE orders SET ocp_id = $1, updated_at = NOW() WHERE id = $2 RETURNING id, ocp_id`,
+      [ocp_id, id]
+    );
+    return upd.rows[0];
+  }).catch((err: any) => {
+    if (err?.http) return { __error: err };
+    throw err;
+  });
+
+  if ((result as any)?.__error) {
+    const e = (result as any).__error;
+    return errorResponse(res, e.message, e.http);
+  }
+  logger.info('Order assigned to OCP', { orderId: id, ocpId: ocp_id, by: req.user?.id });
+  emitToAdmins('order:status_updated', { orderId: id, message: 'Order assigned to a collection point' });
+  return successResponse(res, result, 'Order assigned to OCP');
+});
+
+/**
+ * Reveal/hide the customer phone to the assigned OCP for one order.
+ * PATCH /api/admin/orders/:id/ocp-phone   Body: { visible: boolean }
+ */
+export const setOcpPhoneVisibility = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const visible = req.body?.visible === true || req.body?.visible === 'true';
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) {
+    return notFoundResponse(res, 'Order not found');
+  }
+  const result = await query(
+    `UPDATE orders SET phone_visible_to_ocp = $1, updated_at = NOW()
+      WHERE id = $2 AND deleted_at IS NULL RETURNING id, phone_visible_to_ocp`,
+    [visible, id]
+  );
+  if (result.rows.length === 0) return notFoundResponse(res, 'Order not found');
+  return successResponse(res, result.rows[0], visible ? 'Phone revealed to OCP' : 'Phone hidden from OCP');
 });
 
 /**

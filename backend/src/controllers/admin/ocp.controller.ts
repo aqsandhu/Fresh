@@ -7,7 +7,7 @@
 
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query } from '../../config/database';
+import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, createdResponse, errorResponse, notFoundResponse } from '../../utils/response';
 import { normalizePhoneNumber } from '../../utils/validators';
@@ -138,6 +138,173 @@ export const updateOcp = asyncHandler(async (req: Request, res: Response) => {
   );
   logger.info('OCP updated', { ocpId: id, by: req.user?.id });
   return successResponse(res, rowToOcp(result.rows[0]), 'OCP updated');
+});
+
+// ── Stock send (city admin → OCP) ───────────────────────────────────────────
+const QUALITIES = ['A', 'B', 'C'];
+
+/** POST /api/admin/ocp/:id/stock-requests — send a stock batch to an OCP (pending). */
+export const createStockRequest = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { items, note } = req.body as { items?: any[]; note?: string };
+  if (!Array.isArray(items) || items.length === 0) {
+    return errorResponse(res, 'Add at least one stock line.', 400);
+  }
+  const ocp = await query(
+    `SELECT id, city_id, status FROM order_collection_points WHERE id = $1 AND deleted_at IS NULL`,
+    [id]
+  );
+  if (ocp.rows.length === 0) return notFoundResponse(res, 'OCP not found');
+  if (ocp.rows[0].status !== 'active') return errorResponse(res, 'OCP is disabled.', 400);
+
+  // Normalise + validate lines.
+  const clean: { product_id: string; quality: string; quantity: number }[] = [];
+  for (const it of items) {
+    const q = String(it.quality || 'A').toUpperCase();
+    const qty = parseFloat(String(it.quantity));
+    if (!it.product_id) return errorResponse(res, 'Each line needs a product.', 400);
+    if (!QUALITIES.includes(q)) return errorResponse(res, 'Invalid quality.', 400);
+    if (!Number.isFinite(qty) || qty <= 0) return errorResponse(res, 'Quantity must be greater than 0.', 400);
+    clean.push({ product_id: it.product_id, quality: q, quantity: qty });
+  }
+
+  const created = await withTransaction(async (client) => {
+    const reqRow = await client.query(
+      `INSERT INTO ocp_stock_requests (ocp_id, city_id, note, created_by)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [id, ocp.rows[0].city_id, note ? String(note).slice(0, 500) : null, req.user?.id ?? null]
+    );
+    const request = reqRow.rows[0];
+    for (const l of clean) {
+      await client.query(
+        `INSERT INTO ocp_stock_request_items (request_id, product_id, quality, quantity)
+         VALUES ($1, $2, $3, $4)`,
+        [request.id, l.product_id, l.quality, l.quantity]
+      );
+    }
+    return request;
+  });
+
+  logger.info('OCP stock request created', { requestId: created.id, ocpId: id, by: req.user?.id });
+  return createdResponse(res, { id: created.id, status: created.status }, 'Stock sent to OCP (awaiting receipt)');
+});
+
+/** GET /api/admin/ocp/:id/stock-requests — requests for an OCP (admin view). */
+export const listStockRequests = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const result = await query(
+    `SELECT r.id, r.status, r.note, r.created_at, r.received_at,
+            COALESCE(json_agg(json_build_object(
+              'product_id', i.product_id, 'product_name', p.name_en,
+              'quality', i.quality, 'quantity', i.quantity
+            ) ORDER BY p.name_en) FILTER (WHERE i.id IS NOT NULL), '[]') AS items
+       FROM ocp_stock_requests r
+       LEFT JOIN ocp_stock_request_items i ON i.request_id = r.id
+       LEFT JOIN products p ON p.id = i.product_id
+      WHERE r.ocp_id = $1
+      GROUP BY r.id
+      ORDER BY r.created_at DESC
+      LIMIT 100`,
+    [id]
+  );
+  return successResponse(res, result.rows, 'Stock requests');
+});
+
+// ── Settlements inbox (OCP → city admin) ────────────────────────────────────
+
+/** GET /api/admin/ocp/settlements?status=pending — OCP cash settlements. */
+export const listSettlements = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await hasOcpTables())) return successResponse(res, [], 'Settlements');
+  const params: any[] = [];
+  let where = '1=1';
+  const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
+  if (['pending', 'received', 'rejected'].includes(status)) {
+    params.push(status);
+    where += ` AND s.status = $${params.length}`;
+  }
+  if (typeof req.query.ocp_id === 'string' && req.query.ocp_id) {
+    params.push(req.query.ocp_id);
+    where += ` AND s.ocp_id = $${params.length}`;
+  }
+  const result = await query(
+    `SELECT s.id, s.amount, s.status, s.requested_at, s.received_at,
+            o.name AS ocp_name, o.id AS ocp_id,
+            (SELECT COUNT(*) FROM ocp_settlement_orders so WHERE so.settlement_id = s.id) AS order_count
+       FROM ocp_settlements s
+       JOIN order_collection_points o ON o.id = s.ocp_id
+      WHERE ${where}
+      ORDER BY s.requested_at DESC
+      LIMIT 100`,
+    params
+  );
+  return successResponse(res, result.rows.map((r: any) => ({ ...r, amount: parseFloat(r.amount), order_count: Number(r.order_count) })), 'Settlements');
+});
+
+/**
+ * POST /api/admin/ocp/settlements/:id/receive — confirm receipt of OCP cash.
+ * Requires the admin's PASSWORD (re-auth) in the body. Atomically marks the
+ * settlement received and flags its orders settled. Idempotent (double-receive
+ * is a clean 409).
+ */
+export const receiveSettlement = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const password = String(req.body?.password || '');
+  if (!password) return errorResponse(res, 'Enter your password to confirm receipt.', 400);
+
+  // Re-verify the admin's own password.
+  const u = await query('SELECT password_hash FROM users WHERE id = $1', [req.user?.id]);
+  const hash = u.rows[0]?.password_hash;
+  if (!hash || !(await bcrypt.compare(password, hash))) {
+    return errorResponse(res, 'Incorrect password.', 401);
+  }
+
+  let out: any;
+  try {
+    out = await withTransaction(async (client) => {
+      const s = await client.query('SELECT id, status, amount FROM ocp_settlements WHERE id = $1 FOR UPDATE', [id]);
+      if (s.rows.length === 0) throw Object.assign(new Error('Settlement not found'), { http: 404 });
+      if (s.rows[0].status !== 'pending') throw Object.assign(new Error('This settlement was already processed.'), { http: 409 });
+      await client.query(
+        `UPDATE ocp_settlements SET status = 'received', received_at = NOW(), received_by = $1 WHERE id = $2`,
+        [req.user?.id ?? null, id]
+      );
+      await client.query(
+        `UPDATE orders SET ocp_payment_settled = TRUE, updated_at = NOW()
+          WHERE id IN (SELECT order_id FROM ocp_settlement_orders WHERE settlement_id = $1)`,
+        [id]
+      );
+      return { id, status: 'received', amount: parseFloat(s.rows[0].amount) };
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 409) return errorResponse(res, err.message, 409);
+    throw err;
+  }
+  logger.info('OCP settlement received', { settlementId: id, by: req.user?.id });
+  return successResponse(res, out, 'Settlement received');
+});
+
+/** POST /api/admin/ocp/settlements/:id/reject — reject; frees its orders to re-settle. */
+export const rejectSettlement = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  let out: any;
+  try {
+    out = await withTransaction(async (client) => {
+      const s = await client.query('SELECT id, status FROM ocp_settlements WHERE id = $1 FOR UPDATE', [id]);
+      if (s.rows.length === 0) throw Object.assign(new Error('Settlement not found'), { http: 404 });
+      if (s.rows[0].status !== 'pending') throw Object.assign(new Error('This settlement was already processed.'), { http: 409 });
+      // Free the orders (delete membership) so they re-enter the OCP's due.
+      await client.query('DELETE FROM ocp_settlement_orders WHERE settlement_id = $1', [id]);
+      await client.query(`UPDATE ocp_settlements SET status = 'rejected', received_by = $1 WHERE id = $2`, [req.user?.id ?? null, id]);
+      return { id, status: 'rejected' };
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 409) return errorResponse(res, err.message, 409);
+    throw err;
+  }
+  logger.info('OCP settlement rejected', { settlementId: id, by: req.user?.id });
+  return successResponse(res, out, 'Settlement rejected');
 });
 
 /** DELETE /api/admin/ocp/:id — soft delete. */
