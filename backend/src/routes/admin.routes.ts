@@ -95,6 +95,8 @@ router.put(
   validate(orderSchemas.assignRider),
   adminController.assignRider
 );
+router.patch('/orders/:id/assign-ocp', adminController.assignOrderToOcp);
+router.patch('/orders/:id/ocp-phone', adminController.setOcpPhoneVisibility);
 router.delete('/orders/:id', adminController.deleteOrder);
 
 // Riders
@@ -289,6 +291,13 @@ router.delete('/restaurants/:id', adminRateLimiter, restaurantsController.remove
 // Order Collection Points (OCP) — cross-city management (perm: ocp.manage)
 router.get('/ocp', ocpController.listOcps);
 router.post('/ocp', adminRateLimiter, ocpController.createOcp);
+// Settlements (perm ocp.settlements.receive) — literal paths must precede '/ocp/:id'.
+router.get('/ocp/settlements', ocpController.listSettlements);
+router.post('/ocp/settlements/:id/receive', adminRateLimiter, ocpController.receiveSettlement);
+router.post('/ocp/settlements/:id/reject', adminRateLimiter, ocpController.rejectSettlement);
+// Stock-send routes (perm ocp.stock.send) must precede '/ocp/:id'.
+router.get('/ocp/:id/stock-requests', ocpController.listStockRequests);
+router.post('/ocp/:id/stock-requests', adminRateLimiter, ocpController.createStockRequest);
 router.put('/ocp/:id', adminRateLimiter, ocpController.updateOcp);
 router.delete('/ocp/:id', adminRateLimiter, ocpController.deleteOcp);
 
