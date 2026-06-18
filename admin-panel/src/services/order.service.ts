@@ -63,6 +63,22 @@ export const orderService = {
     }
   },
 
+  assignToOcp: async (orderId: string, ocpId: string | null): Promise<{ id: string; ocpId: string | null }> => {
+    const response = await api.patch<ApiResponse<{ id: string; ocpId: string | null }>>(
+      `/admin/orders/${orderId}/assign-ocp`,
+      { ocp_id: ocpId }
+    );
+    return response.data;
+  },
+
+  setOcpPhoneVisibility: async (orderId: string, visible: boolean): Promise<{ id: string; phoneVisibleToOcp: boolean }> => {
+    const response = await api.patch<ApiResponse<{ id: string; phoneVisibleToOcp: boolean }>>(
+      `/admin/orders/${orderId}/ocp-phone`,
+      { visible }
+    );
+    return response.data;
+  },
+
   cancelOrder: async (id: string, reason: string): Promise<Order> => {
     try {
       const response = await api.put<ApiResponse<Order>>(`/admin/orders/${id}/cancel`, {

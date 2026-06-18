@@ -28,6 +28,7 @@ import {
   UserTips,
   RiderApplications,
   Restaurants,
+  OrderCollectionPoints,
   Settings,
 } from '@/pages';
 import './App.css';
@@ -302,6 +303,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Restaurants />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/ocp"
+        element={
+          <ProtectedRoute>
+            <OrderCollectionPoints />
           </ProtectedRoute>
         }
       />

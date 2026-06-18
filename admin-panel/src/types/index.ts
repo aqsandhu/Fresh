@@ -120,6 +120,10 @@ export interface Order {
   riderName?: string;
   riderPhone?: string;
   showCustomerPhone?: boolean;
+  /** OCP assignment (collection point) + per-order phone reveal to that OCP. */
+  ocpId?: string | null;
+  ocpName?: string | null;
+  phoneVisibleToOcp?: boolean;
   addressId?: string;
   slotName?: string;
   startTime?: string;

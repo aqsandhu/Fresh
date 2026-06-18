@@ -17,4 +17,5 @@ export { Complaints } from './Complaints';
 export { UserTips } from './UserTips';
 export { RiderApplications } from './RiderApplications';
 export { Restaurants } from './Restaurants';
+export { OrderCollectionPoints } from './OrderCollectionPoints';
 export { Settings } from './Settings';

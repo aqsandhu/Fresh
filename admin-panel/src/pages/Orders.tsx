@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Table } from '@/components/ui/Table';
 import { orderService } from '@/services/order.service';
 import { riderService } from '@/services/rider.service';
+import { ocpService } from '@/services/ocp.service';
 import { addressService } from '@/services/address.service';
 import { useNotifications } from '@/context/NotificationContext';
 import { useAuthContext } from '@/context/AuthContext';
@@ -229,6 +230,30 @@ export const Orders: React.FC = () => {
   const { data: riders } = useQuery({
     queryKey: ['riders', 'for-assignment'],
     queryFn: () => riderService.getRiders(),
+  });
+
+  // Active OCPs for assignment (backend enforces same-city on assign).
+  const { data: ocps } = useQuery({
+    queryKey: ['ocps', 'for-assignment'],
+    queryFn: () => ocpService.list(),
+  });
+
+  const assignOcpMutation = useMutation({
+    mutationFn: ({ orderId, ocpId }: { orderId: string; ocpId: string | null }) =>
+      orderService.assignToOcp(orderId, ocpId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      toast.success('Order assignment updated');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Failed to assign'),
+  });
+  const ocpPhoneMutation = useMutation({
+    mutationFn: ({ orderId, visible }: { orderId: string; visible: boolean }) =>
+      orderService.setOcpPhoneVisibility(orderId, visible),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to update'),
   });
 
   // Rider location tracking state
@@ -645,6 +670,42 @@ export const Orders: React.FC = () => {
                 title="Track Rider Location"
               >
                 <Navigation2 className="w-3 h-3" /> Track
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'ocp',
+      title: 'Collection Point',
+      render: (order: Order) => {
+        const isCompleted = ['delivered', 'cancelled', 'refunded'].includes(order.status);
+        const activeOcps = (ocps || []).filter((o) => o.status === 'active');
+        return (
+          <div className="min-w-[150px]">
+            {isCompleted ? (
+              <span className="text-sm text-gray-600">{order.ocpName || '—'}</span>
+            ) : (
+              <select
+                value={order.ocpId || ''}
+                onChange={(e) => assignOcpMutation.mutate({ orderId: order.id, ocpId: e.target.value || null })}
+                className="text-xs w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">{order.ocpName || 'Direct (no OCP)'}</option>
+                {activeOcps.map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}{o.city ? ` · ${o.city}` : ''}</option>
+                ))}
+              </select>
+            )}
+            {order.ocpId && (
+              <button
+                onClick={(e) => { e.stopPropagation(); ocpPhoneMutation.mutate({ orderId: order.id, visible: !order.phoneVisibleToOcp }); }}
+                className={`mt-1 flex items-center gap-1 text-xs px-1.5 py-0.5 rounded ${order.phoneVisibleToOcp ? 'text-green-700' : 'text-gray-500 hover:text-gray-700'}`}
+                title="Reveal/hide customer phone to the OCP"
+              >
+                {order.phoneVisibleToOcp ? <Phone className="w-3 h-3" /> : <PhoneOff className="w-3 h-3" />}
+                {order.phoneVisibleToOcp ? 'Phone shown' : 'Reveal phone'}
               </button>
             )}
           </div>

@@ -19,6 +19,7 @@ import {
   Lightbulb,
   UserPlus,
   UtensilsCrossed,
+  Store,
   LogOut,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { path: '/admin/riders', label: 'Riders', icon: <Bike className="w-5 h-5" /> },
   { path: '/admin/rider-applications', label: 'Rider Applications', icon: <UserPlus className="w-5 h-5" /> },
   { path: '/admin/restaurants', label: 'Restaurants', icon: <UtensilsCrossed className="w-5 h-5" /> },
+  { path: '/admin/ocp', label: 'Collection Points', icon: <Store className="w-5 h-5" /> },
   { path: '/admin/atta-requests', label: 'Atta Chakki', icon: <Wheat className="w-5 h-5" /> },
   { path: '/admin/whatsapp-orders', label: 'WhatsApp Orders', icon: <MessageCircle className="w-5 h-5" /> },
   { path: '/admin/addresses', label: 'Addresses', icon: <MapPin className="w-5 h-5" /> },
