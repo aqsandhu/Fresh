@@ -15,16 +15,20 @@ interface ProductFilters {
 }
 
 // Catalog v2 — append per-quality channel enable flags + explicit B/C and
-// restaurant fraction prices. Sent on both create and update; blank fraction
-// values are sent as '' so the backend clears (NULLs) them.
+// restaurant fraction prices. ONLY fields explicitly present on `d` are sent, so
+// a partial update (e.g. the Price Manager editing some fields) never clobbers
+// the v2 fields it didn't touch. The full product form passes them all, so
+// create/edit there is unchanged. A `null` fraction is sent as '' to clear it.
 function appendCatalogV2Fields(fd: FormData, d: Partial<CreateProductData>): void {
-  const flag = (v: boolean | undefined, dflt: boolean) => String(v === undefined ? dflt : v === true);
-  fd.append('consumer_enabled_a', flag(d.consumerEnabledA, true));
-  fd.append('consumer_enabled_b', flag(d.consumerEnabledB, true));
-  fd.append('consumer_enabled_c', flag(d.consumerEnabledC, true));
-  fd.append('restaurant_enabled_a', flag(d.restaurantEnabledA, false));
-  fd.append('restaurant_enabled_b', flag(d.restaurantEnabledB, false));
-  fd.append('restaurant_enabled_c', flag(d.restaurantEnabledC, false));
+  const appendFlag = (key: string, v: boolean | undefined) => {
+    if (v !== undefined) fd.append(key, String(v === true));
+  };
+  appendFlag('consumer_enabled_a', d.consumerEnabledA);
+  appendFlag('consumer_enabled_b', d.consumerEnabledB);
+  appendFlag('consumer_enabled_c', d.consumerEnabledC);
+  appendFlag('restaurant_enabled_a', d.restaurantEnabledA);
+  appendFlag('restaurant_enabled_b', d.restaurantEnabledB);
+  appendFlag('restaurant_enabled_c', d.restaurantEnabledC);
   const fractions: Array<[string, number | null | undefined]> = [
     ['half_kg_price_b', d.halfKgPriceB], ['quarter_kg_price_b', d.quarterKgPriceB], ['half_dozen_price_b', d.halfDozenPriceB],
     ['half_kg_price_c', d.halfKgPriceC], ['quarter_kg_price_c', d.quarterKgPriceC], ['half_dozen_price_c', d.halfDozenPriceC],
@@ -32,7 +36,9 @@ function appendCatalogV2Fields(fd: FormData, d: Partial<CreateProductData>): voi
     ['restaurant_half_kg_price_b', d.restaurantHalfKgPriceB], ['restaurant_quarter_kg_price_b', d.restaurantQuarterKgPriceB], ['restaurant_half_dozen_price_b', d.restaurantHalfDozenPriceB],
     ['restaurant_half_kg_price_c', d.restaurantHalfKgPriceC], ['restaurant_quarter_kg_price_c', d.restaurantQuarterKgPriceC], ['restaurant_half_dozen_price_c', d.restaurantHalfDozenPriceC],
   ];
-  for (const [k, v] of fractions) fd.append(k, v == null ? '' : String(v));
+  for (const [k, v] of fractions) {
+    if (v !== undefined) fd.append(k, v === null ? '' : String(v));
+  }
 }
 
 export const productService = {

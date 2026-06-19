@@ -1,62 +1,56 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Save, RotateCcw, Search, Loader2 } from 'lucide-react';
+import { Save, RotateCcw, Search, Loader2, UtensilsCrossed } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { productService } from '@/services/product.service';
+import { categoryService } from '@/services/category.service';
 import type { Product } from '@/types';
 import toast from 'react-hot-toast';
 
-// One editable grid where every product's quality prices, unit toggles and
-// active/paused status live together. Saving a row PUTs the product, so the
-// change propagates everywhere the product is used (consumer, restaurant, OCP).
-//
-// Note on B/C half/quarter prices: the whole pricing engine derives the half-kg
-// and quarter-kg price for the B and C tiers from their per-kg price (½ kg = 50%,
-// ¼ kg = 25%). Only quality A has explicit half/quarter overrides (its own DB
-// columns). So A's ½/¼ are editable here; B/C's are shown as auto-derived.
+// One place to edit every product's per-quality prices (A/B/C: per-kg + ½kg +
+// ¼kg), the ½/¼ sell toggles, restaurant allow per quality, and active/paused.
+// Saving PUTs only the changed fields, so per-product detail set in the product
+// form (consumer enable, restaurant prices, etc.) is preserved.
 
 type Row = {
   isActive: boolean;
-  price: string;        // A per kg/base
-  halfKgPrice: string;  // A ½ kg (blank = auto)
-  quarterKgPrice: string; // A ¼ kg (blank = auto)
-  bEnabled: boolean;
-  priceB: string;
-  cEnabled: boolean;
-  priceC: string;
   allowHalfKg: boolean;
   allowQuarterKg: boolean;
+  // Quality A (always offered)
+  price: string; halfKgPrice: string; quarterKgPrice: string; restA: boolean;
+  // Quality B
+  bEnabled: boolean; priceB: string; halfKgPriceB: string; quarterKgPriceB: string; restB: boolean;
+  // Quality C
+  cEnabled: boolean; priceC: string; halfKgPriceC: string; quarterKgPriceC: string; restC: boolean;
 };
 
 const numStr = (v: number | null | undefined): string => (v == null ? '' : String(v));
+const numOrNull = (s: string): number | null => {
+  const n = parseFloat(s);
+  return s.trim() === '' || !Number.isFinite(n) ? null : n;
+};
 
 function toRow(p: Product): Row {
   return {
     isActive: !!p.isActive,
-    price: numStr(p.price),
-    halfKgPrice: numStr(p.halfKgPrice),
-    quarterKgPrice: numStr(p.quarterKgPrice),
-    bEnabled: p.priceB != null,
-    priceB: numStr(p.priceB),
-    cEnabled: p.priceC != null,
-    priceC: numStr(p.priceC),
     allowHalfKg: p.allowHalfKg !== false,
     allowQuarterKg: p.allowQuarterKg !== false,
+    price: numStr(p.price), halfKgPrice: numStr(p.halfKgPrice), quarterKgPrice: numStr(p.quarterKgPrice),
+    restA: p.restaurantEnabledA === true,
+    bEnabled: p.priceB != null, priceB: numStr(p.priceB), halfKgPriceB: numStr(p.halfKgPriceB), quarterKgPriceB: numStr(p.quarterKgPriceB),
+    restB: p.restaurantEnabledB === true,
+    cEnabled: p.priceC != null, priceC: numStr(p.priceC), halfKgPriceC: numStr(p.halfKgPriceC), quarterKgPriceC: numStr(p.quarterKgPriceC),
+    restC: p.restaurantEnabledC === true,
   };
 }
 
-const rowEq = (a: Row, b: Row) =>
-  a.isActive === b.isActive && a.price === b.price && a.halfKgPrice === b.halfKgPrice &&
-  a.quarterKgPrice === b.quarterKgPrice && a.bEnabled === b.bEnabled && a.priceB === b.priceB &&
-  a.cEnabled === b.cEnabled && a.priceC === b.priceC && a.allowHalfKg === b.allowHalfKg &&
-  a.allowQuarterKg === b.allowQuarterKg;
+const rowEq = (a: Row, b: Row) => (Object.keys(a) as (keyof Row)[]).every((k) => a[k] === b[k]);
 
-const derived = (perKg: string, frac: number): string => {
+const placeholderFor = (perKg: string, frac: number): string => {
   const n = parseFloat(perKg);
-  return Number.isFinite(n) ? `≈ ${(Math.round(n * frac * 100) / 100)}` : '—';
+  return Number.isFinite(n) ? `auto ${Math.round(n * frac * 100) / 100}` : 'auto';
 };
 
 export const PriceManager: React.FC = () => {
@@ -71,13 +65,24 @@ export const PriceManager: React.FC = () => {
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['products', 'price-manager'],
     queryFn: () => productService.getProducts({ limit: 500 }),
-    // Don't let a background refetch wipe in-progress edits; we refetch on save.
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });
   const products = useMemo(() => data?.products || [], [data]);
+  const productById = useMemo(() => {
+    const m: Record<string, Product> = {};
+    for (const p of products) m[p.id] = p;
+    return m;
+  }, [products]);
 
-  // (Re)seed the working copy whenever fresh products arrive.
+  // Which categories allow restaurants — gates the per-quality restaurant toggle.
+  const { data: cats } = useQuery({ queryKey: ['categories', 'price-manager'], queryFn: () => categoryService.getCategories() });
+  const catAllowsRestaurants = useMemo(() => {
+    const m: Record<string, boolean> = {};
+    for (const c of cats || []) m[c.id] = c.availableForRestaurants === true;
+    return m;
+  }, [cats]);
+
   useEffect(() => {
     const next: Record<string, Row> = {};
     for (const p of products) next[p.id] = toRow(p);
@@ -118,19 +123,28 @@ export const PriceManager: React.FC = () => {
     const results = await Promise.allSettled(
       dirtyIds.map((id) => {
         const r = rows[id];
-        const numOrNull = (s: string) => {
-          const n = parseFloat(s);
-          return s.trim() === '' || !Number.isFinite(n) ? null : n;
-        };
+        const p = productById[id];
+        const catRest = p ? catAllowsRestaurants[p.categoryId] === true : false;
+        const restA = catRest && r.restA;
+        const restB = catRest && r.bEnabled && r.restB;
+        const restC = catRest && r.cEnabled && r.restC;
         return productService.updateProduct(id, {
           isActive: r.isActive,
+          allowHalfKg: r.allowHalfKg,
+          allowQuarterKg: r.allowQuarterKg,
           price: parseFloat(r.price) || 0,
           halfKgPrice: numOrNull(r.halfKgPrice),
           quarterKgPrice: numOrNull(r.quarterKgPrice),
           priceB: r.bEnabled ? numOrNull(r.priceB) : null,
+          halfKgPriceB: r.bEnabled ? numOrNull(r.halfKgPriceB) : null,
+          quarterKgPriceB: r.bEnabled ? numOrNull(r.quarterKgPriceB) : null,
           priceC: r.cEnabled ? numOrNull(r.priceC) : null,
-          allowHalfKg: r.allowHalfKg,
-          allowQuarterKg: r.allowQuarterKg,
+          halfKgPriceC: r.cEnabled ? numOrNull(r.halfKgPriceC) : null,
+          quarterKgPriceC: r.cEnabled ? numOrNull(r.quarterKgPriceC) : null,
+          restaurantEnabledA: restA,
+          restaurantEnabledB: restB,
+          restaurantEnabledC: restC,
+          availableForRestaurants: restA || restB || restC,
         });
       })
     );
@@ -144,7 +158,7 @@ export const PriceManager: React.FC = () => {
   };
 
   return (
-    <Layout title="Price Manager" subtitle="Edit all product prices, qualities, units and status in one place">
+    <Layout title="Price Manager" subtitle="Edit every product's quality prices, units, restaurant access and status in one place">
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
@@ -181,85 +195,161 @@ export const PriceManager: React.FC = () => {
 
       {isLoading ? (
         <div className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-600 mx-auto" /></div>
+      ) : filtered.length === 0 ? (
+        <Card className="text-center py-12 text-gray-500">No products match.</Card>
       ) : (
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-gray-50 text-gray-500 text-xs uppercase">
-                <th className="sticky left-0 bg-gray-50 text-left px-3 py-2 min-w-[180px]">Product</th>
-                <th className="px-2 py-2">Active</th>
-                <th className="px-2 py-2">A /kg</th>
-                <th className="px-2 py-2">A ½kg</th>
-                <th className="px-2 py-2">A ¼kg</th>
-                <th className="px-2 py-2">B</th>
-                <th className="px-2 py-2">B /kg</th>
-                <th className="px-2 py-2">C</th>
-                <th className="px-2 py-2">C /kg</th>
-                <th className="px-2 py-2">½kg</th>
-                <th className="px-2 py-2">¼kg</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p) => {
-                const r = rows[p.id];
-                if (!r) return null;
-                const isKg = String(p.unitType).toLowerCase() === 'kg';
-                const dirty = originals.current[p.id] && !rowEq(r, originals.current[p.id]);
-                const cell = 'w-20 px-2 py-1 border border-gray-200 rounded text-right text-sm disabled:bg-gray-100 disabled:text-gray-400';
-                return (
-                  <tr key={p.id} className={`border-b border-gray-100 ${dirty ? 'bg-amber-50/50' : ''}`}>
-                    <td className="sticky left-0 bg-inherit px-3 py-2">
-                      <div className="font-medium text-gray-900">{p.nameEn}</div>
-                      <div className="text-xs text-gray-400">{p.categoryName} · {p.unitType}{!r.isActive ? ' · paused' : ''}</div>
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <input type="checkbox" checked={r.isActive} onChange={(e) => setCell(p.id, { isActive: e.target.checked })} className="w-4 h-4" />
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <input type="number" min={0} step="0.01" value={r.price} onChange={(e) => setCell(p.id, { price: e.target.value })} className={cell} />
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {isKg ? <input type="number" min={0} step="0.01" value={r.halfKgPrice} placeholder={derived(r.price, 0.5)} onChange={(e) => setCell(p.id, { halfKgPrice: e.target.value })} className={cell} /> : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {isKg ? <input type="number" min={0} step="0.01" value={r.quarterKgPrice} placeholder={derived(r.price, 0.25)} onChange={(e) => setCell(p.id, { quarterKgPrice: e.target.value })} className={cell} /> : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <input type="checkbox" checked={r.bEnabled} onChange={(e) => setCell(p.id, { bEnabled: e.target.checked })} className="w-4 h-4" />
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <input type="number" min={0} step="0.01" value={r.priceB} disabled={!r.bEnabled} onChange={(e) => setCell(p.id, { priceB: e.target.value })} className={cell} />
-                      {isKg && r.bEnabled && <div className="text-[10px] text-gray-400">{derived(r.priceB, 0.5)} / {derived(r.priceB, 0.25)}</div>}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <input type="checkbox" checked={r.cEnabled} onChange={(e) => setCell(p.id, { cEnabled: e.target.checked })} className="w-4 h-4" />
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      <input type="number" min={0} step="0.01" value={r.priceC} disabled={!r.cEnabled} onChange={(e) => setCell(p.id, { priceC: e.target.value })} className={cell} />
-                      {isKg && r.cEnabled && <div className="text-[10px] text-gray-400">{derived(r.priceC, 0.5)} / {derived(r.priceC, 0.25)}</div>}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {isKg ? <input type="checkbox" checked={r.allowHalfKg} onChange={(e) => setCell(p.id, { allowHalfKg: e.target.checked })} className="w-4 h-4" /> : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td className="px-2 py-2 text-center">
-                      {isKg ? <input type="checkbox" checked={r.allowQuarterKg} onChange={(e) => setCell(p.id, { allowQuarterKg: e.target.checked })} className="w-4 h-4" /> : <span className="text-gray-300">—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={11} className="text-center text-gray-500 py-10">No products match.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
+        <div className="space-y-3">
+          {filtered.map((p) => {
+            const r = rows[p.id];
+            if (!r) return null;
+            const dirty = originals.current[p.id] && !rowEq(r, originals.current[p.id]);
+            const catRest = catAllowsRestaurants[p.categoryId] === true;
+            return (
+              <ProductPriceCard
+                key={p.id}
+                product={p}
+                row={r}
+                dirty={!!dirty}
+                catRest={catRest}
+                set={(patch) => setCell(p.id, patch)}
+              />
+            );
+          })}
+        </div>
       )}
+
       <p className="text-xs text-gray-400 mt-3">
-        ½kg / ¼kg checkboxes enable those purchase units for customers. Unticking quality B or C removes that tier from the product.
-        For B and C the half/quarter price is derived automatically (50% / 25% of the per-kg price).
+        Per quality you set the per-unit price plus optional ½kg / ¼kg overrides (blank = auto 50% / 25%). The ½kg / ¼kg
+        toggles control whether those units are sold at all. Restaurant access is per quality — only available when the
+        product's category allows restaurants. Changes here update the consumer + restaurant storefronts everywhere.
       </p>
     </Layout>
   );
 };
+
+// ── One product card (header + Quality A/B/C rows) ───────────────────────────
+function ProductPriceCard({
+  product: p, row: r, dirty, catRest, set,
+}: {
+  product: Product; row: Row; dirty: boolean; catRest: boolean; set: (patch: Partial<Row>) => void;
+}) {
+  const isKg = String(p.unitType).toLowerCase() === 'kg' || String(p.unitType).toLowerCase() === 'gram';
+  const inputCls = 'w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-right disabled:bg-gray-100 disabled:text-gray-400';
+
+  return (
+    <Card className={`p-4 ${dirty ? 'ring-1 ring-amber-300 bg-amber-50/30' : ''}`}>
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-gray-100">
+        <div>
+          <h3 className="font-semibold text-gray-900">{p.nameEn}</h3>
+          <p className="text-xs text-gray-400">{p.categoryName} · {p.unitType}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          {isKg && (
+            <>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" checked={r.allowHalfKg} onChange={(e) => set({ allowHalfKg: e.target.checked })} className="w-4 h-4 rounded" /> Sell ½kg
+              </label>
+              <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" checked={r.allowQuarterKg} onChange={(e) => set({ allowQuarterKg: e.target.checked })} className="w-4 h-4 rounded" /> Sell ¼kg
+              </label>
+            </>
+          )}
+          <label className={`flex items-center gap-1.5 text-sm font-medium cursor-pointer select-none ${r.isActive ? 'text-green-700' : 'text-gray-500'}`}>
+            <input type="checkbox" checked={r.isActive} onChange={(e) => set({ isActive: e.target.checked })} className="w-4 h-4 rounded" />
+            {r.isActive ? 'Active' : 'Paused'}
+          </label>
+        </div>
+      </div>
+
+      {/* Quality rows */}
+      <div className="mt-2 space-y-1.5">
+        <QualityEditLine
+          label="A" tone="emerald" isKg={isKg} inputCls={inputCls} catRest={catRest}
+          offered enabledToggle={null}
+          priceKey="price" halfKey="halfKgPrice" quarterKey="quarterKgPrice" restKey="restA"
+          allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set}
+        />
+        <QualityEditLine
+          label="B" tone="blue" isKg={isKg} inputCls={inputCls} catRest={catRest}
+          offered={r.bEnabled} enabledToggle={(v) => set({ bEnabled: v })}
+          priceKey="priceB" halfKey="halfKgPriceB" quarterKey="quarterKgPriceB" restKey="restB"
+          allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set}
+        />
+        <QualityEditLine
+          label="C" tone="amber" isKg={isKg} inputCls={inputCls} catRest={catRest}
+          offered={r.cEnabled} enabledToggle={(v) => set({ cEnabled: v })}
+          priceKey="priceC" halfKey="halfKgPriceC" quarterKey="quarterKgPriceC" restKey="restC"
+          allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function QualityEditLine({
+  label, tone, isKg, inputCls, catRest, offered, enabledToggle,
+  priceKey, halfKey, quarterKey, restKey, allowHalf, allowQuarter, r, set,
+}: {
+  label: 'A' | 'B' | 'C';
+  tone: 'emerald' | 'blue' | 'amber';
+  isKg: boolean;
+  inputCls: string;
+  catRest: boolean;
+  offered: boolean;
+  enabledToggle: ((v: boolean) => void) | null;
+  priceKey: keyof Row; halfKey: keyof Row; quarterKey: keyof Row; restKey: keyof Row;
+  allowHalf: boolean; allowQuarter: boolean;
+  r: Row; set: (patch: Partial<Row>) => void;
+}) {
+  const toneCls = tone === 'emerald' ? 'bg-emerald-50 text-emerald-700' : tone === 'blue' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700';
+  const dis = !offered;
+  const num = (key: keyof Row) => (r[key] as string) ?? '';
+  const onNum = (key: keyof Row) => (e: React.ChangeEvent<HTMLInputElement>) => set({ [key]: e.target.value } as Partial<Row>);
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1.5">
+      <div className="flex items-center gap-2 w-24 shrink-0">
+        {enabledToggle ? (
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <input type="checkbox" checked={offered} onChange={(e) => enabledToggle(e.target.checked)} className="w-4 h-4 rounded" />
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded ${toneCls}`}>Q{label}</span>
+          </label>
+        ) : (
+          <span className={`text-xs font-semibold px-2 py-0.5 rounded ${toneCls}`}>Q{label}</span>
+        )}
+      </div>
+
+      <label className="flex items-center gap-1.5 text-xs text-gray-500">
+        /unit
+        <input type="number" min={0} step="0.01" disabled={dis} value={num(priceKey)} onChange={onNum(priceKey)} className={inputCls} />
+      </label>
+
+      {isKg && allowHalf && (
+        <label className="flex items-center gap-1.5 text-xs text-gray-500">
+          ½kg
+          <input type="number" min={0} step="0.01" disabled={dis} value={num(halfKey)} onChange={onNum(halfKey)}
+            placeholder={placeholderFor(num(priceKey), 0.5)} className={inputCls} />
+        </label>
+      )}
+      {isKg && allowQuarter && (
+        <label className="flex items-center gap-1.5 text-xs text-gray-500">
+          ¼kg
+          <input type="number" min={0} step="0.01" disabled={dis} value={num(quarterKey)} onChange={onNum(quarterKey)}
+            placeholder={placeholderFor(num(priceKey), 0.25)} className={inputCls} />
+        </label>
+      )}
+
+      <label
+        title={!catRest ? 'Enable “Category also for restaurants” on this product’s category first.' : 'Offer this quality to restaurants'}
+        className={`flex items-center gap-1.5 text-xs ml-auto ${(!catRest || dis) ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 cursor-pointer'} select-none`}
+      >
+        <input type="checkbox" disabled={!catRest || dis} checked={catRest && offered && (r[restKey] === true)}
+          onChange={(e) => set({ [restKey]: e.target.checked } as Partial<Row>)} className="w-4 h-4 rounded" />
+        <UtensilsCrossed className="w-3.5 h-3.5" /> Restaurants
+      </label>
+    </div>
+  );
+}
 
 export default PriceManager;
