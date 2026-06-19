@@ -9,6 +9,7 @@ import { successResponse, notFoundResponse, paginatedResponse } from '../utils/r
 import { resolvePublicCityId } from '../utils/cityScope';
 import { tagSearchSql } from '../utils/productTags';
 import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumns } from '../config/productSchema';
+import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasFeedbackTables } from '../config/feedbackSchema';
 
 /**
@@ -17,9 +18,24 @@ import { hasFeedbackTables } from '../config/feedbackSchema';
  * stock_quantity. Returns a trailing-comma fragment for the SELECT column list.
  */
 async function qualityCols(): Promise<string> {
-  return (await hasQualityCatalogColumns())
-    ? 'p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c,'
-    : '';
+  if (!(await hasQualityCatalogColumns())) return '';
+  // Catalog v2: hide a B/C tier from CONSUMERS when its enable flag is off by
+  // returning NULL for its price (the storefront treats "no price" as "not
+  // offered"). Explicit B/C fraction prices are also surfaced. consumer_enabled_a
+  // is exposed so the client can gate the A tier too.
+  if (await hasCatalogV2Columns()) {
+    return `
+      CASE WHEN p.consumer_enabled_b THEN p.price_b END AS price_b,
+      CASE WHEN p.consumer_enabled_c THEN p.price_c END AS price_c,
+      p.stock_quantity_b, p.stock_quantity_c, p.consumer_enabled_a,
+      CASE WHEN p.consumer_enabled_b THEN p.half_kg_price_b END AS half_kg_price_b,
+      CASE WHEN p.consumer_enabled_b THEN p.quarter_kg_price_b END AS quarter_kg_price_b,
+      CASE WHEN p.consumer_enabled_b THEN p.half_dozen_price_b END AS half_dozen_price_b,
+      CASE WHEN p.consumer_enabled_c THEN p.half_kg_price_c END AS half_kg_price_c,
+      CASE WHEN p.consumer_enabled_c THEN p.quarter_kg_price_c END AS quarter_kg_price_c,
+      CASE WHEN p.consumer_enabled_c THEN p.half_dozen_price_c END AS half_dozen_price_c,`;
+  }
+  return 'p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c,';
 }
 
 /** Column fragment for variable-weight fields, gated until migration 23 lands. */

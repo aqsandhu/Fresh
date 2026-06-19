@@ -17,6 +17,25 @@ import {
 } from '../../utils/cityScope';
 import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
 import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumns } from '../../config/productSchema';
+import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
+
+// Catalog v2 (migration 37) column groups — reused by create + update.
+const CATALOG_V2_ENABLE_FLAGS = [
+  'consumer_enabled_a', 'consumer_enabled_b', 'consumer_enabled_c',
+  'restaurant_enabled_a', 'restaurant_enabled_b', 'restaurant_enabled_c',
+];
+const CATALOG_V2_FRACTION_PRICES = [
+  'half_kg_price_b', 'quarter_kg_price_b', 'half_dozen_price_b',
+  'half_kg_price_c', 'quarter_kg_price_c', 'half_dozen_price_c',
+  'restaurant_half_kg_price_a', 'restaurant_quarter_kg_price_a', 'restaurant_half_dozen_price_a',
+  'restaurant_half_kg_price_b', 'restaurant_quarter_kg_price_b', 'restaurant_half_dozen_price_b',
+  'restaurant_half_kg_price_c', 'restaurant_quarter_kg_price_c', 'restaurant_half_dozen_price_c',
+];
+// Columns returned by the list + detail product reads (gated by hasCatalogV2Columns).
+const CATALOG_V2_READ_COLS = [
+  ...CATALOG_V2_ENABLE_FLAGS, ...CATALOG_V2_FRACTION_PRICES,
+  'reserved_quantity', 'reserved_quantity_b', 'reserved_quantity_c',
+].map((c) => `p.${c}`).join(', ') + ',';
 
 /** Default Urdu popup shown when a customer adds a variable-weight product. */
 export const DEFAULT_VARIABLE_WEIGHT_NOTE =
@@ -84,7 +103,8 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
   const listQualityCols = qualityReady
     ? 'p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c, p.available_for_restaurants, p.restaurant_price_a, p.restaurant_price_b, p.restaurant_price_c,'
     : '';
-  const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, c.qualifies_for_free_delivery, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.half_kg_price, p.quarter_kg_price, p.half_dozen_price, ${listToggleCols} ${listQualityCols} p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+  const listCatalogV2Cols = (await hasCatalogV2Columns()) ? CATALOG_V2_READ_COLS : '';
+  const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, c.qualifies_for_free_delivery, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.half_kg_price, p.quarter_kg_price, p.half_dozen_price, ${listToggleCols} ${listQualityCols} ${listCatalogV2Cols} p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
   params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
 
   const result = await query(productsSql, params);
@@ -110,6 +130,7 @@ export const getAdminProductById = asyncHandler(async (req: Request, res: Respon
        p.available_for_restaurants, p.restaurant_price_a, p.restaurant_price_b, p.restaurant_price_c,
        c.available_for_restaurants as category_available_for_restaurants,`
     : '';
+  const catalogV2Cols = (await hasCatalogV2Columns()) ? CATALOG_V2_READ_COLS : '';
   const result = await query(
     `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode,
       p.category_id, c.name_en as category_name, c.slug as category_slug,
@@ -118,6 +139,7 @@ export const getAdminProductById = asyncHandler(async (req: Request, res: Respon
       ${varCols}
       ${toggleCols}
       ${qualityCols}
+      ${catalogV2Cols}
       p.unit_type, p.unit_value, p.stock_quantity, p.low_stock_threshold,
       p.stock_status, p.track_inventory, p.primary_image, p.images,
       p.short_description, p.description_ur, p.description_en,
@@ -306,6 +328,26 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     });
   }
 
+  // Catalog v2 (migration 37): per-quality channel enable flags + explicit B/C
+  // and restaurant fraction prices. Follow-up update; defaults preserve prior
+  // behaviour (consumer A/B/C on, restaurant off) when the form omits a field.
+  if (await hasCatalogV2Columns()) {
+    const flagOr = (v: any, dflt: boolean) => (v === '' || v === null || v === undefined ? dflt : toBool(v));
+    const flagVals = [
+      flagOr(req.body.consumer_enabled_a, true), flagOr(req.body.consumer_enabled_b, true), flagOr(req.body.consumer_enabled_c, true),
+      flagOr(req.body.restaurant_enabled_a, false), flagOr(req.body.restaurant_enabled_b, false), flagOr(req.body.restaurant_enabled_c, false),
+    ];
+    const fracVals = CATALOG_V2_FRACTION_PRICES.map((c) => normPrice(req.body[c]));
+    const allCols = [...CATALOG_V2_ENABLE_FLAGS, ...CATALOG_V2_FRACTION_PRICES];
+    const allVals = [...flagVals, ...fracVals];
+    const setSql = allCols.map((c, i) => `${c} = $${i + 1}`).join(', ');
+    await query(
+      `UPDATE products SET ${setSql} WHERE id = $${allCols.length + 1}`,
+      [...allVals, result.rows[0].id]
+    );
+    allCols.forEach((c, i) => { result.rows[0][c] = allVals[i]; });
+  }
+
   logger.info('Product created', { productId: result.rows[0].id, createdBy: req.user?.id });
 
   createdResponse(res, result.rows[0], 'Product created successfully');
@@ -332,6 +374,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   const varWeightReady = await hasVariableWeightColumns();
   const unitToggleReady = await hasUnitToggleColumns();
   const qualityReady = await hasQualityCatalogColumns();
+  const catalogV2Ready = await hasCatalogV2Columns();
   const allowedFields = [
     'name_ur', 'name_en', 'category_id', 'subcategory_id',
     'price', 'compare_at_price',
@@ -348,15 +391,19 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
       ? ['price_b', 'price_c', 'stock_quantity_b', 'stock_quantity_c',
          'available_for_restaurants', 'restaurant_price_a', 'restaurant_price_b', 'restaurant_price_c']
       : []),
+    // Catalog v2 — only writable once migration 37 has added the columns.
+    ...(catalogV2Ready ? [...CATALOG_V2_ENABLE_FLAGS, ...CATALOG_V2_FRACTION_PRICES] : []),
   ];
   const booleanFields = new Set([
     'is_active', 'is_featured', 'is_new_arrival', 'is_variable_weight',
     'allow_half_kg', 'allow_quarter_kg', 'available_for_restaurants',
+    ...CATALOG_V2_ENABLE_FLAGS,
   ]);
   // These columns must always serialize as NULL when the admin clears them.
   const nullableNumberFields = new Set([
     'compare_at_price', 'half_kg_price', 'quarter_kg_price', 'half_dozen_price',
     'price_b', 'price_c', 'restaurant_price_a', 'restaurant_price_b', 'restaurant_price_c',
+    ...CATALOG_V2_FRACTION_PRICES,
   ]);
   // Per-quality stock is NOT NULL (defaults 0) — a cleared field means 0, not NULL.
   const nonNegativeStockFields = new Set(['stock_quantity_b', 'stock_quantity_c']);

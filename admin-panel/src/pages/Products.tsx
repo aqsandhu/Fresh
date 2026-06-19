@@ -53,6 +53,146 @@ interface FormErrors {
   [key: string]: string;
 }
 
+// Catalog v2 — default per-quality channel flags + explicit fraction prices.
+const CATALOG_V2_DEFAULTS: Partial<CreateProductData> = {
+  consumerEnabledA: true, consumerEnabledB: true, consumerEnabledC: true,
+  restaurantEnabledA: false, restaurantEnabledB: false, restaurantEnabledC: false,
+  halfKgPriceB: null, quarterKgPriceB: null, halfDozenPriceB: null,
+  halfKgPriceC: null, quarterKgPriceC: null, halfDozenPriceC: null,
+  restaurantHalfKgPriceA: null, restaurantQuarterKgPriceA: null, restaurantHalfDozenPriceA: null,
+  restaurantHalfKgPriceB: null, restaurantQuarterKgPriceB: null, restaurantHalfDozenPriceB: null,
+  restaurantHalfKgPriceC: null, restaurantQuarterKgPriceC: null, restaurantHalfDozenPriceC: null,
+};
+
+// Per-quality field-name map so one <QualityPriceBlock> serves A/B/C.
+type QKeys = {
+  base: keyof CreateProductData; half: keyof CreateProductData; quarter: keyof CreateProductData;
+  halfDozen: keyof CreateProductData; stock: keyof CreateProductData;
+  consumer: keyof CreateProductData; restEnabled: keyof CreateProductData;
+  restBase: keyof CreateProductData; restHalf: keyof CreateProductData;
+  restQuarter: keyof CreateProductData; restHalfDozen: keyof CreateProductData;
+};
+const QUALITY_FIELDS: Record<'A' | 'B' | 'C', QKeys> = {
+  A: { base: 'price', half: 'halfKgPrice', quarter: 'quarterKgPrice', halfDozen: 'halfDozenPrice', stock: 'stockQuantity', consumer: 'consumerEnabledA', restEnabled: 'restaurantEnabledA', restBase: 'restaurantPriceA', restHalf: 'restaurantHalfKgPriceA', restQuarter: 'restaurantQuarterKgPriceA', restHalfDozen: 'restaurantHalfDozenPriceA' },
+  B: { base: 'priceB', half: 'halfKgPriceB', quarter: 'quarterKgPriceB', halfDozen: 'halfDozenPriceB', stock: 'stockQuantityB', consumer: 'consumerEnabledB', restEnabled: 'restaurantEnabledB', restBase: 'restaurantPriceB', restHalf: 'restaurantHalfKgPriceB', restQuarter: 'restaurantQuarterKgPriceB', restHalfDozen: 'restaurantHalfDozenPriceB' },
+  C: { base: 'priceC', half: 'halfKgPriceC', quarter: 'quarterKgPriceC', halfDozen: 'halfDozenPriceC', stock: 'stockQuantityC', consumer: 'consumerEnabledC', restEnabled: 'restaurantEnabledC', restBase: 'restaurantPriceC', restHalf: 'restaurantHalfKgPriceC', restQuarter: 'restaurantQuarterKgPriceC', restHalfDozen: 'restaurantHalfDozenPriceC' },
+};
+
+const QUALITY_TONE: Record<'A' | 'B' | 'C', string> = {
+  A: 'border-emerald-200 bg-emerald-50/40',
+  B: 'border-blue-200 bg-blue-50/40',
+  C: 'border-amber-200 bg-amber-50/40',
+};
+
+/**
+ * One product quality tier (A/B/C). A is always shown; B/C open via the
+ * "Offer this quality" checkbox. Each tier carries its own consumer price +
+ * ½/¼ (or ½ dozen) overrides + single stock, a consumer allow toggle, and a
+ * restaurant allow toggle that reveals the tier's restaurant prices. Stock is
+ * shared between consumer + restaurant (one bucket per quality).
+ */
+const QualityPriceBlock: React.FC<{
+  quality: 'A' | 'B' | 'C';
+  fd: CreateProductData;
+  setFd: React.Dispatch<React.SetStateAction<CreateProductData>>;
+  restaurantAllowed: boolean;
+  priceError?: string;
+}> = ({ quality, fd, setFd, restaurantAllowed, priceError }) => {
+  const f = QUALITY_FIELDS[quality];
+  const isKg = fd.unitType === 'kg' || fd.unitType === 'gram';
+  const isDozen = fd.unitType === 'dozen';
+  const set = (key: keyof CreateProductData, val: any) => setFd((prev) => ({ ...prev, [key]: val }));
+  const numVal = (key: keyof CreateProductData) => { const v = fd[key] as any; return v == null ? '' : v; };
+  const onNum = (key: keyof CreateProductData) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    set(key, e.target.value === '' ? null : parseFloat(e.target.value));
+  const baseNum = Number(fd[f.base]) || 0;
+
+  // B/C open when they carry a base price; A is always open.
+  const open = quality === 'A' || fd[f.base] != null;
+  const toggleOffer = (on: boolean) => {
+    if (on) { set(f.base, 0); }
+    else {
+      // Clear the whole tier so it is no longer offered anywhere.
+      setFd((prev) => ({
+        ...prev,
+        [f.base]: null, [f.half]: null, [f.quarter]: null, [f.halfDozen]: null, [f.stock]: null,
+        [f.restEnabled]: false, [f.restBase]: null, [f.restHalf]: null, [f.restQuarter]: null, [f.restHalfDozen]: null,
+      }));
+    }
+  };
+
+  const fractionInputs = (baseKey: keyof CreateProductData, halfKey: keyof CreateProductData, quarterKey: keyof CreateProductData, halfDozenKey: keyof CreateProductData) => {
+    const bn = Number(fd[baseKey]) || 0;
+    return (
+      <>
+        {isKg && fd.allowHalfKg !== false && (
+          <Input label="½ kg (Rs.)" type="number" min={0} step={0.01} value={numVal(halfKey)} onChange={onNum(halfKey)}
+            placeholder={`auto ${(bn * 0.5).toFixed(0)}`} helperText="Blank = 50%" />
+        )}
+        {isKg && fd.allowQuarterKg !== false && (
+          <Input label="¼ kg (Rs.)" type="number" min={0} step={0.01} value={numVal(quarterKey)} onChange={onNum(quarterKey)}
+            placeholder={`auto ${(bn * 0.25).toFixed(0)}`} helperText="Blank = 25%" />
+        )}
+        {isDozen && (
+          <Input label="½ dozen (Rs.)" type="number" min={0} step={0.01} value={numVal(halfDozenKey)} onChange={onNum(halfDozenKey)}
+            placeholder={`auto ${(bn * 0.5).toFixed(0)}`} helperText="Blank = 50%" />
+        )}
+      </>
+    );
+  };
+
+  return (
+    <div className={`rounded-xl border-2 p-4 space-y-3 ${QUALITY_TONE[quality]}`}>
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold text-gray-900">Quality {quality}</h4>
+        {quality !== 'A' && (
+          <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+            <input type="checkbox" checked={open} onChange={(e) => toggleOffer(e.target.checked)} className="w-4 h-4 rounded" />
+            Offer Quality {quality}
+          </label>
+        )}
+      </div>
+
+      {open && (
+        <>
+          {/* Consumer */}
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer select-none">
+              <input type="checkbox" checked={fd[f.consumer] !== false} onChange={(e) => set(f.consumer, e.target.checked)} className="w-4 h-4 rounded" />
+              Allow for consumers
+            </label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Input label={`Consumer price / ${fd.unitType} (Rs.)`} type="number" min={0} step={0.01}
+                value={numVal(f.base)} onChange={onNum(f.base)} error={priceError}
+                required={quality === 'A'} />
+              {fractionInputs(f.base, f.half, f.quarter, f.halfDozen)}
+              <Input label={`Quality ${quality} stock`} type="number" min={0}
+                value={numVal(f.stock)} onChange={onNum(f.stock)} helperText="Shared with restaurants" />
+            </div>
+            {baseNum > 0 && <p className="text-xs text-gray-400">A blank ½/¼ price auto-charges 50% / 25% of the per-unit price.</p>}
+          </div>
+
+          {/* Restaurant */}
+          <div className="rounded-lg border border-amber-200 bg-white/60 p-3 space-y-2">
+            <label className={`flex items-center gap-2 text-sm font-medium ${restaurantAllowed ? 'cursor-pointer text-gray-700' : 'cursor-not-allowed text-gray-400'} select-none`}>
+              <input type="checkbox" disabled={!restaurantAllowed} checked={restaurantAllowed && fd[f.restEnabled] === true} onChange={(e) => set(f.restEnabled, e.target.checked)} className="w-4 h-4 rounded" />
+              Allow for restaurants
+            </label>
+            {restaurantAllowed && fd[f.restEnabled] === true && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <Input label="Restaurant price (Rs.)" type="number" min={0} step={0.01}
+                  value={numVal(f.restBase)} onChange={onNum(f.restBase)} helperText="Blank → consumer price" />
+                {fractionInputs(f.restBase, f.restHalf, f.restQuarter, f.restHalfDozen)}
+              </div>
+            )}
+            {!restaurantAllowed && <p className="text-xs text-gray-400">Enable “Category also for restaurants” first.</p>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 export const Products: React.FC = () => {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -106,6 +246,7 @@ export const Products: React.FC = () => {
     restaurantPriceA: null,
     restaurantPriceB: null,
     restaurantPriceC: null,
+    ...CATALOG_V2_DEFAULTS,
   });
 
   const { data: productsData, isLoading } = useQuery({
@@ -249,6 +390,7 @@ export const Products: React.FC = () => {
       restaurantPriceA: null,
       restaurantPriceB: null,
       restaurantPriceC: null,
+      ...CATALOG_V2_DEFAULTS,
     });
     setIsModalOpen(true);
   };
@@ -312,6 +454,28 @@ export const Products: React.FC = () => {
       restaurantPriceA: detail.restaurantPriceA ?? null,
       restaurantPriceB: detail.restaurantPriceB ?? null,
       restaurantPriceC: detail.restaurantPriceC ?? null,
+      // Catalog v2 — per-quality channel flags + explicit fractions (default-safe).
+      consumerEnabledA: detail.consumerEnabledA ?? true,
+      consumerEnabledB: detail.consumerEnabledB ?? true,
+      consumerEnabledC: detail.consumerEnabledC ?? true,
+      restaurantEnabledA: detail.restaurantEnabledA ?? false,
+      restaurantEnabledB: detail.restaurantEnabledB ?? false,
+      restaurantEnabledC: detail.restaurantEnabledC ?? false,
+      halfKgPriceB: detail.halfKgPriceB ?? null,
+      quarterKgPriceB: detail.quarterKgPriceB ?? null,
+      halfDozenPriceB: detail.halfDozenPriceB ?? null,
+      halfKgPriceC: detail.halfKgPriceC ?? null,
+      quarterKgPriceC: detail.quarterKgPriceC ?? null,
+      halfDozenPriceC: detail.halfDozenPriceC ?? null,
+      restaurantHalfKgPriceA: detail.restaurantHalfKgPriceA ?? null,
+      restaurantQuarterKgPriceA: detail.restaurantQuarterKgPriceA ?? null,
+      restaurantHalfDozenPriceA: detail.restaurantHalfDozenPriceA ?? null,
+      restaurantHalfKgPriceB: detail.restaurantHalfKgPriceB ?? null,
+      restaurantQuarterKgPriceB: detail.restaurantQuarterKgPriceB ?? null,
+      restaurantHalfDozenPriceB: detail.restaurantHalfDozenPriceB ?? null,
+      restaurantHalfKgPriceC: detail.restaurantHalfKgPriceC ?? null,
+      restaurantQuarterKgPriceC: detail.restaurantQuarterKgPriceC ?? null,
+      restaurantHalfDozenPriceC: detail.restaurantHalfDozenPriceC ?? null,
     });
     setIsModalOpen(true);
   };
@@ -410,12 +574,20 @@ export const Products: React.FC = () => {
       return;
     }
 
-    // A product can only be "also for restaurants" if its category allows it.
+    // The legacy "available for restaurants" flag is now derived from the
+    // per-quality restaurant toggles (and only when the category permits) — it
+    // gates whether the product appears on the restaurant storefront at all.
+    const anyRestaurantQuality =
+      formData.restaurantEnabledA === true ||
+      formData.restaurantEnabledB === true ||
+      formData.restaurantEnabledC === true;
     const submitData: CreateProductData = {
       ...formData,
-      availableForRestaurants: selectedCategoryAllowsRestaurants
-        ? (formData.availableForRestaurants ?? false)
-        : false,
+      availableForRestaurants: selectedCategoryAllowsRestaurants && anyRestaurantQuality,
+      // If the category forbids restaurants, force all restaurant toggles off.
+      ...(selectedCategoryAllowsRestaurants
+        ? {}
+        : { restaurantEnabledA: false, restaurantEnabledB: false, restaurantEnabledC: false }),
     };
     if (selectedImages.length > 0) {
       submitData.images = selectedImages;
@@ -739,97 +911,18 @@ export const Products: React.FC = () => {
             />
           </div>
 
-          {/* Quality A — the base price + stock every product has. */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Input
-              label="Quality A price (Rs.)"
-              type="number"
-              value={formData.price}
-              onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) })}
-              error={formErrors.price}
-              min={0.01}
-              step={0.01}
-              required
-            />
-            <Input
-              label="Original Price (Optional)"
-              type="number"
-              value={formData.compareAtPrice}
-              onChange={(e) =>
-                setFormData({ ...formData, compareAtPrice: parseFloat(e.target.value) })
-              }
-              error={formErrors.compareAtPrice}
-              min={0}
-              step={0.01}
-              helperText="For showing discount"
-            />
-            <Input
-              label="Quality A stock"
-              type="number"
-              value={formData.stockQuantity}
-              onChange={(e) => setFormData({ ...formData, stockQuantity: parseInt(e.target.value) })}
-              error={formErrors.stockQuantity}
-              min={0}
-              required
-            />
-          </div>
+          {/* Original (compare-at) price — for showing a discount on Quality A. */}
+          <Input
+            label="Original Price (Optional)"
+            type="number"
+            value={formData.compareAtPrice}
+            onChange={(e) => setFormData({ ...formData, compareAtPrice: parseFloat(e.target.value) })}
+            error={formErrors.compareAtPrice}
+            min={0}
+            step={0.01}
+            helperText="Strike-through price shown on the storefront"
+          />
 
-          {/* Optional Quality B & C — each tier has its OWN consumer price and its
-              OWN stock. Leave a price blank if the tier isn't offered. This very
-              stock is what restaurants draw from too (shared), if enabled below. */}
-          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
-            <div>
-              <p className="text-sm font-semibold text-gray-800">Quality tiers B &amp; C (optional)</p>
-              <p className="text-xs text-gray-500">
-                Leave a quality&apos;s price blank if you don&apos;t offer it. Each quality keeps its
-                own stock; a consumer or a restaurant ordering that quality decrements the same stock.
-              </p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Quality B price (Rs.)"
-                type="number"
-                value={formData.priceB ?? ''}
-                onChange={(e) =>
-                  setFormData({ ...formData, priceB: e.target.value === '' ? null : parseFloat(e.target.value) })
-                }
-                min={0}
-                step={0.01}
-                helperText="Blank = not offered"
-              />
-              <Input
-                label="Quality B stock"
-                type="number"
-                value={formData.stockQuantityB ?? ''}
-                onChange={(e) =>
-                  setFormData({ ...formData, stockQuantityB: e.target.value === '' ? null : parseFloat(e.target.value) })
-                }
-                min={0}
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Quality C price (Rs.)"
-                type="number"
-                value={formData.priceC ?? ''}
-                onChange={(e) =>
-                  setFormData({ ...formData, priceC: e.target.value === '' ? null : parseFloat(e.target.value) })
-                }
-                min={0}
-                step={0.01}
-                helperText="Blank = not offered"
-              />
-              <Input
-                label="Quality C stock"
-                type="number"
-                value={formData.stockQuantityC ?? ''}
-                onChange={(e) =>
-                  setFormData({ ...formData, stockQuantityC: e.target.value === '' ? null : parseFloat(e.target.value) })
-                }
-                min={0}
-              />
-            </div>
-          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -874,217 +967,41 @@ export const Products: React.FC = () => {
             </div>
           </div>
 
-          {/* Restaurant availability — only enabled when the chosen category is
-              flagged "also for restaurants". When on, the admin sets the
-              restaurant's own Quality A/B/C prices; stock stays the shared
-              consumer stock above. Blank restaurant price → consumer price. */}
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
-            <label
-              className={`flex items-start gap-2 select-none ${
-                selectedCategoryAllowsRestaurants ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
-              }`}
-            >
-              <input
-                type="checkbox"
-                disabled={!selectedCategoryAllowsRestaurants}
-                checked={selectedCategoryAllowsRestaurants && (formData.availableForRestaurants ?? false)}
-                onChange={(e) => setFormData({ ...formData, availableForRestaurants: e.target.checked })}
-                className="mt-0.5 w-4 h-4 text-primary-600 rounded"
-              />
-              <span>
-                <span className="block text-sm font-medium text-gray-800">
-                  Product also for restaurants
-                </span>
-                <span className="block text-xs text-gray-500">
-                  {selectedCategoryAllowsRestaurants
-                    ? 'Show this product on the restaurant storefront with its own quality rates.'
-                    : 'Enable “Category also for restaurants” on this product’s category first.'}
-                </span>
-              </span>
-            </label>
+          {/* Sell-by-fraction toggles (product-level) — gate the ½/¼ price inputs
+              inside each quality block below. */}
+          {(formData.unitType === 'kg' || formData.unitType === 'gram') && (
+            <div className="flex flex-wrap gap-6 rounded-lg border border-gray-200 p-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={formData.allowHalfKg}
+                  onChange={(e) => setFormData({ ...formData, allowHalfKg: e.target.checked })}
+                  className="w-4 h-4 rounded" />
+                <span className="text-sm font-medium text-gray-700">Sell in Half kg (½)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={formData.allowQuarterKg}
+                  onChange={(e) => setFormData({ ...formData, allowQuarterKg: e.target.checked })}
+                  className="w-4 h-4 rounded" />
+                <span className="text-sm font-medium text-gray-700">Sell in Quarter kg (¼)</span>
+              </label>
+            </div>
+          )}
 
-            {selectedCategoryAllowsRestaurants && (formData.availableForRestaurants ?? false) && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Input
-                  label="Restaurant — Quality A price (Rs.)"
-                  type="number"
-                  value={formData.restaurantPriceA ?? ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, restaurantPriceA: e.target.value === '' ? null : parseFloat(e.target.value) })
-                  }
-                  min={0}
-                  step={0.01}
-                  helperText="Blank → consumer A price"
-                />
-                <Input
-                  label="Restaurant — Quality B price (Rs.)"
-                  type="number"
-                  value={formData.restaurantPriceB ?? ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, restaurantPriceB: e.target.value === '' ? null : parseFloat(e.target.value) })
-                  }
-                  min={0}
-                  step={0.01}
-                  helperText={formData.priceB == null ? 'Offer Quality B above first' : 'Blank → consumer B price'}
-                />
-                <Input
-                  label="Restaurant — Quality C price (Rs.)"
-                  type="number"
-                  value={formData.restaurantPriceC ?? ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, restaurantPriceC: e.target.value === '' ? null : parseFloat(e.target.value) })
-                  }
-                  min={0}
-                  step={0.01}
-                  helperText={formData.priceC == null ? 'Offer Quality C above first' : 'Blank → consumer C price'}
-                />
-              </div>
-            )}
+          {/* Per-quality pricing: each tier's consumer price + ½/¼ (or ½ dozen)
+              + single shared stock, a consumer allow toggle, and (when the category
+              permits) restaurant prices. Quality A always shown; B/C open on demand. */}
+          <div className="space-y-3">
+            {(['A', 'B', 'C'] as const).map((q) => (
+              <QualityPriceBlock
+                key={q}
+                quality={q}
+                fd={formData}
+                setFd={setFormData}
+                restaurantAllowed={selectedCategoryAllowsRestaurants}
+                priceError={q === 'A' ? formErrors.price : undefined}
+              />
+            ))}
           </div>
 
-          {/* Optional fraction-of-unit pricing. Shown only for units where it
-              makes sense (kg → half/quarter kg, dozen → half dozen). Leaving
-              a field blank tells the storefront to derive the price from the
-              base "Price" above. */}
-          {(formData.unitType === 'kg' || formData.unitType === 'gram') && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Half kg — enable toggle gates the price input + storefront option */}
-              <div className="rounded-lg border border-gray-200 p-3">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={formData.allowHalfKg}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        allowHalfKg: e.target.checked,
-                        halfKgPrice: e.target.checked ? formData.halfKgPrice : null,
-                      })
-                    }
-                    className="w-4 h-4 text-primary-600 rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Sell in Half kg (½)</span>
-                </label>
-                {formData.allowHalfKg && (
-                  <>
-                    <Input
-                      label="Half kg price (Rs.) — optional"
-                      type="number"
-                      value={formData.halfKgPrice ?? ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          halfKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
-                        })
-                      }
-                      min={0}
-                      step={0.01}
-                      helperText="Leave blank to charge half of the per-kg price."
-                      className="mt-3"
-                    />
-                    <p className="mt-1 text-xs">
-                      <span className="text-gray-500">Customer pays </span>
-                      <span className="font-semibold text-gray-800">
-                        Rs. {(formData.halfKgPrice != null ? formData.halfKgPrice : (Number(formData.price) || 0) * 0.5).toLocaleString('en-PK')}
-                      </span>
-                      <span className="text-gray-500"> for ½ kg</span>
-                      {formData.halfKgPrice != null ? (
-                        <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
-                          manual override · auto would be Rs. {((Number(formData.price) || 0) * 0.5).toLocaleString('en-PK')}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400"> (auto)</span>
-                      )}
-                    </p>
-                  </>
-                )}
-              </div>
-              {/* Quarter kg */}
-              <div className="rounded-lg border border-gray-200 p-3">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={formData.allowQuarterKg}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        allowQuarterKg: e.target.checked,
-                        quarterKgPrice: e.target.checked ? formData.quarterKgPrice : null,
-                      })
-                    }
-                    className="w-4 h-4 text-primary-600 rounded"
-                  />
-                  <span className="text-sm font-medium text-gray-700">Sell in Quarter kg (¼)</span>
-                </label>
-                {formData.allowQuarterKg && (
-                  <>
-                    <Input
-                      label="Quarter kg price (Rs.) — optional"
-                      type="number"
-                      value={formData.quarterKgPrice ?? ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          quarterKgPrice: e.target.value === '' ? null : parseFloat(e.target.value),
-                        })
-                      }
-                      min={0}
-                      step={0.01}
-                      helperText="Leave blank to charge a quarter of the per-kg price."
-                      className="mt-3"
-                    />
-                    <p className="mt-1 text-xs">
-                      <span className="text-gray-500">Customer pays </span>
-                      <span className="font-semibold text-gray-800">
-                        Rs. {(formData.quarterKgPrice != null ? formData.quarterKgPrice : (Number(formData.price) || 0) * 0.25).toLocaleString('en-PK')}
-                      </span>
-                      <span className="text-gray-500"> for ¼ kg</span>
-                      {formData.quarterKgPrice != null ? (
-                        <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
-                          manual override · auto would be Rs. {((Number(formData.price) || 0) * 0.25).toLocaleString('en-PK')}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400"> (auto)</span>
-                      )}
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {formData.unitType === 'dozen' && (
-            <div>
-              <Input
-                label="Half dozen price (Rs.) — optional"
-                type="number"
-                value={formData.halfDozenPrice ?? ''}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    halfDozenPrice: e.target.value === '' ? null : parseFloat(e.target.value),
-                  })
-                }
-                min={0}
-                step={0.01}
-                helperText="Leave blank to charge half of the per-dozen price."
-              />
-              <p className="mt-1 text-xs">
-                <span className="text-gray-500">Customer pays </span>
-                <span className="font-semibold text-gray-800">
-                  Rs. {(formData.halfDozenPrice != null ? formData.halfDozenPrice : (Number(formData.price) || 0) * 0.5).toLocaleString('en-PK')}
-                </span>
-                <span className="text-gray-500"> for ½ dozen</span>
-                {formData.halfDozenPrice != null ? (
-                  <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-700">
-                    manual override · auto would be Rs. {((Number(formData.price) || 0) * 0.5).toLocaleString('en-PK')}
-                  </span>
-                ) : (
-                  <span className="text-gray-400"> (auto)</span>
-                )}
-              </p>
-            </div>
-          )}
 
           <div className="flex space-x-6">
             <label className="flex items-center space-x-2 cursor-pointer">

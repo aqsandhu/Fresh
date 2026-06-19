@@ -8,13 +8,24 @@ import { query, withTransaction } from '../config/database';
 import { roundMoney } from './money';
 import { hasUrgentDeliveryColumns } from '../config/orderSchema';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
+import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import {
   normalizeProductUnit,
   normalizeQuality,
   resolveRestaurantUnitPrice,
+  isQualityOffered,
   qualityStockColumn,
   stockUnitsNeeded,
 } from './unitPricing';
+
+// Restaurant fraction + enable columns (migration 37) — pulled into the order
+// query so resolveRestaurantUnitPrice honours explicit fractions and the
+// per-quality restaurant enable flags gate which tiers a restaurant may order.
+const RESTAURANT_V2_COLS =
+  ', restaurant_enabled_a, restaurant_enabled_b, restaurant_enabled_c' +
+  ', restaurant_half_kg_price_a, restaurant_quarter_kg_price_a, restaurant_half_dozen_price_a' +
+  ', restaurant_half_kg_price_b, restaurant_quarter_kg_price_b, restaurant_half_dozen_price_b' +
+  ', restaurant_half_kg_price_c, restaurant_quarter_kg_price_c, restaurant_half_dozen_price_c';
 
 export interface RestaurantOrderItemInput {
   product_id: string;
@@ -112,6 +123,7 @@ export async function placeRestaurantOrder(
 
   const delivery = await getRestaurantDelivery(restaurant);
   const urgentReady = await hasUrgentDeliveryColumns();
+  const catalogV2Ready = await hasCatalogV2Columns();
 
   return withTransaction(async (client) => {
     let subtotal = 0;
@@ -122,6 +134,7 @@ export async function placeRestaurantOrder(
         // unified product is shown to restaurants when available_for_restaurants.
         `SELECT id, name_en, primary_image, sku, price, price_b, price_c,
                 restaurant_price_a, restaurant_price_b, restaurant_price_c
+                ${catalogV2Ready ? RESTAURANT_V2_COLS : ''}
            FROM products
           WHERE id = $1 AND is_active = TRUE AND available_for_restaurants = TRUE
             AND city_id = $2
@@ -135,6 +148,12 @@ export async function placeRestaurantOrder(
       const unit = normalizeProductUnit(item.unit);
       const quality = normalizeQuality(item.quality);
       const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);
+      // Per-quality restaurant enable gate (Catalog v2): tier must be enabled for
+      // restaurants. When the v2 columns aren't loaded the flags default off here,
+      // so we only enforce the gate once they're present (else fall back to price).
+      if (catalogV2Ready && !isQualityOffered(p, quality, 'restaurant')) {
+        throw new RestaurantOrderError(`Quality ${quality} is not available for ${p.name_en}.`);
+      }
       const unitPrice = resolveRestaurantUnitPrice(p, quality, unit);
       if (unitPrice == null) {
         throw new RestaurantOrderError(`Quality ${quality} is not available for ${p.name_en}.`);
