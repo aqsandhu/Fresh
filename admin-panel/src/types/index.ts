@@ -64,6 +64,32 @@ export interface Product {
   restaurantPriceA?: number | null;
   restaurantPriceB?: number | null;
   restaurantPriceC?: number | null;
+  // Catalog v2 — per-quality channel enable + explicit B/C & restaurant fractions.
+  consumerEnabledA?: boolean;
+  consumerEnabledB?: boolean;
+  consumerEnabledC?: boolean;
+  restaurantEnabledA?: boolean;
+  restaurantEnabledB?: boolean;
+  restaurantEnabledC?: boolean;
+  halfKgPriceB?: number | null;
+  quarterKgPriceB?: number | null;
+  halfDozenPriceB?: number | null;
+  halfKgPriceC?: number | null;
+  quarterKgPriceC?: number | null;
+  halfDozenPriceC?: number | null;
+  restaurantHalfKgPriceA?: number | null;
+  restaurantQuarterKgPriceA?: number | null;
+  restaurantHalfDozenPriceA?: number | null;
+  restaurantHalfKgPriceB?: number | null;
+  restaurantQuarterKgPriceB?: number | null;
+  restaurantHalfDozenPriceB?: number | null;
+  restaurantHalfKgPriceC?: number | null;
+  restaurantQuarterKgPriceC?: number | null;
+  restaurantHalfDozenPriceC?: number | null;
+  /** Reservation (soft holds) per quality — Stock Management view. */
+  reservedQuantity?: number;
+  reservedQuantityB?: number;
+  reservedQuantityC?: number;
   /** Set by GET /admin/products/:id — whether the product's category allows restaurants. */
   categoryAvailableForRestaurants?: boolean;
 }
@@ -388,6 +414,28 @@ export interface CreateProductData {
   restaurantPriceA?: number | null;
   restaurantPriceB?: number | null;
   restaurantPriceC?: number | null;
+  // Catalog v2 — per-quality channel enable + explicit B/C & restaurant fractions.
+  consumerEnabledA?: boolean;
+  consumerEnabledB?: boolean;
+  consumerEnabledC?: boolean;
+  restaurantEnabledA?: boolean;
+  restaurantEnabledB?: boolean;
+  restaurantEnabledC?: boolean;
+  halfKgPriceB?: number | null;
+  quarterKgPriceB?: number | null;
+  halfDozenPriceB?: number | null;
+  halfKgPriceC?: number | null;
+  quarterKgPriceC?: number | null;
+  halfDozenPriceC?: number | null;
+  restaurantHalfKgPriceA?: number | null;
+  restaurantQuarterKgPriceA?: number | null;
+  restaurantHalfDozenPriceA?: number | null;
+  restaurantHalfKgPriceB?: number | null;
+  restaurantQuarterKgPriceB?: number | null;
+  restaurantHalfDozenPriceB?: number | null;
+  restaurantHalfKgPriceC?: number | null;
+  restaurantQuarterKgPriceC?: number | null;
+  restaurantHalfDozenPriceC?: number | null;
 }
 
 export interface CreateCategoryData {
