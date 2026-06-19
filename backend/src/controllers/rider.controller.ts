@@ -9,6 +9,7 @@ import { successResponse, notFoundResponse, errorResponse } from '../utils/respo
 import { isValidOrderTransition } from '../utils/orderStatus';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { deductOcpStockOnDelivery } from '../utils/ocpStock';
+import { commitOrderSaleOnDelivery } from '../utils/systemStock';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
@@ -550,8 +551,10 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
              WHERE id = $2`,
             [riderId, task.order_id]
           );
-          // If this order belongs to an OCP, deduct its items from the OCP's
-          // stock (idempotent; floors at 0). Same locked transaction.
+          // Commit the system-stock sale (reserved → permanent) for reserved
+          // orders, then deduct the OCP's own stock if the order belongs to one.
+          // Both idempotent + locked in this transaction.
+          await commitOrderSaleOnDelivery(client, task.order_id);
           await deductOcpStockOnDelivery(client, task.order_id);
           deliveredOrder = { id: order.id, order_number: order.order_number, user_id: order.user_id };
         }

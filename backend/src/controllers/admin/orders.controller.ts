@@ -20,6 +20,8 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
+import { commitOrderSaleOnDelivery } from '../../utils/systemStock';
+import { deductOcpStockOnDelivery } from '../../utils/ocpStock';
 import { roundMoney } from '../../utils/money';
 import {
   resolveUnitPrice,
@@ -301,6 +303,13 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
         await restoreOrderInventory(client, order);
       }
 
+      // Delivering commits the system-stock sale (reserved → permanent) and
+      // deducts the OCP's own stock. Both idempotent + self-guarded.
+      if (status === 'delivered' && order.status !== 'delivered') {
+        await commitOrderSaleOnDelivery(client, id);
+        await deductOcpStockOnDelivery(client, id);
+      }
+
       return result.rows[0];
     });
   } catch (err: any) {
@@ -395,11 +404,18 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
 
   // Also complete any associated rider task
   await query(
-    `UPDATE rider_tasks 
+    `UPDATE rider_tasks
      SET status = 'completed', completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
      WHERE order_id = $1 AND status != 'completed'`,
     [id]
   );
+
+  // The order is now delivered: commit the system-stock sale (reserved →
+  // permanent) and deduct the OCP's own stock. Both idempotent + self-guarded.
+  await withTransaction(async (client) => {
+    await commitOrderSaleOnDelivery(client, id);
+    await deductOcpStockOnDelivery(client, id);
+  });
 
   logger.info('Payment received & order delivered', { orderId: id, updatedBy: req.user?.id });
 
