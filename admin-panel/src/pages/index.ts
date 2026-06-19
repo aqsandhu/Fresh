@@ -2,6 +2,7 @@ export { Login } from './Login';
 export { Dashboard } from './Dashboard';
 export { Orders } from './Orders';
 export { Products } from './Products';
+export { PriceManager } from './PriceManager';
 export { Categories } from './Categories';
 export { Customers } from './Customers';
 export { Riders } from './Riders';

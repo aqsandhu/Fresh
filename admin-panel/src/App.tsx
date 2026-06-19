@@ -13,6 +13,7 @@ import {
   Dashboard,
   Orders,
   Products,
+  PriceManager,
   Categories,
   Customers,
   Riders,
@@ -183,6 +184,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Products />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/price-manager"
+        element={
+          <ProtectedRoute>
+            <PriceManager />
           </ProtectedRoute>
         }
       />
