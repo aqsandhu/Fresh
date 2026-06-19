@@ -267,6 +267,7 @@ router.put('/reviews/:id', adminRateLimiter, reviewController.updateReviewAdmin)
 router.get('/complaints', complaintController.listComplaints);
 router.get('/complaints/:id', complaintController.getComplaint);
 router.put('/complaints/:id', adminRateLimiter, complaintController.updateComplaint);
+router.post('/complaints/:id/refund', adminRateLimiter, complaintController.refundComplaint);
 
 // Rider applications + "Work as Rider" page content
 router.get('/rider-applications', riderAppController.listRiderApplications);

@@ -91,4 +91,24 @@ export const feedbackService = {
     const res = await api.put<ApiResponse<AdminComplaint>>(`/admin/complaints/${id}`, data);
     return res.data as AdminComplaint;
   },
+
+  // Full complaint detail incl. refund context (paid/refunded/refundable + history).
+  getComplaint: async (id: string): Promise<AdminComplaint & { order?: ComplaintOrderRefund | null }> => {
+    const res = await api.get<ApiResponse<AdminComplaint & { order?: ComplaintOrderRefund | null }>>(`/admin/complaints/${id}`);
+    return res.data as AdminComplaint & { order?: ComplaintOrderRefund | null };
+  },
+
+  // Record an admin refund against the complained order (admin account; OCP untouched).
+  refundComplaint: async (id: string, data: { amount: number; source: 'admin' | 'ocp'; note?: string }) => {
+    const res = await api.post<ApiResponse<{ id: string; amount: number; source: string }>>(`/admin/complaints/${id}/refund`, data);
+    return res.data;
+  },
 };
+
+export interface ComplaintOrderRefund {
+  totalAmount: number;
+  paidAmount: number;
+  refundedTotal: number;
+  refundable: number;
+  refunds: { id: string; amount: number; source: string; note?: string | null; createdAt: string }[];
+}

@@ -6,7 +6,7 @@
 
 import { Request, Response } from 'express';
 import { randomBytes } from 'crypto';
-import { query } from '../config/database';
+import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import {
   successResponse,
@@ -15,6 +15,7 @@ import {
   errorResponse,
 } from '../utils/response';
 import { ensureFeedbackTables, hasComplaintImagesColumn } from '../config/feedbackSchema';
+import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
 import { emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
@@ -286,7 +287,80 @@ export const getComplaint = asyncHandler(async (req: Request, res: Response) => 
   if (!scope.unrestricted && scope.cityId && row.city_id && row.city_id !== scope.cityId) {
     return errorResponse(res, 'This complaint belongs to another city.', 403);
   }
-  return successResponse(res, mapComplaint(row), 'Complaint retrieved');
+
+  // Refund context (migration 37): how much the order paid, how much has already
+  // been refunded, and the refund history — so the admin can refund up to paid.
+  let refundInfo: any = null;
+  if (row.order_id && (await hasCatalogV2Columns())) {
+    const ord = await query(`SELECT total_amount, paid_amount FROM orders WHERE id = $1`, [row.order_id]);
+    const refs = await query(
+      `SELECT id, amount, original_payment_source, note, created_at FROM refunds WHERE order_id = $1 ORDER BY created_at DESC`,
+      [row.order_id]
+    );
+    const paid = parseFloat(ord.rows[0]?.paid_amount || 0) || 0;
+    const refunded = refs.rows.reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
+    refundInfo = {
+      totalAmount: parseFloat(ord.rows[0]?.total_amount || 0) || 0,
+      paidAmount: paid,
+      refundedTotal: refunded,
+      refundable: Math.max(0, paid - refunded),
+      refunds: refs.rows.map((r: any) => ({
+        id: r.id, amount: parseFloat(r.amount), source: r.original_payment_source, note: r.note, createdAt: r.created_at,
+      })),
+    };
+  }
+
+  return successResponse(res, { ...mapComplaint(row), order: refundInfo }, 'Complaint retrieved');
+});
+
+/**
+ * POST /api/admin/complaints/:id/refund — admin-only refund against the
+ * complained order. Always recorded against the ADMIN account (OCP balances are
+ * never touched); the original payment source is stored for the record only.
+ * No stock is returned. Guarded so Σ refunds can never exceed what was paid.
+ */
+export const refundComplaint = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await hasCatalogV2Columns())) return errorResponse(res, 'Refunds are being set up. Try again shortly.', 503);
+  const scope = await resolveCityScope(req);
+  const { id } = req.params;
+  if (!isUuid(id)) return notFoundResponse(res, 'Complaint not found');
+
+  const amount = parseFloat(String(req.body?.amount));
+  if (!Number.isFinite(amount) || amount <= 0) return errorResponse(res, 'Enter a valid refund amount.', 400);
+  const source = req.body?.source === 'ocp' ? 'ocp' : 'admin';
+
+  const cRes = await query(`SELECT id, order_id, city_id FROM complaints WHERE id = $1`, [id]);
+  const complaint = cRes.rows[0];
+  if (!complaint) return notFoundResponse(res, 'Complaint not found');
+  if (!scope.unrestricted && scope.cityId && complaint.city_id && complaint.city_id !== scope.cityId) {
+    return errorResponse(res, 'This complaint belongs to another city.', 403);
+  }
+  if (!complaint.order_id) return errorResponse(res, 'This complaint is not linked to an order.', 400);
+
+  let out: any;
+  try {
+    out = await withTransaction(async (client) => {
+      const ord = await client.query(`SELECT paid_amount FROM orders WHERE id = $1 FOR UPDATE`, [complaint.order_id]);
+      if (ord.rows.length === 0) throw Object.assign(new Error('Order not found'), { http: 404 });
+      const paid = parseFloat(ord.rows[0].paid_amount) || 0;
+      const already = await client.query(`SELECT COALESCE(SUM(amount), 0) AS total FROM refunds WHERE order_id = $1`, [complaint.order_id]);
+      const refunded = parseFloat(already.rows[0].total) || 0;
+      if (amount > paid - refunded + 1e-6) {
+        throw Object.assign(new Error(`Refund exceeds the refundable amount (Rs. ${Math.max(0, paid - refunded)}).`), { http: 400 });
+      }
+      const ins = await client.query(
+        `INSERT INTO refunds (order_id, complaint_id, amount, original_payment_source, note, refunded_by)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, amount, original_payment_source, created_at`,
+        [complaint.order_id, id, amount, source, req.body?.note || null, req.user?.id ?? null]
+      );
+      return ins.rows[0];
+    });
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
+  }
+  logger.info('Complaint refund recorded', { complaintId: id, orderId: complaint.order_id, amount, source, by: req.user?.id });
+  return successResponse(res, { id: out.id, amount: parseFloat(out.amount), source: out.original_payment_source }, 'Refund recorded');
 });
 
 /**

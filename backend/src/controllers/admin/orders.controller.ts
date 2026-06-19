@@ -705,6 +705,10 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
     latitude,
     longitude,
     door_picture_url,
+    // Complaint replacement (admin-only): link this new order to the complained
+    // original; per-item `override_price` lets the admin send it free or partial.
+    replacement_for_order_id,
+    complaint_id,
   } = req.body;
 
   if (!Array.isArray(items) || items.length === 0) {
@@ -839,9 +843,15 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
           throw Object.assign(new Error(`Quality ${quality} not available for ${p.name_en}.`), { http: 400 });
         }
         const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);
-        const unitPrice = qualityReady
-          ? (resolveConsumerUnitPrice(p, quality, unit) ?? resolveUnitPrice(p, unit))
-          : resolveUnitPrice(p, unit);
+        // A complaint replacement may set an admin override price per line (0 =
+        // free, or any partial amount); otherwise price by the live unit price.
+        const override = item.override_price;
+        const hasOverride = override !== undefined && override !== null && override !== '' && Number.isFinite(parseFloat(String(override))) && parseFloat(String(override)) >= 0;
+        const unitPrice = hasOverride
+          ? roundMoney(parseFloat(String(override)))
+          : qualityReady
+            ? (resolveConsumerUnitPrice(p, quality, unit) ?? resolveUnitPrice(p, unit))
+            : resolveUnitPrice(p, unit);
         const lineTotal = roundMoney(unitPrice * qty);
         subtotal += lineTotal;
         if (p.qualifies_for_free_delivery === true) vegFruitSubtotal += lineTotal;
@@ -918,6 +928,16 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
         await client.query(`UPDATE orders SET is_urgent_delivery = TRUE, urgent_delivery_eta = $1 WHERE id = $2`, [urgentEta || null, o.id]);
         o.is_urgent_delivery = true;
         o.urgent_delivery_eta = urgentEta || null;
+      }
+
+      // Link a complaint replacement to its original order (validated in scope).
+      if (replacement_for_order_id && (await hasCatalogV2Columns())) {
+        const orig = await client.query(`SELECT id FROM orders WHERE id = $1 AND deleted_at IS NULL`, [replacement_for_order_id]);
+        if (orig.rows.length === 0) throw Object.assign(new Error('Original order not found.'), { http: 400 });
+        await client.query(
+          `UPDATE orders SET replacement_for_order_id = $1, complaint_id = $2 WHERE id = $3`,
+          [replacement_for_order_id, complaint_id || null, o.id]
+        );
       }
 
       for (const l of lines) {

@@ -487,11 +487,16 @@ export interface WhatsAppOrderData {
     quantity: number;
     unit?: string;
     quality?: 'A' | 'B' | 'C';
+    /** Complaint replacement: admin-set price (0 = free, or any partial amount). */
+    overridePrice?: number;
   }[];
   urgentDelivery?: boolean;
   timeSlotId?: string;
   requestedDeliveryDate?: string;
   adminNotes?: string;
+  /** Complaint replacement links (admin-only). */
+  replacementForOrderId?: string;
+  complaintId?: string;
 }
 
 export interface WhatsappCustomerAddress {
