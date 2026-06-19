@@ -92,6 +92,10 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
     if (m === 'POST') return ['products.create'];
     return ['products.update'];
   }
+  // Stock management (add/shift/return/transfer/waste/convert + overview).
+  if (p.startsWith('/stock')) {
+    return m === 'GET' ? ['products.view'] : ['products.update'];
+  }
   if (p.startsWith('/categories')) return ['categories.manage'];
   if (p.startsWith('/customers')) return ['customers.view'];
   if (p.startsWith('/riders')) {
