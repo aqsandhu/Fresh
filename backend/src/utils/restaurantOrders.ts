@@ -9,6 +9,7 @@ import { roundMoney } from './money';
 import { hasUrgentDeliveryColumns } from '../config/orderSchema';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
+import { reserveProductStock } from './systemStock';
 import {
   normalizeProductUnit,
   normalizeQuality,
@@ -282,25 +283,36 @@ export async function placeRestaurantOrder(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [order.id, l.product_id, l.name, l.image, l.sku, l.unitPrice, l.qty, l.lineTotal, l.unit, l.quality]
       );
-      // Decrement the SHARED per-quality stock bucket (same bucket consumer
-      // orders draw from). Whitelisted column + `>= need` guard = atomic, no
-      // oversell. stock_status is a Quality-A flag, recomputed only for tier A.
       const need = stockUnitsNeeded(l.qty, l.unit);
-      const stockCol = qualityStockColumn(l.quality);
-      const statusSet =
-        stockCol === 'stock_quantity'
-          ? `, stock_status = CASE WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
-          : '';
-      const dec = await client.query(
-        `UPDATE products
-            SET ${stockCol} = ${stockCol} - $1${statusSet}, updated_at = NOW()
-          WHERE id = $2 AND ${stockCol} >= $1
-          RETURNING id`,
-        [need, l.product_id]
-      );
-      if (dec.rowCount === 0) {
-        throw new RestaurantOrderError(`Insufficient stock for ${l.name}.`);
+      // Catalog v2: SOFT-RESERVE the shared per-quality bucket (same bucket the
+      // consumer side draws from); the permanent decrement happens on delivery.
+      // Legacy path keeps the immediate hard-deduct. Both atomic, no oversell.
+      if (catalogV2Ready) {
+        const ok = await reserveProductStock(client, {
+          productId: l.product_id, quality: l.quality, need, orderId: order.id, cityId: restaurant.city_id ?? null,
+        });
+        if (!ok) throw new RestaurantOrderError(`Insufficient stock for ${l.name}.`);
+      } else {
+        const stockCol = qualityStockColumn(l.quality);
+        const statusSet =
+          stockCol === 'stock_quantity'
+            ? `, stock_status = CASE WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
+            : '';
+        const dec = await client.query(
+          `UPDATE products
+              SET ${stockCol} = ${stockCol} - $1${statusSet}, updated_at = NOW()
+            WHERE id = $2 AND ${stockCol} >= $1
+            RETURNING id`,
+          [need, l.product_id]
+        );
+        if (dec.rowCount === 0) {
+          throw new RestaurantOrderError(`Insufficient stock for ${l.name}.`);
+        }
       }
+    }
+
+    if (catalogV2Ready) {
+      await client.query('UPDATE orders SET stock_reserved = TRUE WHERE id = $1', [order.id]);
     }
 
     return { order, restaurant };

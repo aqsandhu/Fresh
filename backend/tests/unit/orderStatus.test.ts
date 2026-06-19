@@ -24,10 +24,13 @@ describe('isValidOrderTransition', () => {
     expect(isValidOrderTransition('delivered', 'refunded')).toBe(true);
   });
 
-  it('allows cancelling from any pre-delivery state', () => {
-    for (const from of ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery']) {
+  it('allows cancelling only BEFORE out-for-delivery', () => {
+    for (const from of ['pending', 'confirmed', 'preparing', 'ready_for_pickup']) {
       expect(isValidOrderTransition(from, 'cancelled')).toBe(true);
     }
+    // Once out for delivery the rider is en route + stock is about to be
+    // consumed, so cancellation is no longer permitted.
+    expect(isValidOrderTransition('out_for_delivery', 'cancelled')).toBe(false);
   });
 
   it('treats same-status updates as a no-op (valid)', () => {

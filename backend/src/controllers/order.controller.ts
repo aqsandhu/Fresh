@@ -21,6 +21,8 @@ import {
   FRESH_CART_SUBTOTAL_SQL,
 } from '../utils/unitPricing';
 import { hasQualityCatalogColumns } from '../config/productSchema';
+import { hasCatalogV2Columns } from '../config/catalogV2Schema';
+import { reserveProductStock } from '../utils/systemStock';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { roundMoney } from '../utils/money';
 import {
@@ -415,6 +417,9 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     // Quality tiers (A/B/C) gated until migration 34 lands. Each tier has its own
     // shared stock bucket; consumer + restaurant orders draw from the same bucket.
     const qualityReady = await hasQualityCatalogColumns();
+    // Catalog v2 (migration 37): use the reservation model (soft hold at placement,
+    // permanent decrement on delivery) instead of the legacy hard-deduct.
+    const catalogV2Ready = await hasCatalogV2Columns();
 
     // Re-fetch current product prices — never trust stale cart_items.unit_price.
     for (const item of cartItemsResult.rows) {
@@ -763,26 +768,37 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         );
       }
 
-      // Decrement the SHARED stock bucket for the chosen quality. The column is a
-      // whitelist literal (qualityStockColumn) so it's safe to interpolate. The
-      // `>= need` guard makes the decrement atomic — no oversell under races.
-      // stock_status is a Quality-A flag, so it's only recomputed for tier A.
-      const stockCol = qualityReady ? qualityStockColumn(quality) : 'stock_quantity';
-      const statusSet =
-        stockCol === 'stock_quantity'
-          ? `, stock_status = CASE WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
-          : '';
-      const stockUpdate = await client.query(
-        `UPDATE products
-            SET ${stockCol} = ${stockCol} - $1${statusSet},
-                updated_at = NOW()
-          WHERE id = $2 AND ${stockCol} >= $1
-          RETURNING id`,
-        [stockDeduction, item.product_id]
-      );
-
-      if (stockUpdate.rowCount === 0) {
-        throw new ConflictError(`Insufficient stock for product ${item.product_id}`);
+      // Catalog v2: SOFT-RESERVE the shared bucket (reserved += need, atomic guard
+      // available >= need). The permanent decrement happens on delivery. Legacy
+      // path (pre-migration-37) keeps the immediate hard-deduct.
+      if (catalogV2Ready) {
+        const ok = await reserveProductStock(client, {
+          productId: item.product_id, quality, need: stockDeduction,
+          orderId: order.id, cityId: order.city_id ?? orderCityId ?? null, createdBy: req.user?.id ?? null,
+        });
+        if (!ok) {
+          throw new ConflictError(`Insufficient stock for product ${item.product_id}`);
+        }
+      } else {
+        // Decrement the SHARED stock bucket for the chosen quality. The column is a
+        // whitelist literal (qualityStockColumn) so it's safe to interpolate. The
+        // `>= need` guard makes the decrement atomic — no oversell under races.
+        const stockCol = qualityReady ? qualityStockColumn(quality) : 'stock_quantity';
+        const statusSet =
+          stockCol === 'stock_quantity'
+            ? `, stock_status = CASE WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
+            : '';
+        const stockUpdate = await client.query(
+          `UPDATE products
+              SET ${stockCol} = ${stockCol} - $1${statusSet},
+                  updated_at = NOW()
+            WHERE id = $2 AND ${stockCol} >= $1
+            RETURNING id`,
+          [stockDeduction, item.product_id]
+        );
+        if (stockUpdate.rowCount === 0) {
+          throw new ConflictError(`Insufficient stock for product ${item.product_id}`);
+        }
       }
 
       // Update product order count
@@ -790,6 +806,12 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         'UPDATE products SET order_count = order_count + $1 WHERE id = $2',
         [item.quantity, item.product_id]
       );
+    }
+
+    // Mark the order as holding soft reservations so delivery commits the sale
+    // and a pre-delivery cancel releases the hold (vs. the legacy hard-deduct).
+    if (catalogV2Ready) {
+      await client.query('UPDATE orders SET stock_reserved = TRUE WHERE id = $1', [order.id]);
     }
 
     // Update cart status to converted

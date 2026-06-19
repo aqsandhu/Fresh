@@ -13,6 +13,8 @@
 import { PoolClient } from 'pg';
 import { stockUnitsNeeded, qualityStockColumn } from './unitPricing';
 import { hasQualityCatalogColumns } from '../config/productSchema';
+import { hasCatalogV2Columns } from '../config/catalogV2Schema';
+import { releaseProductReservation } from './systemStock';
 
 /**
  * Allowed forward transitions. Anything not in this map is rejected so no
@@ -24,7 +26,9 @@ export const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
   confirmed: ['preparing', 'cancelled'],
   preparing: ['ready_for_pickup', 'cancelled'],
   ready_for_pickup: ['out_for_delivery', 'cancelled'],
-  out_for_delivery: ['delivered', 'cancelled'],
+  // Cancellation is no longer allowed once an order is out for delivery — at
+  // that point the OCP/rider is en route and stock is about to be consumed.
+  out_for_delivery: ['delivered'],
   delivered: ['refunded'],
   cancelled: [],
   refunded: [],
@@ -55,7 +59,7 @@ export const ORDER_STATUS_TIMESTAMPS: Record<string, string> = {
  */
 export async function restoreOrderInventory(
   client: PoolClient,
-  order: { id: string; time_slot_id?: string | null }
+  order: { id: string; time_slot_id?: string | null; stock_reserved?: boolean }
 ): Promise<void> {
   if (order.time_slot_id) {
     await client.query(
@@ -64,21 +68,42 @@ export async function restoreOrderInventory(
     );
   }
 
-  // Quality tiers (migration 34): restore into the SAME per-quality bucket the
-  // order drew from, not always Quality A.
   const qualityReady = await hasQualityCatalogColumns();
+  const catalogV2Ready = await hasCatalogV2Columns();
+
+  // Catalog v2: a cancel before delivery only RELEASES the soft reservation
+  // (on-hand was never decremented at placement). Whether this order is reserved
+  // is read freshly + flipped off atomically so a double-cancel can't
+  // double-release. Legacy (hard-deduct) orders fall back to the old restore.
+  let reserved = false;
+  if (catalogV2Ready) {
+    const flip = await client.query(
+      `UPDATE orders SET stock_reserved = FALSE WHERE id = $1 AND stock_reserved = TRUE RETURNING id`,
+      [order.id]
+    );
+    reserved = (flip.rowCount ?? 0) > 0;
+  }
+
   const items = await client.query(
     `SELECT product_id, quantity, unit${qualityReady ? ', quality' : ''} FROM order_items WHERE order_id = $1`,
     [order.id]
   );
 
   for (const item of items.rows) {
-    // product_id is NULL when the product was permanently deleted — nothing
-    // to restore stock into.
+    // product_id is NULL when the product was permanently deleted — nothing to do.
     if (!item.product_id) continue;
-    const restoreAmount = stockUnitsNeeded(item.quantity, item.unit);
+    const amount = stockUnitsNeeded(item.quantity, item.unit);
+
+    if (reserved) {
+      await releaseProductReservation(client, {
+        productId: item.product_id, quality: item.quality, need: amount, orderId: order.id,
+      });
+      continue;
+    }
+
+    // Legacy restore: add the hard-deducted stock back into the same per-quality
+    // bucket the order drew from. stock_status is a Quality-A flag only.
     const stockCol = qualityReady ? qualityStockColumn(item.quality) : 'stock_quantity';
-    // stock_status is a Quality-A flag, so it's only recomputed for tier A.
     const statusSet =
       stockCol === 'stock_quantity'
         ? `, stock_status = CASE WHEN stock_quantity + $1 > 0 THEN 'active'::product_status ELSE 'out_of_stock'::product_status END`
@@ -88,7 +113,7 @@ export async function restoreOrderInventory(
           SET ${stockCol} = ${stockCol} + $1${statusSet},
               updated_at = NOW()
         WHERE id = $2`,
-      [restoreAmount, item.product_id]
+      [amount, item.product_id]
     );
   }
 }
