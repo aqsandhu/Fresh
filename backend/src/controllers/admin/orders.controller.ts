@@ -27,11 +27,12 @@ import {
   normalizeProductUnit,
   normalizeQuality,
   qualityStockColumn,
-  offeredQualities,
+  consumerQualities,
   stockUnitsNeeded,
 } from '../../utils/unitPricing';
 import { normalizePhoneNumber } from '../../utils/validators';
 import { hasVariableWeightColumns, hasQualityCatalogColumns } from '../../config/productSchema';
+import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
 import { hasUrgentDeliveryColumns, hasRestaurantOrderColumns } from '../../config/orderSchema';
 import { hasOcpTables } from '../../config/ocpSchema';
@@ -795,6 +796,10 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
 
       // Price each line by its unit + quality; track the free-delivery subtotal.
       const qualityReady = await hasQualityCatalogColumns();
+      const catalogV2Ready = await hasCatalogV2Columns();
+      const v2Cols = catalogV2Ready
+        ? ', p.consumer_enabled_a, p.consumer_enabled_b, p.consumer_enabled_c, p.half_kg_price_b, p.quarter_kg_price_b, p.half_dozen_price_b, p.half_kg_price_c, p.quarter_kg_price_c, p.half_dozen_price_c'
+        : '';
       let subtotal = 0;
       let vegFruitSubtotal = 0;
       const lines: any[] = [];
@@ -803,6 +808,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
           `SELECT p.name_en, p.primary_image, p.sku, p.price, p.half_kg_price, p.quarter_kg_price,
                   p.half_dozen_price, cat.qualifies_for_free_delivery
                   ${qualityReady ? ', p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c' : ''}
+                  ${v2Cols}
              FROM products p JOIN categories cat ON p.category_id = cat.id
             WHERE p.id = $1 AND p.is_active = TRUE FOR UPDATE`,
           [item.product_id]
@@ -813,7 +819,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
         const p = pr.rows[0];
         const unit = normalizeProductUnit(item.unit);
         const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
-        if (qualityReady && !offeredQualities(p).includes(quality)) {
+        if (qualityReady && !consumerQualities(p).includes(quality)) {
           throw Object.assign(new Error(`Quality ${quality} not available for ${p.name_en}.`), { http: 400 });
         }
         const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);

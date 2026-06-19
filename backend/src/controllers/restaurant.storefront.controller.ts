@@ -9,6 +9,7 @@ import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, createdResponse, errorResponse } from '../utils/response';
 import { hasQualityCatalogColumns } from '../config/productSchema';
+import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasRestaurantOrderColumns } from '../config/orderSchema';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { emitToAdmins } from '../config/socket';
@@ -37,16 +38,30 @@ export const getRestaurantCategories = asyncHandler(async (req: Request, res: Re
 /** GET /api/restaurant/products?category= — restaurant products with quality prices. */
 export const getRestaurantProducts = asyncHandler(async (req: Request, res: Response) => {
   if (!(await hasQualityCatalogColumns())) return successResponse(res, [], 'Products');
+  const v2 = await hasCatalogV2Columns();
   // City-bound: only the restaurant's own city catalog (NULL city → empty).
   const cityId = req.restaurant!.city_id;
   const params: any[] = [cityId];
-  // Unified catalog: a product appears here when available_for_restaurants. The
-  // restaurant pays restaurant_price_* (falling back to the consumer price per
-  // tier); the offered tiers and the SHARED stock come from the consumer side.
+  // Catalog v2: a B/C tier is shown to restaurants only when its restaurant
+  // enable flag is on (NULL price => "not offered" on the client). Explicit
+  // restaurant fraction prices are surfaced; restaurant_enabled_a lets the client
+  // gate the A tier. The product is hidden entirely when no restaurant tier is on.
+  const priceCols = v2
+    ? `CASE WHEN p.restaurant_enabled_b THEN p.price_b END AS price_b,
+       CASE WHEN p.restaurant_enabled_c THEN p.price_c END AS price_c,
+       CASE WHEN p.restaurant_enabled_a THEN p.restaurant_price_a END AS restaurant_price_a,
+       CASE WHEN p.restaurant_enabled_b THEN p.restaurant_price_b END AS restaurant_price_b,
+       CASE WHEN p.restaurant_enabled_c THEN p.restaurant_price_c END AS restaurant_price_c,
+       p.restaurant_enabled_a,
+       p.restaurant_half_kg_price_a, p.restaurant_quarter_kg_price_a, p.restaurant_half_dozen_price_a,
+       p.restaurant_half_kg_price_b, p.restaurant_quarter_kg_price_b, p.restaurant_half_dozen_price_b,
+       p.restaurant_half_kg_price_c, p.restaurant_quarter_kg_price_c, p.restaurant_half_dozen_price_c,`
+    : `p.price_b, p.price_c,
+       p.restaurant_price_a, p.restaurant_price_b, p.restaurant_price_c,`;
   let sql = `
     SELECT p.id, p.name_ur, p.name_en, p.slug,
-           p.price, p.price_b, p.price_c,
-           p.restaurant_price_a, p.restaurant_price_b, p.restaurant_price_c,
+           p.price,
+           ${priceCols}
            p.stock_quantity, p.stock_quantity_b, p.stock_quantity_c,
            p.allow_half_kg, p.allow_quarter_kg,
            p.unit_type, p.unit_value, p.primary_image, p.images,
@@ -55,6 +70,9 @@ export const getRestaurantProducts = asyncHandler(async (req: Request, res: Resp
       FROM products p
       JOIN categories c ON p.category_id = c.id
      WHERE p.is_active = TRUE AND p.available_for_restaurants = TRUE AND p.city_id = $1`;
+  if (v2) {
+    sql += ` AND (p.restaurant_enabled_a OR p.restaurant_enabled_b OR p.restaurant_enabled_c)`;
+  }
   if (typeof req.query.category === 'string' && req.query.category) {
     params.push(req.query.category);
     sql += ` AND p.category_id = $${params.length}`;

@@ -39,6 +39,16 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS restaurant_half_kg_price_c     NUM
 ALTER TABLE products ADD COLUMN IF NOT EXISTS restaurant_quarter_kg_price_c  NUMERIC(10,2);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS restaurant_half_dozen_price_c  NUMERIC(10,2);
 
+-- Preserve existing restaurant offerings: products that were available to
+-- restaurants keep their priced tiers enabled for restaurants. Only touches rows
+-- still at the default (all three flags false) so admin choices aren't clobbered.
+UPDATE products SET
+  restaurant_enabled_a = TRUE,
+  restaurant_enabled_b = (price_b IS NOT NULL),
+  restaurant_enabled_c = (price_c IS NOT NULL)
+WHERE available_for_restaurants = TRUE
+  AND restaurant_enabled_a = FALSE AND restaurant_enabled_b = FALSE AND restaurant_enabled_c = FALSE;
+
 -- ── 2) Reservation (soft holds) per quality ─────────────────────────────────
 ALTER TABLE products ADD COLUMN IF NOT EXISTS reserved_quantity   NUMERIC(12,3) NOT NULL DEFAULT 0;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS reserved_quantity_b NUMERIC(12,3) NOT NULL DEFAULT 0;

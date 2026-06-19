@@ -18,10 +18,11 @@ import {
   stockUnitsNeeded,
   qualityStockColumn,
   normalizeQuality,
-  offeredQualities,
+  consumerQualities,
   FRESH_CART_SUBTOTAL_SQL,
 } from '../utils/unitPricing';
 import { hasQualityCatalogColumns } from '../config/productSchema';
+import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { loadCartSnapshotFromClient, buildCartResponse } from '../utils/cartResponse';
 import { roundMoney } from '../utils/money';
 import {
@@ -38,6 +39,11 @@ import { hasUserCouponsTable } from '../utils/autoCoupons';
  */
 /** Per-quality columns appended to product SELECTs once migration 34 lands. */
 const QUALITY_PRODUCT_COLS = ', price_b, price_c, stock_quantity_b, stock_quantity_c';
+/** Catalog-v2 columns (migration 37): consumer enable flags + explicit B/C fractions. */
+const CATALOG_V2_CART_COLS =
+  ', consumer_enabled_a, consumer_enabled_b, consumer_enabled_c' +
+  ', half_kg_price_b, quarter_kg_price_b, half_dozen_price_b' +
+  ', half_kg_price_c, quarter_kg_price_c, half_dozen_price_c';
 
 /** Shared stock available for the chosen quality tier on a product row. */
 const qualityStock = (product: Record<string, any>, quality: string): number => {
@@ -111,6 +117,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
 
   // Quality tier (A/B/C) gated until migration 34 lands; old clients omit it.
   const qualityReady = await hasQualityCatalogColumns();
+  const catalogV2Ready = await hasCatalogV2Columns();
   const quality = qualityReady ? normalizeQuality(req.body?.quality) : 'A';
 
   const transactionResult = await withTransaction(async (client) => {
@@ -141,6 +148,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
       `SELECT id, price, half_kg_price, quarter_kg_price, half_dozen_price,
               stock_quantity, stock_status, unit_value, unit_type
               ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
+              ${catalogV2Ready ? CATALOG_V2_CART_COLS : ''}
          FROM products
         WHERE id = $1 AND is_active = TRUE`,
       [product_id]
@@ -152,8 +160,8 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
 
     const product = productResult.rows[0];
 
-    // The chosen quality tier must actually be offered by the product.
-    if (qualityReady && !offeredQualities(product).includes(quality)) {
+    // The chosen quality tier must be offered to CONSUMERS (price set + enabled).
+    if (qualityReady && !consumerQualities(product).includes(quality)) {
       throw new BadRequestError('Selected quality is not available for this product');
     }
 
@@ -237,6 +245,7 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
   }>;
 
   const qualityReady = await hasQualityCatalogColumns();
+  const catalogV2Ready = await hasCatalogV2Columns();
 
   const transactionResult = await withTransaction(async (client) => {
     let cartResult = await client.query(
@@ -270,6 +279,7 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
         `SELECT id, name_en, price, half_kg_price, quarter_kg_price, half_dozen_price,
                 stock_quantity, stock_status
                 ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
+                ${catalogV2Ready ? CATALOG_V2_CART_COLS : ''}
            FROM products
           WHERE id = $1 AND is_active = TRUE`,
         [item.product_id]
@@ -281,7 +291,7 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
 
       const product = productResult.rows[0];
 
-      if (qualityReady && !offeredQualities(product).includes(quality)) {
+      if (qualityReady && !consumerQualities(product).includes(quality)) {
         throw new BadRequestError(`Selected quality is not available: ${product.name_en}`);
       }
 
@@ -355,12 +365,14 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
     }
 
     const qualityReady = await hasQualityCatalogColumns();
+    const catalogV2Ready = await hasCatalogV2Columns();
     const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
 
     const productResult = await client.query(
       `SELECT id, price, half_kg_price, quarter_kg_price, half_dozen_price,
               stock_quantity, stock_status, unit_value, unit_type
               ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
+              ${catalogV2Ready ? CATALOG_V2_CART_COLS : ''}
        FROM products WHERE id = $1`,
       [item.product_id]
     );

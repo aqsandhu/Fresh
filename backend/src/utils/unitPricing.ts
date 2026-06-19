@@ -80,6 +80,57 @@ interface QualityProduct {
   restaurant_price_a?: string | number | null;
   restaurant_price_b?: string | number | null;
   restaurant_price_c?: string | number | null;
+  // Catalog v2 — per-quality channel enable flags (default: consumer on, restaurant off).
+  consumer_enabled_a?: boolean | null;
+  consumer_enabled_b?: boolean | null;
+  consumer_enabled_c?: boolean | null;
+  restaurant_enabled_a?: boolean | null;
+  restaurant_enabled_b?: boolean | null;
+  restaurant_enabled_c?: boolean | null;
+}
+
+/** Catalog-v2 explicit fraction price columns (per quality, per channel). */
+interface FractionPriceProduct {
+  half_kg_price?: string | number | null;
+  quarter_kg_price?: string | number | null;
+  half_dozen_price?: string | number | null;
+  half_kg_price_b?: string | number | null;
+  quarter_kg_price_b?: string | number | null;
+  half_dozen_price_b?: string | number | null;
+  half_kg_price_c?: string | number | null;
+  quarter_kg_price_c?: string | number | null;
+  half_dozen_price_c?: string | number | null;
+  restaurant_half_kg_price_a?: string | number | null;
+  restaurant_quarter_kg_price_a?: string | number | null;
+  restaurant_half_dozen_price_a?: string | number | null;
+  restaurant_half_kg_price_b?: string | number | null;
+  restaurant_quarter_kg_price_b?: string | number | null;
+  restaurant_half_dozen_price_b?: string | number | null;
+  restaurant_half_kg_price_c?: string | number | null;
+  restaurant_quarter_kg_price_c?: string | number | null;
+  restaurant_half_dozen_price_c?: string | number | null;
+}
+
+/** A tier is enabled for a channel unless the flag is explicitly false. */
+const flagOn = (v: unknown, dflt: boolean): boolean => (v === null || v === undefined ? dflt : v === true);
+
+/** Pick the explicit fraction-price column value for a quality+channel+unit (null if blank/absent). */
+function explicitFractionPrice(
+  product: FractionPriceProduct,
+  quality: ProductQuality,
+  unit: string | null | undefined,
+  channel: 'consumer' | 'restaurant'
+): number | null {
+  const u = normalizeProductUnit(unit);
+  if (u === 'full') return null;
+  const suffix = u === 'half_kg' ? 'half_kg' : u === 'quarter_kg' ? 'quarter_kg' : 'half_dozen';
+  let key: string;
+  if (channel === 'restaurant') {
+    key = `restaurant_${suffix}_price_${quality.toLowerCase()}`;
+  } else {
+    key = quality === 'A' ? `${suffix}_price` : `${suffix}_price_${quality.toLowerCase()}`;
+  }
+  return optionalPrice((product as any)[key]);
 }
 
 const optionalPrice = (value: unknown): number | null => {
@@ -142,28 +193,65 @@ export function applyUnitFraction(base: number, unit: string | null | undefined)
  * (existing behaviour via resolveUnitPrice); B/C derive the fraction from base.
  */
 export function resolveConsumerUnitPrice(
-  product: QualityProduct & {
-    half_kg_price?: string | number | null;
-    quarter_kg_price?: string | number | null;
-    half_dozen_price?: string | number | null;
-  },
+  product: QualityProduct & FractionPriceProduct,
   quality: unknown,
   unit: string | null | undefined
 ): number | null {
   const q = normalizeQuality(quality);
-  if (q === 'A') return resolveUnitPrice(product, unit);
   const base = resolveConsumerBasePrice(product, q);
-  return base == null ? null : applyUnitFraction(base, unit);
+  if (base == null) return null;
+  if (normalizeProductUnit(unit) === 'full') return base;
+  // Honour an explicit per-quality fraction override (A/B/C); else derive.
+  const explicit = explicitFractionPrice(product, q, unit, 'consumer');
+  return explicit != null ? explicit : applyUnitFraction(base, unit);
 }
 
 /** Restaurant per-unit price for a quality + unit (null if tier N/A). */
 export function resolveRestaurantUnitPrice(
-  product: QualityProduct,
+  product: QualityProduct & FractionPriceProduct,
   quality: unknown,
   unit: string | null | undefined
 ): number | null {
-  const base = resolveRestaurantBasePrice(product, quality);
-  return base == null ? null : applyUnitFraction(base, unit);
+  const q = normalizeQuality(quality);
+  const base = resolveRestaurantBasePrice(product, q);
+  if (base == null) return null;
+  if (normalizeProductUnit(unit) === 'full') return base;
+  const explicit = explicitFractionPrice(product, q, unit, 'restaurant');
+  return explicit != null ? explicit : applyUnitFraction(base, unit);
+}
+
+// ── Channel-aware offered sets (Catalog v2 enable flags) ─────────────────────
+// A tier is shown to a channel only when its enable flag is on AND the channel
+// has a usable base price for it. Consumer A defaults on; restaurant defaults
+// off (admin opts in per product + per quality). `offeredQualities` above stays
+// the price-only set (used where the channel doesn't matter).
+
+/** Quality tiers offered to CONSUMERS (enable flag on + price set). */
+export function consumerQualities(product: QualityProduct): ProductQuality[] {
+  const out: ProductQuality[] = [];
+  if (flagOn(product.consumer_enabled_a, true) && resolveConsumerBasePrice(product, 'A') != null) out.push('A');
+  if (flagOn(product.consumer_enabled_b, true) && resolveConsumerBasePrice(product, 'B') != null) out.push('B');
+  if (flagOn(product.consumer_enabled_c, true) && resolveConsumerBasePrice(product, 'C') != null) out.push('C');
+  return out;
+}
+
+/** Quality tiers offered to RESTAURANTS (enable flag on + base resolvable). */
+export function restaurantQualities(product: QualityProduct): ProductQuality[] {
+  const out: ProductQuality[] = [];
+  if (flagOn(product.restaurant_enabled_a, false) && resolveRestaurantBasePrice(product, 'A') != null) out.push('A');
+  if (flagOn(product.restaurant_enabled_b, false) && resolveRestaurantBasePrice(product, 'B') != null) out.push('B');
+  if (flagOn(product.restaurant_enabled_c, false) && resolveRestaurantBasePrice(product, 'C') != null) out.push('C');
+  return out;
+}
+
+/** True if the given quality is offered to the channel. */
+export function isQualityOffered(
+  product: QualityProduct,
+  quality: unknown,
+  channel: 'consumer' | 'restaurant'
+): boolean {
+  const q = normalizeQuality(quality);
+  return (channel === 'consumer' ? consumerQualities(product) : restaurantQualities(product)).includes(q);
 }
 
 /**
@@ -182,16 +270,16 @@ export const FRESH_CART_LINE_UNIT_PRICE_SQL = `
   CASE COALESCE(ci.quality, 'A')
     WHEN 'B' THEN (
       CASE COALESCE(ci.unit, 'full')
-        WHEN 'half_kg' THEN p.price_b * 0.5
-        WHEN 'quarter_kg' THEN p.price_b * 0.25
-        WHEN 'half_dozen' THEN p.price_b * 0.5
+        WHEN 'half_kg' THEN COALESCE(p.half_kg_price_b, p.price_b * 0.5)
+        WHEN 'quarter_kg' THEN COALESCE(p.quarter_kg_price_b, p.price_b * 0.25)
+        WHEN 'half_dozen' THEN COALESCE(p.half_dozen_price_b, p.price_b * 0.5)
         ELSE p.price_b
       END)
     WHEN 'C' THEN (
       CASE COALESCE(ci.unit, 'full')
-        WHEN 'half_kg' THEN p.price_c * 0.5
-        WHEN 'quarter_kg' THEN p.price_c * 0.25
-        WHEN 'half_dozen' THEN p.price_c * 0.5
+        WHEN 'half_kg' THEN COALESCE(p.half_kg_price_c, p.price_c * 0.5)
+        WHEN 'quarter_kg' THEN COALESCE(p.quarter_kg_price_c, p.price_c * 0.25)
+        WHEN 'half_dozen' THEN COALESCE(p.half_dozen_price_c, p.price_c * 0.5)
         ELSE p.price_c
       END)
     ELSE (

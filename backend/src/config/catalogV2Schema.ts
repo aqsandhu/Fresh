@@ -83,6 +83,17 @@ async function runCatalogV2Ddl(connectionString: string): Promise<void> {
     for (const col of fractionCols) {
       await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ${col} NUMERIC(10,2)`);
     }
+    // Preserve existing restaurant offerings: products previously available to
+    // restaurants keep their priced tiers enabled. Runs once (the marker column
+    // was just added), and only on rows still at the all-false default.
+    await pool.query(`
+      UPDATE products SET
+        restaurant_enabled_a = TRUE,
+        restaurant_enabled_b = (price_b IS NOT NULL),
+        restaurant_enabled_c = (price_c IS NOT NULL)
+      WHERE available_for_restaurants = TRUE
+        AND restaurant_enabled_a = FALSE AND restaurant_enabled_b = FALSE AND restaurant_enabled_c = FALSE`);
+
     for (const col of ['reserved_quantity', 'reserved_quantity_b', 'reserved_quantity_c']) {
       await pool.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS ${col} NUMERIC(12,3) NOT NULL DEFAULT 0`);
     }

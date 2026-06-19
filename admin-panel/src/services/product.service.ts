@@ -14,6 +14,27 @@ interface ProductFilters {
   isActive?: boolean;
 }
 
+// Catalog v2 — append per-quality channel enable flags + explicit B/C and
+// restaurant fraction prices. Sent on both create and update; blank fraction
+// values are sent as '' so the backend clears (NULLs) them.
+function appendCatalogV2Fields(fd: FormData, d: Partial<CreateProductData>): void {
+  const flag = (v: boolean | undefined, dflt: boolean) => String(v === undefined ? dflt : v === true);
+  fd.append('consumer_enabled_a', flag(d.consumerEnabledA, true));
+  fd.append('consumer_enabled_b', flag(d.consumerEnabledB, true));
+  fd.append('consumer_enabled_c', flag(d.consumerEnabledC, true));
+  fd.append('restaurant_enabled_a', flag(d.restaurantEnabledA, false));
+  fd.append('restaurant_enabled_b', flag(d.restaurantEnabledB, false));
+  fd.append('restaurant_enabled_c', flag(d.restaurantEnabledC, false));
+  const fractions: Array<[string, number | null | undefined]> = [
+    ['half_kg_price_b', d.halfKgPriceB], ['quarter_kg_price_b', d.quarterKgPriceB], ['half_dozen_price_b', d.halfDozenPriceB],
+    ['half_kg_price_c', d.halfKgPriceC], ['quarter_kg_price_c', d.quarterKgPriceC], ['half_dozen_price_c', d.halfDozenPriceC],
+    ['restaurant_half_kg_price_a', d.restaurantHalfKgPriceA], ['restaurant_quarter_kg_price_a', d.restaurantQuarterKgPriceA], ['restaurant_half_dozen_price_a', d.restaurantHalfDozenPriceA],
+    ['restaurant_half_kg_price_b', d.restaurantHalfKgPriceB], ['restaurant_quarter_kg_price_b', d.restaurantQuarterKgPriceB], ['restaurant_half_dozen_price_b', d.restaurantHalfDozenPriceB],
+    ['restaurant_half_kg_price_c', d.restaurantHalfKgPriceC], ['restaurant_quarter_kg_price_c', d.restaurantQuarterKgPriceC], ['restaurant_half_dozen_price_c', d.restaurantHalfDozenPriceC],
+  ];
+  for (const [k, v] of fractions) fd.append(k, v == null ? '' : String(v));
+}
+
 export const productService = {
   getProducts: async (filters: ProductFilters = {}): Promise<{ products: Product[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> => {
     try {
@@ -77,6 +98,7 @@ export const productService = {
       if (data.restaurantPriceA != null) formData.append('restaurant_price_a', String(data.restaurantPriceA));
       if (data.restaurantPriceB != null) formData.append('restaurant_price_b', String(data.restaurantPriceB));
       if (data.restaurantPriceC != null) formData.append('restaurant_price_c', String(data.restaurantPriceC));
+      appendCatalogV2Fields(formData, data);
 
       if (data.images && data.images.length > 0) {
         data.images.forEach((image) => {
@@ -128,7 +150,8 @@ export const productService = {
       if (data.restaurantPriceA !== undefined) formData.append('restaurant_price_a', data.restaurantPriceA == null ? '' : String(data.restaurantPriceA));
       if (data.restaurantPriceB !== undefined) formData.append('restaurant_price_b', data.restaurantPriceB == null ? '' : String(data.restaurantPriceB));
       if (data.restaurantPriceC !== undefined) formData.append('restaurant_price_c', data.restaurantPriceC == null ? '' : String(data.restaurantPriceC));
-      
+      appendCatalogV2Fields(formData, data);
+
       if (data.images && data.images.length > 0) {
         data.images.forEach((image) => {
           formData.append('images', image);
