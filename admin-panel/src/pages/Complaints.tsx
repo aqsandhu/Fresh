@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MessageSquareWarning, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { MessageSquareWarning, Loader2, ChevronDown, ChevronUp, Wallet, PackagePlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
 import {
   feedbackService,
   type AdminComplaint,
@@ -13,6 +15,8 @@ import {
 } from '@/services/feedback.service';
 import { useCityContext } from '@/context/CityContext';
 import { formatDateTime, resolveImageUrl } from '@/utils/formatters';
+
+const money = (n: number) => `Rs. ${(Math.round((n + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
 
 const STATUS_TABS: { value: ComplaintStatus | ''; label: string }[] = [
   { value: '', label: 'All' },
@@ -205,9 +209,98 @@ function ComplaintCard({
               {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
             </Button>
           </div>
+
+          {complaint.orderId && <RefundReplacementSection complaint={complaint} />}
         </div>
       )}
     </Card>
+  );
+}
+
+/**
+ * Refund + replacement actions for a complaint tied to an order (admin-only).
+ * Refund is recorded against the admin account (OCP balances untouched) and is
+ * capped at the order's refundable amount. "Send replacement" opens the
+ * WhatsApp-order composer linked to the original order.
+ */
+function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [amount, setAmount] = useState('');
+  const [source, setSource] = useState<'admin' | 'ocp'>('admin');
+  const [note, setNote] = useState('');
+
+  const { data: detail } = useQuery({
+    queryKey: ['complaint-detail', complaint.id],
+    queryFn: () => feedbackService.getComplaint(complaint.id),
+  });
+  const order = detail?.order;
+
+  const refundMut = useMutation({
+    mutationFn: () => feedbackService.refundComplaint(complaint.id, { amount: parseFloat(amount) || 0, source, note: note.trim() || undefined }),
+    onSuccess: () => {
+      toast.success('Refund recorded');
+      setRefundOpen(false); setAmount(''); setNote('');
+      queryClient.invalidateQueries({ queryKey: ['complaint-detail', complaint.id] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Refund failed'),
+  });
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+      <p className="text-sm font-semibold text-gray-800">Complaint actions</p>
+      {order && (
+        <p className="text-xs text-gray-500">
+          Order paid {money(order.paidAmount)} · refunded {money(order.refundedTotal)} ·
+          <span className="font-medium text-gray-700"> refundable {money(order.refundable)}</span>
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" disabled={!order || order.refundable <= 0} onClick={() => { setAmount(String(order?.refundable ?? '')); setRefundOpen(true); }}>
+          <Wallet className="w-4 h-4 mr-1 inline" /> Refund
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => navigate(`/admin/whatsapp-orders?replacementFor=${complaint.orderId}&complaintId=${complaint.id}`)}>
+          <PackagePlus className="w-4 h-4 mr-1 inline" /> Send replacement
+        </Button>
+      </div>
+      {order && order.refunds.length > 0 && (
+        <ul className="text-xs text-gray-500 space-y-0.5">
+          {order.refunds.map((r) => (
+            <li key={r.id}>{money(r.amount)} · {r.source}{r.note ? ` · ${r.note}` : ''} · {formatDateTime(r.createdAt)}</li>
+          ))}
+        </ul>
+      )}
+
+      <Modal isOpen={refundOpen} onClose={() => setRefundOpen(false)} title="Record refund"
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setRefundOpen(false)}>Cancel</Button>
+            <Button onClick={() => refundMut.mutate()} disabled={refundMut.isPending || !(parseFloat(amount) > 0)} isLoading={refundMut.isPending}>Refund</Button>
+          </div>
+        }>
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">Refund is paid from the <strong>admin account</strong>. Max {money(order?.refundable ?? 0)}.</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
+            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Original payment was collected by</label>
+            <select value={source} onChange={(e) => setSource(e.target.value as 'admin' | 'ocp')} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <option value="admin">Admin / direct</option>
+              <option value="ocp">An OCP</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-1">For the record only — the refund always comes from the admin account.</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+            <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+        </div>
+      </Modal>
+    </div>
   );
 }
 

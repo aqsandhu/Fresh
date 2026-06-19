@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MessageCircle, Plus, Trash2, User, Package, Search, Home,
-  CheckCircle, Loader2, Zap, Clock, Receipt, CalendarDays, MapPin,
+  CheckCircle, Loader2, Zap, Clock, Receipt, CalendarDays, MapPin, PackagePlus,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -24,6 +25,8 @@ interface OrderItem {
   quantity: number;
   unit: string;
   quality: Quality;
+  /** Complaint replacement: admin-set price (blank = normal price). */
+  overridePrice?: string;
 }
 
 interface UnitOption {
@@ -145,6 +148,11 @@ function composeAddress(a: WhatsappCustomerAddress): string {
 
 export const WhatsAppOrders: React.FC = () => {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  // Complaint replacement context (deep-linked from the Complaints page).
+  const replacementForOrderId = searchParams.get('replacementFor') || '';
+  const complaintId = searchParams.get('complaintId') || '';
+  const isReplacement = !!replacementForOrderId;
   const [mode, setMode] = useState<'customer' | 'restaurant'>('customer');
   const [items, setItems] = useState<OrderItem[]>([{ id: '1', productId: '', quantity: 1, unit: 'full', quality: 'A' }]);
 
@@ -340,11 +348,17 @@ export const WhatsAppOrders: React.FC = () => {
       ...(!addressId && latitude.trim() ? { latitude: latitude.trim() } : {}),
       ...(!addressId && longitude.trim() ? { longitude: longitude.trim() } : {}),
       ...(!addressId && doorPictureUrl ? { doorPictureUrl } : {}),
-      items: pricing.validItems.map(({ productId, quantity, unit, quality }) => ({ productId, quantity, unit, quality })),
+      items: pricing.validItems.map(({ productId, quantity, unit, quality, overridePrice }) => ({
+        productId, quantity, unit, quality,
+        ...(isReplacement && overridePrice !== undefined && overridePrice !== '' && Number.isFinite(parseFloat(overridePrice))
+          ? { overridePrice: parseFloat(overridePrice) }
+          : {}),
+      })),
       urgentDelivery: urgentOn,
       ...(!urgentOn && timeSlotId ? { timeSlotId } : {}),
       ...(!urgentOn && timeSlotId && selectedDay === 'tomorrow' ? { requestedDeliveryDate: dateStr('tomorrow') } : {}),
       adminNotes: adminNotes || undefined,
+      ...(isReplacement ? { replacementForOrderId, complaintId: complaintId || undefined } : {}),
     };
     createMutation.mutate(orderData);
   };
@@ -355,6 +369,15 @@ export const WhatsAppOrders: React.FC = () => {
   return (
     <Layout title="WhatsApp Orders" subtitle="Place an order on a customer's behalf — it appears in Orders">
       <div className="max-w-4xl mx-auto">
+        {isReplacement && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-3">
+            <PackagePlus className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="text-sm">
+              <p className="font-semibold text-amber-800">Complaint replacement order</p>
+              <p className="text-amber-700">Linked to the complained order. Set a replacement price per item (0 = free, or a partial amount). This order joins the records.</p>
+            </div>
+          </div>
+        )}
         {/* Customer vs Restaurant order */}
         <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
           {(['customer', 'restaurant'] as const).map((m) => (
@@ -641,6 +664,20 @@ export const WhatsAppOrders: React.FC = () => {
                           <span className="text-gray-600">{item.quantity}</span>
                           <span className="text-gray-400">=</span>
                           <span className="font-semibold text-gray-900">{money(lineTotal)}</span>
+                        </div>
+                      )}
+
+                      {/* Replacement: admin override price per unit (0 = free, or partial). */}
+                      {isReplacement && product && (
+                        <div className="mt-2 ml-7 flex items-center gap-2 text-sm">
+                          <span className="text-gray-500">Replacement price / {selectedUnit.short}:</span>
+                          <input
+                            type="number" min={0} step="0.01" placeholder={`normal ${unitPrice}`}
+                            value={item.overridePrice ?? ''}
+                            onChange={(e) => updateItem(item.id, 'overridePrice', e.target.value)}
+                            className="w-28 px-2 py-1 border border-amber-300 rounded-lg text-sm"
+                          />
+                          <span className="text-xs text-gray-400">0 = free · blank = normal</span>
                         </div>
                       )}
                     </div>
