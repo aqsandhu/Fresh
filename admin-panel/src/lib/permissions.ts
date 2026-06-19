@@ -14,6 +14,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/orders': ['orders.view'],
   '/admin/products': ['products.view'],
   '/admin/price-manager': ['products.update'],
+  '/admin/stock': ['products.update', 'products.view'],
   '/admin/categories': ['categories.manage'],
   '/admin/customers': ['customers.view'],
   '/admin/riders': ['riders.view'],

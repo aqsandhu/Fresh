@@ -12,6 +12,7 @@ import * as tipsController from '../controllers/tips.controller';
 import * as riderAppController from '../controllers/riderApplication.controller';
 import * as restaurantsController from '../controllers/admin/restaurants.controller';
 import * as ocpController from '../controllers/admin/ocp.controller';
+import * as stockController from '../controllers/admin/stock.controller';
 import {
   authenticate,
   requireAdmin,
@@ -300,6 +301,17 @@ router.get('/ocp/:id/stock-requests', ocpController.listStockRequests);
 router.post('/ocp/:id/stock-requests', adminRateLimiter, ocpController.createStockRequest);
 router.put('/ocp/:id', adminRateLimiter, ocpController.updateOcp);
 router.delete('/ocp/:id', adminRateLimiter, ocpController.deleteOcp);
+
+// Stock management (city system stock + OCP location ledger). Literal paths
+// before '/stock/:productId/movements'.
+router.get('/stock', stockController.getStockOverview);
+router.post('/stock/add', adminRateLimiter, stockController.addStock);
+router.post('/stock/waste', adminRateLimiter, stockController.wasteStock);
+router.post('/stock/convert', adminRateLimiter, stockController.convertQuality);
+router.post('/stock/shift', adminRateLimiter, stockController.shiftToOcp);
+router.post('/stock/return', adminRateLimiter, stockController.returnFromOcp);
+router.post('/stock/transfer', adminRateLimiter, stockController.transferOcpToOcp);
+router.get('/stock/:productId/movements', stockController.getStockMovements);
 
 // User guidance tips (per-city; global tips are super-admin only)
 router.get('/tips', tipsController.listTips);
