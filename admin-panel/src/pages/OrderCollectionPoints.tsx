@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, Trash2, Package, Wallet, MapPin, Phone, Loader2, X, Send, Check, Ban } from 'lucide-react';
+import { Plus, Edit, Trash2, Package, Wallet, MapPin, Phone, Loader2, Send, Check, Ban } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -154,51 +154,125 @@ function PointsSection() {
 }
 
 // ── Send stock modal ─────────────────────────────────────────────────────────
+// Lists EVERY available product. For each product it shows only the quality
+// tiers that product offers (A always; B/C when priced), each with a
+// pre-selected (changeable) unit and a quantity box. Quantities are converted
+// to the product's base unit (kg / dozen / piece) before sending, so the OCP
+// stock ledger always stores base units.
+
+type StockEntry = { unit: string; qty: string };
+
+const UNIT_MULTIPLIER: Record<string, number> = { full: 1, half_kg: 0.5, quarter_kg: 0.25, half_dozen: 0.5 };
+
+function offeredQualities(p: any): ('A' | 'B' | 'C')[] {
+  const out: ('A' | 'B' | 'C')[] = ['A'];
+  if (p.priceB != null && p.priceB !== '') out.push('B');
+  if (p.priceC != null && p.priceC !== '') out.push('C');
+  return out;
+}
+
+function unitOptionsFor(p: any): { value: string; label: string }[] {
+  const ut = String(p.unitType || 'unit').toLowerCase();
+  const opts = [{ value: 'full', label: ut }];
+  if (ut === 'kg') {
+    if (p.allowHalfKg !== false) opts.push({ value: 'half_kg', label: '½ kg' });
+    if (p.allowQuarterKg !== false) opts.push({ value: 'quarter_kg', label: '¼ kg' });
+  }
+  if (ut === 'dozen') opts.push({ value: 'half_dozen', label: '½ dozen' });
+  return opts;
+}
+
 function SendStockModal({ ocp, onClose }: { ocp: Ocp; onClose: () => void }) {
-  const [lines, setLines] = useState<OcpStockLine[]>([{ productId: '', quality: 'A', quantity: 1 }]);
-  const { data } = useQuery({
-    queryKey: ['products', 'ocp-stock', ocp.cityId],
-    queryFn: () => productService.getProducts({ limit: 300, categoryId: undefined }),
+  // keyed by `${productId}|${quality}`
+  const [entries, setEntries] = useState<Record<string, StockEntry>>({});
+  const [search, setSearch] = useState('');
+  const { data, isLoading } = useQuery({
+    queryKey: ['products', 'ocp-stock'],
+    queryFn: () => productService.getProducts({ limit: 500, categoryId: undefined }),
   });
-  const products = data?.products || [];
+  const products = useMemo(() => data?.products || [], [data]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p: any) => String(p.nameEn || '').toLowerCase().includes(q) || String(p.nameUr || '').includes(q));
+  }, [products, search]);
+
+  const setEntry = (key: string, patch: Partial<StockEntry>) =>
+    setEntries((prev) => ({ ...prev, [key]: { unit: prev[key]?.unit || 'full', qty: prev[key]?.qty || '', ...patch } }));
+
+  const buildLines = (): OcpStockLine[] => {
+    const lines: OcpStockLine[] = [];
+    for (const [key, e] of Object.entries(entries)) {
+      const qty = parseFloat(e.qty);
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const [productId, quality] = key.split('|');
+      const base = qty * (UNIT_MULTIPLIER[e.unit] ?? 1);
+      lines.push({ productId, quality: quality as 'A' | 'B' | 'C', quantity: Math.round(base * 1000) / 1000 });
+    }
+    return lines;
+  };
+
+  const lineCount = useMemo(() => buildLines().length, [entries]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = useMutation({
-    mutationFn: () => ocpService.sendStock(ocp.id, lines.filter((l) => l.productId && l.quantity > 0)),
+    mutationFn: () => ocpService.sendStock(ocp.id, buildLines()),
     onSuccess: () => { toast.success('Stock sent — OCP will verify & receive'); onClose(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to send stock'),
   });
 
-  const valid = lines.some((l) => l.productId && l.quantity > 0);
-
   return (
     <Modal isOpen onClose={onClose} title={`Send stock to ${ocp.name}`}
       footer={
-        <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={() => send.mutate()} disabled={!valid} isLoading={send.isPending} leftIcon={<Send className="w-4 h-4" />}>Send</Button>
+        <div className="flex items-center justify-between gap-3 w-full">
+          <span className="text-sm text-gray-500">{lineCount} item{lineCount === 1 ? '' : 's'} to send</span>
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button onClick={() => send.mutate()} disabled={lineCount === 0} isLoading={send.isPending} leftIcon={<Send className="w-4 h-4" />}>Send</Button>
+          </div>
         </div>
       }>
       <div className="space-y-3">
-        {lines.map((l, idx) => (
-          <div key={idx} className="flex items-center gap-2">
-            <select value={l.productId} onChange={(e) => setLines(lines.map((x, i) => i === idx ? { ...x, productId: e.target.value } : x))}
-              className="flex-1 px-2 py-2 border border-gray-300 rounded-lg text-sm">
-              <option value="">Select product</option>
-              {products.map((p: any) => <option key={p.id} value={p.id}>{p.nameEn}</option>)}
-            </select>
-            <select value={l.quality} onChange={(e) => setLines(lines.map((x, i) => i === idx ? { ...x, quality: e.target.value as any } : x))}
-              className="px-2 py-2 border border-gray-300 rounded-lg text-sm">
-              {(['A', 'B', 'C'] as const).map((q) => <option key={q} value={q}>Q{q}</option>)}
-            </select>
-            <input type="number" min={0} step="0.001" value={l.quantity}
-              onChange={(e) => setLines(lines.map((x, i) => i === idx ? { ...x, quantity: parseFloat(e.target.value) || 0 } : x))}
-              className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-sm" />
-            <button onClick={() => setLines(lines.filter((_, i) => i !== idx))} disabled={lines.length === 1}
-              className="p-2 text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-40"><X className="w-4 h-4" /></button>
+        <Input placeholder="Search products…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        {isLoading ? (
+          <p className="text-sm text-gray-500 py-6 text-center">Loading products…</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-gray-500 py-6 text-center">No products found.</p>
+        ) : (
+          <div className="max-h-[55vh] overflow-y-auto divide-y border rounded-lg">
+            {filtered.map((p: any) => {
+              const quals = offeredQualities(p);
+              const units = unitOptionsFor(p);
+              return (
+                <div key={p.id} className="p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="font-medium text-gray-900 text-sm">{p.nameEn}</p>
+                    <span className="text-xs text-gray-400">{p.categoryName}</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {quals.map((q) => {
+                      const key = `${p.id}|${q}`;
+                      const e = entries[key] || { unit: 'full', qty: '' };
+                      return (
+                        <div key={q} className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold w-7 text-center py-1 rounded ${q === 'A' ? 'bg-emerald-50 text-emerald-700' : q === 'B' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>Q{q}</span>
+                          <select value={e.unit} onChange={(ev) => setEntry(key, { unit: ev.target.value })}
+                            className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
+                            {units.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+                          </select>
+                          <input type="number" min={0} step="0.001" placeholder="Qty" value={e.qty}
+                            onChange={(ev) => setEntry(key, { qty: ev.target.value })}
+                            className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ))}
-        <Button size="sm" variant="outline" onClick={() => setLines([...lines, { productId: '', quality: 'A', quantity: 1 }])} leftIcon={<Plus className="w-4 h-4" />}>Add line</Button>
-        <p className="text-xs text-gray-400">Quantity is in the product's base unit (kg / dozen / piece). The OCP must verify & receive it before its stock updates.</p>
+        )}
+        <p className="text-xs text-gray-400">Enter quantity against any quality of any product. The OCP must verify &amp; receive the batch before its stock updates.</p>
       </div>
     </Modal>
   );
@@ -228,21 +302,35 @@ function SettlementsSection() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to reject'),
   });
 
-  const totalPending = useMemo(
+  const total = useMemo(
     () => settlements.reduce((s: number, x: any) => s + (x.amount || 0), 0),
     [settlements]
   );
 
+  const tabMeta: Record<typeof status, { label: string; tone: string }> = {
+    pending: { label: 'Awaiting receipt', tone: 'text-amber-700' },
+    received: { label: 'Received', tone: 'text-green-700' },
+    rejected: { label: 'Rejected', tone: 'text-red-600' },
+  };
+
   return (
     <>
-      <div className="flex items-center justify-between mb-4">
-        <div className="inline-flex rounded-lg bg-gray-100 p-1">
-          {(['pending', 'received', 'rejected'] as const).map((s) => (
-            <button key={s} onClick={() => setStatus(s)}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize ${status === s ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600'}`}>{s}</button>
-          ))}
-        </div>
-        {status === 'pending' && <span className="text-sm text-gray-600">Total: <span className="font-semibold">{money(totalPending)}</span></span>}
+      <div className="inline-flex rounded-lg bg-gray-100 p-1 mb-4">
+        {(['pending', 'received', 'rejected'] as const).map((s) => (
+          <button key={s} onClick={() => setStatus(s)}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize ${status === s ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600'}`}>{s}</button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <Card className="text-center">
+          <p className="text-xs text-gray-500">{tabMeta[status].label} — total</p>
+          <p className={`text-2xl font-bold ${tabMeta[status].tone}`}>{money(total)}</p>
+        </Card>
+        <Card className="text-center">
+          <p className="text-xs text-gray-500">Settlements</p>
+          <p className="text-2xl font-bold text-gray-900">{settlements.length}</p>
+        </Card>
       </div>
 
       {isLoading ? (
@@ -252,15 +340,19 @@ function SettlementsSection() {
       ) : (
         <div className="space-y-2">
           {settlements.map((s: any) => (
-            <Card key={s.id} className="flex items-center justify-between">
-              <div>
+            <Card key={s.id} className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
                 <p className="font-semibold text-gray-900 flex items-center gap-1.5"><Wallet className="w-4 h-4 text-primary-600" /> {money(s.amount)}</p>
-                <p className="text-sm text-gray-500">{s.ocpName} · {s.orderCount} orders · {new Date(s.requestedAt).toLocaleString('en-PK')}</p>
+                <p className="text-sm text-gray-600">{s.ocpName}</p>
+                <p className="text-xs text-gray-400">
+                  {s.orderCount} order{s.orderCount === 1 ? '' : 's'} · sent {new Date(s.requestedAt).toLocaleString('en-PK')}
+                  {s.receivedAt && status !== 'pending' ? ` · ${status} ${new Date(s.receivedAt).toLocaleString('en-PK')}` : ''}
+                </p>
               </div>
               {status === 'pending' && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Button size="sm" onClick={() => setReceiveFor(s)} leftIcon={<Check className="w-4 h-4" />}>Receive</Button>
-                  <Button size="sm" variant="outline" onClick={() => { if (confirm('Reject this settlement?')) rejectMut.mutate(s.id); }}>Reject</Button>
+                  <Button size="sm" variant="outline" onClick={() => { if (confirm('Reject this settlement? The orders return to the OCP as unsettled cash.')) rejectMut.mutate(s.id); }}>Reject</Button>
                 </div>
               )}
             </Card>

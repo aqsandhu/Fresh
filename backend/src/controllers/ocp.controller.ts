@@ -142,9 +142,12 @@ export const getOcpOrderDetail = asyncHandler(async (req: Request, res: Response
   const { id } = req.params;
   const result = await query(
     `SELECT o.id, o.order_number, o.status, o.subtotal, o.delivery_charge, o.total_amount,
-            o.paid_amount, o.payment_status, o.created_at, o.phone_visible_to_ocp,
+            o.discount_amount, o.coupon_discount, o.coupon_code, o.payment_method,
+            o.paid_amount, o.payment_status, o.created_at, o.placed_at, o.phone_visible_to_ocp,
+            o.is_urgent_delivery, o.urgent_delivery_eta,
             o.delivery_address_snapshot, o.customer_notes,
-            u.full_name AS customer_name, u.phone AS customer_phone,
+            u.full_name AS customer_name, u.phone AS customer_phone, u.email AS customer_email,
+            ts.slot_name,
             COALESCE(json_agg(json_build_object(
               'id', oi.id, 'product_name', oi.product_name, 'quantity', oi.quantity,
               'unit', oi.unit, 'quality', oi.quality, 'unit_price', oi.unit_price,
@@ -152,9 +155,10 @@ export const getOcpOrderDetail = asyncHandler(async (req: Request, res: Response
             ) ORDER BY oi.created_at) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
        FROM orders o
        LEFT JOIN users u ON o.user_id = u.id
+       LEFT JOIN time_slots ts ON o.time_slot_id = ts.id
        LEFT JOIN order_items oi ON oi.order_id = o.id
       WHERE o.id = $1 AND o.ocp_id = $2 AND o.deleted_at IS NULL
-      GROUP BY o.id, u.full_name, u.phone`,
+      GROUP BY o.id, u.full_name, u.phone, u.email, ts.slot_name`,
     [id, req.ocp!.id]
   );
   if (result.rows.length === 0) return notFoundResponse(res, 'Order not found');
@@ -167,16 +171,30 @@ export const getOcpOrderDetail = asyncHandler(async (req: Request, res: Response
     status: o.status,
     subtotal: parseFloat(o.subtotal),
     delivery_charge: parseFloat(o.delivery_charge),
+    discount_amount: parseFloat(o.discount_amount || 0),
+    coupon_discount: parseFloat(o.coupon_discount || 0),
+    coupon_code: o.coupon_code,
     total_amount: parseFloat(o.total_amount),
     paid_amount: parseFloat(o.paid_amount || 0),
+    payment_method: o.payment_method,
     payment_status: o.payment_status,
     created_at: o.created_at,
+    placed_at: o.placed_at,
+    slot_name: o.slot_name,
+    is_urgent_delivery: o.is_urgent_delivery === true,
+    urgent_delivery_eta: o.urgent_delivery_eta,
     customer_notes: o.customer_notes,
     customer_name: o.customer_name,
+    // SECURITY: phone + email are contact info — both gated on the admin's reveal.
     customer_phone: phoneVisible ? o.customer_phone : null,
+    customer_email: phoneVisible ? o.customer_email : null,
     phone_hidden: !phoneVisible,
+    // Full address snapshot for an admin-identical slip/detail view.
+    house_number: snap.house_number || '',
     address: snap.written_address || '',
     landmark: snap.landmark || '',
+    area_name: snap.area_name || '',
+    city: snap.city || '',
     location: snap.location || null,
     items: o.items || [],
   }, 'Order');
@@ -315,30 +333,35 @@ export const getOcpStock = asyncHandler(async (req: Request, res: Response) => {
 
 // ── Payment collection + settlement (OCP → city admin) ──────────────────────
 
-/** POST /api/ocp/orders/:id/collect — record cash collected for an OCP order. */
+/**
+ * POST /api/ocp/orders/:id/collect — record that the OCP collected this order's
+ * cash. The amount is ALWAYS the full order total (server-authoritative); the
+ * OCP cannot type or alter an amount, so the cash it owes the admin can never be
+ * under-recorded. Idempotent: collecting an already-collected order is a no-op.
+ */
 export const collectOcpPayment = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const amount = parseFloat(String(req.body?.amount));
-  if (!Number.isFinite(amount) || amount <= 0) return errorResponse(res, 'Enter a valid amount.', 400);
 
   let out: any;
   try {
     out = await withTransaction(async (client) => {
       const ord = await client.query(
-        `SELECT total_amount, paid_amount FROM orders
+        `SELECT total_amount, paid_amount, payment_status FROM orders
           WHERE id = $1 AND ocp_id = $2 AND deleted_at IS NULL FOR UPDATE`,
         [id, req.ocp!.id]
       );
       if (ord.rows.length === 0) throw Object.assign(new Error('Order not found'), { http: 404 });
       const total = parseFloat(ord.rows[0].total_amount) || 0;
       const paid = parseFloat(ord.rows[0].paid_amount) || 0;
-      // Cap at the order total — never record more than is owed.
-      const newPaid = Math.min(total, paid + amount);
-      const status = newPaid >= total && total > 0 ? 'completed' : 'pending';
+      // Already fully collected → no-op (idempotent), never double-records.
+      if (paid >= total && total > 0) {
+        return { paid_amount: paid, payment_status: ord.rows[0].payment_status, already: true };
+      }
+      // Collection is always the FULL order total — no partial/free-form amount.
       const upd = await client.query(
-        `UPDATE orders SET paid_amount = $1, payment_status = $2::payment_status, updated_at = NOW()
-          WHERE id = $3 RETURNING paid_amount, payment_status`,
-        [newPaid, status, id]
+        `UPDATE orders SET paid_amount = total_amount, payment_status = 'completed'::payment_status, updated_at = NOW()
+          WHERE id = $1 RETURNING paid_amount, payment_status`,
+        [id]
       );
       return { paid_amount: parseFloat(upd.rows[0].paid_amount), payment_status: upd.rows[0].payment_status };
     });
@@ -347,7 +370,7 @@ export const collectOcpPayment = asyncHandler(async (req: Request, res: Response
     throw err;
   }
   logger.info('OCP collected payment', { orderId: id, ocpId: req.ocp!.id });
-  return successResponse(res, out, 'Payment recorded');
+  return successResponse(res, out, out?.already ? 'Already collected' : 'Cash collected');
 });
 
 /** GET /api/ocp/settlements — due summary + settlement history for this OCP. */

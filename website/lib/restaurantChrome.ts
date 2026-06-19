@@ -10,6 +10,9 @@ export function hideConsumerChrome(pathname: string | null | undefined): boolean
     pathname.startsWith('/restaurant/orders') ||
     pathname.startsWith('/restaurant/profile') ||
     pathname.startsWith('/restaurant/cart') ||
-    pathname.startsWith('/restaurant/checkout')
+    pathname.startsWith('/restaurant/checkout') ||
+    // OCP operator portal (incl. its login) is a standalone panel — no consumer chrome.
+    pathname === '/ocp' ||
+    pathname.startsWith('/ocp/')
   )
 }

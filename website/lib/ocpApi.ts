@@ -37,8 +37,9 @@ export const ocpApi = {
   getRiders: (): Promise<any[]> => ofetch('/ocp/riders'),
   assignRider: (orderId: string, riderId: string) =>
     ofetch(`/ocp/orders/${orderId}/assign-rider`, { method: 'POST', body: JSON.stringify({ rider_id: riderId }) }),
-  collect: (orderId: string, amount: number) =>
-    ofetch(`/ocp/orders/${orderId}/collect`, { method: 'POST', body: JSON.stringify({ amount }) }),
+  // Collection is always the full order total — server-authoritative, no amount param.
+  collect: (orderId: string) =>
+    ofetch(`/ocp/orders/${orderId}/collect`, { method: 'POST', body: '{}' }),
   getStock: (): Promise<any[]> => ofetch('/ocp/stock'),
   getStockRequests: (): Promise<any[]> => ofetch('/ocp/stock-requests'),
   receiveStock: (id: string) => ofetch(`/ocp/stock-requests/${id}/receive`, { method: 'POST', body: '{}' }),
