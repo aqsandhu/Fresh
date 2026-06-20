@@ -19,6 +19,7 @@ function ok<T>(rows: T[], command = 'SELECT'): any {
 }
 
 const VALID_PRODUCT = '11111111-1111-1111-1111-111111111111';
+const VALID_CITY = '22222222-2222-2222-2222-222222222222';
 
 // Cart routes run `verifyUserActive` (a top-level `query`) after validation,
 // so every request that reaches a controller first looks up the active user.
@@ -31,6 +32,15 @@ const ACTIVE_USER_ROW = {
 };
 function mockActiveUser(): void {
   mockQuery.mockResolvedValueOnce(ok([ACTIVE_USER_ROW]));
+}
+
+function mockActiveUserAndLegacyCatalog(): void {
+  mockQuery.mockImplementation(((sql: any) => {
+    const text = String(sql);
+    if (text.includes('FROM users')) return Promise.resolve(ok([ACTIVE_USER_ROW]));
+    if (text.includes('information_schema')) return Promise.resolve(ok([]));
+    return Promise.resolve(ok([]));
+  }) as any);
 }
 
 describe('Cart auth gate', () => {
@@ -219,13 +229,13 @@ describe('POST /api/cart/sync', () => {
       );
     });
 
-    mockActiveUser();
+    mockActiveUserAndLegacyCatalog();
     mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
 
     const res = await request(app)
       .post('/api/cart/sync')
       .set('Authorization', `Bearer ${signAccessToken()}`)
-      .send({ items: [{ product_id: VALID_PRODUCT, quantity: 1, unit: 'half_kg' }] });
+      .send({ city_id: VALID_CITY, items: [{ product_id: VALID_PRODUCT, quantity: 1, unit: 'half_kg' }] });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
@@ -265,13 +275,13 @@ describe('POST /api/cart/sync', () => {
       return Promise.resolve(ok([]));
     });
 
-    mockActiveUser();
+    mockActiveUserAndLegacyCatalog();
     mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
 
     const res = await request(app)
       .post('/api/cart/sync')
       .set('Authorization', `Bearer ${signAccessToken()}`)
-      .send({ items: [{ product_id: VALID_PRODUCT, quantity: 2 }] });
+      .send({ city_id: VALID_CITY, items: [{ product_id: VALID_PRODUCT, quantity: 2 }] });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toContain('Insufficient stock');

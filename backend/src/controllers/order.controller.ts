@@ -18,6 +18,7 @@ import {
   stockUnitsNeeded,
   qualityStockColumn,
   normalizeQuality,
+  consumerQualities,
   FRESH_CART_SUBTOTAL_SQL,
 } from '../utils/unitPricing';
 import { hasQualityCatalogColumns } from '../config/productSchema';
@@ -33,6 +34,11 @@ import {
 } from '../utils/coupons';
 import { hasUserCouponsTable } from '../utils/autoCoupons';
 import { restoreOrderInventory } from '../utils/orderStatus';
+
+const CATALOG_V2_CONSUMER_COLS =
+  ', consumer_enabled_a, consumer_enabled_b, consumer_enabled_c' +
+  ', half_kg_price_b, quarter_kg_price_b, half_dozen_price_b' +
+  ', half_kg_price_c, quarter_kg_price_c, half_dozen_price_c';
 import { hasOrderCouponColumns, hasUrgentDeliveryColumns } from '../config/orderSchema';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
@@ -392,26 +398,30 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
     const address = addressResult.rows[0];
 
-    // Resolve service city for admin routing (explicit body > address name > cart product).
-    let orderCityId: string | null =
+    const orderCityId: string | null =
       typeof bodyCityId === 'string' && bodyCityId.length > 0 ? bodyCityId : null;
+    if (!orderCityId) {
+      throw new BadRequestError('Please select a service city before placing the order.');
+    }
 
-    if (!orderCityId && address.city) {
-      const cityRow = await client.query(
+    const selectedCity = await client.query(
+      'SELECT id, name FROM service_cities WHERE id = $1 AND is_active = TRUE',
+      [orderCityId]
+    );
+    if (selectedCity.rows.length === 0) {
+      throw new BadRequestError('Selected service city is not available.');
+    }
+
+    if (address.city) {
+      const addressCity = await client.query(
         `SELECT id FROM service_cities
          WHERE LOWER(name) = LOWER($1) AND is_active = TRUE
          LIMIT 1`,
         [address.city]
       );
-      orderCityId = cityRow.rows[0]?.id || null;
-    }
-
-    if (!orderCityId && cartItemsResult.rows.length > 0) {
-      const productCity = await client.query(
-        'SELECT city_id FROM products WHERE id = $1',
-        [cartItemsResult.rows[0].product_id]
-      );
-      orderCityId = productCity.rows[0]?.city_id || null;
+      if (addressCity.rows[0]?.id && addressCity.rows[0].id !== orderCityId) {
+        throw new BadRequestError('Delivery address is not in the selected service city.');
+      }
     }
 
     // Quality tiers (A/B/C) gated until migration 34 lands. Each tier has its own
@@ -425,8 +435,9 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     for (const item of cartItemsResult.rows) {
       const priceResult = await client.query(
         `SELECT price, half_kg_price, quarter_kg_price, half_dozen_price,
-                stock_status, is_active, name_en
+                stock_status, is_active, name_en, city_id
                 ${qualityReady ? ', price_b, price_c, stock_quantity_b, stock_quantity_c' : ''}
+                ${catalogV2Ready ? CATALOG_V2_CONSUMER_COLS : ''}
            FROM products
           WHERE id = $1
           FOR UPDATE`,
@@ -441,6 +452,12 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
       if (!product.is_active) {
         throw new BadRequestError(`Product unavailable: ${product.name_en}`);
+      }
+      if (product.city_id !== orderCityId) {
+        throw new BadRequestError(`Product is not available in the selected city: ${product.name_en}`);
+      }
+      if (qualityReady && !consumerQualities(product).includes(quality)) {
+        throw new BadRequestError(`Selected quality is not available: ${product.name_en}`);
       }
       // out_of_stock is a Quality-A flag; B/C availability is enforced atomically
       // by the decrement guard below.
@@ -830,7 +847,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
     // Atomically claim a time-slot seat — prevents overbooking under
     // concurrent checkouts. If max_orders is NULL the slot has no cap.
-    if (time_slot_id) {
+    if (!isUrgent && time_slot_id) {
       const slotClaim = await client.query(
         `UPDATE time_slots
             SET booked_orders = booked_orders + 1

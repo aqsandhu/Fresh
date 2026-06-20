@@ -225,11 +225,14 @@ export const CheckoutScreen: React.FC = () => {
     if (items.length === 0 || cartSynced) return;
     try {
       // ONE atomic request — replaces the old clear + per-item POST loop.
+      const cityId = await getSelectedCityId();
       const res = await apiClient.post('/cart/sync', {
+        ...(cityId ? { city_id: cityId } : {}),
         items: items.map((item) => ({
           product_id: item.product.id,
           quantity: item.quantity,
           unit: item.unit || 'full',
+          quality: item.quality || 'A',
         })),
       });
       const cart = res.data?.data?.cart || res.data?.cart;
@@ -299,17 +302,20 @@ export const CheckoutScreen: React.FC = () => {
   const syncCartBeforeOrder = async () => {
     // Atomic replace right before order placement — a mid-loop failure in
     // the old version could place an order against a half-synced cart.
+    const cityId = await getSelectedCityId();
     await apiClient.post('/cart/sync', {
+      ...(cityId ? { city_id: cityId } : {}),
       items: items.map((item) => ({
         product_id: item.product.id,
         quantity: item.quantity,
         unit: item.unit || 'full',
+        quality: item.quality || 'A',
       })),
     });
   };
 
   const handlePlaceOrder = async () => {
-    if (!urgent && !selectedSlotId && timeSlots.length > 0) {
+    if (!urgent && !selectedSlotId) {
       Toast.show({ type: 'error', text1: 'Please select a delivery time slot' });
       return;
     }

@@ -46,6 +46,8 @@ import {
   isValidOrderTransition,
   restoreOrderInventory,
 } from '../utils/orderStatus';
+import { commitOrderSaleOnDelivery } from '../utils/systemStock';
+import { deductOcpStockOnDelivery } from '../utils/ocpStock';
 import logger from '../utils/logger';
 
 /**
@@ -267,6 +269,10 @@ export const orderStatusWebhook = asyncHandler(async (req: Request, res: Respons
       // webhook-driven cancel matches the customer-driven cancelOrder path.
       if (status === 'cancelled' && order.status !== 'cancelled') {
         await restoreOrderInventory(client, { id: order_id, time_slot_id: order.time_slot_id });
+      }
+      if (status === 'delivered' && order.status !== 'delivered') {
+        await commitOrderSaleOnDelivery(client, order_id);
+        await deductOcpStockOnDelivery(client, order_id);
       }
 
       return {

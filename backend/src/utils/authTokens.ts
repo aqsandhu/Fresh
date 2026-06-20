@@ -5,15 +5,17 @@ import {
   revokeRefreshToken,
 } from '../services/refreshToken.service';
 import logger from './logger';
+import { ApiError } from '../middleware/errorHandler';
 
 export async function issueTokenPair(userId: string, phone: string, role: UserRole) {
   const tokens = generateTokenPair(userId, phone, role);
   try {
     await persistRefreshToken(userId, tokens.refreshToken);
   } catch (err) {
-    logger.warn('Could not persist refresh token — run migration 13-refresh-tokens.sql', {
+    logger.error('Could not persist refresh token - run migration 13-refresh-tokens.sql', {
       err,
     });
+    throw new ApiError('Could not start a durable session. Please try again shortly.', 503);
   }
   return tokens;
 }
@@ -23,9 +25,10 @@ export async function issueAdminTokenPair(userId: string, phone: string, role: U
   try {
     await persistRefreshToken(userId, tokens.refreshToken);
   } catch (err) {
-    logger.warn('Could not persist admin refresh token — run migration 13-refresh-tokens.sql', {
+    logger.error('Could not persist admin refresh token - run migration 13-refresh-tokens.sql', {
       err,
     });
+    throw new ApiError('Could not start a durable admin session. Please try again shortly.', 503);
   }
   return tokens;
 }

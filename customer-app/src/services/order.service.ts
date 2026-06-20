@@ -2,12 +2,13 @@ import apiClient, { handleApiError } from './api';
 import { API_BASE_URL } from '@utils/constants';
 import { ApiResponse, Order, OrderItem, OrderStatus, DeliverySlot, PaginatedResponse, Address, Rider } from '@app-types';
 import { withCityParams, getCachedCityId } from '@/lib/apiHelpers';
+import { getSelectedCityId } from '@/lib/cityStorage';
 
 const BACKEND_URL = API_BASE_URL.replace('/api', '');
 
 export interface CreateOrderRequest {
   addressId: string;
-  deliverySlotId?: string;
+  deliverySlotId: string;
   requestedDeliveryDate?: string;
   paymentMethod: 'cash_on_delivery' | 'card' | 'easypaisa' | 'jazzcash';
   notes?: string;
@@ -162,9 +163,11 @@ class OrderService {
       if (data.requestedDeliveryDate) {
         body.requested_delivery_date = data.requestedDeliveryDate;
       }
-      const { getSelectedCityId } = require('@/lib/cityStorage');
       const cityId = await getSelectedCityId();
-      if (cityId) body.city_id = cityId;
+      if (!cityId) {
+        throw new Error('Please select a service city before placing the order.');
+      }
+      body.city_id = cityId;
       const response = await apiClient.post('/orders', body);
       const raw = response.data;
       // Backend returns { data: { order: { id, order_number, ... } } }

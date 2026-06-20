@@ -425,7 +425,7 @@ export const cartApi = {
    * Returns the server cart snapshot (server-priced).
    */
   sync: async (items: Array<{ product_id: string; quantity: number; unit?: string; quality?: string }>) => {
-    const response = await api.post('/cart/sync', { items })
+    const response = await api.post('/cart/sync', { ...withCityParams({}), items })
     return response.data?.data || response.data
   },
 

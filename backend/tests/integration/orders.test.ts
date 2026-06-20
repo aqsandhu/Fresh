@@ -76,6 +76,15 @@ import { withTransaction } from '@/config/database';
 const mockWithTransaction = withTransaction as jest.MockedFunction<typeof withTransaction>;
 
 const ORDER_ID = '22222222-2222-2222-2222-222222222222';
+const VALID_CITY = '55555555-5555-5555-5555-555555555555';
+
+const ACTIVE_USER_ROW = {
+  id: 'user-1',
+  phone: '+923001234567',
+  role: 'customer',
+  status: 'active',
+  full_name: 'A',
+};
 
 function cancellableOrderClient() {
   const clientQuery = jest.fn<any>((sql: string) => {
@@ -110,6 +119,12 @@ describe('PUT /api/orders/:id/cancel reason aliases', () => {
     ['cancellation_reason (website)', { cancellation_reason: 'changed my mind' }],
   ])('persists the reason sent as %s', async (_label, body) => {
     const clientQuery = cancellableOrderClient();
+    mockQuery.mockImplementation(((sql: any) => {
+      const text = String(sql);
+      if (text.includes('FROM users')) return Promise.resolve(ok([ACTIVE_USER_ROW]));
+      if (text.includes('information_schema')) return Promise.resolve(ok([]));
+      return Promise.resolve(ok([]));
+    }) as any);
     mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
 
     const res = await request(app)
@@ -136,6 +151,7 @@ describe('PUT /api/orders/:id/cancel reason aliases', () => {
 
 const VALID_ADDRESS = '33333333-3333-3333-3333-333333333333';
 const VALID_PRODUCT2 = '44444444-4444-4444-4444-444444444444';
+const VALID_SLOT = '66666666-6666-6666-6666-666666666666';
 
 function createOrderClient() {
   const clientQuery = jest.fn<any>((sql: string) => {
@@ -165,7 +181,7 @@ function createOrderClient() {
       );
     }
     if (text.includes('service_cities')) {
-      return Promise.resolve(ok([]));
+      return Promise.resolve(ok([{ id: VALID_CITY, name: 'Gujrat' }]));
     }
     if (text.includes('SELECT city_id FROM products')) {
       return Promise.resolve(ok([{ city_id: null }]));
@@ -174,12 +190,15 @@ function createOrderClient() {
       return Promise.resolve(
         ok([{
           price: '100', half_kg_price: null, quarter_kg_price: null, half_dozen_price: null,
-          stock_status: 'active', is_active: true, name_en: 'Tomatoes',
+          stock_status: 'active', is_active: true, name_en: 'Tomatoes', city_id: VALID_CITY,
         }])
       );
     }
     if (text.includes('UPDATE cart_items')) {
       return Promise.resolve(ok([]));
+    }
+    if (text.includes('UPDATE time_slots')) {
+      return Promise.resolve(ok([{ id: VALID_SLOT }]));
     }
     if (text.includes('SELECT * FROM carts WHERE id')) {
       return Promise.resolve(
@@ -195,7 +214,10 @@ function createOrderClient() {
       return Promise.resolve(ok([{ fresh_subtotal: '200' }]));
     }
     if (text.includes('site_settings')) {
-      return Promise.resolve(ok([]));
+      return Promise.resolve(ok([
+        { key: 'delivery_urgent_charge', value: '50' },
+        { key: 'delivery_urgent_eta', value: '45-60 min' },
+      ]));
     }
     if (text.includes('veg_fruit_total')) {
       return Promise.resolve(ok([{ veg_fruit_total: '0' }]));
@@ -262,9 +284,7 @@ describe('POST /api/orders coupon accounting', () => {
         return Promise.resolve(ok([{ exists: 1 }]));
       }
       if (text.includes('FROM users')) {
-        return Promise.resolve(
-          ok([{ id: 'user-1', phone: '+923001234567', role: 'customer', status: 'active', full_name: 'A' }])
-        );
+        return Promise.resolve(ok([ACTIVE_USER_ROW]));
       }
       return Promise.resolve(ok([]));
     }) as any);
@@ -275,7 +295,13 @@ describe('POST /api/orders coupon accounting', () => {
     const res = await request(app)
       .post('/api/orders')
       .set('Authorization', `Bearer ${signAccessToken()}`)
-      .send({ address_id: VALID_ADDRESS, payment_method: 'cash_on_delivery' });
+      .send({
+        address_id: VALID_ADDRESS,
+        payment_method: 'cash_on_delivery',
+        city_id: VALID_CITY,
+        time_slot_id: VALID_SLOT,
+        requested_delivery_date: '2026-06-19',
+      });
 
     expect(res.status).toBe(201);
 

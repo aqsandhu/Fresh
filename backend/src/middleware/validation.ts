@@ -319,6 +319,7 @@ export const cartSchemas = {
   addItem: Joi.object({
     product_id: commonSchemas.uuid.required(),
     quantity: commonSchemas.quantity.required(),
+    city_id: commonSchemas.uuid.required(),
     unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
     quality: Joi.string().valid('A', 'B', 'C').default('A'),
     special_instructions: Joi.string().max(500),
@@ -326,6 +327,7 @@ export const cartSchemas = {
 
   // POST /api/cart/sync — atomic replace of the server cart.
   sync: Joi.object({
+    city_id: commonSchemas.uuid.required(),
     items: Joi.array()
       .items(
         Joi.object({
@@ -405,11 +407,20 @@ export const orderSchemas = {
 
   create: Joi.object({
     address_id: commonSchemas.uuid.required(),
-    time_slot_id: commonSchemas.uuid,
-    requested_delivery_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    city_id: commonSchemas.uuid.required(),
+    urgent_delivery: Joi.boolean().default(false),
+    time_slot_id: Joi.when('urgent_delivery', {
+      is: true,
+      then: Joi.forbidden(),
+      otherwise: commonSchemas.uuid.required(),
+    }),
+    requested_delivery_date: Joi.when('urgent_delivery', {
+      is: true,
+      then: Joi.forbidden(),
+      otherwise: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    }),
     payment_method: Joi.string().valid('cash_on_delivery', 'card', 'easypaisa', 'jazzcash').default('cash_on_delivery'),
     customer_notes: Joi.string().allow('').max(1000),
-    urgent_delivery: Joi.boolean().default(false),
   }),
 
   updateStatus: Joi.object({

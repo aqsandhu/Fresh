@@ -1064,6 +1064,14 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
         }
       }
     }
+    if (status === 'delivered') {
+      for (const order of allowed) {
+        if (order.status !== 'delivered') {
+          await commitOrderSaleOnDelivery(client, order.id);
+          await deductOcpStockOnDelivery(client, order.id);
+        }
+      }
+    }
 
     return { updatedRows: result.rows, skipped: skippedLocal };
   });

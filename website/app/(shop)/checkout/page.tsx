@@ -353,7 +353,7 @@ function CheckoutPage() {
   }
 
   const handlePlaceOrder = async () => {
-    if (!urgent && !selectedTimeSlot && timeSlots.length > 0) {
+    if (!urgent && !selectedTimeSlot) {
       toast.error('Please select a delivery time slot')
       return
     }
