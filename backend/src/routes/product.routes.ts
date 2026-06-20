@@ -22,12 +22,12 @@ const searchRateLimiter = createRateLimiter(
 );
 
 // Public routes with rate limiting
-router.get('/', productRateLimiter, optionalAuth, validate(productSchemas.list), productController.getProducts);
-router.get('/search', searchRateLimiter, optionalAuth, productController.searchProducts);
+router.get('/', productRateLimiter, optionalAuth, validate(productSchemas.list, 'query'), productController.getProducts);
+router.get('/search', searchRateLimiter, optionalAuth, validate(productSchemas.search, 'query'), productController.searchProducts);
 router.get('/featured/list', productRateLimiter, optionalAuth, productController.getFeaturedProducts);
-router.get('/new-arrivals', productRateLimiter, optionalAuth, productController.getNewArrivals);
+router.get('/new-arrivals', productRateLimiter, optionalAuth, validate(productSchemas.limitOnly, 'query'), productController.getNewArrivals);
 router.get('/slug/:slug', productRateLimiter, optionalAuth, productController.getProductBySlug);
-router.get('/:id/related', productRateLimiter, optionalAuth, productController.getRelatedProducts);
+router.get('/:id/related', productRateLimiter, optionalAuth, validate(productSchemas.related, 'query'), productController.getRelatedProducts);
 router.get('/:id', productRateLimiter, optionalAuth, productController.getProductById);
 
 export default router;

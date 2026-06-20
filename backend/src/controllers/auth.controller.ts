@@ -405,7 +405,7 @@ export const refreshToken = asyncHandler(async (req: Request, res: Response) => 
     }
 
     const result = await query(
-      'SELECT id, phone, role, status FROM users WHERE id = $1',
+      'SELECT id, phone, role, status FROM users WHERE id = $1 AND deleted_at IS NULL',
       [decoded.userId]
     );
 
@@ -558,10 +558,14 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
 
   const result = await query(
     `UPDATE users SET ${updates.join(', ')}, updated_at = NOW()
-     WHERE id = $${paramIndex}
+     WHERE id = $${paramIndex} AND status = 'active' AND deleted_at IS NULL
      RETURNING id, phone, full_name, email, preferred_language, notification_enabled, updated_at`,
     values
   );
+
+  if (result.rows.length === 0) {
+    return unauthorizedResponse(res, 'User not found or inactive');
+  }
 
   successResponse(res, result.rows[0], 'Profile updated successfully');
 });
@@ -575,12 +579,13 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
     return unauthorizedResponse(res, 'Authentication required');
   }
 
-  const { currentPassword, newPassword } = req.body;
+  const currentPassword = req.body.currentPassword ?? req.body.current_password;
+  const newPassword = req.body.newPassword ?? req.body.new_password;
 
   // Get current password hash
   const userResult = await query(
-    'SELECT password_hash FROM users WHERE id = $1',
-    [req.user.userId]
+    'SELECT password_hash FROM users WHERE id = $1 AND status = $2 AND deleted_at IS NULL',
+    [req.user.userId, 'active']
   );
 
   if (userResult.rows.length === 0) {
@@ -611,10 +616,17 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   const newPasswordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
   // Update password
-  await query(
-    'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
-    [newPasswordHash, req.user.userId]
+  const updateResult = await query(
+    `UPDATE users
+        SET password_hash = $1, updated_at = NOW()
+      WHERE id = $2 AND status = $3 AND deleted_at IS NULL
+      RETURNING id`,
+    [newPasswordHash, req.user.userId, 'active']
   );
+
+  if (updateResult.rows.length === 0) {
+    return unauthorizedResponse(res, 'User not found or inactive');
+  }
 
   // A password change invalidates every other session — if the password was
   // changed because it leaked, stolen refresh tokens must die with it.

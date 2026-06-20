@@ -6,6 +6,7 @@ import { Router } from 'express';
 import * as addressController from '../controllers/address.controller';
 import {
   authenticate,
+  verifyUserActive,
   validate,
   addressSchemas,
   uploadDoorPicture,
@@ -16,6 +17,7 @@ const router = Router();
 
 // All address routes require authentication
 router.use(authenticate);
+router.use(verifyUserActive);
 
 router.get('/', addressController.getAddresses);
 router.get('/:id', addressController.getAddressById);

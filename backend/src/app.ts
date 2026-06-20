@@ -305,7 +305,7 @@ const startServer = async () => {
     };
 
     // Idempotent startup tasks.
-    const runStartupTasks = async () => {
+    const runStartupTasks = async (failFast = false) => {
       try {
         await ensureDatabaseExtensions();
         await ensurePinColumns();
@@ -325,7 +325,10 @@ const startServer = async () => {
         await ensureRestaurantDeliveryColumns();
         await ensureRestaurantOrderColumns();
         await ensureOcpTables();
-        await ensureCatalogV2Columns();
+        const catalogV2Ready = await ensureCatalogV2Columns();
+        if (!catalogV2Ready) {
+          throw new Error('catalog-v2 columns are required but could not be ensured');
+        }
         // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars
         // are set. Safe to call on every boot — idempotently upserts the row.
         const adminResult = await bootstrapAdmin();
@@ -336,6 +339,7 @@ const startServer = async () => {
         }
       } catch (err) {
         logger.error('Background startup tasks failed:', err);
+        if (failFast) throw err;
       }
       // Ensure Supabase Storage bucket exists (creates "uploads" if missing).
       await ensureStorageBucket().catch((err) =>
@@ -344,7 +348,7 @@ const startServer = async () => {
     };
 
     if (dbConnected) {
-      await runStartupTasks();
+      await runStartupTasks(true);
       listen();
     } else {
       listen();

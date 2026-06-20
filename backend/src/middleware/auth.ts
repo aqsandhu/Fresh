@@ -133,7 +133,7 @@ export const verifyUserActive = async (
     const userResult = await query(
       `SELECT id, phone, role, status, full_name
        FROM users
-       WHERE id = $1 AND status = 'active'`,
+       WHERE id = $1 AND status = 'active' AND deleted_at IS NULL`,
       [req.user.id]
     );
 
@@ -147,6 +147,61 @@ export const verifyUserActive = async (
       id: user.id,
       full_name: user.full_name,
       status: user.status,
+    };
+
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** DB active-rider check for rider-app routes after the JWT role gate. */
+export const verifyRiderActive = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    // Admin/super-admin tokens are allowed by requireRider for operational
+    // compatibility; rider liveness only applies to actual rider sessions.
+    if (req.user.role !== 'rider') {
+      return next();
+    }
+
+    const result = await query(
+      `SELECT u.id, u.phone, u.role, u.status, u.full_name,
+              r.id AS rider_id, r.status AS rider_status, r.verification_status
+         FROM users u
+         JOIN riders r ON r.user_id = u.id
+        WHERE u.id = $1
+          AND u.deleted_at IS NULL
+          AND r.deleted_at IS NULL`,
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      throw new UnauthorizedError('Rider account not found');
+    }
+
+    const rider = result.rows[0];
+    if (rider.status !== 'active') {
+      throw new ForbiddenError('Rider account is not active');
+    }
+    if (rider.verification_status !== 'verified') {
+      throw new ForbiddenError('Rider account is not verified');
+    }
+
+    req.user = {
+      ...req.user,
+      id: rider.id,
+      phone: rider.phone,
+      role: rider.role,
+      full_name: rider.full_name,
+      status: rider.status,
     };
 
     next();

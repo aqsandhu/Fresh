@@ -12,6 +12,10 @@ import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumn
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasFeedbackTables } from '../config/feedbackSchema';
 
+function queryFlag(value: unknown): boolean {
+  return value === true || value === 'true';
+}
+
 /**
  * Column fragment for the consumer quality tiers (B/C price + per-quality shared
  * stock), gated until migration 34 lands. Quality A is the existing price /
@@ -36,6 +40,26 @@ async function qualityCols(): Promise<string> {
       CASE WHEN p.consumer_enabled_c THEN p.half_dozen_price_c END AS half_dozen_price_c,`;
   }
   return 'p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c,';
+}
+
+async function consumerInStockCondition(): Promise<string> {
+  if (!(await hasQualityCatalogColumns())) {
+    return 'p.stock_quantity > 0';
+  }
+
+  if (await hasCatalogV2Columns()) {
+    return `(
+      (p.consumer_enabled_a IS NOT FALSE AND p.stock_quantity > 0)
+      OR (p.consumer_enabled_b = TRUE AND p.price_b IS NOT NULL AND p.stock_quantity_b > 0)
+      OR (p.consumer_enabled_c = TRUE AND p.price_c IS NOT NULL AND p.stock_quantity_c > 0)
+    )`;
+  }
+
+  return `(
+    p.stock_quantity > 0
+    OR (p.price_b IS NOT NULL AND p.stock_quantity_b > 0)
+    OR (p.price_c IS NOT NULL AND p.stock_quantity_c > 0)
+  )`;
 }
 
 /** Column fragment for variable-weight fields, gated until migration 23 lands. */
@@ -130,13 +154,13 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Featured filter
-  if (featured === 'true') {
+  if (queryFlag(featured)) {
     sql += ` AND p.is_featured = TRUE`;
   }
 
   // In stock filter
-  if (inStock === 'true') {
-    sql += ` AND p.stock_quantity > 0`;
+  if (queryFlag(inStock)) {
+    sql += ` AND ${await consumerInStockCondition()}`;
   }
 
   // Count total

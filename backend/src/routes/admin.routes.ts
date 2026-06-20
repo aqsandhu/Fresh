@@ -20,6 +20,7 @@ import {
   adminRateLimiter,
   authRateLimiter,
   validate,
+  authSchemas,
   adminSchemas,
   orderSchemas,
   attaSchemas,
@@ -52,6 +53,8 @@ router.use(auditLogger());
 
 // Session — refresh permissions from DB (any authenticated admin)
 router.get('/me', adminController.getAdminMe);
+router.put('/profile', authController.updateProfile);
+router.post('/change-password', validate(authSchemas.changePassword), authController.changePassword);
 
 // Dashboard
 router.get('/dashboard', adminController.getDashboardStats);

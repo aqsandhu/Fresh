@@ -26,25 +26,41 @@ function build(basePath: string, router: Router) {
   return app;
 }
 
-describe('codex remaining findings cross-check', () => {
+describe('security and API regression checks', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('auth socket-token succeeds with JWT only and no DB query', async () => {
+  it('auth socket-token requires an active DB user before minting', async () => {
+    mockQuery.mockResolvedValueOnce(ok([{
+      id: 'user-1',
+      phone: '+923001234567',
+      role: 'customer',
+      status: 'active',
+      full_name: 'Aisha',
+    }]));
+
     const res = await request(build('/api/auth', authRoutes))
       .get('/api/auth/socket-token')
       .set('Authorization', `Bearer ${signAccessToken()}`);
 
     expect(res.status).toBe(200);
-    expect(mockQuery).not.toHaveBeenCalled();
+    expect(String(mockQuery.mock.calls[0][0])).toMatch(/deleted_at IS NULL/i);
   });
 
-  it('auth me query has no status/deleted_at predicate and returns the row', async () => {
-    mockQuery.mockResolvedValueOnce(ok([{
-      id: 'user-1',
-      phone: '+923001234567',
-      full_name: 'Soft Deleted Example',
-      role: 'customer',
-    }]));
+  it('auth me checks active/deleted status before returning the profile', async () => {
+    mockQuery
+      .mockResolvedValueOnce(ok([{
+        id: 'user-1',
+        phone: '+923001234567',
+        full_name: 'Active Example',
+        role: 'customer',
+        status: 'active',
+      }]))
+      .mockResolvedValueOnce(ok([{
+        id: 'user-1',
+        phone: '+923001234567',
+        full_name: 'Active Example',
+        role: 'customer',
+      }]));
 
     const res = await request(build('/api/auth', authRoutes))
       .get('/api/auth/me')
@@ -52,13 +68,14 @@ describe('codex remaining findings cross-check', () => {
 
     expect(res.status).toBe(200);
     const sql = String(mockQuery.mock.calls[0][0]);
-    expect(sql).not.toMatch(/deleted_at|status\s*=/i);
+    expect(sql).toMatch(/status = 'active'/i);
+    expect(sql).toMatch(/deleted_at IS NULL/i);
   });
 
-  it('rider profile returns a suspended/pending rider row instead of enforcing active/approved', async () => {
+  it('rider profile rejects an unverified rider before controller data is returned', async () => {
     mockQuery.mockResolvedValueOnce(ok([{
       id: 'rider-1',
-      status: 'suspended',
+      status: 'active',
       verification_status: 'pending',
       full_name: 'Rider',
       phone: '+923001234567',
@@ -68,13 +85,12 @@ describe('codex remaining findings cross-check', () => {
       .get('/api/rider/profile')
       .set('Authorization', `Bearer ${signAccessToken({ role: 'rider' })}`);
 
-    expect(res.status).toBe(200);
-    expect(res.body.data.status).toBe('suspended');
-    expect(res.body.data.verification_status).toBe('pending');
+    expect(res.status).toBe(403);
   });
 
   it('notifications returns object shape, not Notification[]', async () => {
     mockQuery
+      .mockResolvedValueOnce(ok([{ id: 'user-1', role: 'customer', status: 'active', full_name: 'User' }]))
       .mockResolvedValueOnce(ok([{ id: 'n1', type: 'order', title: 'T', message: 'M', is_read: false }]))
       .mockResolvedValueOnce(ok([{ count: 1 }]));
 
@@ -87,54 +103,89 @@ describe('codex remaining findings cross-check', () => {
     expect(Array.isArray(res.body.data.notifications)).toBe(true);
   });
 
-  it('notification register/delete and rider fcm/admin profile endpoints are missing', async () => {
+  it('notification register/delete and rider fcm/admin profile endpoints exist', async () => {
     const auth = `Bearer ${signAccessToken()}`;
     const riderAuth = `Bearer ${signAccessToken({ role: 'rider' })}`;
     const adminAuth = `Bearer ${signAccessToken({ role: 'super_admin', userId: 'admin-1' })}`;
 
+    mockQuery
+      // notification register: verifyUserActive + token update
+      .mockResolvedValueOnce(ok([{ id: 'user-1', role: 'customer', status: 'active', full_name: 'User' }]))
+      .mockResolvedValueOnce(ok([{ id: 'user-1' }]));
     const register = await request(build('/api/notifications', notificationRoutes))
       .post('/api/notifications/register')
       .set('Authorization', auth)
       .send({ token: 'push-token' });
 
+    mockQuery
+      // notification delete: verifyUserActive + delete
+      .mockResolvedValueOnce(ok([{ id: 'user-1', role: 'customer', status: 'active', full_name: 'User' }]))
+      .mockResolvedValueOnce(ok([{ id: 'n1' }]));
     const del = await request(build('/api/notifications', notificationRoutes))
       .delete('/api/notifications/n1')
       .set('Authorization', auth);
 
+    mockQuery
+      // rider fcm: verifyRiderActive + token update
+      .mockResolvedValueOnce(ok([{
+        id: 'user-1',
+        phone: '+923001234567',
+        role: 'rider',
+        status: 'active',
+        full_name: 'Rider',
+        rider_id: 'rider-1',
+        rider_status: 'available',
+        verification_status: 'verified',
+      }]))
+      .mockResolvedValueOnce(ok([{ id: 'user-1' }]));
     const fcm = await request(build('/api/rider', riderRoutes))
       .put('/api/rider/fcm-token')
       .set('Authorization', riderAuth)
       .send({ token: 'push-token' });
 
     mockQuery
+      // admin profile: verifyAdminActive + city probe + profile update
       .mockResolvedValueOnce(ok([{ id: 'admin-1', role: 'super_admin', status: 'active' }]))
-      .mockResolvedValueOnce(ok([]));
+      .mockResolvedValueOnce(ok([]))
+      .mockResolvedValueOnce(ok([{
+        id: 'admin-1',
+        phone: '+923001234567',
+        full_name: 'Admin',
+        email: null,
+        preferred_language: 'en',
+        notification_enabled: true,
+      }]));
 
     const adminProfile = await request(build('/api/admin', adminRoutes))
       .put('/api/admin/profile')
       .set('Authorization', adminAuth)
-      .send({ fullName: 'Admin' });
+      .send({ full_name: 'Admin' });
 
-    expect(register.status).toBe(404);
-    expect(del.status).toBe(404);
-    expect(fcm.status).toBe(404);
-    expect(adminProfile.status).toBe(404);
+    expect(register.status).toBe(200);
+    expect(del.status).toBe(200);
+    expect(fcm.status).toBe(200);
+    expect(adminProfile.status).toBe(200);
   });
 
-  it('new-arrivals accepts an invalid limit and passes it to SQL params', async () => {
+  it('new-arrivals rejects an invalid limit before SQL', async () => {
     mockQuery.mockResolvedValue(ok([]));
 
     const res = await request(build('/api/products', productRoutes))
       .get('/api/products/new-arrivals?limit=abc');
 
-    expect(res.status).toBe(200);
-    const calls = mockQuery.mock.calls;
-    const lastParams = calls[calls.length - 1][1] as unknown[];
-    expect(lastParams).toContain('abc');
+    expect(res.status).toBe(422);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it('chat REST response omits sender_name because authenticate does not load full_name', async () => {
+  it('chat REST response includes sender_name from the active-user middleware', async () => {
     mockQuery
+      .mockResolvedValueOnce(ok([{
+        id: 'user-1',
+        phone: '+923001234567',
+        role: 'customer',
+        status: 'active',
+        full_name: 'Aisha',
+      }]))
       .mockResolvedValueOnce(ok([{ id: 'order-1', status: 'assigned', user_id: 'user-1', rider_user_id: null }]))
       .mockResolvedValueOnce(ok([{ id: 'msg-1', message: 'hello', sender_type: 'customer', created_at: new Date().toISOString() }]));
 
@@ -144,6 +195,6 @@ describe('codex remaining findings cross-check', () => {
       .send({ message: 'hello' });
 
     expect(res.status).toBe(201);
-    expect(res.body.data.sender_name).toBeUndefined();
+    expect(res.body.data.sender_name).toBe('Aisha');
   });
 });

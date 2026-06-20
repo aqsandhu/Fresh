@@ -195,9 +195,13 @@ export const authSchemas = {
   }),
   
   changePassword: Joi.object({
-    currentPassword: Joi.string().required(),
-    newPassword: commonSchemas.password.required(),
-  }),
+    currentPassword: Joi.string(),
+    current_password: Joi.string(),
+    newPassword: commonSchemas.password,
+    new_password: commonSchemas.password,
+  })
+    .or('currentPassword', 'current_password')
+    .or('newPassword', 'new_password'),
 
   // ─── 4-digit PIN flow ──────────────────────────────────────────────────
   // Common shape: PIN is exactly 4 digits, no other characters.
@@ -242,6 +246,17 @@ export const productSchemas = {
     sortOrder: commonSchemas.sortOrder,
     featured: Joi.boolean(),
     inStock: Joi.boolean(),
+  }),
+  search: Joi.object({
+    q: commonSchemas.search,
+    page: commonSchemas.page,
+    limit: commonSchemas.limit,
+  }),
+  limitOnly: Joi.object({
+    limit: commonSchemas.limit,
+  }),
+  related: Joi.object({
+    limit: commonSchemas.limit.default(8),
   }),
   
   create: Joi.object({
