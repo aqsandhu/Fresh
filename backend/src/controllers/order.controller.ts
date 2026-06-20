@@ -34,6 +34,8 @@ import {
 } from '../utils/coupons';
 import { hasUserCouponsTable } from '../utils/autoCoupons';
 import { restoreOrderInventory } from '../utils/orderStatus';
+import { ensureTimeSlotBookings, hasTimeSlotBookings } from '../config/timeSlotSchema';
+import { validateAndClaimTimeSlot } from '../utils/timeSlots';
 
 const CATALOG_V2_CONSUMER_COLS =
   ', consumer_enabled_a, consumer_enabled_b, consumer_enabled_c' +
@@ -349,6 +351,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   // slot. It deliberately ignores free-delivery thresholds, free slots and
   // coupons (handled below).
   const isUrgent = urgent_delivery === true || urgent_delivery === 'true';
+
+  await ensureTimeSlotBookings();
 
   const order = await withTransaction(async (client) => {
     // Get cart
@@ -847,23 +851,14 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       );
     }
 
-    // Atomically claim a time-slot seat — prevents overbooking under
-    // concurrent checkouts. If max_orders is NULL the slot has no cap.
-    if (!isUrgent && time_slot_id) {
-      const slotClaim = await client.query(
-        `UPDATE time_slots
-            SET booked_orders = booked_orders + 1
-          WHERE id = $1
-            AND (max_orders IS NULL OR booked_orders < max_orders)
-          RETURNING id`,
-        [time_slot_id]
-      );
-      if (slotClaim.rowCount === 0) {
-        throw new ConflictError(
-          'Selected time slot is fully booked. Please pick another slot.'
-        );
-      }
-    }
+    // Validate the slot (enabled / weekday / not past / not expired) and claim a
+    // per-(slot, date) seat atomically — prevents overbooking under concurrent
+    // checkouts. A NULL max_orders means the slot has no cap.
+    await validateAndClaimTimeSlot(client, {
+      slotId: time_slot_id,
+      deliveryDate: requested_delivery_date,
+      isUrgent,
+    });
 
     return order;
   });
@@ -1003,20 +998,32 @@ export const getTimeSlots = asyncHandler(async (req: Request, res: Response) => 
     targetDate = new Date();
   }
   const dayOfWeek = targetDate.getDay();
+  const dateParam = (typeof date === 'string' && date.length > 0) ? date : null;
 
   const audienceClause = (await hasRestaurantDeliveryColumns()) ? `AND audience = 'consumer'` : '';
+
+  // Availability is per (slot, date): join the per-date counter for the target
+  // date so a slot full on one day isn't shown full on another. Falls back to
+  // the legacy global counter until the per-date table exists.
+  const perDate = await hasTimeSlotBookings();
+  const bookedExpr = perDate ? 'COALESCE(tsb.booked_count, 0)' : 'ts.booked_orders';
+  const join = perDate
+    ? `LEFT JOIN time_slot_bookings tsb ON tsb.time_slot_id = ts.id AND tsb.delivery_date = COALESCE($2::date, CURRENT_DATE)`
+    : '';
+  const params: unknown[] = perDate ? [dayOfWeek, dateParam] : [dayOfWeek];
   const result = await query(
     `SELECT
-      id, slot_name, start_time, end_time,
-      max_orders, booked_orders,
-      (max_orders - booked_orders) as available_slots,
-      is_free_delivery_slot, is_express_slot
-    FROM time_slots
-    WHERE status = 'available'
-    ${audienceClause}
-    AND (applicable_days IS NULL OR $1 = ANY(applicable_days))
-    ORDER BY start_time ASC`,
-    [dayOfWeek]
+      ts.id, ts.slot_name, ts.start_time, ts.end_time,
+      ts.max_orders, ${bookedExpr} AS booked_orders,
+      GREATEST(0, ts.max_orders - ${bookedExpr}) AS available_slots,
+      ts.is_free_delivery_slot, ts.is_express_slot
+    FROM time_slots ts
+    ${join}
+    WHERE ts.status = 'available'
+    ${audienceClause.replace('audience', 'ts.audience')}
+    AND (ts.applicable_days IS NULL OR $1 = ANY(ts.applicable_days))
+    ORDER BY ts.start_time ASC`,
+    params
   );
 
   successResponse(res, result.rows, 'Time slots retrieved successfully');
