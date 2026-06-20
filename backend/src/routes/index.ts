@@ -24,6 +24,7 @@ import tipsRoutes from './tips.routes';
 import workAsRiderRoutes from './workAsRider.routes';
 import restaurantRoutes from './restaurant.routes';
 import ocpRoutes from './ocp.routes';
+import financeRoutes from './finance.routes';
 
 const router = Router();
 
@@ -49,5 +50,6 @@ router.use('/tips', tipsRoutes);
 router.use('/work-as-rider', workAsRiderRoutes);
 router.use('/restaurant', restaurantRoutes);
 router.use('/ocp', ocpRoutes);
+router.use('/finance', financeRoutes);
 
 export default router;

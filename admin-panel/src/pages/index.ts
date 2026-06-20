@@ -4,6 +4,7 @@ export { Orders } from './Orders';
 export { Products } from './Products';
 export { PriceManager } from './PriceManager';
 export { StockManagement } from './StockManagement';
+export { Expenses } from './Expenses';
 export { Categories } from './Categories';
 export { Customers } from './Customers';
 export { Riders } from './Riders';

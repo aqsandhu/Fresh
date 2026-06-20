@@ -15,6 +15,7 @@ import {
   Products,
   PriceManager,
   StockManagement,
+  Expenses,
   Categories,
   Customers,
   Riders,
@@ -201,6 +202,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <StockManagement />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/expenses"
+        element={
+          <ProtectedRoute>
+            <Expenses />
           </ProtectedRoute>
         }
       />

@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/Badge';
 import { LeafletMap } from '@/components/ui/LeafletMap';
 import { riderService } from '@/services/rider.service';
 import { settingsService } from '@/services/settings.service';
+import { financeService } from '@/services/finance.service';
 import type { Rider, CreateRiderData, RiderStats } from '@/types';
 import { isRequired, isValidPhone, isValidCNIC } from '@/utils/validators';
 import { formatCurrency, resolveImageUrl } from '@/utils/formatters';
@@ -68,6 +69,7 @@ export const Riders: React.FC = () => {
   const queryClient = useQueryClient();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRider, setEditingRider] = useState<Rider | null>(null);
+  const [payRider, setPayRider] = useState<Rider | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [verificationFilter, setVerificationFilter] = useState('');
@@ -770,6 +772,13 @@ export const Riders: React.FC = () => {
                       </button>
                     )}
                     <button
+                      onClick={() => setPayRider(rider)}
+                      className="p-2 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      title="Pay (salary / commission)"
+                    >
+                      <DollarSign className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => handleDelete(rider.id)}
                       className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete"
@@ -783,6 +792,8 @@ export const Riders: React.FC = () => {
           ))}
         </div>
       )}
+
+      {payRider && <RiderPaymentModal rider={payRider} onClose={() => setPayRider(null)} />}
 
       {/* Add/Edit Modal */}
       <Modal
@@ -1073,3 +1084,34 @@ export const Riders: React.FC = () => {
     </Layout>
   );
 };
+
+// Pay a rider (salary / commission / other) — logged in Expenses.
+function RiderPaymentModal({ rider, onClose }: { rider: Rider; onClose: () => void }) {
+  const [category, setCategory] = useState<'salary' | 'commission' | 'other'>('salary');
+  const [amount, setAmount] = useState('');
+  const [comment, setComment] = useState('');
+  const mut = useMutation({
+    mutationFn: () => financeService.addRiderPayment({ riderId: rider.id, category, amount: parseFloat(amount) || 0, comment: comment.trim() || undefined }),
+    onSuccess: () => { toast.success('Payment recorded in Expenses'); onClose(); },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+  });
+  return (
+    <Modal isOpen onClose={onClose} title={`Pay ${rider.fullName}`}
+      footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={() => mut.mutate()} disabled={!(parseFloat(amount) > 0) || mut.isPending} isLoading={mut.isPending}>Pay</Button>
+        </div>
+      }>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Payment type</label>
+          <Select value={category} onChange={(e) => setCategory(e.target.value as any)}
+            options={[{ value: 'salary', label: 'Salary' }, { value: 'commission', label: 'Commission' }, { value: 'other', label: 'Other' }]} />
+        </div>
+        <Input label="Amount (Rs.)" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+        <Input label="Comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
+      </div>
+    </Modal>
+  );
+}
