@@ -301,7 +301,8 @@ export const emitChatMessage = (orderId: string, message: any) => {
   }
 };
 
-export const emitToUser = (userId: string, event: string, data: any) => {
+export const emitToUser = (userId: string | null | undefined, event: string, data: any) => {
+  if (!userId) return;
   try {
     getIO().to(`user:${userId}`).emit(event, data);
   } catch (err) {

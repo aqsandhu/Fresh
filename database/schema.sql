@@ -1994,6 +1994,10 @@ DECLARE
     v_notification_message TEXT;
     v_notification_type notification_type;
 BEGIN
+    IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+        RETURN NEW;
+    END IF;
+
     CASE NEW.status
         WHEN 'confirmed' THEN
             v_notification_title := 'Order Confirmed';
@@ -2019,7 +2023,14 @@ BEGIN
             RETURN NEW;
     END CASE;
 
-    -- Insert notification for customer (NEW.user_id IS the user id from orders table)
+    -- Consumer orders have a user recipient. Restaurant/B2B orders intentionally
+    -- share the orders table without user_id, so there is no customer
+    -- notification row to create for them.
+    IF NEW.user_id IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    -- Insert notification for customer (NEW.user_id is the user id from orders table)
     INSERT INTO notifications (user_id, type, title, message, order_id)
     VALUES (NEW.user_id, v_notification_type, v_notification_title, v_notification_message, NEW.id);
 
