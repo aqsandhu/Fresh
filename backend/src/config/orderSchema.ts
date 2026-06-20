@@ -19,6 +19,9 @@ let urgentEnsurePromise: Promise<boolean> | null = null;
 let restaurantOrderCached: boolean | null = null;
 let restaurantOrderPromise: Promise<boolean> | null = null;
 
+let orderStatusNotificationTriggerEnsured = false;
+let orderStatusNotificationTriggerPromise: Promise<boolean> | null = null;
+
 function getMigrationConnectionString(): string | null {
   const direct = process.env.DATABASE_MIGRATION_URL || process.env.DIRECT_DATABASE_URL;
   if (direct) return direct;
@@ -235,4 +238,88 @@ export async function ensureRestaurantOrderColumns(): Promise<boolean> {
   })();
 
   return restaurantOrderPromise;
+}
+
+export async function ensureOrderStatusNotificationTrigger(): Promise<boolean> {
+  if (orderStatusNotificationTriggerEnsured) return true;
+  if (orderStatusNotificationTriggerPromise) return orderStatusNotificationTriggerPromise;
+
+  orderStatusNotificationTriggerPromise = (async () => {
+    const connectionString = getMigrationConnectionString();
+    if (!connectionString) return false;
+
+    const pool = new Pool({
+      connectionString,
+      ssl:
+        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
+          ? false
+          : { rejectUnauthorized: false },
+      max: 1,
+      connectionTimeoutMillis: 15000,
+    });
+
+    try {
+      await pool.query(`
+        CREATE OR REPLACE FUNCTION notify_order_status_change()
+        RETURNS TRIGGER AS $$
+        DECLARE
+            v_notification_title VARCHAR(255);
+            v_notification_message TEXT;
+            v_notification_type notification_type;
+        BEGIN
+            IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
+                RETURN NEW;
+            END IF;
+
+            CASE NEW.status
+                WHEN 'confirmed' THEN
+                    v_notification_title := 'Order Confirmed';
+                    v_notification_message := 'Your order ' || NEW.order_number || ' has been confirmed!';
+                    v_notification_type := 'order_confirmed';
+                WHEN 'preparing' THEN
+                    v_notification_title := 'Order Being Prepared';
+                    v_notification_message := 'We are preparing your order ' || NEW.order_number;
+                    v_notification_type := 'order_confirmed';
+                WHEN 'out_for_delivery' THEN
+                    v_notification_title := 'Out for Delivery';
+                    v_notification_message := 'Your order ' || NEW.order_number || ' is on the way!';
+                    v_notification_type := 'out_for_delivery';
+                WHEN 'delivered' THEN
+                    v_notification_title := 'Order Delivered';
+                    v_notification_message := 'Your order ' || NEW.order_number || ' has been delivered. Enjoy!';
+                    v_notification_type := 'delivered';
+                WHEN 'cancelled' THEN
+                    v_notification_title := 'Order Cancelled';
+                    v_notification_message := 'Your order ' || NEW.order_number || ' has been cancelled.';
+                    v_notification_type := 'cancelled';
+                ELSE
+                    RETURN NEW;
+            END CASE;
+
+            IF NEW.user_id IS NULL THEN
+                RETURN NEW;
+            END IF;
+
+            INSERT INTO notifications (user_id, type, title, message, order_id)
+            VALUES (NEW.user_id, v_notification_type, v_notification_title, v_notification_message, NEW.id);
+
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+      `);
+      orderStatusNotificationTriggerEnsured = true;
+      logger.info('order status notification trigger ensured (migration 39 applied)');
+      return true;
+    } catch (error: any) {
+      logger.warn('Could not apply order status notification trigger migration - run database/migrations/39 manually', {
+        error: error?.message,
+      });
+      return false;
+    } finally {
+      await pool.end().catch(() => undefined);
+      orderStatusNotificationTriggerPromise = null;
+    }
+  })();
+
+  return orderStatusNotificationTriggerPromise;
 }

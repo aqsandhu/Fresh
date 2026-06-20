@@ -31,7 +31,12 @@ import { ensureStorageBucket } from './config/storage';
 import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
 import { ensurePinColumns } from './config/pinAuth';
 import { ensureAddressColumns } from './config/addressSchema';
-import { ensureOrderCouponColumns, ensureUrgentDeliveryColumns, ensureRestaurantOrderColumns } from './config/orderSchema';
+import {
+  ensureOrderCouponColumns,
+  ensureUrgentDeliveryColumns,
+  ensureRestaurantOrderColumns,
+  ensureOrderStatusNotificationTrigger,
+} from './config/orderSchema';
 import { ensureVariableWeightColumns, ensureUnitToggleColumns, ensureQualityCatalogColumns } from './config/productSchema';
 import { ensureFeedbackTables, ensureComplaintImagesColumn } from './config/feedbackSchema';
 import { ensureTipsTable } from './config/tipsSchema';
@@ -324,6 +329,7 @@ const startServer = async () => {
         await ensureRestaurantPhoneUnique();
         await ensureRestaurantDeliveryColumns();
         await ensureRestaurantOrderColumns();
+        await ensureOrderStatusNotificationTrigger();
         await ensureOcpTables();
         const catalogV2Ready = await ensureCatalogV2Columns();
         if (!catalogV2Ready) {
