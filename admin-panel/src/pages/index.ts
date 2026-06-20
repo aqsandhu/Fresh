@@ -6,6 +6,7 @@ export { PriceManager } from './PriceManager';
 export { StockManagement } from './StockManagement';
 export { Expenses } from './Expenses';
 export { Workers } from './Workers';
+export { Profit } from './Profit';
 export { Categories } from './Categories';
 export { Customers } from './Customers';
 export { Riders } from './Riders';
