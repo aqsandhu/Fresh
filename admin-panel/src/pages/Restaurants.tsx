@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { restaurantService, type Restaurant } from '@/services/restaurant.service';
 import { formatDateTime } from '@/utils/formatters';
+import { useBadgeCounts } from '@/hooks/useBadgeCounts';
 
 const TABS = [
   { value: 'pending', label: 'Review Requests' },
@@ -34,22 +35,33 @@ const SECTIONS = [
 
 export const Restaurants: React.FC = () => {
   const [section, setSection] = useState('accounts');
+  const { data: badgeCounts } = useBadgeCounts();
 
   return (
     <Layout title="Restaurants" subtitle="Restaurant accounts, orders, dashboard and delivery settings">
       {/* Section switcher */}
       <div className="mb-4 inline-flex flex-wrap rounded-lg bg-gray-100 p-1">
-        {SECTIONS.map((s) => (
-          <button
-            key={s.value}
-            onClick={() => setSection(s.value)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              section === s.value ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
+        {SECTIONS.map((s) => {
+          const unread = s.value === 'orders' ? badgeCounts?.restaurantOrders || 0 : 0;
+          return (
+            <button
+              key={s.value}
+              onClick={() => setSection(s.value)}
+              className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                section === s.value ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <span>{s.label}</span>
+              {unread > 0 && (
+                <span className={`inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
+                  section === s.value ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700'
+                }`}>
+                  {unread}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {section === 'accounts' && <AccountsSection />}
@@ -151,6 +163,7 @@ function OrdersSection() {
     onSuccess: () => {
       toast.success('Order updated');
       queryClient.invalidateQueries({ queryKey: ['restaurant-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Update failed'),
   });
@@ -195,12 +208,20 @@ function OrdersSection() {
         <div className="space-y-3">
           {orders.map((o: any) => {
             const next = NEXT[o.status];
+            const orderNumber = o.orderNumber ?? o.order_number;
             return (
               <Card key={o.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-gray-900">#{o.order_number}</span>
+                      {(o.isUnread ?? o.status === 'pending') && (
+                        <span
+                          className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-red-100"
+                          title="Unread pending order"
+                          aria-label="Unread pending order"
+                        />
+                      )}
+                      <span className="font-bold text-gray-900">#{orderNumber}</span>
                       <Badge variant={ORDER_STATUS_BADGE[o.status] || 'default'}>{String(o.status).replace(/_/g, ' ')}</Badge>
                     </div>
                     <p className="text-sm text-gray-600 mt-0.5">

@@ -177,7 +177,13 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
 export const getBadgeCounts = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
   if (scope.forbidden) {
-    return successResponse(res, { orders: 0, riderApplications: 0, restaurantRequests: 0 }, 'Badge counts');
+    return successResponse(res, {
+      orders: 0,
+      consumerOrders: 0,
+      restaurantOrders: 0,
+      riderApplications: 0,
+      restaurantRequests: 0,
+    }, 'Badge counts');
   }
   const scoped = !scope.unrestricted && !!scope.cityId;
   const cityParam = scoped ? [scope.cityId] : [];
@@ -193,11 +199,17 @@ export const getBadgeCounts = asyncHandler(async (req: Request, res: Response) =
 
   const cityAnd = (col: string) => (scoped ? ` AND ${col} = $1` : '');
 
-  const [orders, riderApplications, restaurantRequests] = await Promise.all([
-    safeCount(
-      `SELECT COUNT(*)::int AS n FROM orders WHERE deleted_at IS NULL AND status = 'pending'${cityAnd('city_id')}`,
-      cityParam
-    ),
+  const restaurantOrderReady = await hasRestaurantOrderColumns();
+  const consumerOrdersSql = restaurantOrderReady
+    ? `SELECT COUNT(*)::int AS n FROM orders WHERE deleted_at IS NULL AND status = 'pending' AND restaurant_id IS NULL${cityAnd('city_id')}`
+    : `SELECT COUNT(*)::int AS n FROM orders WHERE deleted_at IS NULL AND status = 'pending'${cityAnd('city_id')}`;
+  const restaurantOrdersSql = restaurantOrderReady
+    ? `SELECT COUNT(*)::int AS n FROM orders WHERE deleted_at IS NULL AND status = 'pending' AND restaurant_id IS NOT NULL${cityAnd('city_id')}`
+    : `SELECT 0::int AS n`;
+
+  const [consumerOrders, restaurantOrders, riderApplications, restaurantRequests] = await Promise.all([
+    safeCount(consumerOrdersSql, cityParam),
+    safeCount(restaurantOrdersSql, restaurantOrderReady ? cityParam : []),
     safeCount(
       `SELECT COUNT(*)::int AS n FROM rider_applications WHERE status = 'pending'${cityAnd('city_id')}`,
       cityParam
@@ -207,8 +219,15 @@ export const getBadgeCounts = asyncHandler(async (req: Request, res: Response) =
       cityParam
     ),
   ]);
+  const orders = consumerOrders + restaurantOrders;
 
-  successResponse(res, { orders, riderApplications, restaurantRequests }, 'Badge counts');
+  successResponse(res, {
+    orders,
+    consumerOrders,
+    restaurantOrders,
+    riderApplications,
+    restaurantRequests,
+  }, 'Badge counts');
 });
 
 /**
