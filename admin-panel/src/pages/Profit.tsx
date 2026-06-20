@@ -46,6 +46,8 @@ export const Profit: React.FC = () => {
   const canManage = shList?.canManage === true;
   const rowsById: Record<string, ShareholderRow> = {};
   for (const s of shList?.shareholders || []) rowsById[s.id] = s;
+  // City-wide allocated % across all shareholders (cap is 100%).
+  const allocatedPercent = (shList?.shareholders || []).reduce((sum, s) => sum + (s.sharePercent || 0), 0);
 
   const modes: { key: typeof mode; label: string }[] = [
     { key: 'month', label: 'This month' }, { key: 'today', label: 'Today' },
@@ -153,8 +155,8 @@ export const Profit: React.FC = () => {
       )}
 
       {payFor && <PayModal shareholder={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); invalidate(); }} />}
-      {addOpen && <AddShareholderModal onClose={() => setAddOpen(false)} onDone={() => { setAddOpen(false); invalidate(); }} />}
-      {editFor && <EditShareholderModal shareholder={editFor} onClose={() => setEditFor(null)} onDone={() => { setEditFor(null); invalidate(); }} />}
+      {addOpen && <AddShareholderModal remaining={Math.max(0, 100 - allocatedPercent)} onClose={() => setAddOpen(false)} onDone={() => { setAddOpen(false); invalidate(); }} />}
+      {editFor && <EditShareholderModal shareholder={editFor} remaining={Math.max(0, 100 - (allocatedPercent - editFor.sharePercent))} onClose={() => setEditFor(null)} onDone={() => { setEditFor(null); invalidate(); }} />}
     </Layout>
   );
 };
@@ -260,14 +262,16 @@ function PayModal({ shareholder, onClose, onDone }: { shareholder: ProfitShareho
   );
 }
 
-function AddShareholderModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function AddShareholderModal({ remaining, onClose, onDone }: { remaining: number; onClose: () => void; onDone: () => void }) {
   const [form, setForm] = useState({ name: '', email: '', password: '', sharePercent: '' });
   const mut = useMutation({
     mutationFn: () => financeService.createShareholder({ name: form.name.trim(), email: form.email.trim(), password: form.password, sharePercent: parseFloat(form.sharePercent) || 0 }),
     onSuccess: () => { toast.success('Shareholder added (login created)'); onDone(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
-  const valid = form.name.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim()) && form.password.length >= 6;
+  const pct = parseFloat(form.sharePercent) || 0;
+  const overCap = pct > remaining + 1e-6;
+  const valid = form.name.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim()) && form.password.length >= 6 && !overCap;
   return (
     <Modal isOpen onClose={onClose} title="Add shareholder"
       footer={<div className="flex justify-end gap-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => mut.mutate()} disabled={!valid || mut.isPending} isLoading={mut.isPending}>Create login</Button></div>}>
@@ -275,14 +279,15 @@ function AddShareholderModal({ onClose, onDone }: { onClose: () => void; onDone:
         <Input label="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
         <Input label="Login email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
         <Input label="Password (min 6)" type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-        <Input label="Share %" type="number" min={0} max={100} step="0.01" value={form.sharePercent} onChange={(e) => setForm({ ...form, sharePercent: e.target.value })} />
+        <Input label={`Share % (max ${remaining}% left)`} type="number" min={0} max={remaining} step="0.01" value={form.sharePercent}
+          onChange={(e) => setForm({ ...form, sharePercent: e.target.value })} error={overCap ? `Only ${remaining}% is left to allocate` : undefined} />
         <p className="text-xs text-gray-400">The shareholder logs in at <code>/shareholder/login</code> with this email &amp; password.</p>
       </div>
     </Modal>
   );
 }
 
-function EditShareholderModal({ shareholder, onClose, onDone }: { shareholder: ShareholderRow; onClose: () => void; onDone: () => void }) {
+function EditShareholderModal({ shareholder, remaining, onClose, onDone }: { shareholder: ShareholderRow; remaining: number; onClose: () => void; onDone: () => void }) {
   const [name, setName] = useState(shareholder.name);
   const [sharePercent, setSharePercent] = useState(String(shareholder.sharePercent));
   const [password, setPassword] = useState('');
@@ -291,12 +296,15 @@ function EditShareholderModal({ shareholder, onClose, onDone }: { shareholder: S
     onSuccess: () => { toast.success('Shareholder updated'); onDone(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
+  const pct = parseFloat(sharePercent) || 0;
+  const overCap = pct > remaining + 1e-6;
   return (
     <Modal isOpen onClose={onClose} title={`Edit ${shareholder.name}`}
-      footer={<div className="flex justify-end gap-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => mut.mutate()} disabled={mut.isPending} isLoading={mut.isPending}>Save</Button></div>}>
+      footer={<div className="flex justify-end gap-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => mut.mutate()} disabled={mut.isPending || overCap} isLoading={mut.isPending}>Save</Button></div>}>
       <div className="space-y-3">
         <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
-        <Input label="Share %" type="number" min={0} max={100} step="0.01" value={sharePercent} onChange={(e) => setSharePercent(e.target.value)} />
+        <Input label={`Share % (max ${remaining}% for this one)`} type="number" min={0} max={remaining} step="0.01" value={sharePercent}
+          onChange={(e) => setSharePercent(e.target.value)} error={overCap ? `Only ${remaining}% can go to this shareholder` : undefined} />
         <Input label="Reset password (optional, min 6)" type="text" value={password} onChange={(e) => setPassword(e.target.value)} />
         <p className="text-xs text-gray-400">Email (login id): {shareholder.email}</p>
       </div>

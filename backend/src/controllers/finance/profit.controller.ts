@@ -204,17 +204,40 @@ export const createShareholder = asyncHandler(async (req: Request, res: Response
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return errorResponse(res, 'Enter a valid email.', 400);
   if (password.length < 6) return errorResponse(res, 'Password must be at least 6 characters.', 400);
 
-  const dupe = await query(`SELECT 1 FROM shareholders WHERE LOWER(email) = $1`, [email]);
-  if (dupe.rows.length > 0) return errorResponse(res, 'A shareholder with this email already exists.', 409);
-
   const hash = await bcrypt.hash(password, 10);
-  const r = await query(
-    `INSERT INTO shareholders (city_id, name, email, password_hash, share_percent, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-    [cityId, name, email, hash, sharePercent, req.user?.id ?? null]
-  );
-  logger.info('Shareholder created', { id: r.rows[0].id, by: req.user?.id });
-  return successResponse(res, { id: r.rows[0].id }, 'Shareholder added');
+  let out: any;
+  try {
+    out = await withTransaction(async (client) => {
+      // Lock the city's shareholders so concurrent adds can't both slip past the
+      // 100% cap. Sum is over ALL shareholders (active + inactive) — reactivating
+      // one must never push the city total over 100%.
+      const sumRow = await client.query(
+        `SELECT COALESCE(SUM(share_percent),0) AS total FROM shareholders WHERE city_id = $1 FOR UPDATE`,
+        [cityId]
+      );
+      const currentTotal = parseFloat(sumRow.rows[0].total) || 0;
+      if (currentTotal + sharePercent > 100 + 1e-6) {
+        throw Object.assign(
+          new Error(`Total shareholder share can't exceed 100%. Currently ${currentTotal}% allocated, only ${Math.max(0, 100 - currentTotal)}% left.`),
+          { http: 400 }
+        );
+      }
+      const dupe = await client.query(`SELECT 1 FROM shareholders WHERE LOWER(email) = $1`, [email]);
+      if (dupe.rows.length > 0) throw Object.assign(new Error('A shareholder with this email already exists.'), { http: 409 });
+
+      const ins = await client.query(
+        `INSERT INTO shareholders (city_id, name, email, password_hash, share_percent, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [cityId, name, email, hash, sharePercent, req.user?.id ?? null]
+      );
+      return ins.rows[0];
+    });
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
+  }
+  logger.info('Shareholder created', { id: out.id, by: req.user?.id });
+  return successResponse(res, { id: out.id }, 'Shareholder added');
 });
 
 // ── PUT /api/finance/shareholders/:id ────────────────────────────────────────
@@ -237,7 +260,19 @@ export const updateShareholder = asyncHandler(async (req: Request, res: Response
   // Profile + share% + password — super admin only.
   if (isSuper(req)) {
     if (typeof req.body?.name === 'string' && req.body.name.trim()) add('name', req.body.name.trim());
-    if (req.body?.share_percent !== undefined) add('share_percent', Math.min(100, Math.max(0, num(req.body.share_percent) || 0)));
+    if (req.body?.share_percent !== undefined) {
+      const newShare = Math.min(100, Math.max(0, num(req.body.share_percent) || 0));
+      // Enforce the city-wide 100% cap against the OTHER shareholders.
+      const sumRow = await query(
+        `SELECT COALESCE(SUM(share_percent),0) AS total FROM shareholders WHERE city_id = $1 AND id <> $2`,
+        [s.city_id, req.params.id]
+      );
+      const othersTotal = parseFloat(sumRow.rows[0].total) || 0;
+      if (othersTotal + newShare > 100 + 1e-6) {
+        return errorResponse(res, `Total shareholder share can't exceed 100%. Other shareholders already hold ${othersTotal}%, so this one can be at most ${Math.max(0, 100 - othersTotal)}%.`, 400);
+      }
+      add('share_percent', newShare);
+    }
     if (typeof req.body?.password === 'string' && req.body.password) {
       if (req.body.password.length < 6) return errorResponse(res, 'Password must be at least 6 characters.', 400);
       add('password_hash', await bcrypt.hash(req.body.password, 10));
