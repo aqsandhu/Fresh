@@ -17,6 +17,7 @@ import { successResponse, errorResponse, notFoundResponse } from '../../utils/re
 import { resolveCityScope } from '../../utils/cityScope';
 import { normalizeQuality, qualityStockColumn } from '../../utils/unitPricing';
 import { reservedColumn, recordStockMovement } from '../../utils/systemStock';
+import { moveCentralToOcp, assertOcpServesCity } from '../../utils/ocpStock';
 import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
 import { hasOcpTables } from '../../config/ocpSchema';
 import logger from '../../utils/logger';
@@ -257,23 +258,13 @@ export const shiftToOcp = asyncHandler(async (req: Request, res: Response) => {
 
   try {
     await withTransaction(async (client) => {
-      const p = await lockProductInScope(client, product_id, scope);
-      // OCP must be live + (for scoped admins) in the same city.
-      const o = await client.query(`SELECT id, city_id FROM order_collection_points WHERE id = $1 AND deleted_at IS NULL`, [ocp_id]);
-      if (o.rows.length === 0) throw Object.assign(new Error('OCP not found'), { http: 404 });
-      const stockCol = qualityStockColumn(quality);
-      const resCol = reservedColumn(quality);
-      const atOcps = await sumOcpStock(client, product_id, quality);
-      const movable = (parseFloat(p[stockCol]) || 0) - (parseFloat(p[resCol]) || 0) - atOcps;
-      if (qty > movable) throw Object.assign(new Error(`Only ${movable} available to send (rest is reserved or already at an OCP).`), { http: 400 });
-      // Physical relocation: OCP balance +qty; system total unchanged.
-      await client.query(
-        `INSERT INTO ocp_stock (ocp_id, product_id, quality, quantity) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (ocp_id, product_id, quality) DO UPDATE SET quantity = ocp_stock.quantity + EXCLUDED.quantity, updated_at = NOW()`,
-        [ocp_id, product_id, quality, qty]
-      );
-      await recordOcpMovement(client, ocp_id, product_id, quality, qty, req.user?.id);
-      await recordStockMovement(client, { productId: product_id, quality, cityId: p.city_id, delta: 0, reason: 'shift', refOcpId: ocp_id, createdBy: req.user?.id ?? null, note: `shift ${qty} to OCP` });
+      // Shared atomic guard: product + admin scope, OCP active + same city, and
+      // central availability (on_hand − reserved − Σocp ≥ qty).
+      await moveCentralToOcp(client, {
+        productId: product_id, ocpId: ocp_id, quality, qty,
+        scope, reason: 'adjust', createdBy: req.user?.id ?? null,
+        note: `shift ${qty} to OCP`,
+      });
     });
   } catch (err: any) {
     if (err?.http) return errorResponse(res, err.message, err.http);
@@ -294,7 +285,9 @@ export const returnFromOcp = asyncHandler(async (req: Request, res: Response) =>
 
   try {
     await withTransaction(async (client) => {
-      await lockProductInScope(client, product_id, scope);
+      const p = await lockProductInScope(client, product_id, scope);
+      // Same-city OCP (disabled OCPs may still be drained back to central).
+      await assertOcpServesCity(client, ocp_id, p.city_id, { allowDisabled: true });
       const dec = await client.query(
         `UPDATE ocp_stock SET quantity = quantity - $1, updated_at = NOW()
           WHERE ocp_id = $2 AND product_id = $3 AND quality = $4 AND quantity >= $1
@@ -325,7 +318,11 @@ export const transferOcpToOcp = asyncHandler(async (req: Request, res: Response)
 
   try {
     await withTransaction(async (client) => {
-      await lockProductInScope(client, product_id, scope);
+      const p = await lockProductInScope(client, product_id, scope);
+      // Both OCPs must serve the product's city; the destination must be active,
+      // the source may be disabled (so a disabled OCP can be drained).
+      await assertOcpServesCity(client, from_ocp_id, p.city_id, { allowDisabled: true });
+      await assertOcpServesCity(client, to_ocp_id, p.city_id);
       const dec = await client.query(
         `UPDATE ocp_stock SET quantity = quantity - $1, updated_at = NOW()
           WHERE ocp_id = $2 AND product_id = $3 AND quality = $4 AND quantity >= $1 RETURNING quantity`,

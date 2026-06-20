@@ -5,8 +5,114 @@
 // ============================================================================
 
 import { PoolClient } from 'pg';
-import { stockUnitsNeeded } from './unitPricing';
+import { stockUnitsNeeded, qualityStockColumn } from './unitPricing';
+import { reservedColumn, recordStockMovement } from './systemStock';
 import { hasOcpTables } from '../config/ocpSchema';
+
+type HttpError = Error & { http: number };
+function httpError(http: number, message: string): HttpError {
+  return Object.assign(new Error(message), { http });
+}
+
+/**
+ * Validate (and lock) an OCP for a movement involving a given product. Enforces:
+ * the OCP exists + is not deleted, is active (unless allowDisabled), and serves
+ * the SAME city as the product. Returns the OCP row. Throws { http } on failure.
+ *
+ * id alone is never the integrity boundary — without the same-city check a
+ * product from one city could be pushed into another city's OCP.
+ */
+export async function assertOcpServesCity(
+  client: PoolClient,
+  ocpId: string,
+  productCityId: string | null,
+  opts: { allowDisabled?: boolean } = {}
+): Promise<{ id: string; city_id: string | null; status: string }> {
+  const o = await client.query(
+    `SELECT id, city_id, status FROM order_collection_points WHERE id = $1 AND deleted_at IS NULL`,
+    [ocpId]
+  );
+  if (o.rows.length === 0) throw httpError(404, 'OCP not found');
+  const row = o.rows[0];
+  if (!opts.allowDisabled && row.status !== 'active') throw httpError(400, 'OCP is disabled.');
+  if (productCityId && row.city_id && productCityId !== row.city_id) {
+    throw httpError(400, 'That OCP is in a different city than the product.');
+  }
+  return row;
+}
+
+export interface CentralToOcpOpts {
+  productId: string;
+  ocpId: string;
+  quality: string;
+  qty: number;
+  /** When set, a scoped admin may only move stock within their own city. */
+  scope?: { cityId: string | null; unrestricted: boolean } | null;
+  /** OCP-ledger reason (must satisfy the ocp_stock_movements CHECK). */
+  reason?: 'receive' | 'adjust';
+  refRequestId?: string | null;
+  createdBy?: string | null;
+  note?: string | null;
+}
+
+/**
+ * Atomically move `qty` of product+quality from a city's CENTRAL pool into an
+ * OCP. Validates, under a row lock, that: the product exists (+ admin scope),
+ * the OCP exists + is active + serves the product's city, and the city has
+ * enough central stock (on_hand − reserved − Σ ocp ≥ qty) — so an OCP can never
+ * hold more than the city physically has. Increments ocp_stock and writes both
+ * the OCP and system ledgers. on_hand is unchanged (the stock is still in the
+ * city, just on the OCP's shelf). MUST run inside a transaction.
+ */
+export async function moveCentralToOcp(client: PoolClient, opts: CentralToOcpOpts): Promise<void> {
+  const { productId, ocpId, quality, qty } = opts;
+  if (!(qty > 0)) throw httpError(400, 'Quantity must be greater than 0.');
+
+  const stockCol = qualityStockColumn(quality);
+  const resCol = reservedColumn(quality);
+
+  const pr = await client.query(
+    `SELECT id, city_id, ${stockCol} AS on_hand, ${resCol} AS reserved
+       FROM products WHERE id = $1 FOR UPDATE`,
+    [productId]
+  );
+  if (pr.rows.length === 0) throw httpError(404, 'Product not found');
+  const p = pr.rows[0];
+  if (opts.scope && !opts.scope.unrestricted && opts.scope.cityId && p.city_id !== opts.scope.cityId) {
+    throw httpError(404, 'Product not found');
+  }
+
+  await assertOcpServesCity(client, ocpId, p.city_id);
+
+  const sum = await client.query(
+    `SELECT COALESCE(SUM(quantity), 0) AS total FROM ocp_stock WHERE product_id = $1 AND quality = $2`,
+    [productId, quality]
+  );
+  const onHand = parseFloat(String(p.on_hand)) || 0;
+  const reserved = parseFloat(String(p.reserved)) || 0;
+  const atOcps = parseFloat(String(sum.rows[0].total)) || 0;
+  const central = onHand - reserved - atOcps;
+  if (qty > central) {
+    throw httpError(400, `Only ${central} available to send (rest is reserved or already at an OCP).`);
+  }
+
+  await client.query(
+    `INSERT INTO ocp_stock (ocp_id, product_id, quality, quantity) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (ocp_id, product_id, quality)
+     DO UPDATE SET quantity = ocp_stock.quantity + EXCLUDED.quantity, updated_at = NOW()`,
+    [ocpId, productId, quality, qty]
+  );
+  await client.query(
+    `INSERT INTO ocp_stock_movements (ocp_id, product_id, quality, delta, reason, ref_request_id, created_by, note)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [ocpId, productId, quality, qty, opts.reason ?? 'adjust', opts.refRequestId ?? null, opts.createdBy ?? null, opts.note ?? null]
+  );
+  // System ledger: physical relocation only (on_hand unchanged).
+  await recordStockMovement(client, {
+    productId, quality, cityId: p.city_id, delta: 0, reason: 'shift', refOcpId: ocpId,
+    createdBy: opts.createdBy ?? null, note: opts.note ?? `shift ${qty} to OCP`,
+  });
+}
 
 /**
  * Deduct an OCP-fulfilled order's items from the OCP's stock when it is
