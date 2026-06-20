@@ -29,6 +29,7 @@ const footerLinks = {
     { label: 'About Us', href: '/about' },
     { label: 'Work as Rider', href: '/work-as-rider' },
     { label: 'Collection Point Login', href: '/ocp/login' },
+    { label: 'Shareholder Login', href: '/shareholder/login' },
     { label: 'Contact Us', href: '/contact' },
     { label: 'FAQs', href: '/faq' },
     { label: 'Privacy Policy', href: '/privacy' },

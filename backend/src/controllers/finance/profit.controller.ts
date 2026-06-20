@@ -20,6 +20,7 @@ import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse, forbiddenResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
 import { ensureFinanceTables } from '../../config/financeSchema';
+import { computeCityProfit, periodFromQuery } from '../../utils/profitCalc';
 import logger from '../../utils/logger';
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return Number.isFinite(n) ? n : NaN; };
@@ -54,58 +55,9 @@ export const getProfit = asyncHandler(async (req: Request, res: Response) => {
   const cityId = scope.cityId;
   if (!cityId) return successResponse(res, { needsCity: true }, 'Profit'); // super-admin must pick a city
 
-  // Sales = delivered orders (by delivered_at).
-  const saleP = periodFilter(req, 'o.delivered_at', 2);
-  const sales = await query(
-    `SELECT COALESCE(SUM(o.total_amount),0) AS total, COUNT(*) AS orders
-       FROM orders o
-      WHERE o.deleted_at IS NULL AND o.status = 'delivered' AND o.city_id = $1${saleP.sql}`,
-    [cityId, ...saleP.params]
-  );
-  const totalSale = parseFloat(sales.rows[0].total) || 0;
-  const orderCount = Number(sales.rows[0].orders) || 0;
-
-  // Expenses (by incurred_at).
-  const expP = periodFilter(req, 'incurred_at', 2);
-  const exp = await query(
-    `SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE city_id = $1${expP.sql}`,
-    [cityId, ...expP.params]
-  );
-  const totalExpenses = parseFloat(exp.rows[0].total) || 0;
-  const profit = round2(totalSale - totalExpenses);
-
-  // Profit-sharing settings.
-  const setRow = await query(`SELECT * FROM profit_settings WHERE city_id = $1`, [cityId]);
-  const settings = setRow.rows[0] || null;
-  let freshbazarShare = 0;
-  if (settings && settings.freshbazar_enabled) {
-    const mode = settings.freshbazar_mode;
-    if (mode === 'per_order_fixed') {
-      freshbazarShare = orderCount * (parseFloat(settings.freshbazar_per_order) || 0);
-    } else if (mode === 'profit_margin_percent') {
-      freshbazarShare = profit > 0 ? profit * ((parseFloat(settings.freshbazar_margin_percent) || 0) / 100) : 0;
-    } else if (mode === 'category_percent') {
-      // Per-category % of delivered sale in the period.
-      const catP = periodFilter(req, 'o.delivered_at', 2);
-      const catSale = await query(
-        `SELECT p.category_id, COALESCE(SUM(oi.total_price),0) AS sale
-           FROM order_items oi
-           JOIN orders o ON o.id = oi.order_id
-           JOIN products p ON p.id = oi.product_id
-          WHERE o.deleted_at IS NULL AND o.status = 'delivered' AND o.city_id = $1${catP.sql}
-          GROUP BY p.category_id`,
-        [cityId, ...catP.params]
-      );
-      const shares = await query(`SELECT category_id, percent FROM profit_category_shares WHERE city_id = $1`, [cityId]);
-      const pctByCat: Record<string, number> = {};
-      for (const s of shares.rows) pctByCat[s.category_id] = parseFloat(s.percent) || 0;
-      for (const c of catSale.rows) {
-        freshbazarShare += (parseFloat(c.sale) || 0) * ((pctByCat[c.category_id] || 0) / 100);
-      }
-    }
-  }
-  freshbazarShare = round2(Math.max(0, freshbazarShare));
-  const distributable = round2(profit - freshbazarShare);
+  // Shared calc — same numbers the shareholder portal shows.
+  const cp = await computeCityProfit(cityId, periodFromQuery(req.query));
+  const { totalSale, orderCount, totalExpenses, profit, freshbazarShare, distributable } = cp;
 
   // Per-shareholder share + received (period) + pending (period) + balance.
   const sh = await query(
@@ -138,9 +90,8 @@ export const getProfit = asyncHandler(async (req: Request, res: Response) => {
 
   return successResponse(res, {
     needsCity: false, ready: true,
-    totalSale: round2(totalSale), orderCount, totalExpenses: round2(totalExpenses), profit,
-    freshbazarShare, distributable,
-    settings: settings ? publicSettings(settings) : defaultSettings(),
+    totalSale, orderCount, totalExpenses, profit, freshbazarShare, distributable,
+    settings: cp.settings,
     shareholders,
   }, 'Profit');
 });
