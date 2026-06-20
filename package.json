@@ -9,7 +9,7 @@
     "test": "turbo run test",
     "lint": "turbo run lint",
     "dev": "turbo run dev",
-    "clean": "turbo run clean && rm -rf node_modules/.cache",
+    "clean": "turbo run clean && node -e \"require('fs').rmSync('node_modules/.cache',{recursive:true,force:true})\"",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {

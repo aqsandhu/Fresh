@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 
 const ACCESS_COOKIE = 'token';
 const REFRESH_COOKIE = 'refreshToken';
@@ -35,8 +36,25 @@ function cookieOptions(maxAgeMs: number, path = '/') {
   };
 }
 
+// Fallbacks only — the real cookie lifetime is read from each token's own `exp`
+// so the cookie can never expire out of step with its JWT (token TTLs are
+// env-configurable per audience: JWT_EXPIRES_IN, ADMIN_JWT_EXPIRES_IN, …).
 const ACCESS_MAX_AGE_MS = 15 * 60 * 1000;
 const REFRESH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Cookie maxAge = time until the token's own expiry; fallback if unparsable. */
+function maxAgeForToken(token: string, fallbackMs: number): number {
+  try {
+    const decoded = jwt.decode(token) as { exp?: number } | null;
+    if (decoded?.exp) {
+      const ms = decoded.exp * 1000 - Date.now();
+      if (ms > 0) return ms;
+    }
+  } catch {
+    /* fall through to fallback */
+  }
+  return fallbackMs;
+}
 
 // The website assumes HttpOnly-cookie auth in production (see
 // website/lib/authConfig.ts), so cookies must default ON there — otherwise a
@@ -58,11 +76,15 @@ export function setAuthCookies(
 ): void {
   if (!shouldUseAuthCookies()) return;
 
-  res.cookie(ACCESS_COOKIE, tokens.accessToken, cookieOptions(ACCESS_MAX_AGE_MS, '/'));
+  res.cookie(
+    ACCESS_COOKIE,
+    tokens.accessToken,
+    cookieOptions(maxAgeForToken(tokens.accessToken, ACCESS_MAX_AGE_MS), '/')
+  );
   res.cookie(
     REFRESH_COOKIE,
     tokens.refreshToken,
-    cookieOptions(REFRESH_MAX_AGE_MS, '/api/auth/refresh')
+    cookieOptions(maxAgeForToken(tokens.refreshToken, REFRESH_MAX_AGE_MS), '/api/auth/refresh')
   );
 }
 
