@@ -70,19 +70,16 @@ describe('Sidebar', () => {
   it('renders all navigation items', () => {
     renderSidebar();
 
+    // Catalog (Products + Categories) and Management (Price/Stock/Workers/
+    // Expenses/Profit) are now single hub entries with tabs; Riders bundles
+    // Riders + Applications. (Admin Roles only shows for super_admin.)
     const navLabels = [
       'Dashboard',
       'Orders',
-      'Products',
-      'Categories',
-      'Price Manager',
-      'Stock Management',
-      'Expenses',
-      'Workers',
-      'Profit',
+      'Catalog',
+      'Management',
       'Customers',
       'Riders',
-      'Rider Applications',
       'Restaurants',
       'Collection Points',
       'Atta Chakki',
@@ -107,7 +104,9 @@ describe('Sidebar', () => {
 
     expect(screen.getByText('Dashboard').closest('a')).toHaveAttribute('href', '/admin/dashboard');
     expect(screen.getByText('Orders').closest('a')).toHaveAttribute('href', '/admin/orders');
-    expect(screen.getByText('Products').closest('a')).toHaveAttribute('href', '/admin/products');
+    expect(screen.getByText('Catalog').closest('a')).toHaveAttribute('href', '/admin/catalog');
+    expect(screen.getByText('Management').closest('a')).toHaveAttribute('href', '/admin/management');
+    expect(screen.getByText('Riders').closest('a')).toHaveAttribute('href', '/admin/riders-hub');
     expect(screen.getByText('Customers').closest('a')).toHaveAttribute('href', '/admin/customers');
   });
 
