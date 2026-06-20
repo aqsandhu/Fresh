@@ -169,8 +169,12 @@ function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: 
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
 
-  const gradedTotal = (parseFloat(gradeA) || 0) + (parseFloat(gradeB) || 0) + (parseFloat(gradeC) || 0) + (parseFloat(waste) || 0);
-  const valid = productId && parseFloat(price) >= 0 && gradedTotal > 0;
+  const raw = parseFloat(rawWeight) || 0;
+  const gradedTotal = Math.round(((parseFloat(gradeA) || 0) + (parseFloat(gradeB) || 0) + (parseFloat(gradeC) || 0) + (parseFloat(waste) || 0)) * 1000) / 1000;
+  const remaining = Math.round((raw - gradedTotal) * 1000) / 1000;
+  // Mass conservation: A + B + C + waste must equal the raw weight.
+  const balanced = raw > 0 && Math.abs(remaining) < 0.001;
+  const valid = !!productId && parseFloat(price) >= 0 && balanced;
   const unit = product?.unitType || 'kg';
 
   return (
@@ -194,7 +198,7 @@ function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: 
             <label className="block text-sm font-medium text-gray-700 mb-1">Date &amp; time of purchase</label>
             <input type="datetime-local" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           </div>
-          <Input label={`Raw weight (${unit})`} type="number" min={0} step="0.001" value={rawWeight} onChange={(e) => setRawWeight(e.target.value)} />
+          <Input label={`Raw weight (${unit})`} type="number" min={0} step="0.001" value={rawWeight} onChange={(e) => setRawWeight(e.target.value)} required />
         </div>
         <Input label="Purchase price (Rs.)" type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required />
         <div>
@@ -205,7 +209,14 @@ function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: 
             <Input label={`Quality C (${unit})`} type="number" min={0} step="0.001" value={gradeC} onChange={(e) => setGradeC(e.target.value)} />
           </div>
         </div>
-        <Input label={`Waste (${unit})`} type="number" min={0} step="0.001" value={waste} onChange={(e) => setWaste(e.target.value)} helperText="Recorded for the record; not added to stock" />
+        <Input label={`Waste (${unit})`} type="number" min={0} step="0.001" value={waste} onChange={(e) => setWaste(e.target.value)} helperText="Counts toward the raw weight; not added to sellable stock" />
+        {/* Mass conservation — A + B + C + waste must equal the raw weight. */}
+        {raw > 0 && (
+          <div className={`text-sm rounded-lg px-3 py-2 ${balanced ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+            Graded + waste: <span className="font-semibold">{gradedTotal}</span> / {raw} {unit}
+            {balanced ? ' ✓ balanced' : remaining > 0 ? ` · ${remaining} ${unit} unaccounted` : ` · ${Math.abs(remaining)} ${unit} over`}
+          </div>
+        )}
         <Input label="Comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
       </div>
     </Modal>
