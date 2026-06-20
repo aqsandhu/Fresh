@@ -21,6 +21,7 @@ import {
   consumerQualities,
   FRESH_CART_SUBTOTAL_SQL,
 } from '../utils/unitPricing';
+import { reservedColumn } from '../utils/systemStock';
 import { hasQualityCatalogColumns } from '../config/productSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { loadCartSnapshotFromClient, buildCartResponse } from '../utils/cartResponse';
@@ -39,16 +40,22 @@ import { hasUserCouponsTable } from '../utils/autoCoupons';
  */
 /** Per-quality columns appended to product SELECTs once migration 34 lands. */
 const QUALITY_PRODUCT_COLS = ', price_b, price_c, stock_quantity_b, stock_quantity_c';
-/** Catalog-v2 columns (migration 37): consumer enable flags + explicit B/C fractions. */
+/** Catalog-v2 columns (migration 37): consumer enable flags + explicit B/C fractions + soft holds. */
 const CATALOG_V2_CART_COLS =
   ', consumer_enabled_a, consumer_enabled_b, consumer_enabled_c' +
+  ', reserved_quantity, reserved_quantity_b, reserved_quantity_c' +
   ', half_kg_price_b, quarter_kg_price_b, half_dozen_price_b' +
   ', half_kg_price_c, quarter_kg_price_c, half_dozen_price_c';
 
-/** Shared stock available for the chosen quality tier on a product row. */
+/**
+ * Stock actually available for a quality tier = on-hand − reserved (soft holds
+ * from other in-flight orders). Reserved columns are only present once catalog
+ * v2 lands; absent → 0, so the legacy on-hand value is used unchanged.
+ */
 const qualityStock = (product: Record<string, any>, quality: string): number => {
-  const col = qualityStockColumn(quality);
-  return parseFloat(String(product[col] ?? 0)) || 0;
+  const onHand = parseFloat(String(product[qualityStockColumn(quality)] ?? 0)) || 0;
+  const reserved = parseFloat(String(product[reservedColumn(quality)] ?? 0)) || 0;
+  return Math.max(0, onHand - reserved);
 };
 
 const getOrCreateCart = async (userId: string) => {

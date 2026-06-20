@@ -48,10 +48,12 @@ async function consumerInStockCondition(): Promise<string> {
   }
 
   if (await hasCatalogV2Columns()) {
+    // Availability is on-hand MINUS soft holds (reserved) from in-flight orders,
+    // so a fully-reserved product isn't shown as buyable.
     return `(
-      (p.consumer_enabled_a IS NOT FALSE AND p.stock_quantity > 0)
-      OR (p.consumer_enabled_b = TRUE AND p.price_b IS NOT NULL AND p.stock_quantity_b > 0)
-      OR (p.consumer_enabled_c = TRUE AND p.price_c IS NOT NULL AND p.stock_quantity_c > 0)
+      (p.consumer_enabled_a IS NOT FALSE AND (p.stock_quantity - p.reserved_quantity) > 0)
+      OR (p.consumer_enabled_b = TRUE AND p.price_b IS NOT NULL AND (p.stock_quantity_b - p.reserved_quantity_b) > 0)
+      OR (p.consumer_enabled_c = TRUE AND p.price_c IS NOT NULL AND (p.stock_quantity_c - p.reserved_quantity_c) > 0)
     )`;
   }
 
