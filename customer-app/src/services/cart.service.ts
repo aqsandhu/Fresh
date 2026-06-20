@@ -112,8 +112,11 @@ class CartService {
     if (!(await this.hasAuthToken())) return true;
 
     if (this.syncInProgress) {
+      // A sync is already running. Mark that the latest cart still needs to be
+      // flushed when it finishes, and treat this as success — it WILL be synced
+      // by the flush below, so rapid edits don't surface a spurious failure.
       this.pendingSync = true;
-      return false;
+      return true;
     }
 
     this.syncInProgress = true;
@@ -136,8 +139,13 @@ class CartService {
       return false;
     } finally {
       this.syncInProgress = false;
+      // A change arrived mid-sync — flush the LATEST local cart so the server
+      // isn't left stale (the previous code dropped this update entirely).
       if (this.pendingSync) {
         this.pendingSync = false;
+        this.getCart()
+          .then((latest) => this.syncCartWithBackend(latest))
+          .catch(() => {});
       }
     }
   }
