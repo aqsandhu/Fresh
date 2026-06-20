@@ -234,6 +234,33 @@ export const verifyOcpToken = (token: string): OcpTokenPayload => {
   return decoded as unknown as OcpTokenPayload;
 };
 
+// ── Shareholder tokens (isolated; only reach /api/shareholder/*) ─────────────
+const SHAREHOLDER_JWT_EXPIRES_IN = process.env.SHAREHOLDER_JWT_EXPIRES_IN || '12h';
+
+export interface ShareholderTokenPayload {
+  shareholderId: string;
+  email: string;
+  type: 'shareholder';
+  iat?: number;
+  exp?: number;
+}
+
+export const generateShareholderToken = (shareholderId: string, email: string): string => {
+  return jwt.sign(
+    { shareholderId, email, type: 'shareholder' },
+    jwtSecret,
+    { expiresIn: SHAREHOLDER_JWT_EXPIRES_IN } as SignOptions
+  );
+};
+
+export const verifyShareholderToken = (token: string): ShareholderTokenPayload => {
+  const decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+  if (decoded?.type !== 'shareholder' || typeof decoded?.shareholderId !== 'string') {
+    throw new Error('Not a shareholder token');
+  }
+  return decoded as unknown as ShareholderTokenPayload;
+};
+
 // Decode token without verification (for debugging)
 export const decodeToken = (token: string): JwtPayload | null => {
   try {
