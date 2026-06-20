@@ -128,8 +128,15 @@ export const createStockPurchase = asyncHandler(async (req: Request, res: Respon
   const gC = num(req.body?.grade_c) || 0;
   const waste = num(req.body?.waste) || 0;
   if (!Number.isFinite(price) || price < 0) return errorResponse(res, 'Enter a valid purchase price.', 400);
+  if (!Number.isFinite(rawWeight) || rawWeight <= 0) return errorResponse(res, 'Enter the raw weight.', 400);
   if ([gA, gB, gC, waste].some((x) => x < 0)) return errorResponse(res, 'Weights cannot be negative.', 400);
-  if (gA + gB + gC + waste <= 0) return errorResponse(res, 'Enter at least one graded weight.', 400);
+  // Mass conservation: everything bought must be accounted for. The graded
+  // weights (A+B+C) plus waste MUST equal the raw weight (3-decimal tolerance).
+  const gradedTotal = Math.round((gA + gB + gC + waste) * 1000) / 1000;
+  const rawRounded = Math.round(rawWeight * 1000) / 1000;
+  if (Math.abs(gradedTotal - rawRounded) > 0.001) {
+    return errorResponse(res, `Quality A + B + C + waste (${gradedTotal}) must equal the raw weight (${rawRounded}).`, 400);
+  }
   const purchasedAt = typeof req.body?.purchased_at === 'string' && req.body.purchased_at ? req.body.purchased_at : new Date().toISOString();
 
   let out: any;
