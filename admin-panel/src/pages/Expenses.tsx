@@ -22,6 +22,36 @@ const nowLocal = () => {
 };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+type NumericInput = string | number | null | undefined;
+
+const parseWeightInput = (value: NumericInput): number => {
+  const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const roundWeight = (value: number): number => Math.round(value * 1000) / 1000;
+
+export function getStockPurchaseBalance(
+  rawWeight: NumericInput,
+  gradeA: NumericInput,
+  gradeB: NumericInput,
+  gradeC: NumericInput,
+  waste: NumericInput
+) {
+  const raw = parseWeightInput(rawWeight);
+  const gradedTotal = roundWeight(
+    parseWeightInput(gradeA) + parseWeightInput(gradeB) + parseWeightInput(gradeC) + parseWeightInput(waste)
+  );
+  const remaining = roundWeight(raw - gradedTotal);
+
+  return {
+    raw,
+    gradedTotal,
+    remaining,
+    balanced: raw > 0 && Math.abs(remaining) < 0.001,
+  };
+}
+
 export const Expenses: React.FC = () => {
   const qc = useQueryClient();
   const [mode, setMode] = useState<'all' | 'today' | 'month' | 'day' | 'pickMonth'>('today');
@@ -169,11 +199,7 @@ function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: 
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
 
-  const raw = parseFloat(rawWeight) || 0;
-  const gradedTotal = Math.round(((parseFloat(gradeA) || 0) + (parseFloat(gradeB) || 0) + (parseFloat(gradeC) || 0) + (parseFloat(waste) || 0)) * 1000) / 1000;
-  const remaining = Math.round((raw - gradedTotal) * 1000) / 1000;
-  // Mass conservation: A + B + C + waste must equal the raw weight.
-  const balanced = raw > 0 && Math.abs(remaining) < 0.001;
+  const { raw, gradedTotal, remaining, balanced } = getStockPurchaseBalance(rawWeight, gradeA, gradeB, gradeC, waste);
   const valid = !!productId && parseFloat(price) >= 0 && balanced;
   const unit = product?.unitType || 'kg';
 

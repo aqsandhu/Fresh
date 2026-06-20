@@ -81,7 +81,36 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
       const token = extractSocketToken(socket);
       if (!token) throw new Error('Authentication required');
       const decoded = verifyAccessToken(token);
-      socket.data.user = decoded;
+      const userResult = await query(
+        `SELECT id, phone, role, status
+           FROM users
+          WHERE id = $1 AND deleted_at IS NULL`,
+        [decoded.userId]
+      );
+      const user = userResult.rows[0];
+      if (!user || user.status !== 'active') {
+        throw new Error('Account is not active');
+      }
+
+      if (user.role === 'rider') {
+        const riderResult = await query(
+          `SELECT id
+             FROM riders
+            WHERE user_id = $1
+              AND deleted_at IS NULL
+              AND verification_status = 'verified'`,
+          [decoded.userId]
+        );
+        if (riderResult.rows.length === 0) {
+          throw new Error('Rider account is not verified');
+        }
+      }
+
+      socket.data.user = {
+        ...decoded,
+        phone: user.phone,
+        role: user.role,
+      };
       next();
     } catch (err: any) {
       logger.warn(`Socket auth failed: ${err.message}`);
@@ -196,7 +225,12 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
           }
 
           const ownership = await query(
-            `SELECT id FROM riders WHERE id = $1 AND user_id = $2`,
+            `SELECT id
+               FROM riders
+              WHERE id = $1
+                AND user_id = $2
+                AND deleted_at IS NULL
+                AND verification_status = 'verified'`,
             [data.riderId, userId]
           );
           if (ownership.rows.length === 0) {

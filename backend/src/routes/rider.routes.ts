@@ -8,6 +8,7 @@ import * as riderController from '../controllers/rider.controller';
 import {
   authenticate,
   requireRider,
+  verifyRiderActive,
   authRateLimiter,
   riderLocationRateLimiter,
   validate,
@@ -23,6 +24,7 @@ router.post('/login', authRateLimiter, authController.riderLogin);
 // All rider routes require authentication and rider role
 router.use(authenticate);
 router.use(requireRider);
+router.use(verifyRiderActive);
 
 // Profile
 router.get('/profile', riderController.getRiderProfile);
@@ -63,6 +65,7 @@ router.put(
 
 // Status updates
 router.put('/status', riderController.updateStatus);
+router.put('/fcm-token', riderController.updateFcmToken);
 
 // Earnings
 router.get('/earnings/today', riderController.getTodayEarnings);

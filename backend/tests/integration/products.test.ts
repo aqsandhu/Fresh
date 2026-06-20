@@ -58,18 +58,11 @@ describe('GET /api/products', () => {
     expect(res.body.meta).toMatchObject({ page: 1, limit: 20, total: 2, totalPages: 1 });
   });
 
-  it('never interpolates attacker input into ORDER BY (falls back to a whitelisted column)', async () => {
-    // The controller whitelists the sort column rather than trusting the query
-    // string, so an injection attempt resolves to the safe default. This is the
-    // real SQL-injection guard — assert on the generated SQL.
-    mockQuery.mockResolvedValueOnce(ok([{ count: '0' }])).mockResolvedValueOnce(ok([]));
-
+  it('rejects attacker input in ORDER BY before touching SQL', async () => {
     const res = await request(app).get('/api/products?sortBy=price);DROP%20TABLE%20products;--');
 
-    expect(res.status).toBe(200);
-    const listSql = String(mockQuery.mock.calls[1][0]);
-    expect(listSql).toContain('ORDER BY p.created_at');
-    expect(listSql).not.toContain('DROP TABLE');
+    expect(res.status).toBe(422);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it('binds the search term as a parameter rather than concatenating it', async () => {

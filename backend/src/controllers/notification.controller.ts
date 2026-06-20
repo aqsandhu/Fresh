@@ -22,6 +22,39 @@ function mapNotification(row: Record<string, unknown>) {
 }
 
 /**
+ * POST /api/notifications/register
+ */
+export const registerPushToken = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    return errorResponse(res, 'Authentication required', 401);
+  }
+
+  const token = String(req.body?.token ?? '').trim();
+  if (!token) {
+    return errorResponse(res, 'Push token is required', 400);
+  }
+
+  const result = await query(
+    `UPDATE users
+        SET device_tokens = CASE
+              WHEN device_tokens IS NULL THEN ARRAY[$2]::text[]
+              WHEN NOT ($2 = ANY(device_tokens)) THEN array_append(device_tokens, $2)
+              ELSE device_tokens
+            END,
+            updated_at = NOW()
+      WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
+      RETURNING id`,
+    [req.user.id, token]
+  );
+
+  if (result.rows.length === 0) {
+    return errorResponse(res, 'User not found or inactive', 401);
+  }
+
+  successResponse(res, { message: 'Push token registered' }, 'Push token registered');
+});
+
+/**
  * GET /api/notifications
  */
 export const getNotifications = asyncHandler(async (req: Request, res: Response) => {
@@ -93,4 +126,27 @@ export const markAllNotificationsRead = asyncHandler(async (req: Request, res: R
   );
 
   successResponse(res, { ok: true }, 'All notifications marked as read');
+});
+
+/**
+ * DELETE /api/notifications/:id
+ */
+export const deleteNotification = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    return errorResponse(res, 'Authentication required', 401);
+  }
+
+  const { id } = req.params;
+  const result = await query(
+    `DELETE FROM notifications
+      WHERE id = $1 AND user_id = $2
+      RETURNING id`,
+    [id, req.user.id]
+  );
+
+  if (result.rows.length === 0) {
+    return notFoundResponse(res, 'Notification not found');
+  }
+
+  successResponse(res, { message: 'Notification deleted' }, 'Notification deleted');
 });

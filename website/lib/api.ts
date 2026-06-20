@@ -131,6 +131,18 @@ function mapBackendProduct(raw: any): Product {
     const n = parseFloat(String(v))
     return Number.isFinite(n) && n > 0 ? n : null
   }
+  const stockA = parseFloat(raw.stock_quantity ?? raw.stockQuantity) || 0
+  const priceB = toOptionalPrice(raw.price_b ?? raw.priceB)
+  const priceC = toOptionalPrice(raw.price_c ?? raw.priceC)
+  const stockB = parseFloat(raw.stock_quantity_b ?? raw.stockQuantityB) || 0
+  const stockC = parseFloat(raw.stock_quantity_c ?? raw.stockQuantityC) || 0
+  const consumerEnabledA = (raw.consumer_enabled_a ?? raw.consumerEnabledA) !== false
+  const consumerEnabledB = (raw.consumer_enabled_b ?? raw.consumerEnabledB) !== false
+  const consumerEnabledC = (raw.consumer_enabled_c ?? raw.consumerEnabledC) !== false
+  const hasStock =
+    (consumerEnabledA && stockA > 0) ||
+    (consumerEnabledB && priceB != null && stockB > 0) ||
+    (consumerEnabledC && priceC != null && stockC > 0)
   return {
     id: raw.id,
     name: raw.name_en || raw.nameEn || '',
@@ -141,8 +153,9 @@ function mapBackendProduct(raw: any): Product {
     unit: raw.unit_type || raw.unitType || 'kg',
     category: raw.category_slug || raw.categorySlug || raw.category_id || raw.categoryId || '',
     image: resolveImageUrl(raw.primary_image || raw.primaryImage || raw.image_url || raw.imageUrl),
-    stock: parseInt(raw.stock_quantity || raw.stockQuantity) || 0,
-    isFresh: (raw.stock_quantity > 0 || raw.stockQuantity > 0) && (raw.is_active !== false),
+    stock: stockA,
+    inStock: hasStock,
+    isFresh: hasStock && (raw.is_active !== false),
     rating: parseFloat(raw.rating_average || raw.ratingAverage) || undefined,
     reviews: parseInt(raw.review_count || raw.reviewCount || raw.order_count || raw.orderCount) || undefined,
     tags: raw.tags || [],
@@ -151,10 +164,10 @@ function mapBackendProduct(raw: any): Product {
     quarterKgPrice: toOptionalPrice(raw.quarter_kg_price ?? raw.quarterKgPrice),
     halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
     // Quality tiers (B/C optional). Each tier has its own consumer price + stock.
-    priceB: toOptionalPrice(raw.price_b ?? raw.priceB),
-    priceC: toOptionalPrice(raw.price_c ?? raw.priceC),
-    stockQuantityB: parseFloat(raw.stock_quantity_b ?? raw.stockQuantityB) || 0,
-    stockQuantityC: parseFloat(raw.stock_quantity_c ?? raw.stockQuantityC) || 0,
+    priceB,
+    priceC,
+    stockQuantityB: stockB,
+    stockQuantityC: stockC,
     // Default true when the field is absent (pre-migration / older payloads).
     allowHalfKg: (raw.allow_half_kg ?? raw.allowHalfKg) !== false,
     allowQuarterKg: (raw.allow_quarter_kg ?? raw.allowQuarterKg) !== false,

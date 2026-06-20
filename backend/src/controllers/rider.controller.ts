@@ -45,6 +45,40 @@ export const getRiderProfile = asyncHandler(async (req: Request, res: Response) 
 });
 
 /**
+ * Register/update rider push token
+ * PUT /api/rider/fcm-token
+ */
+export const updateFcmToken = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    return errorResponse(res, 'Authentication required', 401);
+  }
+
+  const token = String(req.body?.token ?? '').trim();
+  if (!token) {
+    return errorResponse(res, 'Push token is required', 400);
+  }
+
+  const result = await query(
+    `UPDATE users
+        SET device_tokens = CASE
+              WHEN device_tokens IS NULL THEN ARRAY[$2]::text[]
+              WHEN NOT ($2 = ANY(device_tokens)) THEN array_append(device_tokens, $2)
+              ELSE device_tokens
+            END,
+            updated_at = NOW()
+      WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
+      RETURNING id`,
+    [req.user.id, token]
+  );
+
+  if (result.rows.length === 0) {
+    return errorResponse(res, 'Rider account not found or inactive', 401);
+  }
+
+  successResponse(res, null, 'Push token updated');
+});
+
+/**
  * Get assigned tasks
  * GET /api/rider/tasks
  */

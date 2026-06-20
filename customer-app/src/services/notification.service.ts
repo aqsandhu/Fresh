@@ -5,6 +5,10 @@ import { ApiResponse, Notification } from '@app-types';
 import { supportsRemotePush } from '@/lib/expoRuntime';
 
 type NotificationsModule = typeof import('expo-notifications');
+type NotificationListPayload = Notification[] | {
+  notifications?: Notification[];
+  unreadCount?: number;
+};
 
 let notificationsModule: NotificationsModule | null = null;
 let handlerConfigured = false;
@@ -71,8 +75,11 @@ class NotificationService {
 
   async getNotifications(): Promise<ApiResponse<Notification[]>> {
     try {
-      const response = await apiClient.get('/notifications');
-      return response.data;
+      const response = await apiClient.get<ApiResponse<NotificationListPayload>>('/notifications');
+      const body = response.data;
+      const payload = body.data;
+      const notifications = Array.isArray(payload) ? payload : payload?.notifications ?? [];
+      return { ...body, data: notifications };
     } catch {
       return { success: true, data: [] };
     }

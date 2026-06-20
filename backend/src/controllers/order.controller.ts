@@ -385,7 +385,9 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
 
     // Get address
     const addressResult = await client.query(
-      `SELECT a.*, dz.code as zone_code
+      `SELECT a.*, dz.code as zone_code,
+              ST_Y(a.location::geometry) as latitude,
+              ST_X(a.location::geometry) as longitude
        FROM addresses a
        LEFT JOIN delivery_zones dz ON a.zone_id = dz.id
        WHERE a.id = $1 AND a.user_id = $2 AND a.deleted_at IS NULL`,
@@ -638,8 +640,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       postal_code: address.postal_code,
       door_picture_url: address.door_picture_url || '',
       location: {
-        latitude: address.location ? address.location.y : null,
-        longitude: address.location ? address.location.x : null,
+        latitude: address.latitude ?? null,
+        longitude: address.longitude ?? null,
       },
     });
 

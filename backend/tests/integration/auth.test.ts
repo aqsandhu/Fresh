@@ -71,6 +71,10 @@ describe('GET /api/auth/socket-token', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('issues a verifiable token to an authenticated user', async () => {
+    mockQuery.mockResolvedValueOnce(
+      ok([{ id: 'user-1', phone: '+923001234567', role: 'customer', status: 'active', full_name: 'Aisha' }])
+    );
+
     const res = await request(app)
       .get('/api/auth/socket-token')
       .set('Authorization', `Bearer ${signAccessToken()}`);
