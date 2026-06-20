@@ -20,7 +20,7 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
-import { commitOrderSaleOnDelivery } from '../../utils/systemStock';
+import { commitOrderSaleOnDelivery, reserveProductStock } from '../../utils/systemStock';
 import { deductOcpStockOnDelivery } from '../../utils/ocpStock';
 import { roundMoney } from '../../utils/money';
 import {
@@ -826,7 +826,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
       for (const item of items) {
         const pr = await client.query(
           `SELECT p.name_en, p.primary_image, p.sku, p.price, p.half_kg_price, p.quarter_kg_price,
-                  p.half_dozen_price, cat.qualifies_for_free_delivery
+                  p.half_dozen_price, p.city_id, cat.qualifies_for_free_delivery
                   ${qualityReady ? ', p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c' : ''}
                   ${v2Cols}
              FROM products p JOIN categories cat ON p.category_id = cat.id
@@ -837,6 +837,11 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
           throw Object.assign(new Error(`Product not found: ${item.product_id}`), { http: 400 });
         }
         const p = pr.rows[0];
+        // Product city must match the order's city — an id alone must never let a
+        // foreign-city product onto a city order (catalog is per-city).
+        if (orderCityId && p.city_id && p.city_id !== orderCityId) {
+          throw Object.assign(new Error(`${p.name_en} is not available in this city.`), { http: 400 });
+        }
         const unit = normalizeProductUnit(item.unit);
         const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
         if (qualityReady && !consumerQualities(p).includes(quality)) {
@@ -954,18 +959,35 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
             [o.id, l.product_id, l.name, l.image, l.sku, l.unitPrice, l.qty, l.lineTotal, l.unit]
           );
         }
-        // Decrement the SHARED per-quality stock bucket. stock_status is a
-        // Quality-A flag, recomputed only for tier A.
+        // Reserve the SHARED per-quality bucket through the same path checkout
+        // uses: an atomic guard (on_hand − reserved ≥ need) prevents oversell,
+        // and delivery converts the reserve to a permanent sale (+ OCP deduct).
         const need = stockUnitsNeeded(l.qty, l.unit);
-        const stockCol = qualityReady ? qualityStockColumn(l.quality) : 'stock_quantity';
-        const statusSet =
-          stockCol === 'stock_quantity'
-            ? `, stock_status = CASE WHEN stock_quantity - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
-            : '';
-        await client.query(
-          `UPDATE products SET ${stockCol} = GREATEST(0, ${stockCol} - $1)${statusSet}, updated_at = NOW() WHERE id = $2`,
-          [need, l.product_id]
-        );
+        if (catalogV2Ready) {
+          const ok = await reserveProductStock(client, {
+            productId: l.product_id, quality: l.quality, need,
+            orderId: o.id, cityId: orderCityId, createdBy: req.user?.id ?? null,
+          });
+          if (!ok) throw Object.assign(new Error(`Not enough stock for ${l.name}.`), { http: 400 });
+        } else {
+          // Legacy (pre-reservation) fallback: still guard against oversell.
+          const stockCol = qualityReady ? qualityStockColumn(l.quality) : 'stock_quantity';
+          const statusSet =
+            stockCol === 'stock_quantity'
+              ? `, stock_status = CASE WHEN ${stockCol} - $1 <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
+              : '';
+          const dec = await client.query(
+            `UPDATE products SET ${stockCol} = ${stockCol} - $1${statusSet}, updated_at = NOW()
+              WHERE id = $2 AND ${stockCol} >= $1 RETURNING id`,
+            [need, l.product_id]
+          );
+          if (dec.rowCount === 0) throw Object.assign(new Error(`Not enough stock for ${l.name}.`), { http: 400 });
+        }
+      }
+
+      // Reservation orders commit their sale (and OCP deduct) on delivery.
+      if (catalogV2Ready) {
+        await client.query(`UPDATE orders SET stock_reserved = TRUE WHERE id = $1`, [o.id]);
       }
 
       return o;
