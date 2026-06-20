@@ -7,6 +7,8 @@ export { StockManagement } from './StockManagement';
 export { Expenses } from './Expenses';
 export { Workers } from './Workers';
 export { Profit } from './Profit';
+export { Catalog } from './Catalog';
+export { Management } from './Management';
 export { Categories } from './Categories';
 export { Customers } from './Customers';
 export { Riders } from './Riders';
