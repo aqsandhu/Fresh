@@ -12,7 +12,7 @@ import {
   createdResponse,
 } from '../../utils/response';
 import { resolveCityScope, cityIdClause, cityRowInScope, orderInScope } from '../../utils/cityScope';
-import { emitToAdmins } from '../../config/socket';
+import { emitOrderUpdate, emitToAdmins } from '../../config/socket';
 import { isValidOrderTransition, ORDER_STATUS_TIMESTAMPS, restoreOrderInventory } from '../../utils/orderStatus';
 import { upsertGlobalSiteSetting } from '../../utils/siteSettings';
 import { placeRestaurantOrder } from '../../utils/restaurantOrders';
@@ -176,7 +176,8 @@ export const getRestaurantOrders = asyncHandler(async (req: Request, res: Respon
   where += cityFilter.sql;
 
   const result = await query(
-    `SELECT o.id, o.order_number, o.status, o.subtotal, o.delivery_charge, o.total_amount,
+    `SELECT o.id, o.order_number, o.status, (o.status = 'pending') AS is_unread,
+            o.subtotal, o.delivery_charge, o.total_amount,
             o.payment_status, o.created_at, o.placed_at, o.rider_id,
             rest.business_name AS restaurant_name, rest.phone AS restaurant_phone,
             o.delivery_address_snapshot,
@@ -298,7 +299,8 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
 
       params.push(id);
       const result = await client.query(
-        `UPDATE orders SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id, status, rider_id`,
+        `UPDATE orders SET ${sets.join(', ')} WHERE id = $${params.length}
+          RETURNING id, order_number, status, rider_id`,
         params
       );
 
@@ -322,6 +324,22 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
   }
 
   logger.info('Restaurant order updated', { orderId: id, by: req.user?.id, status, rider_id });
+  if (status) {
+    emitOrderUpdate(id, {
+      orderId: id,
+      orderNumber: updated.order_number,
+      status,
+      updatedBy: req.user?.id,
+      updatedAt: new Date().toISOString(),
+    });
+    emitToAdmins('order:status_updated', {
+      orderId: id,
+      orderNumber: updated.order_number,
+      status,
+      source: 'restaurant',
+      updatedBy: req.user?.id,
+    });
+  }
   return successResponse(res, updated, 'Order updated');
 });
 

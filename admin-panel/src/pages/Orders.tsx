@@ -40,6 +40,7 @@ import { ocpService } from '@/services/ocp.service';
 import { addressService } from '@/services/address.service';
 import { useNotifications } from '@/context/NotificationContext';
 import { useAuthContext } from '@/context/AuthContext';
+import { useBadgeCounts } from '@/hooks/useBadgeCounts';
 import type { Order, OrderStatus } from '@/types';
 import {
   formatCurrency,
@@ -206,6 +207,7 @@ export const Orders: React.FC = () => {
   const [bulkStatusMode, setBulkStatusMode] = useState(false);
   const [editingHouseNumber, setEditingHouseNumber] = useState(false);
   const [houseNumberValue, setHouseNumberValue] = useState('');
+  const { data: badgeCounts } = useBadgeCounts();
   const {
     isSocketConnected,
     flashingOrderIds: flashingOrders,
@@ -277,6 +279,7 @@ export const Orders: React.FC = () => {
       orderService.updateOrderStatus(id, status, note),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
       toast.success('Order status updated successfully');
       setIsStatusModalOpen(false);
       setBulkStatusMode(false);
@@ -289,6 +292,7 @@ export const Orders: React.FC = () => {
       orderService.bulkUpdateOrderStatus(ids, status, note),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
       toast.success(`${data.updated} order(s) updated successfully`);
       setIsStatusModalOpen(false);
       setBulkStatusMode(false);
@@ -345,6 +349,7 @@ export const Orders: React.FC = () => {
     mutationFn: (orderId: string) => orderService.markPaymentReceived(orderId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
       toast.success('Payment received — order marked as delivered');
     },
     onError: () => {
@@ -519,6 +524,13 @@ export const Orders: React.FC = () => {
       render: (order: Order) => (
         <div>
           <div className="flex items-center gap-1.5">
+            {(order.isUnread ?? order.status === 'pending') && (
+              <span
+                className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-red-100"
+                title="Unread pending order"
+                aria-label="Unread pending order"
+              />
+            )}
             <p className="font-medium text-gray-900">{order.orderNumber}</p>
             {order.isUrgentDelivery && (
               <span className="inline-flex items-center gap-0.5 rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
@@ -801,21 +813,33 @@ export const Orders: React.FC = () => {
     >
       {/* Consumer vs Restaurant orders */}
       <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
-        {(['customer', 'restaurant'] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => {
-              setMode(m);
-              setPage(1);
-              setSelectedOrderIds(new Set());
-            }}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              mode === m ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            {m === 'customer' ? 'Customer' : 'Restaurants'}
-          </button>
-        ))}
+        {(['customer', 'restaurant'] as const).map((m) => {
+          const unread = m === 'customer'
+            ? badgeCounts?.consumerOrders || 0
+            : badgeCounts?.restaurantOrders || 0;
+          return (
+            <button
+              key={m}
+              onClick={() => {
+                setMode(m);
+                setPage(1);
+                setSelectedOrderIds(new Set());
+              }}
+              className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                mode === m ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <span>{m === 'customer' ? 'Customer' : 'Restaurants'}</span>
+              {unread > 0 && (
+                <span className={`inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
+                  mode === m ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700'
+                }`}>
+                  {unread}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Connection Status & New Order Badge */}

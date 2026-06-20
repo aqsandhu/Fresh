@@ -202,6 +202,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setNewOrderCount((c) => c + 1);
       flashOrder(item.orderId, 5000);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['restaurant-orders'] });
       queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
     };
 
@@ -215,6 +216,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       pushNotification(item);
       flashOrder(item.orderId, 3000);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['restaurant-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
     };
 
     const handleOrderCancelled = (data: Record<string, unknown>) => {
@@ -227,6 +230,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       pushNotification(item);
       toast.error(item.message, { duration: 5000 });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['restaurant-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
     };
 
     const handleComplaint = (data: Record<string, unknown>) => {

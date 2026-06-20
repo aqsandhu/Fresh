@@ -118,6 +118,7 @@ export interface Order {
   orderNumber: string;
   userId: string;
   status: OrderStatus;
+  isUnread?: boolean;
   paymentStatus: PaymentStatus;
   paymentMethod: PaymentMethod;
   subtotal: number;
