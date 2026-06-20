@@ -17,6 +17,7 @@ import { isValidOrderTransition, ORDER_STATUS_TIMESTAMPS, restoreOrderInventory 
 import { upsertGlobalSiteSetting } from '../../utils/siteSettings';
 import { placeRestaurantOrder } from '../../utils/restaurantOrders';
 import { commitOrderSaleOnDelivery } from '../../utils/systemStock';
+import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
 import logger from '../../utils/logger';
 
 const RESTAURANT_PUBLIC_COLUMNS = `
@@ -259,11 +260,43 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
 
   if (!(await orderInScope(scope, id))) return notFoundResponse(res, 'Order not found');
 
+  // Confirm it's a restaurant order before any mutation.
+  const exists = await query(
+    `SELECT id FROM orders WHERE id = $1 AND restaurant_id IS NOT NULL AND deleted_at IS NULL`,
+    [id]
+  );
+  if (exists.rows.length === 0) return notFoundResponse(res, 'Restaurant order not found');
+
+  // Rider assignment goes through the SAME shared helper as consumer orders —
+  // it validates the rider (verified / active / same city), enforces the status
+  // transition, snapshots the per-slot delivery charge, flips the rider to busy
+  // and swaps the rider_task, then emits events. Never a bare rider_id write.
+  if (rider_id) {
+    try {
+      const { order } = await assignRiderToOrder(id, rider_id, req.user?.id);
+      emitToAdmins('order:status_updated', {
+        orderId: id, orderNumber: order.order_number, status: order.status,
+        source: 'restaurant', updatedBy: req.user?.id,
+      });
+      return successResponse(
+        res,
+        { id: order.id, order_number: order.order_number, status: order.status, rider_id: order.rider_id },
+        'Order updated'
+      );
+    } catch (err: any) {
+      if (err?.http === 404) return notFoundResponse(res, err.message);
+      if (err?.http === 400) return errorResponse(res, err.message, 400);
+      throw err;
+    }
+  }
+
+  if (!status) return errorResponse(res, 'Nothing to update', 400);
+
   let updated: any;
   try {
     updated = await withTransaction(async (client) => {
       const cur = await client.query(
-        `SELECT id, status, time_slot_id, restaurant_id
+        `SELECT id, status, time_slot_id, restaurant_id, stock_reserved, requested_delivery_date
            FROM orders
           WHERE id = $1 AND restaurant_id IS NOT NULL AND deleted_at IS NULL
           FOR UPDATE`,
@@ -274,28 +307,16 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
       }
 
       const current = cur.rows[0];
-      const sets: string[] = ['updated_at = NOW()'];
-      const params: any[] = [];
-
-      if (status) {
-        if (!isValidOrderTransition(current.status, status)) {
-          throw Object.assign(
-            new Error(`Cannot change status from ${current.status} to ${status}`),
-            { http: 400 }
-          );
-        }
-        params.push(status);
-        sets.push(`status = $${params.length}`);
-        const tsCol = ORDER_STATUS_TIMESTAMPS[status as keyof typeof ORDER_STATUS_TIMESTAMPS];
-        if (tsCol) sets.push(`${tsCol} = NOW()`);
+      if (!isValidOrderTransition(current.status, status)) {
+        throw Object.assign(
+          new Error(`Cannot change status from ${current.status} to ${status}`),
+          { http: 400 }
+        );
       }
-      if (rider_id !== undefined) {
-        params.push(rider_id || null);
-        sets.push(`rider_id = $${params.length}`);
-      }
-      if (params.length === 0) {
-        throw Object.assign(new Error('Nothing to update'), { http: 400 });
-      }
+      const sets: string[] = ['updated_at = NOW()', 'status = $1'];
+      const params: any[] = [status];
+      const tsCol = ORDER_STATUS_TIMESTAMPS[status as keyof typeof ORDER_STATUS_TIMESTAMPS];
+      if (tsCol) sets.push(`${tsCol} = NOW()`);
 
       params.push(id);
       const result = await client.query(
