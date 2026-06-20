@@ -17,7 +17,6 @@ import {
   Star,
   MessageSquareWarning,
   Lightbulb,
-  UserPlus,
   UtensilsCrossed,
   Store,
   LogOut,
@@ -25,6 +24,7 @@ import {
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { useAuthContext } from '@/context/AuthContext';
 import { canAccessRoute } from '@/lib/permissions';
+import { useBadgeCounts } from '@/hooks/useBadgeCounts';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -35,17 +35,17 @@ interface NavItem {
   path: string;
   label: string;
   icon: React.ReactNode;
+  badge?: 'orders' | 'riderApplications' | 'restaurantRequests';
 }
 
 const navItems: NavItem[] = [
   { path: '/admin/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-  { path: '/admin/orders', label: 'Orders', icon: <ShoppingCart className="w-5 h-5" /> },
+  { path: '/admin/orders', label: 'Orders', icon: <ShoppingCart className="w-5 h-5" />, badge: 'orders' },
   { path: '/admin/catalog', label: 'Catalog', icon: <Package className="w-5 h-5" /> },
   { path: '/admin/management', label: 'Management', icon: <Boxes className="w-5 h-5" /> },
   { path: '/admin/customers', label: 'Customers', icon: <Users className="w-5 h-5" /> },
-  { path: '/admin/riders', label: 'Riders', icon: <Bike className="w-5 h-5" /> },
-  { path: '/admin/rider-applications', label: 'Rider Applications', icon: <UserPlus className="w-5 h-5" /> },
-  { path: '/admin/restaurants', label: 'Restaurants', icon: <UtensilsCrossed className="w-5 h-5" /> },
+  { path: '/admin/riders-hub', label: 'Riders', icon: <Bike className="w-5 h-5" />, badge: 'riderApplications' },
+  { path: '/admin/restaurants', label: 'Restaurants', icon: <UtensilsCrossed className="w-5 h-5" />, badge: 'restaurantRequests' },
   { path: '/admin/ocp', label: 'Collection Points', icon: <Store className="w-5 h-5" /> },
   { path: '/admin/atta-requests', label: 'Atta Chakki', icon: <Wheat className="w-5 h-5" /> },
   { path: '/admin/whatsapp-orders', label: 'WhatsApp Orders', icon: <MessageCircle className="w-5 h-5" /> },
@@ -63,6 +63,7 @@ const navItems: NavItem[] = [
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
   const { logout, user } = useAuthContext();
   const location = useLocation();
+  const { data: badgeCounts } = useBadgeCounts();
 
   const handleLogout = () => {
     logout();
@@ -123,7 +124,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
               <span className={`mr-3 ${location.pathname === item.path ? 'text-primary-600' : 'text-gray-400'}`}>
                 {item.icon}
               </span>
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.badge && (badgeCounts?.[item.badge] || 0) > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[11px] font-semibold">
+                  {badgeCounts![item.badge]}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

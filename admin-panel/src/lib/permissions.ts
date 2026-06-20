@@ -21,6 +21,8 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/categories': ['categories.manage'],
   '/admin/customers': ['customers.view'],
   '/admin/riders': ['riders.view'],
+  // Riders hub = Riders + Applications tabs.
+  '/admin/riders-hub': ['riders.view', 'riders.manage', 'rider_applications.view', 'rider_applications.manage'],
   '/admin/atta-requests': ['orders.view'],
   '/admin/whatsapp-orders': ['orders.view'],
   '/admin/addresses': ['addresses.view'],

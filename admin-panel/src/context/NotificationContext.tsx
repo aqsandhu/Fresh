@@ -33,7 +33,8 @@ export interface AdminNotification {
     | 'order:cancelled'
     | 'complaint:new'
     | 'review:new'
-    | 'rider:application';
+    | 'rider:application'
+    | 'restaurant:application';
   title: string;
   message: string;
   orderId?: string;
@@ -201,6 +202,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       setNewOrderCount((c) => c + 1);
       flashOrder(item.orderId, 5000);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
     };
 
     const handleStatusUpdated = (data: Record<string, unknown>) => {
@@ -243,11 +245,22 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
 
     const handleRiderApplication = (data: Record<string, unknown>) => {
-      const item = buildNotification('rider:application', { ...data, link: '/admin/rider-applications' }, 'New rider application', 'A new rider application was received');
+      const item = buildNotification('rider:application', { ...data, link: '/admin/riders-hub' }, 'New rider application', 'A new rider application was received');
       pushNotification(item);
       playNotificationSound();
       toast(item.message, { icon: <Bell className="w-4 h-4 text-blue-500" />, duration: 6000 });
       queryClient.invalidateQueries({ queryKey: ['rider-applications'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
+    };
+
+    const handleRestaurantApplication = (data: Record<string, unknown>) => {
+      const name = typeof data?.businessName === 'string' ? data.businessName : 'A restaurant';
+      const item = buildNotification('restaurant:application', { ...data, link: '/admin/restaurants' }, 'New restaurant request', `${name} requested to join`);
+      pushNotification(item);
+      playNotificationSound();
+      toast(item.message, { icon: <Bell className="w-4 h-4 text-amber-500" />, duration: 6000 });
+      queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+      queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
     };
 
     const setup = async () => {
@@ -290,6 +303,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       onSocketEvent('complaint:new', handleComplaint);
       onSocketEvent('review:new', handleReview);
       onSocketEvent('rider:application', handleRiderApplication);
+      onSocketEvent('restaurant:application', handleRestaurantApplication);
 
       connectionInterval = setInterval(() => {
         setIsSocketConnected(socket.connected);
@@ -308,6 +322,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       offSocketEvent('complaint:new', handleComplaint);
       offSocketEvent('review:new', handleReview);
       offSocketEvent('rider:application', handleRiderApplication);
+      offSocketEvent('restaurant:application', handleRestaurantApplication);
       flashTimersRef.current.forEach((t) => clearTimeout(t));
       flashTimersRef.current.clear();
       disconnectSocket();
