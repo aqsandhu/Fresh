@@ -95,7 +95,68 @@ export const financeService = {
     const res = await api.post<ApiResponse<{ id: string }>>(`/finance/workers/${id}/pay`, d);
     return res.data;
   },
+
+  // ── Profit + sharing + shareholders ─────────────────────────────────────────
+  getProfit: async (f: ExpenseFilters = {}): Promise<ProfitData> => {
+    const params: Record<string, any> = {};
+    if (f.period) params.period = f.period;
+    if (f.month) params.month = f.month;
+    if (f.year) params.year = f.year;
+    if (f.date) params.date = f.date;
+    const res = await api.get<ApiResponse<ProfitData>>('/finance/profit', params);
+    return res.data as ProfitData;
+  },
+  getProfitSettings: async (): Promise<ProfitSettingsData> => {
+    const res = await api.get<ApiResponse<ProfitSettingsData>>('/finance/profit-settings');
+    return res.data as ProfitSettingsData;
+  },
+  updateProfitSettings: async (d: { enabled: boolean; mode: string; perOrder: number; marginPercent: number; categoryShares: { categoryId: string; percent: number }[] }) => {
+    const res = await api.put<ApiResponse<any>>('/finance/profit-settings', d);
+    return res.data;
+  },
+  listShareholders: async (): Promise<ShareholdersData> => {
+    const res = await api.get<ApiResponse<ShareholdersData>>('/finance/shareholders');
+    return res.data as ShareholdersData;
+  },
+  createShareholder: async (d: { name: string; email: string; password: string; sharePercent: number }) => {
+    const res = await api.post<ApiResponse<{ id: string }>>('/finance/shareholders', d);
+    return res.data;
+  },
+  updateShareholder: async (id: string, d: { name?: string; sharePercent?: number; password?: string; status?: 'active' | 'inactive' }) => {
+    const res = await api.put<ApiResponse<{ id: string }>>(`/finance/shareholders/${id}`, d);
+    return res.data;
+  },
+  payShareholder: async (id: string, d: { amount: number; note?: string }) => {
+    const res = await api.post<ApiResponse<{ id: string }>>(`/finance/shareholders/${id}/pay`, d);
+    return res.data;
+  },
+  shareholderPayouts: async (id: string): Promise<{ id: string; amount: number; status: string; note: string | null; createdAt: string; receivedAt: string | null }[]> => {
+    const res = await api.get<ApiResponse<any[]>>(`/finance/shareholders/${id}/payouts`);
+    return res.data || [];
+  },
 };
+
+export interface ProfitShareholder {
+  id: string; name: string; email: string; status: string;
+  sharePercent: number; share: number; received: number; pending: number; balance: number;
+}
+export interface ProfitData {
+  needsCity: boolean; ready?: boolean;
+  totalSale?: number; orderCount?: number; totalExpenses?: number; profit?: number;
+  freshbazarShare?: number; distributable?: number;
+  settings?: { enabled: boolean; mode: string; perOrder: number; marginPercent: number };
+  shareholders?: ProfitShareholder[];
+}
+export interface ProfitSettingsData {
+  needsCity: boolean; canEdit?: boolean;
+  settings?: { enabled: boolean; mode: string; perOrder: number; marginPercent: number };
+  categoryShares?: { categoryId: string; categoryName: string; percent: number }[];
+}
+export interface ShareholderRow {
+  id: string; name: string; email: string; sharePercent: number; status: string;
+  lastLoginAt: string | null; receivedTotal: number; pendingTotal: number;
+}
+export interface ShareholdersData { needsCity: boolean; canManage?: boolean; shareholders: ShareholderRow[] }
 
 export interface Worker {
   id: string; name: string; phone: string | null; designation: string | null;
