@@ -15,7 +15,7 @@ import {
 } from '../utils/response';
 import { ensureRiderApplicationsTable } from '../config/riderApplicationSchema';
 import { upsertGlobalSiteSetting } from '../utils/siteSettings';
-import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
+import { resolveCityScope, resolvePublicCityId, cityRowInScope } from '../utils/cityScope';
 import { emitToAdmins } from '../config/socket';
 import { normalizePhoneNumber } from '../utils/validators';
 import logger from '../utils/logger';
@@ -191,8 +191,11 @@ export const updateRiderApplication = asyncHandler(async (req: Request, res: Res
   const { id } = req.params;
   if (!UUID_RE.test(id)) return notFoundResponse(res, 'Application not found');
 
-  const existing = await query('SELECT id FROM rider_applications WHERE id = $1', [id]);
+  // City-scoped: a scoped admin can only act on their own city's applications.
+  const existing = await query('SELECT id, city_id FROM rider_applications WHERE id = $1', [id]);
   if (existing.rows.length === 0) return notFoundResponse(res, 'Application not found');
+  const appScope = await resolveCityScope(req);
+  if (!cityRowInScope(appScope, existing.rows[0].city_id)) return notFoundResponse(res, 'Application not found');
 
   const sets: string[] = [];
   const params: unknown[] = [];

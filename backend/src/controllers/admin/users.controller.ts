@@ -187,9 +187,21 @@ export const assignHouseNumber = asyncHandler(async (req: Request, res: Response
   const { id } = req.params;
   const { house_number } = req.body;
 
+  // City-scoped: addresses carry a `city` name, so a scoped admin can only touch
+  // an address in their own city (id alone is never the authorization boundary).
+  const scope = await resolveCityScope(req);
+  const existing = await query('SELECT id, city FROM addresses WHERE id = $1', [id]);
+  if (existing.rows.length === 0) {
+    return notFoundResponse(res, 'Address not found');
+  }
+  if (!scope.unrestricted && scope.cityName && scope.dbReady &&
+      String(existing.rows[0].city || '').toLowerCase() !== scope.cityName.toLowerCase()) {
+    return notFoundResponse(res, 'Address not found');
+  }
+
   // Update the address record
   const result = await query(
-    `UPDATE addresses 
+    `UPDATE addresses
      SET house_number = $1, updated_at = NOW()
      WHERE id = $2
      RETURNING *`,

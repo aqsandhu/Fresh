@@ -12,10 +12,23 @@ import logger from '../../utils/logger';
 import {
   resolveCityScope,
   cityIdClause,
+  cityRowInScope,
   requireCityScope,
 } from '../../utils/cityScope';
 
 const SALT_ROUNDS = 12;
+
+/**
+ * City-ownership guard for by-id rider endpoints. Returns false when the rider
+ * doesn't exist OR belongs to another city (a scoped admin must never act on it
+ * by guessing an id). Super-admins (unrestricted) always pass.
+ */
+async function riderInScope(req: Request, id: string): Promise<boolean> {
+  const r = await query('SELECT city_id FROM riders WHERE id = $1 AND deleted_at IS NULL', [id]);
+  if (r.rows.length === 0) return false;
+  const scope = await resolveCityScope(req);
+  return cityRowInScope(scope, r.rows[0].city_id);
+}
 
 export const getRiders = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
@@ -197,7 +210,8 @@ export const updateRider = asyncHandler(async (req: Request, res: Response) => {
     driving_license_number,
   } = req.body;
 
-  // Get rider + user_id
+  // Get rider + user_id (city-scoped: a scoped admin can't edit another city's rider).
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
   const riderCheck = await query(
     'SELECT r.id, r.user_id FROM riders r WHERE r.id = $1 AND r.deleted_at IS NULL', [id]
   );
@@ -276,6 +290,7 @@ export const updateRider = asyncHandler(async (req: Request, res: Response) => {
 
 export const deleteRider = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
   const result = await query(
     "UPDATE riders SET deleted_at = NOW(), status = 'offline' WHERE id = $1 AND deleted_at IS NULL RETURNING id",
     [id]
@@ -296,6 +311,7 @@ export const verifyRider = asyncHandler(async (req: Request, res: Response) => {
   if (!['verified', 'rejected', 'pending'].includes(verification_status)) {
     return errorResponse(res, 'Invalid verification status', 400);
   }
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
   const result = await query(
     `UPDATE riders SET verification_status = $1, updated_at = NOW(), updated_by = $2
@@ -319,6 +335,7 @@ export const updateRiderStatus = asyncHandler(async (req: Request, res: Response
   if (!['available', 'busy', 'offline', 'on_leave'].includes(status)) {
     return errorResponse(res, 'Invalid status', 400);
   }
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
   const result = await query(
     'UPDATE riders SET status = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL RETURNING *',
@@ -335,6 +352,7 @@ export const updateRiderStatus = asyncHandler(async (req: Request, res: Response
 
 export const getRiderLocation = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
   const result = await query(
     `SELECT r.id, r.status,
@@ -371,6 +389,7 @@ export const getRiderLocation = asyncHandler(async (req: Request, res: Response)
 
 export const getRiderStats = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
   // Verify rider exists
   const riderCheck = await query(
@@ -485,6 +504,7 @@ export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Re
   if (!Array.isArray(charges)) {
     return errorResponse(res, 'charges must be an array of { time_slot_id, charge_per_order }', 400);
   }
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
   // Verify rider exists
   const riderCheck = await query('SELECT id FROM riders WHERE id = $1 AND deleted_at IS NULL', [id]);
