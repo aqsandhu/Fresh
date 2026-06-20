@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { restaurantService, type Restaurant } from '@/services/restaurant.service';
 import { formatDateTime } from '@/utils/formatters';
-import { useBadgeCounts } from '@/hooks/useBadgeCounts';
 
 const TABS = [
   { value: 'pending', label: 'Review Requests' },
@@ -28,45 +27,30 @@ const STATUS_BADGE: Record<string, 'warning' | 'success' | 'info' | 'error'> = {
 
 const SECTIONS = [
   { value: 'accounts', label: 'Accounts' },
-  { value: 'orders', label: 'Orders' },
-  { value: 'dashboard', label: 'Dashboard' },
   { value: 'settings', label: 'Delivery Settings' },
 ];
 
 export const Restaurants: React.FC = () => {
   const [section, setSection] = useState('accounts');
-  const { data: badgeCounts } = useBadgeCounts();
 
   return (
-    <Layout title="Restaurants" subtitle="Restaurant accounts, orders, dashboard and delivery settings">
+    <Layout title="Restaurants" subtitle="Restaurant accounts and delivery settings">
       {/* Section switcher */}
       <div className="mb-4 inline-flex flex-wrap rounded-lg bg-gray-100 p-1">
-        {SECTIONS.map((s) => {
-          const unread = s.value === 'orders' ? badgeCounts?.restaurantOrders || 0 : 0;
-          return (
-            <button
-              key={s.value}
-              onClick={() => setSection(s.value)}
-              className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                section === s.value ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              <span>{s.label}</span>
-              {unread > 0 && (
-                <span className={`inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-semibold ${
-                  section === s.value ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700'
-                }`}>
-                  {unread}
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {SECTIONS.map((s) => (
+          <button
+            key={s.value}
+            onClick={() => setSection(s.value)}
+            className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              section === s.value ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
       </div>
 
       {section === 'accounts' && <AccountsSection />}
-      {section === 'orders' && <OrdersSection />}
-      {section === 'dashboard' && <DashboardSection />}
       {section === 'settings' && <SettingsSection />}
     </Layout>
   );

@@ -100,7 +100,7 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['restaurant-orders'] });
-      toast.success('Restaurant order placed — visible in Restaurants → Orders');
+      toast.success('Restaurant order placed — visible in Orders → Restaurants');
       reset();
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Failed to place order'),
