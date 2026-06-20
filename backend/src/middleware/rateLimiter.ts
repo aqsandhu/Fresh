@@ -2,7 +2,7 @@
 // RATE LIMITING MIDDLEWARE
 // ============================================================================
 
-import rateLimit from 'express-rate-limit';
+import rateLimit, { type RateLimitRequestHandler } from 'express-rate-limit';
 import RedisStore, { type SendCommandFn } from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { Request, Response } from 'express';
@@ -60,7 +60,7 @@ export async function initRateLimiterStore(): Promise<void> {
   }
 }
 
-export const apiRateLimiter = rateLimit({
+export const apiRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: WINDOW_MS,
   max: MAX_REQUESTS,
   skip: skipInDev,
@@ -80,7 +80,7 @@ export const apiRateLimiter = rateLimit({
   },
 });
 
-export const authRateLimiter = rateLimit({
+export const authRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: AUTH_WINDOW_MS,
   max: AUTH_MAX_REQUESTS,
   skip: skipInDev,
@@ -101,7 +101,7 @@ export const authRateLimiter = rateLimit({
   },
 });
 
-export const registerRateLimiter = rateLimit({
+export const registerRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: isDev ? 100 : 3,
   skip: skipInDev,
@@ -114,7 +114,7 @@ export const registerRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-export const passwordResetRateLimiter = rateLimit({
+export const passwordResetRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: isDev ? 100 : 3,
   skip: skipInDev,
@@ -127,7 +127,7 @@ export const passwordResetRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-export const adminRateLimiter = rateLimit({
+export const adminRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 1000 : 30,
   skip: skipInDev,
@@ -140,7 +140,7 @@ export const adminRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-export const riderLocationRateLimiter = rateLimit({
+export const riderLocationRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 10 * 1000,
   max: isDev ? 100 : 1,
   skip: skipInDev,
@@ -153,7 +153,7 @@ export const riderLocationRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-export const orderRateLimiter = rateLimit({
+export const orderRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 100 : 5,
   skip: skipInDev,
@@ -166,7 +166,7 @@ export const orderRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-export const webhookRateLimiter = rateLimit({
+export const webhookRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 1000 : 100,
   skip: skipInDev,
@@ -183,7 +183,7 @@ export const createRateLimiter = (
   windowMs: number,
   max: number,
   message: string
-) => {
+): RateLimitRequestHandler => {
   return rateLimit({
     windowMs,
     max,
