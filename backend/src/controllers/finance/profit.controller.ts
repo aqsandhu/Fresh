@@ -113,11 +113,13 @@ export const getProfitSettings = asyncHandler(async (req: Request, res: Response
   const cityId = scope.cityId;
   if (!cityId) return successResponse(res, { needsCity: true }, 'Settings');
   const setRow = await query(`SELECT * FROM profit_settings WHERE city_id = $1`, [cityId]);
+  // Categories are PER-CITY — scope to this city's categories only, else every
+  // city's same-named categories show up as duplicates.
   const cats = await query(
     `SELECT c.id AS category_id, c.name_en AS category_name, COALESCE(pcs.percent, 0) AS percent
        FROM categories c
        LEFT JOIN profit_category_shares pcs ON pcs.category_id = c.id AND pcs.city_id = $1
-      WHERE c.is_active = TRUE ORDER BY c.name_en ASC`,
+      WHERE c.is_active = TRUE AND c.city_id = $1 ORDER BY c.name_en ASC`,
     [cityId]
   );
   return successResponse(res, {
