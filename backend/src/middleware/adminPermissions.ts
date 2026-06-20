@@ -71,7 +71,11 @@ const ANY_ADMIN: string[] = ['__ANY_ADMIN__'];
  * Returns ANY_ADMIN for routes any admin can access (e.g. /me, /profile).
  * Returns null for paths that are NOT mapped — default deny.
  */
-function resolveRequiredPermissions(method: string, path: string): string[] | null {
+function resolveRequiredPermissions(
+  method: string,
+  path: string,
+  body?: Record<string, unknown>
+): string[] | null {
   const m = method.toUpperCase();
   const p = path.split('?')[0];
 
@@ -84,7 +88,20 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
     return ['orders.view', 'products.view', 'customers.view', 'settings.view', 'settings.update'];
   }
   if (p.startsWith('/orders')) {
-    return m === 'GET' ? ['orders.view'] : ['orders.update', 'orders.cancel', 'orders.assign_rider'];
+    if (m === 'GET') return ['orders.view'];
+    if (p === '/orders/bulk-status' || p.endsWith('/status')) {
+      if (body?.status === 'cancelled') return ['orders.cancel'];
+      if (body?.status === 'refunded') return ['orders.refund'];
+      return ['orders.update'];
+    }
+    if (p.endsWith('/assign-rider')) return ['orders.assign_rider'];
+    if (p.endsWith('/payment-received')) return ['orders.update'];
+    if (p.includes('/items/') && p.endsWith('/weight')) return ['orders.update'];
+    if (p.endsWith('/toggle-phone') || p.endsWith('/assign-ocp') || p.endsWith('/ocp-phone')) {
+      return ['orders.update'];
+    }
+    if (m === 'DELETE') return ['orders.cancel'];
+    return ['orders.update'];
   }
   if (p.startsWith('/products')) {
     if (m === 'GET') return ['products.view'];
@@ -97,7 +114,9 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
     return m === 'GET' ? ['products.view'] : ['products.update'];
   }
   if (p.startsWith('/categories')) return ['categories.manage'];
-  if (p.startsWith('/customers')) return ['customers.view'];
+  if (p.startsWith('/customers')) {
+    return m === 'GET' ? ['customers.view'] : ['customers.update'];
+  }
   if (p.startsWith('/riders')) {
     return m === 'GET' ? ['riders.view'] : ['riders.manage'];
   }
@@ -146,7 +165,7 @@ function resolveRequiredPermissions(method: string, path: string): string[] | nu
     if (p.includes('/settlements')) return ['ocp.settlements.receive', 'ocp.manage'];
     return ['ocp.manage'];
   }
-  if (p.startsWith('/addresses')) return ['addresses.view', 'addresses.update'];
+  if (p.startsWith('/addresses')) return m === 'GET' ? ['addresses.view'] : ['addresses.update'];
   if (p.startsWith('/cities')) {
     if (m === 'GET') return ANY_ADMIN; // city list needed by header switcher
     return ['settings.cities.manage', 'settings.update'];
@@ -227,7 +246,11 @@ export const enforceAdminPermissions = (
   const perms = req.adminPermissions ?? [];
   if (perms.includes('*')) return next();
 
-  const required = resolveRequiredPermissions(req.method, req.path);
+  const required = resolveRequiredPermissions(
+    req.method,
+    req.path,
+    req.body as Record<string, unknown> | undefined
+  );
 
   // Default deny for unmapped routes.
   if (required === null) {

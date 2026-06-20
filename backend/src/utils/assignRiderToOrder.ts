@@ -6,9 +6,10 @@
 // Throws Object.assign(Error, { http }) on validation failures.
 // ============================================================================
 
-import { query, withTransaction } from '../config/database';
+import { withTransaction } from '../config/database';
 import { emitOrderUpdate, emitToUser } from '../config/socket';
 import logger from './logger';
+import { isValidOrderTransition } from './orderStatus';
 
 export interface AssignRiderResult {
   order: any;
@@ -20,34 +21,42 @@ export async function assignRiderToOrder(
   riderId: string,
   assignedBy?: string
 ): Promise<AssignRiderResult> {
-  const riderResult = await query(
-    `SELECT r.id, r.status, u.full_name
-       FROM riders r
-       JOIN users u ON r.user_id = u.id
-      WHERE r.id = $1 AND r.verification_status = 'verified' AND r.deleted_at IS NULL`,
-    [riderId]
-  );
-  if (riderResult.rows.length === 0) {
-    throw Object.assign(new Error('Rider not found or not verified'), { http: 404 });
-  }
-  const rider = riderResult.rows[0];
-  if (rider.status === 'offline' || rider.status === 'on_leave') {
-    throw Object.assign(new Error(`Rider is ${rider.status}. Cannot assign orders.`), { http: 400 });
-  }
+  const assignment = await withTransaction(async (client) => {
+    const riderResult = await client.query(
+      `SELECT r.id, r.user_id, r.status, r.city_id, u.full_name
+         FROM riders r
+         JOIN users u ON r.user_id = u.id
+        WHERE r.id = $1 AND r.verification_status = 'verified' AND r.deleted_at IS NULL
+        FOR UPDATE OF r`,
+      [riderId]
+    );
+    if (riderResult.rows.length === 0) {
+      throw Object.assign(new Error('Rider not found or not verified'), { http: 404 });
+    }
+    const rider = riderResult.rows[0];
+    if (rider.status === 'offline' || rider.status === 'on_leave') {
+      throw Object.assign(new Error(`Rider is ${rider.status}. Cannot assign orders.`), { http: 400 });
+    }
 
-  const updated = await withTransaction(async (client) => {
     const orderCheck = await client.query(
-      'SELECT time_slot_id, status FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      'SELECT time_slot_id, status, city_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
       [orderId]
     );
     if (orderCheck.rows.length === 0) {
       throw Object.assign(new Error('Order not found'), { http: 404 });
     }
-    if (['delivered', 'cancelled', 'refunded'].includes(orderCheck.rows[0].status)) {
+    const order = orderCheck.rows[0];
+    if (['delivered', 'cancelled', 'refunded'].includes(order.status)) {
       throw Object.assign(new Error('Cannot assign rider to a completed or cancelled order'), { http: 400 });
     }
+    if (rider.city_id && order.city_id && rider.city_id !== order.city_id) {
+      throw Object.assign(new Error('Rider belongs to a different service city'), { http: 400 });
+    }
+    if (order.status !== 'out_for_delivery' && !isValidOrderTransition(order.status, 'out_for_delivery')) {
+      throw Object.assign(new Error('Order must be ready for pickup before assigning a rider'), { http: 400 });
+    }
 
-    const timeSlotId = orderCheck.rows[0].time_slot_id;
+    const timeSlotId = order.time_slot_id;
     let riderCharge = 0;
     if (timeSlotId) {
       const chargeResult = await client.query(
@@ -82,10 +91,11 @@ export async function assignRiderToOrder(
        VALUES ($1, 'delivery', $2, 'assigned', NOW())`,
       [riderId, orderId]
     );
-    return upd.rows[0];
+    return { order: upd.rows[0], rider };
   });
 
-  if (!updated) throw Object.assign(new Error('Order not found'), { http: 404 });
+  if (!assignment?.order) throw Object.assign(new Error('Order not found'), { http: 404 });
+  const { order: updated, rider } = assignment;
 
   logger.info('Rider assigned to order', { orderId, riderId, assignedBy });
 
@@ -105,9 +115,8 @@ export async function assignRiderToOrder(
       message: `Rider ${rider.full_name} is on the way with your order #${updated.order_number}!`,
     });
   }
-  const riderUserResult = await query('SELECT user_id FROM riders WHERE id = $1', [riderId]);
-  if (riderUserResult.rows.length > 0) {
-    emitToUser(riderUserResult.rows[0].user_id, 'rider:new_assignment', {
+  if (rider.user_id) {
+    emitToUser(rider.user_id, 'rider:new_assignment', {
       orderId,
       orderNumber: updated.order_number,
       message: `New delivery assignment: Order #${updated.order_number}`,

@@ -3,6 +3,7 @@ import { ProductUnit, ProductQuality, StoreCartItem, StoreProduct } from '@app-t
 import { STORAGE_KEYS } from '@utils/constants';
 import { getStoredToken } from '@/lib/secureTokens';
 import { withCityParams } from '@/lib/apiHelpers';
+import { getSelectedCityId } from '@/lib/cityStorage';
 import apiClient, { handleApiError } from './api';
 import { ApiResponse } from '@app-types';
 
@@ -120,7 +121,9 @@ class CartService {
     try {
       // Atomic replace in ONE request — the old clear + per-item POST loop
       // was slow and could leave a half-synced server cart on failure.
+      const cityId = await getSelectedCityId();
       await apiClient.post('/cart/sync', {
+        ...(cityId ? { city_id: cityId } : {}),
         items: cart.map((item) => ({
           product_id: item.product.id,
           quantity: item.quantity,

@@ -71,7 +71,7 @@ export async function resolveCityScope(req: Request): Promise<CityScope> {
       [cityId]
     );
     if (!row.rows[0]) {
-      return { cityId: null, cityName: null, unrestricted: true, dbReady };
+      throw new ForbiddenError('Selected city is not valid');
     }
     return {
       cityId: row.rows[0].id,

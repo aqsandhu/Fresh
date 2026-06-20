@@ -18,13 +18,13 @@ const router = Router();
 router.get('/time-slots', orderController.getTimeSlots);
 
 router.get('/track/public/:orderNumber', orderController.trackOrderPublic);
-router.get('/track/:id', authenticate, orderController.trackOrder);
+router.get('/track/:id', authenticate, verifyUserActive, orderController.trackOrder);
 
 // Protected routes
 router.use(authenticate);
 
-router.get('/', validate(orderSchemas.list, 'query'), orderController.getOrders);
-router.get('/:id', orderController.getOrderById);
+router.get('/', verifyUserActive, validate(orderSchemas.list, 'query'), orderController.getOrders);
+router.get('/:id', verifyUserActive, orderController.getOrderById);
 router.post(
   '/',
   verifyUserActive,
@@ -32,6 +32,6 @@ router.post(
   validate(orderSchemas.create),
   orderController.createOrder
 );
-router.put('/:id/cancel', orderController.cancelOrder);
+router.put('/:id/cancel', verifyUserActive, orderController.cancelOrder);
 
 export default router;

@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
-import { query } from '../../config/database';
+import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import {
   successResponse,
@@ -13,9 +13,10 @@ import {
 } from '../../utils/response';
 import { resolveCityScope, cityIdClause, cityRowInScope, orderInScope } from '../../utils/cityScope';
 import { emitToAdmins } from '../../config/socket';
-import { isValidOrderTransition, ORDER_STATUS_TIMESTAMPS } from '../../utils/orderStatus';
+import { isValidOrderTransition, ORDER_STATUS_TIMESTAMPS, restoreOrderInventory } from '../../utils/orderStatus';
 import { upsertGlobalSiteSetting } from '../../utils/siteSettings';
 import { placeRestaurantOrder } from '../../utils/restaurantOrders';
+import { commitOrderSaleOnDelivery } from '../../utils/systemStock';
 import logger from '../../utils/logger';
 
 const RESTAURANT_PUBLIC_COLUMNS = `
@@ -257,38 +258,71 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
 
   if (!(await orderInScope(scope, id))) return notFoundResponse(res, 'Order not found');
 
-  const cur = await query(
-    `SELECT status, restaurant_id FROM orders WHERE id = $1 AND restaurant_id IS NOT NULL AND deleted_at IS NULL`,
-    [id]
-  );
-  if (cur.rows.length === 0) return notFoundResponse(res, 'Restaurant order not found');
+  let updated: any;
+  try {
+    updated = await withTransaction(async (client) => {
+      const cur = await client.query(
+        `SELECT id, status, time_slot_id, restaurant_id
+           FROM orders
+          WHERE id = $1 AND restaurant_id IS NOT NULL AND deleted_at IS NULL
+          FOR UPDATE`,
+        [id]
+      );
+      if (cur.rows.length === 0) {
+        throw Object.assign(new Error('Restaurant order not found'), { http: 404 });
+      }
 
-  const sets: string[] = ['updated_at = NOW()'];
-  const params: any[] = [];
+      const current = cur.rows[0];
+      const sets: string[] = ['updated_at = NOW()'];
+      const params: any[] = [];
 
-  if (status) {
-    if (!isValidOrderTransition(cur.rows[0].status, status)) {
-      return errorResponse(res, `Cannot change status from ${cur.rows[0].status} to ${status}`, 400);
-    }
-    params.push(status);
-    sets.push(`status = $${params.length}`);
-    const tsCol = ORDER_STATUS_TIMESTAMPS[status as keyof typeof ORDER_STATUS_TIMESTAMPS];
-    if (tsCol) sets.push(`${tsCol} = NOW()`);
+      if (status) {
+        if (!isValidOrderTransition(current.status, status)) {
+          throw Object.assign(
+            new Error(`Cannot change status from ${current.status} to ${status}`),
+            { http: 400 }
+          );
+        }
+        params.push(status);
+        sets.push(`status = $${params.length}`);
+        const tsCol = ORDER_STATUS_TIMESTAMPS[status as keyof typeof ORDER_STATUS_TIMESTAMPS];
+        if (tsCol) sets.push(`${tsCol} = NOW()`);
+      }
+      if (rider_id !== undefined) {
+        params.push(rider_id || null);
+        sets.push(`rider_id = $${params.length}`);
+      }
+      if (params.length === 0) {
+        throw Object.assign(new Error('Nothing to update'), { http: 400 });
+      }
+
+      params.push(id);
+      const result = await client.query(
+        `UPDATE orders SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id, status, rider_id`,
+        params
+      );
+
+      if (status === 'cancelled' && current.status !== 'cancelled') {
+        await restoreOrderInventory(client, current);
+      }
+      if (status === 'delivered' && current.status !== 'delivered') {
+        await commitOrderSaleOnDelivery(client, id);
+      }
+
+      return result.rows[0];
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 400) return errorResponse(res, err.message, 400);
+    throw err;
   }
-  if (rider_id !== undefined) {
-    params.push(rider_id || null);
-    sets.push(`rider_id = $${params.length}`);
-  }
-  if (params.length === 0) return errorResponse(res, 'Nothing to update', 400);
 
-  params.push(id);
-  const result = await query(
-    `UPDATE orders SET ${sets.join(', ')} WHERE id = $${params.length} RETURNING id, status, rider_id`,
-    params
-  );
+  if (!updated) {
+    return notFoundResponse(res, 'Restaurant order not found');
+  }
 
   logger.info('Restaurant order updated', { orderId: id, by: req.user?.id, status, rider_id });
-  return successResponse(res, result.rows[0], 'Order updated');
+  return successResponse(res, updated, 'Order updated');
 });
 
 /** GET /api/admin/restaurants/dashboard — restaurant order stats, city-scoped. */

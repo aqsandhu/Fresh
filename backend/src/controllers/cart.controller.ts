@@ -106,7 +106,7 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'Authentication required', 401);
   }
 
-  const { product_id, quantity, special_instructions } = req.body;
+  const { product_id, quantity, special_instructions, city_id } = req.body;
   // `unit` selects which fraction of the product the customer is buying:
   // 'full' | 'half_kg' | 'quarter_kg' | 'half_dozen'. Old clients omit it
   // and fall back to 'full'.
@@ -146,16 +146,16 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     // client to send the price).
     const productResult = await client.query(
       `SELECT id, price, half_kg_price, quarter_kg_price, half_dozen_price,
-              stock_quantity, stock_status, unit_value, unit_type
+              stock_quantity, stock_status, unit_value, unit_type, city_id
               ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
               ${catalogV2Ready ? CATALOG_V2_CART_COLS : ''}
          FROM products
-        WHERE id = $1 AND is_active = TRUE`,
-      [product_id]
+        WHERE id = $1 AND is_active = TRUE AND city_id = $2`,
+      [product_id, city_id]
     );
 
     if (productResult.rows.length === 0) {
-      throw new NotFoundError('Product not found or inactive');
+      throw new NotFoundError('Product not found or inactive in the selected city');
     }
 
     const product = productResult.rows[0];
@@ -237,6 +237,7 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'Authentication required', 401);
   }
 
+  const { city_id } = req.body as { city_id: string };
   const items = req.body.items as Array<{
     product_id: string;
     quantity: number;
@@ -277,16 +278,16 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
 
       const productResult = await client.query(
         `SELECT id, name_en, price, half_kg_price, quarter_kg_price, half_dozen_price,
-                stock_quantity, stock_status
+                stock_quantity, stock_status, city_id
                 ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
                 ${catalogV2Ready ? CATALOG_V2_CART_COLS : ''}
            FROM products
-          WHERE id = $1 AND is_active = TRUE`,
-        [item.product_id]
+          WHERE id = $1 AND is_active = TRUE AND city_id = $2`,
+        [item.product_id, city_id]
       );
 
       if (productResult.rows.length === 0) {
-        throw new NotFoundError(`Product not found or inactive: ${item.product_id}`);
+        throw new NotFoundError(`Product not found or inactive in the selected city: ${item.product_id}`);
       }
 
       const product = productResult.rows[0];
@@ -373,12 +374,12 @@ export const updateCartItem = asyncHandler(async (req: Request, res: Response) =
               stock_quantity, stock_status, unit_value, unit_type
               ${qualityReady ? QUALITY_PRODUCT_COLS : ''}
               ${catalogV2Ready ? CATALOG_V2_CART_COLS : ''}
-       FROM products WHERE id = $1`,
+        FROM products WHERE id = $1 AND is_active = TRUE`,
       [item.product_id]
     );
 
     if (productResult.rows.length === 0) {
-      throw new NotFoundError('Product not found');
+      throw new NotFoundError('Product not found or inactive');
     }
 
     const product = productResult.rows[0];

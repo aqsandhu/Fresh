@@ -54,17 +54,11 @@ function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } 
     return { rejectUnauthorized: true };
   }
 
-  // Default: encrypted but UNVERIFIED. Self-signed provider chains (Supabase /
-  // Render) reject system-CA verification and would crash every query, so we
-  // stay compatible by default and only warn in production. Pin DB_SSL_CA (and
-  // unset DB_SSL_REJECT_UNAUTHORIZED) to close the MITM window where the CA
-  // actually matches the presented chain.
+  // Production defaults to verified TLS. Local/test keeps the previous
+  // unverified fallback for self-signed development databases; production
+  // deployments that truly need that must opt out explicitly above.
   if (process.env.NODE_ENV === 'production') {
-    logger.warn(
-      'DB TLS certificate verification is DISABLED (rejectUnauthorized: false). ' +
-        'Set DB_SSL_CA (provider CA cert — Supabase: Settings → Database → SSL Certificate) ' +
-        'to verify the connection and close the MITM window.'
-    );
+    return { rejectUnauthorized: true };
   }
   return { rejectUnauthorized: false };
 }

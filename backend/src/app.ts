@@ -287,24 +287,24 @@ const startServer = async () => {
     initializeSocket(httpServer);
     logger.info('Socket.IO initialized');
 
-    // Start HTTP server FIRST so cold starts begin answering requests
-    // immediately. The schema migrations, admin bootstrap and storage-bucket
-    // check are all idempotent and feature-gated (controllers probe before
-    // using a new column), so they run in the background instead of delaying
-    // the server from listening — this shaves seconds off every cold boot.
+    // Prepare the listener, then run startup tasks first when the DB is ready.
+    // This keeps write routes from accepting traffic against a half-migrated
+    // schema while preserving degraded startup when the DB is unavailable.
     logOtpBypassWarningIfEnabled();
-    httpServer.listen(PORT, () => {
-      logger.info(`=================================`);
-      logger.info(`Fresh Bazar API running on port ${PORT}`);
-      logger.info(`Environment: ${NODE_ENV}`);
-      logger.info(`API URL: http://localhost:${PORT}${API_PREFIX}`);
-      logger.info(`Health Check: http://localhost:${PORT}/health`);
-      logger.info(`API Docs: http://localhost:${PORT}/api/docs`);
-      logger.info(`WebSocket: ws://localhost:${PORT}`);
-      logger.info(`=================================`);
-    });
+    const listen = () => {
+      httpServer.listen(PORT, () => {
+        logger.info(`=================================`);
+        logger.info(`Fresh Bazar API running on port ${PORT}`);
+        logger.info(`Environment: ${NODE_ENV}`);
+        logger.info(`API URL: http://localhost:${PORT}${API_PREFIX}`);
+        logger.info(`Health Check: http://localhost:${PORT}/health`);
+        logger.info(`API Docs: http://localhost:${PORT}/api/docs`);
+        logger.info(`WebSocket: ws://localhost:${PORT}`);
+        logger.info(`=================================`);
+      });
+    };
 
-    // Idempotent startup tasks — run in the background, never block listen().
+    // Idempotent startup tasks.
     const runStartupTasks = async () => {
       try {
         await ensureDatabaseExtensions();
@@ -344,8 +344,10 @@ const startServer = async () => {
     };
 
     if (dbConnected) {
-      void runStartupTasks();
+      await runStartupTasks();
+      listen();
     } else {
+      listen();
       // DB wasn't ready — keep retrying, then run the startup tasks once it is.
       const retryDb = async () => {
         const connected = await testConnection(1, 0);
