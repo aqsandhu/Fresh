@@ -13,6 +13,9 @@ export function hideConsumerChrome(pathname: string | null | undefined): boolean
     pathname.startsWith('/restaurant/checkout') ||
     // OCP operator portal (incl. its login) is a standalone panel — no consumer chrome.
     pathname === '/ocp' ||
-    pathname.startsWith('/ocp/')
+    pathname.startsWith('/ocp/') ||
+    // Shareholder portal — standalone panel, no consumer chrome.
+    pathname === '/shareholder' ||
+    pathname.startsWith('/shareholder/')
   )
 }

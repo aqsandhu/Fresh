@@ -31,7 +31,9 @@ export default function FloatingCityButton() {
     // A restaurant is bound to ONE city — never offer city switching in its storefront.
     pathname.startsWith('/restaurant') ||
     // OCP operator portal is bound to its own city — no consumer city switching.
-    pathname.startsWith('/ocp')
+    pathname.startsWith('/ocp') ||
+    // Shareholder portal — no consumer city switching.
+    pathname.startsWith('/shareholder')
 
   if (hideOnPaths || !selectedCity) {
     return null
