@@ -9,6 +9,7 @@ import { roundMoney } from './money';
 import { hasUrgentDeliveryColumns } from '../config/orderSchema';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
+import { hasTimeSlotBookings } from '../config/timeSlotSchema';
 import { reserveProductStock } from './systemStock';
 import {
   normalizeProductUnit,
@@ -200,6 +201,7 @@ export async function placeRestaurantOrder(
     // ── Delivery: urgent (flat fee, no slot) | slot (required) | legacy flat ──
     let deliveryCharge: number;
     let effectiveSlotId: string | null = null;
+    let slotMaxOrders: number | null = null;
     let urgentEta = '';
     if (opts.isUrgent) {
       if (delivery.urgentCharge <= 0) {
@@ -209,13 +211,14 @@ export async function placeRestaurantOrder(
       urgentEta = delivery.urgentEta;
     } else if (opts.timeSlotId) {
       const slot = await client.query(
-        `SELECT id, is_free_delivery_slot FROM time_slots
+        `SELECT id, is_free_delivery_slot, max_orders FROM time_slots
           WHERE id = $1 AND audience = 'restaurant' AND status = 'available'`,
         [opts.timeSlotId]
       );
       if (slot.rows.length === 0) {
         throw new RestaurantOrderError('Selected time slot is not available. Please pick another.');
       }
+      slotMaxOrders = slot.rows[0].max_orders === null ? null : Number(slot.rows[0].max_orders);
       effectiveSlotId = opts.timeSlotId;
       deliveryCharge = slot.rows[0].is_free_delivery_slot === true
         ? 0
@@ -264,17 +267,25 @@ export async function placeRestaurantOrder(
       order.urgent_delivery_eta = urgentEta || null;
     }
 
-    // Atomically claim the slot seat — prevents overbooking under races.
+    // Atomically claim a per-(slot, date) seat — prevents overbooking under
+    // races, and (unlike the old global counter) keeps capacity correct per day.
     if (effectiveSlotId) {
-      const claim = await client.query(
-        `UPDATE time_slots SET booked_orders = booked_orders + 1
-          WHERE id = $1 AND (max_orders IS NULL OR booked_orders < max_orders)
-          RETURNING id`,
-        [effectiveSlotId]
-      );
-      if (claim.rowCount === 0) {
-        throw new RestaurantOrderError('Selected time slot is fully booked. Please pick another.');
+      if (await hasTimeSlotBookings()) {
+        const claim = await client.query(
+          `INSERT INTO time_slot_bookings (time_slot_id, delivery_date, booked_count)
+           VALUES ($1, COALESCE($2::date, CURRENT_DATE), 1)
+           ON CONFLICT (time_slot_id, delivery_date)
+           DO UPDATE SET booked_count = time_slot_bookings.booked_count + 1, updated_at = NOW()
+             WHERE $3::int IS NULL OR time_slot_bookings.booked_count < $3
+           RETURNING booked_count`,
+          [effectiveSlotId, reqDate, slotMaxOrders]
+        );
+        if (claim.rowCount === 0) {
+          throw new RestaurantOrderError('Selected time slot is fully booked. Please pick another.');
+        }
       }
+      // Keep the legacy global counter in step for existing displays.
+      await client.query(`UPDATE time_slots SET booked_orders = booked_orders + 1 WHERE id = $1`, [effectiveSlotId]);
     }
 
     for (const l of lines) {

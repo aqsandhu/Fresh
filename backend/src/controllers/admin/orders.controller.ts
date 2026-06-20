@@ -35,6 +35,8 @@ import {
 import { normalizePhoneNumber } from '../../utils/validators';
 import { hasVariableWeightColumns, hasQualityCatalogColumns } from '../../config/productSchema';
 import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
+import { ensureTimeSlotBookings } from '../../config/timeSlotSchema';
+import { validateAndClaimTimeSlot } from '../../utils/timeSlots';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
 import { hasUrgentDeliveryColumns, hasRestaurantOrderColumns } from '../../config/orderSchema';
 import { hasOcpTables } from '../../config/ocpSchema';
@@ -135,6 +137,7 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
   const ordersSql = `
     SELECT
       o.id, o.order_number, o.status, o.source,
+      (o.status = 'pending') AS is_unread,
       ${urgentCol}
       ${ocpCol}
       o.subtotal, o.discount_amount, o.delivery_charge, o.tax_amount, o.total_amount,
@@ -731,6 +734,8 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
   const hasCoords = Number.isFinite(latNum) && Number.isFinite(lngNum);
   const doorPic = typeof door_picture_url === 'string' && door_picture_url.trim() ? door_picture_url.trim() : null;
 
+  await ensureTimeSlotBookings();
+
   let order: any;
   try {
     order = await withTransaction(async (client) => {
@@ -989,6 +994,15 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
       if (catalogV2Ready) {
         await client.query(`UPDATE orders SET stock_reserved = TRUE WHERE id = $1`, [o.id]);
       }
+
+      // Count this manual order against the slot's per-date capacity (trusted:
+      // admins aren't blocked by the cutoff/cap but the seat is still counted).
+      await validateAndClaimTimeSlot(client, {
+        slotId: effectiveSlotId,
+        deliveryDate: isUrgent ? null : (requested_delivery_date || null),
+        isUrgent,
+        trusted: true,
+      });
 
       return o;
     });

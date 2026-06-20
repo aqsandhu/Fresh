@@ -45,6 +45,7 @@ import { ensureRiderApplicationsTable } from './config/riderApplicationSchema';
 import { ensureRestaurantsTable, ensureRestaurantPhoneUnique, ensureRestaurantDeliveryColumns } from './config/restaurantSchema';
 import { ensureOcpTables } from './config/ocpSchema';
 import { ensureCatalogV2Columns } from './config/catalogV2Schema';
+import { ensureTimeSlotBookings } from './config/timeSlotSchema';
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -331,6 +332,7 @@ const startServer = async () => {
         await ensureRestaurantOrderColumns();
         await ensureOrderStatusNotificationTrigger();
         await ensureOcpTables();
+        await ensureTimeSlotBookings();
         const catalogV2Ready = await ensureCatalogV2Columns();
         if (!catalogV2Ready) {
           throw new Error('catalog-v2 columns are required but could not be ensured');

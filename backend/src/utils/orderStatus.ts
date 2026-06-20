@@ -15,6 +15,7 @@ import { stockUnitsNeeded, qualityStockColumn } from './unitPricing';
 import { hasQualityCatalogColumns } from '../config/productSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { releaseProductReservation } from './systemStock';
+import { releaseTimeSlot } from './timeSlots';
 
 /**
  * Allowed forward transitions. Anything not in this map is rejected so no
@@ -59,13 +60,21 @@ export const ORDER_STATUS_TIMESTAMPS: Record<string, string> = {
  */
 export async function restoreOrderInventory(
   client: PoolClient,
-  order: { id: string; time_slot_id?: string | null; stock_reserved?: boolean }
+  order: { id: string; time_slot_id?: string | null; stock_reserved?: boolean; requested_delivery_date?: string | Date | null }
 ): Promise<void> {
   if (order.time_slot_id) {
+    // Release both the legacy global counter and the per-(slot, date) seat.
     await client.query(
       'UPDATE time_slots SET booked_orders = GREATEST(0, booked_orders - 1) WHERE id = $1',
       [order.time_slot_id]
     );
+    let deliveryDate = order.requested_delivery_date ?? null;
+    if (deliveryDate === undefined) deliveryDate = null;
+    if (deliveryDate === null) {
+      const d = await client.query('SELECT requested_delivery_date FROM orders WHERE id = $1', [order.id]);
+      deliveryDate = d.rows[0]?.requested_delivery_date ?? null;
+    }
+    await releaseTimeSlot(client, { slotId: order.time_slot_id, deliveryDate });
   }
 
   const qualityReady = await hasQualityCatalogColumns();
