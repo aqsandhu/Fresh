@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Plus, Send, Undo2, Trash2, Repeat, ArrowLeftRight, History } from 'lucide-react';
+import { Search, Loader2, Send, Undo2, Trash2, Repeat, ArrowLeftRight, History } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -10,7 +10,9 @@ import toast from 'react-hot-toast';
 
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString('en-PK');
 
-type Action = 'add' | 'waste' | 'convert' | 'shift' | 'return' | 'transfer';
+// Stock is only ever ADDED through Expenses → Stock Purchasing (with grading).
+// Here the admin only MANAGES existing stock (move/convert/waste).
+type Action = 'waste' | 'convert' | 'shift' | 'return' | 'transfer';
 
 interface ActionCtx { action: Action; product: StockProduct; quality: Quality }
 
@@ -111,7 +113,6 @@ function QualityRow({ p, q, onAction }: { p: StockProduct; q: StockQuality; onAc
       </td>
       <td className="py-2 pl-2">
         <div className="flex flex-wrap gap-1 justify-end">
-          <IconBtn title="Add stock" onClick={() => onAction('add')}><Plus className="w-3.5 h-3.5" /></IconBtn>
           <IconBtn title="Send to OCP" onClick={() => onAction('shift')}><Send className="w-3.5 h-3.5" /></IconBtn>
           <IconBtn title="Return from OCP" onClick={() => onAction('return')}><Undo2 className="w-3.5 h-3.5" /></IconBtn>
           <IconBtn title="Transfer OCP→OCP" onClick={() => onAction('transfer')}><ArrowLeftRight className="w-3.5 h-3.5" /></IconBtn>
@@ -133,7 +134,6 @@ function IconBtn({ children, title, onClick, danger }: { children: React.ReactNo
 }
 
 const ACTION_META: Record<Action, { title: string; verb: string }> = {
-  add: { title: 'Add stock (intake)', verb: 'Add' },
   waste: { title: 'Waste stock', verb: 'Waste' },
   convert: { title: 'Convert quality', verb: 'Convert' },
   shift: { title: 'Send stock to an OCP', verb: 'Send' },
@@ -147,6 +147,7 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
   const [ocpId, setOcpId] = useState('');
   const [toOcpId, setToOcpId] = useState('');
   const [toQuality, setToQuality] = useState<Quality>(quality === 'A' ? 'B' : 'A');
+  const [reason, setReason] = useState('');
   const meta = ACTION_META[action];
 
   const mut = useMutation({
@@ -154,8 +155,7 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
       const quantity = parseFloat(qty) || 0;
       const base = { productId: product.id, quality, quantity };
       switch (action) {
-        case 'add': return stockService.add(base);
-        case 'waste': return stockService.waste(base);
+        case 'waste': return stockService.waste({ ...base, note: reason.trim() });
         case 'convert': return stockService.convert({ productId: product.id, fromQuality: quality, toQuality, quantity });
         case 'shift': return stockService.shift({ ...base, ocpId });
         case 'return': return stockService.returnFromOcp({ ...base, ocpId });
@@ -172,7 +172,8 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
     parseFloat(qty) > 0 &&
     (!needsOcp || ocpId) &&
     (!needsToOcp || (toOcpId && toOcpId !== ocpId)) &&
-    (action !== 'convert' || toQuality !== quality);
+    (action !== 'convert' || toQuality !== quality) &&
+    (action !== 'waste' || reason.trim().length > 0);
 
   return (
     <Modal isOpen onClose={onClose} title={`${meta.title} — ${product.name} (Q${quality})`}
@@ -214,9 +215,16 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
           <input type="number" min={0} step="0.001" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
         </div>
+        {action === 'waste' && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300}
+              placeholder="Why is this stock being wasted? (e.g. spoiled, damaged)"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          </div>
+        )}
         <p className="text-xs text-gray-400">
-          {action === 'add' && 'Adds to the city system total (and central). Recorded in the ledger.'}
-          {action === 'waste' && 'Removes from the city total. Only central, unreserved stock can be wasted.'}
+          {action === 'waste' && 'Removes from the city total. Only central, unreserved stock can be wasted. A reason is required.'}
           {action === 'convert' && 'Moves quantity from one quality bucket to another (central only).'}
           {action === 'shift' && 'Moves stock to the OCP. City total is unchanged (it just relocates).'}
           {action === 'return' && 'Brings stock back from the OCP to central. City total unchanged.'}

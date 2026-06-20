@@ -185,6 +185,9 @@ export const wasteStock = asyncHandler(async (req: Request, res: Response) => {
   const quality = normalizeQuality(req.body.quality);
   const qty = num(req.body.quantity);
   if (!product_id || !(qty > 0)) return errorResponse(res, 'Enter a valid quantity.', 400);
+  // A reason is mandatory for an audit-clean waste trail.
+  const reason = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+  if (!reason) return errorResponse(res, 'A reason is required to waste stock.', 400);
   const scope = await resolveCityScope(req);
 
   try {
@@ -198,7 +201,7 @@ export const wasteStock = asyncHandler(async (req: Request, res: Response) => {
       await client.query(`UPDATE products SET ${stockCol} = ${stockCol} - $1, updated_at = NOW() WHERE id = $2`, [qty, product_id]);
       await recordStockMovement(client, {
         productId: product_id, quality, cityId: p.city_id, delta: -qty, reason: 'waste',
-        createdBy: req.user?.id ?? null, note: req.body.note || 'wasted',
+        createdBy: req.user?.id ?? null, note: reason,
       });
     });
   } catch (err: any) {
