@@ -12,6 +12,9 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
     ...ALL_SETTINGS_VIEW_CODES,
   ],
   '/admin/orders': ['orders.view'],
+  // Catalog = Products + Categories tabs; Management = pricing/stock/finance tabs.
+  '/admin/catalog': ['products.view', 'categories.manage'],
+  '/admin/management': ['products.view', 'products.update'],
   '/admin/products': ['products.view'],
   '/admin/price-manager': ['products.update'],
   '/admin/stock': ['products.update', 'products.view'],

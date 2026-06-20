@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 
@@ -10,6 +10,13 @@ interface LayoutProps {
   onSearch?: (query: string) => void;
 }
 
+/**
+ * When a page is rendered as a TAB inside a wrapper page (Catalog / Management),
+ * its own <Layout> must NOT render the sidebar/header again. The wrapper sets
+ * this context to true so the nested <Layout> renders only its content.
+ */
+export const LayoutNestedContext = React.createContext(false);
+
 export const Layout: React.FC<LayoutProps> = ({
   children,
   title,
@@ -18,8 +25,12 @@ export const Layout: React.FC<LayoutProps> = ({
   onSearch,
 }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const nested = useContext(LayoutNestedContext);
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+  // Rendered inside another Layout (a tab) — skip the chrome, keep the content.
+  if (nested) return <>{children}</>;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">

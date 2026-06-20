@@ -166,9 +166,17 @@ const QualityPriceBlock: React.FC<{
                 value={numVal(f.base)} onChange={onNum(f.base)} error={priceError}
                 required={quality === 'A'} />
               {fractionInputs(f.base, f.half, f.quarter, f.halfDozen)}
-              <Input label={`Quality ${quality} stock`} type="number" min={0}
-                value={numVal(f.stock)} onChange={onNum(f.stock)} helperText="Shared with restaurants" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Quality {quality} stock</label>
+                <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700">
+                  {Number(fd[f.stock]) || 0} {fd.unitType}
+                  <span className="ml-1 text-xs text-gray-400">(read-only · managed in Management)</span>
+                </div>
+              </div>
             </div>
+            {(Number(fd[f.stock]) || 0) <= 0 && (
+              <p className="text-xs text-red-600">No stock for Quality {quality} yet — add it via Management → Expenses (Stock purchase) before it can sell.</p>
+            )}
             {baseNum > 0 && <p className="text-xs text-gray-400">A blank ½/¼ price auto-charges 50% / 25% of the per-unit price.</p>}
           </div>
 
@@ -533,9 +541,16 @@ export const Products: React.FC = () => {
       errors.nameUr = 'Product name must be at least 2 characters';
     }
 
-    // Price - Must be positive
+    // Quality A price — must be greater than 0.
     if (!isPositiveNumber(formData.price)) {
       errors.price = 'Price must be greater than 0';
+    }
+    // Quality B / C — if the tier is offered, its price must be greater than 0.
+    if (formData.priceB != null && !isPositiveNumber(formData.priceB)) {
+      errors.priceB = 'Quality B price must be greater than 0 (or remove the tier)';
+    }
+    if (formData.priceC != null && !isPositiveNumber(formData.priceC)) {
+      errors.priceC = 'Quality C price must be greater than 0 (or remove the tier)';
     }
 
     // Compare At Price - If provided, must be non-negative and greater than price
@@ -546,11 +561,7 @@ export const Products: React.FC = () => {
         errors.compareAtPrice = 'Compare at price should be higher than regular price';
       }
     }
-
-    // Stock Quantity - Must be non-negative
-    if (!isNonNegativeNumber(formData.stockQuantity)) {
-      errors.stockQuantity = 'Stock quantity must be 0 or greater';
-    }
+    // Stock is NOT set here — it is managed via Management → Expenses/Stock.
 
     // Category - Required
     if (!isRequired(formData.categoryId)) {
@@ -589,6 +600,12 @@ export const Products: React.FC = () => {
         ? {}
         : { restaurantEnabledA: false, restaurantEnabledB: false, restaurantEnabledC: false }),
     };
+    // Stock is NEVER added/updated from the product form — it only comes from
+    // Management → Expenses (stock purchase) / Stock. Drop the stock fields so a
+    // create starts at 0 and an update leaves existing stock untouched.
+    delete (submitData as Partial<CreateProductData>).stockQuantity;
+    delete (submitData as Partial<CreateProductData>).stockQuantityB;
+    delete (submitData as Partial<CreateProductData>).stockQuantityC;
     if (selectedImages.length > 0) {
       submitData.images = selectedImages;
     }
@@ -997,7 +1014,7 @@ export const Products: React.FC = () => {
                 fd={formData}
                 setFd={setFormData}
                 restaurantAllowed={selectedCategoryAllowsRestaurants}
-                priceError={q === 'A' ? formErrors.price : undefined}
+                priceError={q === 'A' ? formErrors.price : q === 'B' ? formErrors.priceB : formErrors.priceC}
               />
             ))}
           </div>
