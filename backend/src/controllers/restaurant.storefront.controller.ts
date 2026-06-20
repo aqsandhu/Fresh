@@ -12,6 +12,7 @@ import { hasQualityCatalogColumns } from '../config/productSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasRestaurantOrderColumns } from '../config/orderSchema';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
+import { hasTimeSlotBookings } from '../config/timeSlotSchema';
 import { emitToAdmins } from '../config/socket';
 import { placeRestaurantOrder, getRestaurantDelivery } from '../utils/restaurantOrders';
 import logger from '../utils/logger';
@@ -127,17 +128,28 @@ export const updateRestaurantFrontImage = asyncHandler(async (req: Request, res:
 export const getRestaurantTimeSlots = asyncHandler(async (req: Request, res: Response) => {
   if (!(await hasRestaurantDeliveryColumns())) return successResponse(res, [], 'Time slots');
   const dateStr = typeof req.query.date === 'string' ? req.query.date : '';
-  const target = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? new Date(`${dateStr}T00:00:00`) : new Date();
+  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+  const target = validDate ? new Date(`${dateStr}T00:00:00`) : new Date();
   const dayOfWeek = Number.isNaN(target.getTime()) ? new Date().getDay() : target.getDay();
+
+  // Availability is per (slot, date) once the counter table exists; otherwise
+  // fall back to the legacy global counter.
+  const perDate = await hasTimeSlotBookings();
+  const bookedExpr = perDate ? 'COALESCE(tsb.booked_count, 0)' : 'ts.booked_orders';
+  const join = perDate
+    ? `LEFT JOIN time_slot_bookings tsb ON tsb.time_slot_id = ts.id AND tsb.delivery_date = COALESCE($2::date, CURRENT_DATE)`
+    : '';
+  const params: unknown[] = perDate ? [dayOfWeek, validDate ? dateStr : null] : [dayOfWeek];
   const result = await query(
-    `SELECT id, slot_name, start_time, end_time,
-            is_free_delivery_slot, is_express_slot,
-            (max_orders - booked_orders) AS available_slots
-       FROM time_slots
-      WHERE status = 'available' AND audience = 'restaurant'
-        AND (applicable_days IS NULL OR $1 = ANY(applicable_days))
-      ORDER BY start_time ASC`,
-    [dayOfWeek]
+    `SELECT ts.id, ts.slot_name, ts.start_time, ts.end_time,
+            ts.is_free_delivery_slot, ts.is_express_slot,
+            GREATEST(0, ts.max_orders - ${bookedExpr}) AS available_slots
+       FROM time_slots ts
+       ${join}
+      WHERE ts.status = 'available' AND ts.audience = 'restaurant'
+        AND (ts.applicable_days IS NULL OR $1 = ANY(ts.applicable_days))
+      ORDER BY ts.start_time ASC`,
+    params
   );
   return successResponse(res, result.rows, 'Time slots');
 });
