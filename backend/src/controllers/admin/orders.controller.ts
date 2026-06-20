@@ -1217,6 +1217,19 @@ export const updateAttaStatus = asyncHandler(async (req: Request, res: Response)
   const { id } = req.params;
   const { status, rider_id } = req.body;
 
+  // City-scoped via the pickup address: a scoped admin can't act on another
+  // city's atta request by guessing the id.
+  const attaScope = await resolveCityScope(req);
+  if (!attaScope.unrestricted && attaScope.cityName && attaScope.dbReady) {
+    const chk = await query(
+      `SELECT 1 FROM atta_requests ar
+         LEFT JOIN addresses a ON a.id = ar.address_id
+        WHERE ar.id = $1 AND LOWER(COALESCE(a.city, '')) = LOWER($2)`,
+      [id, attaScope.cityName]
+    );
+    if (chk.rows.length === 0) return notFoundResponse(res, 'Atta request not found');
+  }
+
   const statusUpdates: Record<string, { column: string; riderColumn?: string }> = {
     picked_up: { column: 'picked_up_at', riderColumn: 'pickup_rider_id' },
     at_mill: { column: 'milling_started_at' },
