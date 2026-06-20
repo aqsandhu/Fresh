@@ -87,6 +87,8 @@ function resolveRequiredPermissions(
   if (p === '/dashboard') {
     return ['orders.view', 'products.view', 'customers.view', 'settings.view', 'settings.update'];
   }
+  // Sidebar badge counts — any authenticated admin may read their own counts.
+  if (p === '/badge-counts') return ANY_ADMIN;
   if (p.startsWith('/orders')) {
     if (m === 'GET') return ['orders.view'];
     if (p === '/orders/bulk-status' || p.endsWith('/status')) {

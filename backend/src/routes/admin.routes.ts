@@ -59,6 +59,9 @@ router.post('/change-password', validate(authSchemas.changePassword), authContro
 // Dashboard
 router.get('/dashboard', adminController.getDashboardStats);
 
+// Sidebar badge counts (pending orders / rider applications / restaurant requests).
+router.get('/badge-counts', adminController.getBadgeCounts);
+
 // Customers
 router.get('/customers', adminController.getCustomers);
 router.get('/customers/lookup', adminController.lookupCustomerByPhone);

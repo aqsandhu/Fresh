@@ -9,6 +9,7 @@ export { Workers } from './Workers';
 export { Profit } from './Profit';
 export { Catalog } from './Catalog';
 export { Management } from './Management';
+export { RidersHub } from './RidersHub';
 export { Categories } from './Categories';
 export { Customers } from './Customers';
 export { Riders } from './Riders';

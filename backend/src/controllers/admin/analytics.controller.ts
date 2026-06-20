@@ -8,6 +8,7 @@ import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
 import { loadAdminSession } from '../../utils/adminSession';
+import { hasRestaurantOrderColumns } from '../../config/orderSchema';
 
 /**
  * Current admin session (fresh permissions from DB)
@@ -108,14 +109,19 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     )`;
   }
 
-  // Recent orders
+  // Recent orders — include restaurant (B2B) orders too. They have no consumer
+  // user (user_id NULL), so a LEFT JOIN + restaurant name fallback keeps them in.
+  const recentRestaurantReady = await hasRestaurantOrderColumns();
+  const recentRestJoin = recentRestaurantReady ? ' LEFT JOIN restaurants rest ON o.restaurant_id = rest.id' : '';
+  const recentCustName = recentRestaurantReady ? 'COALESCE(u.full_name, rest.business_name)' : 'u.full_name';
+  const recentCustPhone = recentRestaurantReady ? 'COALESCE(u.phone, rest.phone)' : 'u.phone';
   const recentOrders = await query(
-    `SELECT 
+    `SELECT
       o.id, o.order_number, o.status, o.total_amount,
-      u.full_name as customer_name, u.phone as customer_phone,
+      ${recentCustName} as customer_name, ${recentCustPhone} as customer_phone,
       o.placed_at
     FROM orders o
-    JOIN users u ON o.user_id = u.id${recentOrderJoin}
+    LEFT JOIN users u ON o.user_id = u.id${recentRestJoin}${recentOrderJoin}
     WHERE o.deleted_at IS NULL${recentOrderFilter}
     ORDER BY o.placed_at DESC
     LIMIT 10`,
@@ -160,6 +166,49 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     riders: riderStats.rows[0],
     attaRequests: attaStats.rows[0],
   }, 'Dashboard statistics retrieved successfully');
+});
+
+/**
+ * Sidebar badge counts — pending/actionable items the admin should notice.
+ * GET /api/admin/badge-counts  (any admin; city-scoped)
+ * Each count is independent + fail-safe (returns 0 on any error) so a missing
+ * table never breaks the sidebar.
+ */
+export const getBadgeCounts = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) {
+    return successResponse(res, { orders: 0, riderApplications: 0, restaurantRequests: 0 }, 'Badge counts');
+  }
+  const scoped = !scope.unrestricted && !!scope.cityId;
+  const cityParam = scoped ? [scope.cityId] : [];
+
+  const safeCount = async (sql: string, params: unknown[]): Promise<number> => {
+    try {
+      const r = await query(sql, params);
+      return Number(r.rows[0]?.n) || 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  const cityAnd = (col: string) => (scoped ? ` AND ${col} = $1` : '');
+
+  const [orders, riderApplications, restaurantRequests] = await Promise.all([
+    safeCount(
+      `SELECT COUNT(*)::int AS n FROM orders WHERE deleted_at IS NULL AND status = 'pending'${cityAnd('city_id')}`,
+      cityParam
+    ),
+    safeCount(
+      `SELECT COUNT(*)::int AS n FROM rider_applications WHERE status = 'pending'${cityAnd('city_id')}`,
+      cityParam
+    ),
+    safeCount(
+      `SELECT COUNT(*)::int AS n FROM restaurants WHERE status = 'pending'${cityAnd('city_id')}`,
+      cityParam
+    ),
+  ]);
+
+  successResponse(res, { orders, riderApplications, restaurantRequests }, 'Badge counts');
 });
 
 /**

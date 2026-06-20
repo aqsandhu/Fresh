@@ -20,6 +20,7 @@ import {
   Profit,
   Catalog,
   Management,
+  RidersHub,
   Categories,
   Customers,
   Riders,
@@ -262,6 +263,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Customers />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/riders-hub"
+        element={
+          <ProtectedRoute>
+            <RidersHub />
           </ProtectedRoute>
         }
       />

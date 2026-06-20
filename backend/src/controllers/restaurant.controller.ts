@@ -14,6 +14,7 @@ import {
   forbiddenResponse,
 } from '../utils/response';
 import { generateRestaurantToken } from '../config/jwt';
+import { emitToAdmins } from '../config/socket';
 import { normalizePhoneNumber } from '../utils/validators';
 import { hasRestaurantsTable } from '../config/restaurantSchema';
 import logger from '../utils/logger';
@@ -135,6 +136,15 @@ export const registerRestaurant = asyncHandler(async (req: Request, res: Respons
   }
 
   logger.info('Restaurant registration submitted', { restaurantId: result.rows[0].id, phone: normPhone });
+
+  // Notify admins (super + city) of the new restaurant request.
+  emitToAdmins('restaurant:application', {
+    id: result.rows[0].id,
+    businessName: String(business_name).trim(),
+    city: cityName,
+    cityId,
+    createdAt: new Date().toISOString(),
+  });
 
   return createdResponse(
     res,
