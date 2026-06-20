@@ -61,4 +61,47 @@ export const financeService = {
     const res = await api.get<ApiResponse<any[]>>('/finance/riders');
     return res.data || [];
   },
+
+  // ── Workers ─────────────────────────────────────────────────────────────────
+  listWorkers: async (): Promise<Worker[]> => {
+    const res = await api.get<ApiResponse<Worker[]>>('/finance/workers');
+    return res.data || [];
+  },
+  createWorker: async (d: { name: string; phone?: string; designation?: string; basicSalary?: number }) => {
+    const res = await api.post<ApiResponse<{ id: string }>>('/finance/workers', d);
+    return res.data;
+  },
+  getWorker: async (id: string): Promise<WorkerDetail> => {
+    const res = await api.get<ApiResponse<WorkerDetail>>(`/finance/workers/${id}`);
+    return res.data as WorkerDetail;
+  },
+  updateWorker: async (id: string, d: { name?: string; phone?: string; designation?: string; status?: 'active' | 'inactive' }) => {
+    const res = await api.put<ApiResponse<{ id: string }>>(`/finance/workers/${id}`, d);
+    return res.data;
+  },
+  getAttendance: async (id: string, month: number, year: number): Promise<{ date: string; status: string; note: string | null }[]> => {
+    const res = await api.get<ApiResponse<any[]>>(`/finance/workers/${id}/attendance`, { month, year });
+    return res.data || [];
+  },
+  markAttendance: async (id: string, d: { date: string; status: string; note?: string }) => {
+    const res = await api.post<ApiResponse<any>>(`/finance/workers/${id}/attendance`, d);
+    return res.data;
+  },
+  addIncrement: async (id: string, d: { effectiveFrom: string; newBasicSalary: number; note?: string }) => {
+    const res = await api.post<ApiResponse<any>>(`/finance/workers/${id}/increment`, d);
+    return res.data;
+  },
+  payWorker: async (id: string, d: { category: 'salary' | 'bonus' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string }) => {
+    const res = await api.post<ApiResponse<{ id: string }>>(`/finance/workers/${id}/pay`, d);
+    return res.data;
+  },
 };
+
+export interface Worker {
+  id: string; name: string; phone: string | null; designation: string | null;
+  basicSalary: number; status: 'active' | 'inactive'; cityName: string | null; createdAt: string;
+}
+export interface WorkerDetail extends Worker {
+  salaryChanges: { id: string; effectiveFrom: string; newBasicSalary: number; note: string | null; createdAt: string }[];
+  payments: { id: string; category: string; amount: number; comment: string | null; forMonth: string | null; incurredAt: string }[];
+}
