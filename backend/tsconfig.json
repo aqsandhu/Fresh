@@ -13,7 +13,7 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "moduleResolution": "node",
+    "types": ["node", "jest"],
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
@@ -27,15 +27,14 @@
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": false,
     "noEmitOnError": false,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@config/*": ["src/config/*"],
-      "@controllers/*": ["src/controllers/*"],
-      "@middleware/*": ["src/middleware/*"],
-      "@routes/*": ["src/routes/*"],
-      "@utils/*": ["src/utils/*"],
-      "@types/*": ["src/types/*"]
+      "@/*": ["./src/*"],
+      "@config/*": ["./src/config/*"],
+      "@controllers/*": ["./src/controllers/*"],
+      "@middleware/*": ["./src/middleware/*"],
+      "@routes/*": ["./src/routes/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@types/*": ["./src/types/*"]
     }
   },
   "include": ["src/**/*"],
