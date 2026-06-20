@@ -18,6 +18,7 @@ import {
 import { generateOcpToken } from '../config/jwt';
 import { normalizePhoneNumber } from '../utils/validators';
 import { hasOcpTables } from '../config/ocpSchema';
+import { moveCentralToOcp } from '../utils/ocpStock';
 import { assignRiderToOrder } from '../utils/assignRiderToOrder';
 import logger from '../utils/logger';
 
@@ -290,18 +291,13 @@ export const receiveStockRequest = asyncHandler(async (req: Request, res: Respon
       for (const it of items.rows) {
         const qty = parseFloat(String(it.quantity)) || 0;
         if (qty <= 0) continue;
-        await client.query(
-          `INSERT INTO ocp_stock (ocp_id, product_id, quality, quantity)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (ocp_id, product_id, quality)
-           DO UPDATE SET quantity = ocp_stock.quantity + EXCLUDED.quantity, updated_at = NOW()`,
-          [ocpId, it.product_id, it.quality, qty]
-        );
-        await client.query(
-          `INSERT INTO ocp_stock_movements (ocp_id, product_id, quality, delta, reason, ref_request_id)
-           VALUES ($1, $2, $3, $4, 'receive', $5)`,
-          [ocpId, it.product_id, it.quality, qty, id]
-        );
+        // Authoritative integrity gate: confirms the product exists, this OCP
+        // serves the product's city, and the city has enough central stock —
+        // an OCP can never hold more than the city physically has.
+        await moveCentralToOcp(client, {
+          productId: it.product_id, ocpId, quality: it.quality, qty,
+          reason: 'receive', refRequestId: id, note: `receive ${qty} (request)`,
+        });
       }
       const upd = await client.query(
         `UPDATE ocp_stock_requests SET status = 'received', received_at = NOW() WHERE id = $1 RETURNING id, status`,
@@ -312,6 +308,7 @@ export const receiveStockRequest = asyncHandler(async (req: Request, res: Respon
   } catch (err: any) {
     if (err?.http === 404) return notFoundResponse(res, err.message);
     if (err?.http === 409) return errorResponse(res, err.message, 409);
+    if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
   }
   logger.info('OCP received stock request', { requestId: id, ocpId });

@@ -168,6 +168,21 @@ export const createStockRequest = asyncHandler(async (req: Request, res: Respons
     clean.push({ product_id: it.product_id, quality: q, quantity: qty });
   }
 
+  // Products are per-city: every requested line must exist and belong to the
+  // OCP's own city. Stock can't be sent to an OCP for a foreign-city product.
+  // (Central availability is enforced atomically when the OCP receives.)
+  const ocpCityId = ocp.rows[0].city_id;
+  const productIds = [...new Set(clean.map((l) => l.product_id))];
+  const prods = await query(`SELECT id, city_id FROM products WHERE id = ANY($1::uuid[])`, [productIds]);
+  const cityById = new Map<string, string | null>(prods.rows.map((r: any) => [r.id, r.city_id]));
+  for (const l of clean) {
+    if (!cityById.has(l.product_id)) return errorResponse(res, 'One or more products were not found.', 400);
+    const pCity = cityById.get(l.product_id);
+    if (ocpCityId && pCity && pCity !== ocpCityId) {
+      return errorResponse(res, "All products must belong to the OCP's city.", 400);
+    }
+  }
+
   const created = await withTransaction(async (client) => {
     const reqRow = await client.query(
       `INSERT INTO ocp_stock_requests (ocp_id, city_id, note, created_by)
