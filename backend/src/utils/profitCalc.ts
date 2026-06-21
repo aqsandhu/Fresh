@@ -33,6 +33,21 @@ export function periodClause(col: string, p: ProfitPeriod, startIndex: number): 
   return { sql: '', params };
 }
 
+function purchaseCostCutoffClause(col: string, p: ProfitPeriod, startIndex: number): { sql: string; params: any[] } {
+  const params: any[] = [];
+  if (p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date)) {
+    params.push(p.date);
+    return { sql: ` AND ${col} < ($${startIndex}::date + INTERVAL '1 day')`, params };
+  }
+  if (Number.isInteger(p.month) && (p.month as number) >= 1 && (p.month as number) <= 12 && Number.isInteger(p.year)) {
+    params.push(p.year, p.month);
+    return { sql: ` AND ${col} < (make_date($${startIndex}::int, $${startIndex + 1}::int, 1) + INTERVAL '1 month')`, params };
+  }
+  if (p.period === 'today') return { sql: ` AND ${col} < (CURRENT_DATE + INTERVAL '1 day')`, params };
+  if (p.period === 'month') return { sql: ` AND ${col} < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')`, params };
+  return { sql: '', params };
+}
+
 /** Read period params off an Express query object. */
 export function periodFromQuery(q: any): ProfitPeriod {
   return {
@@ -47,6 +62,8 @@ export interface CityProfit {
   totalSale: number;
   orderCount: number;
   totalExpenses: number;
+  inventoryCost: number;
+  operatingExpenses: number;
   profit: number;
   freshbazarShare: number;
   distributable: number;
@@ -69,10 +86,68 @@ export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promis
 
   const expP = periodClause('incurred_at', p, 2);
   const exp = await query(
-    `SELECT COALESCE(SUM(amount),0) AS total FROM expenses WHERE city_id = $1${expP.sql}`,
+    `SELECT COALESCE(SUM(amount),0) AS total
+       FROM expenses
+      WHERE city_id = $1 AND type <> 'stock_purchase'${expP.sql}`,
     [cityId, ...expP.params]
   );
-  const totalExpenses = parseFloat(exp.rows[0].total) || 0;
+  const operatingExpenses = parseFloat(exp.rows[0].total) || 0;
+
+  const costP = purchaseCostCutoffClause('sp.purchased_at', p, 2 + saleP.params.length);
+  const inventory = await query(
+    `WITH sold AS (
+       SELECT oi.product_id,
+              COALESCE(oi.quality, 'A') AS quality,
+              SUM(
+                CASE
+                  WHEN oi.final_weight_kg IS NOT NULL THEN GREATEST(0, oi.final_weight_kg)
+                  ELSE oi.quantity * CASE COALESCE(oi.unit, 'full')
+                    WHEN 'half_kg' THEN 0.5
+                    WHEN 'quarter_kg' THEN 0.25
+                    WHEN 'half_dozen' THEN 0.5
+                    ELSE 1
+                  END
+                END
+              ) AS qty
+         FROM order_items oi
+         JOIN orders o ON o.id = oi.order_id
+        WHERE o.deleted_at IS NULL
+          AND o.status = 'delivered'
+          AND o.city_id = $1
+          AND oi.product_id IS NOT NULL${saleP.sql}
+        GROUP BY oi.product_id, COALESCE(oi.quality, 'A')
+     ),
+     purchase_units AS (
+       SELECT sp.product_id,
+              q.quality,
+              q.qty,
+              CASE
+                WHEN (COALESCE(sp.grade_a,0) + COALESCE(sp.grade_b,0) + COALESCE(sp.grade_c,0)) > 0
+                THEN sp.purchase_price * (q.qty / NULLIF(COALESCE(sp.grade_a,0) + COALESCE(sp.grade_b,0) + COALESCE(sp.grade_c,0), 0))
+                ELSE 0
+              END AS allocated_cost
+         FROM stock_purchases sp
+         CROSS JOIN LATERAL (
+           VALUES
+             ('A', COALESCE(sp.grade_a,0)),
+             ('B', COALESCE(sp.grade_b,0)),
+             ('C', COALESCE(sp.grade_c,0))
+         ) AS q(quality, qty)
+        WHERE sp.city_id = $1
+          AND q.qty > 0${costP.sql}
+     ),
+     avg_cost AS (
+       SELECT product_id, quality, SUM(allocated_cost) / NULLIF(SUM(qty), 0) AS unit_cost
+         FROM purchase_units
+        GROUP BY product_id, quality
+     )
+     SELECT COALESCE(SUM(s.qty * COALESCE(a.unit_cost, 0)), 0) AS total
+       FROM sold s
+       LEFT JOIN avg_cost a ON a.product_id = s.product_id AND a.quality = s.quality`,
+    [cityId, ...saleP.params, ...costP.params]
+  );
+  const inventoryCost = parseFloat(inventory.rows[0].total) || 0;
+  const totalExpenses = operatingExpenses + inventoryCost;
   const profit = round2(totalSale - totalExpenses);
 
   const setRow = await query(`SELECT * FROM profit_settings WHERE city_id = $1`, [cityId]);
@@ -103,7 +178,8 @@ export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promis
   freshbazarShare = round2(Math.max(0, freshbazarShare));
 
   return {
-    totalSale: round2(totalSale), orderCount, totalExpenses: round2(totalExpenses), profit,
+    totalSale: round2(totalSale), orderCount, totalExpenses: round2(totalExpenses),
+    inventoryCost: round2(inventoryCost), operatingExpenses: round2(operatingExpenses), profit,
     freshbazarShare, distributable: round2(profit - freshbazarShare),
     settings: s ? { enabled: s.freshbazar_enabled === true, mode: s.freshbazar_mode, perOrder: parseFloat(s.freshbazar_per_order) || 0, marginPercent: parseFloat(s.freshbazar_margin_percent) || 0 } : defaultSettings(),
   };

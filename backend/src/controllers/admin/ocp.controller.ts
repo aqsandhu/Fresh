@@ -29,6 +29,7 @@ function rowToOcp(o: any) {
     status: o.status,
     created_at: o.created_at,
     order_count: o.order_count != null ? Number(o.order_count) : undefined,
+    open_shortage_count: o.open_shortage_count != null ? Number(o.open_shortage_count) : undefined,
   };
 }
 
@@ -43,7 +44,8 @@ export const listOcps = asyncHandler(async (req: Request, res: Response) => {
   }
   const result = await query(
     `SELECT o.*, sc.name AS city_name,
-            (SELECT COUNT(*) FROM orders od WHERE od.ocp_id = o.id) AS order_count
+            (SELECT COUNT(*) FROM orders od WHERE od.ocp_id = o.id) AS order_count,
+            (SELECT COUNT(*) FROM ocp_stock_shortages sh WHERE sh.ocp_id = o.id AND sh.status = 'open') AS open_shortage_count
        FROM order_collection_points o
        LEFT JOIN service_cities sc ON sc.id = o.city_id
        ${where}
@@ -157,6 +159,13 @@ export const createStockRequest = asyncHandler(async (req: Request, res: Respons
   );
   if (ocp.rows.length === 0) return notFoundResponse(res, 'OCP not found');
   if (ocp.rows[0].status !== 'active') return errorResponse(res, 'OCP is disabled.', 400);
+  const openShortages = await query(
+    `SELECT COUNT(*)::int AS count FROM ocp_stock_shortages WHERE ocp_id = $1 AND status = 'open'`,
+    [id]
+  );
+  if (Number(openShortages.rows[0]?.count || 0) > 0) {
+    return errorResponse(res, 'Resolve this OCP stock shortage before sending more stock.', 409);
+  }
 
   // Normalise + validate lines.
   const clean: { product_id: string; quality: string; quantity: number }[] = [];
@@ -226,6 +235,105 @@ export const listStockRequests = asyncHandler(async (req: Request, res: Response
   return successResponse(res, result.rows, 'Stock requests');
 });
 
+/** GET /api/admin/ocp/shortages?status=open - OCP stock shortage report. */
+export const listShortages = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await hasOcpTables())) return successResponse(res, [], 'Shortages');
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) return successResponse(res, [], 'Shortages');
+
+  const params: any[] = [];
+  let where = '1=1';
+  const status = typeof req.query.status === 'string' ? req.query.status : 'open';
+  if (['open', 'resolved'].includes(status)) {
+    params.push(status);
+    where += ` AND sh.status = $${params.length}`;
+  }
+  if (typeof req.query.ocp_id === 'string' && req.query.ocp_id) {
+    params.push(req.query.ocp_id);
+    where += ` AND sh.ocp_id = $${params.length}`;
+  }
+  if (!scope.unrestricted && scope.cityId && scope.dbReady) {
+    params.push(scope.cityId);
+    where += ` AND o.city_id = $${params.length}`;
+  }
+
+  const result = await query(
+    `SELECT sh.id, sh.ocp_id, sh.product_id, sh.order_id, sh.quality,
+            sh.shortage_qty, sh.status, sh.note, sh.created_at,
+            sh.resolved_at, sh.resolution_note,
+            o.name AS ocp_name, o.city_id,
+            p.name_en AS product_name,
+            od.order_number,
+            u.full_name AS resolved_by_name
+       FROM ocp_stock_shortages sh
+       JOIN order_collection_points o ON o.id = sh.ocp_id
+       LEFT JOIN products p ON p.id = sh.product_id
+       LEFT JOIN orders od ON od.id = sh.order_id
+       LEFT JOIN users u ON u.id = sh.resolved_by
+      WHERE ${where}
+      ORDER BY (sh.status = 'open') DESC, sh.created_at DESC
+      LIMIT 200`,
+    params
+  );
+
+  return successResponse(
+    res,
+    result.rows.map((row: any) => ({ ...row, shortage_qty: parseFloat(row.shortage_qty) || 0 })),
+    'Shortages'
+  );
+});
+
+/** POST /api/admin/ocp/shortages/:id/resolve - close after reconciliation. */
+export const resolveShortage = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const password = String(req.body?.password || '');
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
+  if (!password) return errorResponse(res, 'Enter your password to resolve this shortage.', 400);
+  if (!note) return errorResponse(res, 'Resolution note is required.', 400);
+
+  const u = await query('SELECT password_hash FROM users WHERE id = $1', [req.user?.id]);
+  const hash = u.rows[0]?.password_hash;
+  if (!hash || !(await bcrypt.compare(password, hash))) {
+    return errorResponse(res, 'Incorrect password.', 401);
+  }
+
+  const scope = await resolveCityScope(req);
+  let out: any;
+  try {
+    out = await withTransaction(async (client) => {
+      const row = await client.query(
+        `SELECT sh.id, sh.status, o.city_id
+           FROM ocp_stock_shortages sh
+           JOIN order_collection_points o ON o.id = sh.ocp_id
+          WHERE sh.id = $1
+          FOR UPDATE OF sh`,
+        [id]
+      );
+      if (row.rows.length === 0) throw Object.assign(new Error('Shortage not found'), { http: 404 });
+      if (!cityRowInScope(scope, row.rows[0].city_id)) throw Object.assign(new Error('Shortage not found'), { http: 404 });
+      if (row.rows[0].status !== 'open') throw Object.assign(new Error('Shortage is already resolved.'), { http: 409 });
+      const updated = await client.query(
+        `UPDATE ocp_stock_shortages
+            SET status = 'resolved',
+                resolved_by = $1,
+                resolved_at = NOW(),
+                resolution_note = $2
+          WHERE id = $3
+          RETURNING id, status, resolved_at`,
+        [req.user?.id ?? null, note, id]
+      );
+      return updated.rows[0];
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 409) return errorResponse(res, err.message, 409);
+    throw err;
+  }
+
+  logger.info('OCP stock shortage resolved', { shortageId: id, by: req.user?.id });
+  return successResponse(res, out, 'Shortage resolved');
+});
+
 // ── Settlements inbox (OCP → city admin) ────────────────────────────────────
 
 /** GET /api/admin/ocp/settlements?status=pending — OCP cash settlements. */
@@ -251,6 +359,7 @@ export const listSettlements = asyncHandler(async (req: Request, res: Response) 
   const result = await query(
     `SELECT s.id, s.amount, s.status, s.requested_at, s.received_at,
             o.name AS ocp_name, o.id AS ocp_id,
+            (SELECT COUNT(*) FROM ocp_stock_shortages sh WHERE sh.ocp_id = o.id AND sh.status = 'open') AS open_shortage_count,
             (SELECT COUNT(*) FROM ocp_settlement_orders so WHERE so.settlement_id = s.id) AS order_count
        FROM ocp_settlements s
        JOIN order_collection_points o ON o.id = s.ocp_id
@@ -259,7 +368,12 @@ export const listSettlements = asyncHandler(async (req: Request, res: Response) 
       LIMIT 100`,
     params
   );
-  return successResponse(res, result.rows.map((r: any) => ({ ...r, amount: parseFloat(r.amount), order_count: Number(r.order_count) })), 'Settlements');
+  return successResponse(res, result.rows.map((r: any) => ({
+    ...r,
+    amount: parseFloat(r.amount),
+    order_count: Number(r.order_count),
+    open_shortage_count: Number(r.open_shortage_count || 0),
+  })), 'Settlements');
 });
 
 /**
@@ -285,7 +399,7 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
   try {
     out = await withTransaction(async (client) => {
       const s = await client.query(
-        `SELECT s.id, s.status, s.amount, o.city_id
+        `SELECT s.id, s.status, s.amount, s.ocp_id, o.city_id
            FROM ocp_settlements s
            JOIN order_collection_points o ON o.id = s.ocp_id
           WHERE s.id = $1
@@ -294,6 +408,13 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
       );
       if (s.rows.length === 0) throw Object.assign(new Error('Settlement not found'), { http: 404 });
       if (!cityRowInScope(scope, s.rows[0].city_id)) throw Object.assign(new Error('Settlement not found'), { http: 404 });
+      const shortages = await client.query(
+        `SELECT COUNT(*)::int AS count FROM ocp_stock_shortages WHERE ocp_id = $1 AND status = 'open'`,
+        [s.rows[0].ocp_id]
+      );
+      if (Number(shortages.rows[0]?.count || 0) > 0) {
+        throw Object.assign(new Error('Resolve this OCP stock shortage before receiving settlement cash.'), { http: 409 });
+      }
       if (s.rows[0].status !== 'pending') throw Object.assign(new Error('This settlement was already processed.'), { http: 409 });
       await client.query(
         `UPDATE ocp_settlements SET status = 'received', received_at = NOW(), received_by = $1 WHERE id = $2`,

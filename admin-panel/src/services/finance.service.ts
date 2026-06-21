@@ -143,6 +143,7 @@ export interface ProfitShareholder {
 export interface ProfitData {
   needsCity: boolean; ready?: boolean;
   totalSale?: number; orderCount?: number; totalExpenses?: number; profit?: number;
+  inventoryCost?: number; operatingExpenses?: number;
   freshbazarShare?: number; distributable?: number;
   settings?: { enabled: boolean; mode: string; perOrder: number; marginPercent: number };
   shareholders?: ProfitShareholder[];

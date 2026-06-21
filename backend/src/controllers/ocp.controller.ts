@@ -18,7 +18,7 @@ import {
 import { generateOcpToken } from '../config/jwt';
 import { normalizePhoneNumber } from '../utils/validators';
 import { hasOcpTables } from '../config/ocpSchema';
-import { moveCentralToOcp } from '../utils/ocpStock';
+import { assertNoOpenOcpShortages, moveCentralToOcp } from '../utils/ocpStock';
 import { assignRiderToOrder } from '../utils/assignRiderToOrder';
 import logger from '../utils/logger';
 
@@ -276,6 +276,7 @@ export const receiveStockRequest = asyncHandler(async (req: Request, res: Respon
   let out: any;
   try {
     out = await withTransaction(async (client) => {
+      await assertNoOpenOcpShortages(client, ocpId);
       const reqRow = await client.query(
         `SELECT id, status FROM ocp_stock_requests WHERE id = $1 AND ocp_id = $2 FOR UPDATE`,
         [id, ocpId]
@@ -380,6 +381,11 @@ export const collectOcpPayment = asyncHandler(async (req: Request, res: Response
 /** GET /api/ocp/settlements — due summary + settlement history for this OCP. */
 export const getOcpSettlements = asyncHandler(async (req: Request, res: Response) => {
   const ocpId = req.ocp!.id;
+  const shortageRows = await query(
+    `SELECT COUNT(*)::int AS count FROM ocp_stock_shortages WHERE ocp_id = $1 AND status = 'open'`,
+    [ocpId]
+  );
+  const openShortages = Number(shortageRows.rows[0]?.count || 0);
   // Due = collected cash NOT yet tied to any settlement.
   const due = await query(
     `SELECT COALESCE(SUM(o.paid_amount), 0) AS amount, COUNT(*) AS orders
@@ -401,6 +407,8 @@ export const getOcpSettlements = asyncHandler(async (req: Request, res: Response
     {
       due_amount: parseFloat(due.rows[0].amount) || 0,
       due_orders: Number(due.rows[0].orders) || 0,
+      shortage_locked: openShortages > 0,
+      open_shortages: openShortages,
       settlements: list.rows.map((s: any) => ({ ...s, amount: parseFloat(s.amount) })),
     },
     'Settlements'
@@ -413,6 +421,7 @@ export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response
   let out: any;
   try {
     out = await withTransaction(async (client) => {
+      await assertNoOpenOcpShortages(client, ocpId);
       // Lock the free collected orders (paid, not already in a settlement).
       const orders = await client.query(
         `SELECT o.id, o.paid_amount
@@ -444,6 +453,7 @@ export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response
     });
   } catch (err: any) {
     if (err?.http === 400) return errorResponse(res, err.message, 400);
+    if (err?.http === 409) return errorResponse(res, err.message, 409);
     throw err;
   }
   logger.info('OCP sent settlement', { settlementId: out.id, ocpId, amount: out.amount });

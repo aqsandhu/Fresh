@@ -121,6 +121,28 @@ export async function ensureOcpTables(): Promise<boolean> {
       await pool.query(`CREATE INDEX IF NOT EXISTS ocp_stock_movements_ocp_idx ON ocp_stock_movements (ocp_id, created_at DESC)`);
 
       await pool.query(`
+        CREATE TABLE IF NOT EXISTS ocp_stock_shortages (
+          id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          ocp_id          UUID NOT NULL REFERENCES order_collection_points(id) ON DELETE RESTRICT,
+          product_id      UUID REFERENCES products(id) ON DELETE SET NULL,
+          order_id        UUID REFERENCES orders(id) ON DELETE SET NULL,
+          quality         VARCHAR(1) NOT NULL DEFAULT 'A',
+          shortage_qty    NUMERIC(12,3) NOT NULL CHECK (shortage_qty > 0),
+          status          VARCHAR(12) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'resolved')),
+          note            TEXT,
+          resolved_by     UUID REFERENCES users(id) ON DELETE SET NULL,
+          resolved_at     TIMESTAMPTZ,
+          resolution_note TEXT,
+          created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS ocp_stock_shortages_ocp_idx ON ocp_stock_shortages (ocp_id, status, created_at DESC)`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS ocp_stock_shortages_order_idx ON ocp_stock_shortages (order_id)`);
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS ocp_stock_shortages_open_line_uniq
+        ON ocp_stock_shortages (ocp_id, product_id, order_id, quality)
+        WHERE status = 'open'`);
+
+      await pool.query(`
         CREATE TABLE IF NOT EXISTS ocp_stock_requests (
           id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
           ocp_id      UUID NOT NULL REFERENCES order_collection_points(id) ON DELETE CASCADE,
@@ -168,7 +190,8 @@ export async function ensureOcpTables(): Promise<boolean> {
           INSERT INTO permissions (code, description, category) VALUES
             ('ocp.manage',             'Create / manage Order Collection Points', 'OCP'),
             ('ocp.stock.send',         'Send stock to an OCP',                    'OCP'),
-            ('ocp.settlements.receive','Receive OCP cash settlements',            'OCP')
+            ('ocp.settlements.receive','Receive OCP cash settlements',            'OCP'),
+            ('ocp.shortages.manage',   'View and resolve OCP stock shortages',    'OCP')
           ON CONFLICT (code) DO NOTHING`);
       } catch (permErr: any) {
         logger.warn('Could not seed OCP permissions', { error: permErr?.message });

@@ -168,6 +168,7 @@ function resolveRequiredPermissions(
   // Order Collection Points: stock-send + settlement-receive have their own
   // codes; everything else under /ocp is general OCP management.
   if (p.startsWith('/ocp')) {
+    if (p.includes('/shortages')) return ['ocp.shortages.manage', 'ocp.manage'];
     if (p.includes('/stock')) return ['ocp.stock.send', 'ocp.manage'];
     if (p.includes('/settlements')) return ['ocp.settlements.receive', 'ocp.manage'];
     return ['ocp.manage'];

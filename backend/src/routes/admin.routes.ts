@@ -298,6 +298,8 @@ router.delete('/restaurants/:id', adminRateLimiter, restaurantsController.remove
 // Order Collection Points (OCP) — cross-city management (perm: ocp.manage)
 router.get('/ocp', ocpController.listOcps);
 router.post('/ocp', adminRateLimiter, ocpController.createOcp);
+router.get('/ocp/shortages', ocpController.listShortages);
+router.post('/ocp/shortages/:id/resolve', adminRateLimiter, ocpController.resolveShortage);
 // Settlements (perm ocp.settlements.receive) — literal paths must precede '/ocp/:id'.
 router.get('/ocp/settlements', ocpController.listSettlements);
 router.post('/ocp/settlements/:id/receive', adminRateLimiter, ocpController.receiveSettlement);
@@ -311,8 +313,9 @@ router.delete('/ocp/:id', adminRateLimiter, ocpController.deleteOcp);
 // Stock management (city system stock + OCP location ledger). Literal paths
 // before '/stock/:productId/movements'.
 router.get('/stock', stockController.getStockOverview);
+router.get('/stock/waste-report', stockController.getWasteReport);
 router.post('/stock/add', adminRateLimiter, stockController.addStock);
-router.post('/stock/waste', adminRateLimiter, stockController.wasteStock);
+router.post('/stock/waste', adminRateLimiter, uploadSingle('proof', 'stock/proofs'), stockController.wasteStock);
 router.post('/stock/convert', adminRateLimiter, stockController.convertQuality);
 router.post('/stock/shift', adminRateLimiter, stockController.shiftToOcp);
 router.post('/stock/return', adminRateLimiter, stockController.returnFromOcp);

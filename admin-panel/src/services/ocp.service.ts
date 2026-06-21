@@ -11,9 +11,27 @@ export interface Ocp {
   address?: string | null;
   status: 'active' | 'disabled';
   orderCount?: number;
+  openShortageCount?: number;
 }
 
 export interface OcpStockLine { productId: string; quality: 'A' | 'B' | 'C'; quantity: number }
+export interface OcpShortage {
+  id: string;
+  ocpId: string;
+  ocpName: string;
+  productId: string | null;
+  productName: string | null;
+  orderId: string | null;
+  orderNumber: string | null;
+  quality: 'A' | 'B' | 'C';
+  shortageQty: number;
+  status: 'open' | 'resolved';
+  note?: string | null;
+  resolutionNote?: string | null;
+  resolvedByName?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+}
 
 export const ocpService = {
   list: async (cityId?: string): Promise<Ocp[]> => {
@@ -51,6 +69,13 @@ export const ocpService = {
   listSettlements: async (status: 'pending' | 'received' | 'rejected' = 'pending'): Promise<any[]> => {
     const res = await api.get<ApiResponse<any[]>>('/admin/ocp/settlements', { status });
     return res.data || [];
+  },
+  listShortages: async (status: 'open' | 'resolved' = 'open'): Promise<OcpShortage[]> => {
+    const res = await api.get<ApiResponse<OcpShortage[]>>('/admin/ocp/shortages', { status });
+    return res.data || [];
+  },
+  resolveShortage: async (id: string, data: { note: string; password: string }): Promise<void> => {
+    await api.post(`/admin/ocp/shortages/${id}/resolve`, data);
   },
   receiveSettlement: async (id: string, password: string): Promise<void> => {
     await api.post(`/admin/ocp/settlements/${id}/receive`, { password });

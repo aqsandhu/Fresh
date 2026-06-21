@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit, Trash2, Package, Wallet, MapPin, Phone, Loader2, Send, Check, Ban } from 'lucide-react';
+import { Plus, Edit, Trash2, Package, Wallet, MapPin, Phone, Loader2, Send, Check, Ban, AlertTriangle } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -13,22 +13,23 @@ import { api } from '@/services/api';
 import toast from 'react-hot-toast';
 
 const money = (n: number) => `Rs. ${(Math.round((n + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
+const qtyFmt = (n: number) => (Math.round((Number(n) + Number.EPSILON) * 1000) / 1000).toLocaleString('en-PK');
 
 export const OrderCollectionPoints: React.FC = () => {
-  const [tab, setTab] = useState<'points' | 'settlements'>('points');
+  const [tab, setTab] = useState<'points' | 'settlements' | 'shortages'>('points');
   return (
     <Layout title="Order Collection Points" subtitle="Create OCPs, send stock, and settle cash">
       <div className="mb-6 inline-flex rounded-lg bg-gray-100 p-1">
-        {(['points', 'settlements'] as const).map((t) => (
+        {(['points', 'settlements', 'shortages'] as const).map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               tab === t ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
             }`}>
-            {t === 'points' ? 'Collection Points' : 'Settlements'}
+            {t === 'points' ? 'Collection Points' : t === 'settlements' ? 'Settlements' : 'Shortages'}
           </button>
         ))}
       </div>
-      {tab === 'points' ? <PointsSection /> : <SettlementsSection />}
+      {tab === 'points' ? <PointsSection /> : tab === 'settlements' ? <SettlementsSection /> : <ShortagesSection />}
     </Layout>
   );
 };
@@ -107,8 +108,13 @@ function PointsSection() {
               <p className="text-sm text-gray-600 flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {o.phone}</p>
               {o.address && <p className="text-sm text-gray-500 flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> {o.address}</p>}
               <p className="text-xs text-gray-400">{o.orderCount ?? 0} orders</p>
+              {(o.openShortageCount || 0) > 0 && (
+                <p className="text-xs font-medium text-red-600 flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" /> {o.openShortageCount} open shortage{o.openShortageCount === 1 ? '' : 's'}
+                </p>
+              )}
               <div className="flex items-center gap-2 pt-2">
-                <Button size="sm" variant="outline" onClick={() => setStockFor(o)} leftIcon={<Package className="w-4 h-4" />}>Send stock</Button>
+                <Button size="sm" variant="outline" disabled={(o.openShortageCount || 0) > 0} onClick={() => setStockFor(o)} leftIcon={<Package className="w-4 h-4" />}>Send stock</Button>
                 <button onClick={() => openEdit(o)} title="Edit" className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Edit className="w-4 h-4" /></button>
                 <button onClick={() => statusMut.mutate(o)} title="Toggle status" className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
                   {o.status === 'active' ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
@@ -348,10 +354,15 @@ function SettlementsSection() {
                   {s.orderCount} order{s.orderCount === 1 ? '' : 's'} · sent {new Date(s.requestedAt).toLocaleString('en-PK')}
                   {s.receivedAt && status !== 'pending' ? ` · ${status} ${new Date(s.receivedAt).toLocaleString('en-PK')}` : ''}
                 </p>
+                {(s.openShortageCount || 0) > 0 && (
+                  <p className="text-xs font-medium text-red-600 flex items-center gap-1 mt-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Resolve {s.openShortageCount} shortage{s.openShortageCount === 1 ? '' : 's'} first
+                  </p>
+                )}
               </div>
               {status === 'pending' && (
                 <div className="flex items-center gap-2 shrink-0">
-                  <Button size="sm" onClick={() => setReceiveFor(s)} leftIcon={<Check className="w-4 h-4" />}>Receive</Button>
+                  <Button size="sm" disabled={(s.openShortageCount || 0) > 0} onClick={() => setReceiveFor(s)} leftIcon={<Check className="w-4 h-4" />}>Receive</Button>
                   <Button size="sm" variant="outline" onClick={() => { if (confirm('Reject this settlement? The orders return to the OCP as unsettled cash.')) rejectMut.mutate(s.id); }}>Reject</Button>
                 </div>
               )}
@@ -371,6 +382,112 @@ function SettlementsSection() {
           <div className="space-y-3">
             <p className="text-sm text-gray-700">You are confirming receipt of <span className="font-semibold">{money(receiveFor.amount)}</span> from <span className="font-semibold">{receiveFor.ocpName}</span>. This moves the balance out of the OCP's due. Enter your password to confirm.</p>
             <Input label="Your password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
+          </div>
+        )}
+      </Modal>
+    </>
+  );
+}
+
+function ShortagesSection() {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<'open' | 'resolved'>('open');
+  const [resolveFor, setResolveFor] = useState<any | null>(null);
+  const [note, setNote] = useState('');
+  const [password, setPassword] = useState('');
+
+  const { data: shortages = [], isLoading } = useQuery({
+    queryKey: ['ocp-shortages', status],
+    queryFn: () => ocpService.listShortages(status),
+  });
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['ocp-shortages'] });
+    qc.invalidateQueries({ queryKey: ['ocps'] });
+    qc.invalidateQueries({ queryKey: ['ocp-settlements'] });
+  };
+
+  const resolveMut = useMutation({
+    mutationFn: () => ocpService.resolveShortage(resolveFor.id, { note: note.trim(), password }),
+    onSuccess: () => {
+      toast.success('Shortage resolved');
+      setResolveFor(null);
+      setNote('');
+      setPassword('');
+      invalidate();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to resolve shortage'),
+  });
+
+  const totalQty = useMemo(
+    () => shortages.reduce((sum, row) => sum + (row.shortageQty || 0), 0),
+    [shortages]
+  );
+
+  return (
+    <>
+      <div className="inline-flex rounded-lg bg-gray-100 p-1 mb-4">
+        {(['open', 'resolved'] as const).map((s) => (
+          <button key={s} onClick={() => setStatus(s)}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium capitalize ${status === s ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600'}`}>{s}</button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <Card className="text-center">
+          <p className="text-xs text-gray-500">Shortages</p>
+          <p className={`text-2xl font-bold ${status === 'open' ? 'text-red-600' : 'text-gray-900'}`}>{shortages.length}</p>
+        </Card>
+        <Card className="text-center">
+          <p className="text-xs text-gray-500">Quantity</p>
+          <p className={`text-2xl font-bold ${status === 'open' ? 'text-red-600' : 'text-gray-900'}`}>{qtyFmt(totalQty)}</p>
+        </Card>
+      </div>
+
+      {isLoading ? (
+        <p className="text-gray-500">Loading...</p>
+      ) : shortages.length === 0 ? (
+        <Card className="text-center py-12 text-gray-500">No {status} shortages.</Card>
+      ) : (
+        <div className="space-y-2">
+          {shortages.map((s) => (
+            <Card key={s.id} className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-gray-900 flex items-center gap-1.5">
+                  <AlertTriangle className={`w-4 h-4 ${s.status === 'open' ? 'text-red-600' : 'text-gray-400'}`} />
+                  {s.productName || 'Deleted product'} <span className="text-gray-400">Q{s.quality}</span>
+                </p>
+                <p className="text-sm text-gray-600">{s.ocpName} · short {qtyFmt(s.shortageQty)}</p>
+                <p className="text-xs text-gray-400">
+                  {s.orderNumber ? `Order #${s.orderNumber} · ` : ''}
+                  {new Date(s.createdAt).toLocaleString('en-PK')}
+                  {s.resolvedAt ? ` · resolved ${new Date(s.resolvedAt).toLocaleString('en-PK')}` : ''}
+                </p>
+                {s.note && <p className="text-xs text-gray-400 mt-1">{s.note}</p>}
+                {s.resolutionNote && <p className="text-xs text-gray-500 mt-1">Resolution: {s.resolutionNote}</p>}
+              </div>
+              {s.status === 'open' && (
+                <Button size="sm" onClick={() => setResolveFor(s)} leftIcon={<Check className="w-4 h-4" />}>Resolve</Button>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Modal isOpen={!!resolveFor} onClose={() => { setResolveFor(null); setNote(''); setPassword(''); }} title="Resolve shortage"
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => { setResolveFor(null); setNote(''); setPassword(''); }}>Cancel</Button>
+            <Button onClick={() => resolveMut.mutate()} disabled={!note.trim() || !password} isLoading={resolveMut.isPending}>Resolve</Button>
+          </div>
+        }>
+        {resolveFor && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-700">
+              {resolveFor.ocpName} · {resolveFor.productName || 'Deleted product'} Q{resolveFor.quality} · short {qtyFmt(resolveFor.shortageQty)}
+            </p>
+            <Input label="Resolution note" value={note} onChange={(e) => setNote(e.target.value)} autoFocus />
+            <Input label="Your password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
         )}
       </Modal>

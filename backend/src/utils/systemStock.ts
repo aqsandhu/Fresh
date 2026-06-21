@@ -37,17 +37,26 @@ export interface StockMovement {
   refOrderId?: string | null;
   refOcpId?: string | null;
   note?: string | null;
+  proofUrl?: string | null;
+  evidenceQuantity?: number | null;
+  approvedBy?: string | null;
+  approvedAt?: Date | string | null;
   createdBy?: string | null;
 }
 
 /** Append one row to the system stock ledger. */
 export async function recordStockMovement(client: PoolClient, m: StockMovement): Promise<void> {
   await client.query(
-    `INSERT INTO stock_movements (product_id, quality, city_id, delta, reason, ref_order_id, ref_ocp_id, note, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    `INSERT INTO stock_movements (
+       product_id, quality, city_id, delta, reason, ref_order_id, ref_ocp_id,
+       note, proof_url, evidence_quantity, approved_by, approved_at, created_by
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
     [
       m.productId, normalizeQuality(m.quality), m.cityId ?? null, m.delta, m.reason,
-      m.refOrderId ?? null, m.refOcpId ?? null, m.note ?? null, m.createdBy ?? null,
+      m.refOrderId ?? null, m.refOcpId ?? null, m.note ?? null, m.proofUrl ?? null,
+      m.evidenceQuantity ?? null, m.approvedBy ?? null, m.approvedAt ?? null,
+      m.createdBy ?? null,
     ]
   );
 }

@@ -34,7 +34,8 @@ export interface AdminNotification {
     | 'complaint:new'
     | 'review:new'
     | 'rider:application'
-    | 'restaurant:application';
+    | 'restaurant:application'
+    | 'ocp:shortage';
   title: string;
   message: string;
   orderId?: string;
@@ -268,6 +269,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
     };
 
+    const handleOcpShortage = (data: Record<string, unknown>) => {
+      const item = buildNotification(
+        'ocp:shortage',
+        { ...data, link: '/admin/ocp' },
+        'OCP stock shortage',
+        data.productName ? `${data.productName} is short at an OCP` : 'An OCP stock shortage was recorded'
+      );
+      pushNotification(item);
+      playNotificationSound();
+      toast.error(item.message, { duration: 7000 });
+      queryClient.invalidateQueries({ queryKey: ['ocp-shortages'] });
+      queryClient.invalidateQueries({ queryKey: ['ocps'] });
+      queryClient.invalidateQueries({ queryKey: ['ocp-settlements'] });
+    };
+
     const setup = async () => {
       const token = await getValidAdminAccessToken();
       if (cancelled || !token) return;
@@ -309,6 +325,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       onSocketEvent('review:new', handleReview);
       onSocketEvent('rider:application', handleRiderApplication);
       onSocketEvent('restaurant:application', handleRestaurantApplication);
+      onSocketEvent('ocp:shortage', handleOcpShortage);
 
       connectionInterval = setInterval(() => {
         setIsSocketConnected(socket.connected);
@@ -328,6 +345,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       offSocketEvent('review:new', handleReview);
       offSocketEvent('rider:application', handleRiderApplication);
       offSocketEvent('restaurant:application', handleRestaurantApplication);
+      offSocketEvent('ocp:shortage', handleOcpShortage);
       flashTimersRef.current.forEach((t) => clearTimeout(t));
       flashTimersRef.current.clear();
       disconnectSocket();

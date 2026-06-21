@@ -122,9 +122,17 @@ async function runCatalogV2Ddl(connectionString: string): Promise<void> {
         ref_order_id  UUID,
         ref_ocp_id    UUID,
         note          TEXT,
+        proof_url     TEXT,
+        evidence_quantity NUMERIC(12,3),
+        approved_by   UUID REFERENCES users(id) ON DELETE SET NULL,
+        approved_at   TIMESTAMPTZ,
         created_by    UUID,
         created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )`);
+    await pool.query(`ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS proof_url TEXT`);
+    await pool.query(`ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS evidence_quantity NUMERIC(12,3)`);
+    await pool.query(`ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS approved_by UUID REFERENCES users(id) ON DELETE SET NULL`);
+    await pool.query(`ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`);
     await pool.query(`CREATE INDEX IF NOT EXISTS stock_movements_product_idx ON stock_movements (product_id, quality)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS stock_movements_order_idx   ON stock_movements (ref_order_id)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS stock_movements_created_idx ON stock_movements (created_at DESC)`);
