@@ -7,7 +7,7 @@
 import { PoolClient } from 'pg';
 import { stockUnitsNeeded, qualityStockColumn } from './unitPricing';
 import { reservedColumn, recordStockMovement } from './systemStock';
-import { hasOcpTables } from '../config/ocpSchema';
+import { ensureOcpTables } from '../config/ocpSchema';
 import { emitToAdmins } from '../config/socket';
 import logger from './logger';
 
@@ -139,7 +139,7 @@ export async function assertNoOpenOcpShortages(client: PoolClient, ocpId: string
  * delivery transaction (the order row is already locked by the caller).
  */
 export async function deductOcpStockOnDelivery(client: PoolClient, orderId: string): Promise<void> {
-  if (!(await hasOcpTables())) return;
+  if (!(await ensureOcpTables())) return;
 
   const ord = await client.query(`SELECT ocp_id FROM orders WHERE id = $1`, [orderId]);
   const ocpId = ord.rows[0]?.ocp_id;

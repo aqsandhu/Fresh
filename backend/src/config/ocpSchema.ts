@@ -9,6 +9,7 @@ import { query } from './database';
 import logger from '../utils/logger';
 
 let cached: boolean | null = null;
+let ddlEnsured = false;
 let ensurePromise: Promise<boolean> | null = null;
 
 function getMigrationConnectionString(): string | null {
@@ -49,14 +50,13 @@ export async function hasOcpTables(): Promise<boolean> {
 }
 
 export async function ensureOcpTables(): Promise<boolean> {
-  if (cached === true) return true;
+  if (ddlEnsured) return true;
   if (ensurePromise) return ensurePromise;
 
   ensurePromise = (async () => {
-    if (await hasOcpTables()) return true;
     const connectionString = getMigrationConnectionString();
     if (!connectionString) {
-      logger.warn('OCP tables missing and no DB URL available for migration');
+      logger.warn('OCP schema could not be ensured: no DB URL available for migration');
       return false;
     }
     const pool = new Pool({
@@ -198,7 +198,8 @@ export async function ensureOcpTables(): Promise<boolean> {
       }
 
       cached = true;
-      logger.info('OCP tables ensured (migration 36 applied)');
+      ddlEnsured = true;
+      logger.info('OCP tables ensured (current additive schema applied)');
       return true;
     } catch (error: any) {
       logger.warn('Could not apply OCP migration — run database/migrations/36 manually', {

@@ -17,7 +17,7 @@ import {
 } from '../utils/response';
 import { generateOcpToken } from '../config/jwt';
 import { normalizePhoneNumber } from '../utils/validators';
-import { hasOcpTables } from '../config/ocpSchema';
+import { ensureOcpTables, hasOcpTables } from '../config/ocpSchema';
 import { assertNoOpenOcpShortages, moveCentralToOcp } from '../utils/ocpStock';
 import { assignRiderToOrder } from '../utils/assignRiderToOrder';
 import logger from '../utils/logger';
@@ -270,6 +270,7 @@ export const getOcpStockRequests = asyncHandler(async (req: Request, res: Respon
  * marks the request received. A double-receive is a clean 409 (no double-add).
  */
 export const receiveStockRequest = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await ensureOcpTables())) return errorResponse(res, 'OCP system not ready.', 503);
   const { id } = req.params;
   const ocpId = req.ocp!.id;
 
@@ -380,6 +381,7 @@ export const collectOcpPayment = asyncHandler(async (req: Request, res: Response
 
 /** GET /api/ocp/settlements — due summary + settlement history for this OCP. */
 export const getOcpSettlements = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await ensureOcpTables())) return successResponse(res, { due_amount: 0, due_orders: 0, shortage_locked: false, open_shortages: 0, settlements: [] }, 'Settlements');
   const ocpId = req.ocp!.id;
   const shortageRows = await query(
     `SELECT COUNT(*)::int AS count FROM ocp_stock_shortages WHERE ocp_id = $1 AND status = 'open'`,
@@ -417,6 +419,7 @@ export const getOcpSettlements = asyncHandler(async (req: Request, res: Response
 
 /** POST /api/ocp/settlements — hand over all currently-due cash to the admin. */
 export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await ensureOcpTables())) return errorResponse(res, 'OCP system not ready.', 503);
   const ocpId = req.ocp!.id;
   let out: any;
   try {

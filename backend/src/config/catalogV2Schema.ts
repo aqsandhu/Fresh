@@ -14,6 +14,7 @@ import { query } from './database';
 import logger from '../utils/logger';
 
 let cached: boolean | null = null;
+let ddlEnsured = false;
 let ensurePromise: Promise<boolean> | null = null;
 
 function getMigrationConnectionString(): string | null {
@@ -157,20 +158,20 @@ async function runCatalogV2Ddl(connectionString: string): Promise<void> {
 
 /** Apply migration 37 if needed. Returns true when the columns exist. */
 export async function ensureCatalogV2Columns(): Promise<boolean> {
-  if (cached === true) return true;
+  if (ddlEnsured) return true;
   if (ensurePromise) return ensurePromise;
 
   ensurePromise = (async () => {
-    if (await hasCatalogV2Columns()) return true;
     const connectionString = getMigrationConnectionString();
     if (!connectionString) {
-      logger.warn('catalog-v2 columns missing and no DB URL available for migration');
+      logger.warn('catalog-v2 schema could not be ensured: no DB URL available for migration');
       return false;
     }
     try {
       await runCatalogV2Ddl(connectionString);
       cached = true;
-      logger.info('catalog-v2 columns ensured (migration 37 applied)');
+      ddlEnsured = true;
+      logger.info('catalog-v2 schema ensured (current additive schema applied)');
       return true;
     } catch (error: any) {
       logger.warn('Could not apply catalog-v2 migration — run database/migrations/37-catalog-v2-stock.sql manually', {
