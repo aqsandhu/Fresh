@@ -1,4 +1,8 @@
 import { hasPermission } from './permissions';
+import { ALL_SETTINGS_VIEW_CODES } from './settingsCodes';
+
+// Re-exported so existing importers of this symbol keep working.
+export { ALL_SETTINGS_VIEW_CODES };
 
 export type SettingsTabId =
   | 'delivery'
@@ -50,29 +54,6 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   favicon: ['settings.favicon.update', 'settings.update'],
   whatsapp: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
 };
-
-export const ALL_SETTINGS_VIEW_CODES = [
-  'settings.view',
-  'settings.update',
-  'settings.delivery.view',
-  'settings.delivery.update',
-  'settings.timeslots.view',
-  'settings.timeslots.manage',
-  'settings.business_hours.view',
-  'settings.business_hours.update',
-  'settings.banner.view',
-  'settings.banner.update',
-  'settings.hero.view',
-  'settings.hero.update',
-  'settings.brand.view',
-  'settings.brand.update',
-  'settings.favicon.view',
-  'settings.favicon.update',
-  'settings.cities.view',
-  'settings.cities.manage',
-  'settings.delivery_zones.view',
-  'settings.delivery_zones.manage',
-];
 
 export function canViewSettingsTab(
   permissions: string[] | undefined,

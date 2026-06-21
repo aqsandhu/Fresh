@@ -1,5 +1,5 @@
 import { normalizePermissions } from './adminUser';
-import { ALL_SETTINGS_VIEW_CODES } from './settingsPermissions';
+import { ALL_SETTINGS_VIEW_CODES } from './settingsCodes';
 
 /** Permission required to see each sidebar route (any listed code grants access). */
 export const ROUTE_PERMISSIONS: Record<string, string[]> = {
