@@ -114,7 +114,7 @@ function PointsSection() {
                 </p>
               )}
               <div className="flex items-center gap-2 pt-2">
-                <Button size="sm" variant="outline" disabled={(o.openShortageCount || 0) > 0} onClick={() => setStockFor(o)} leftIcon={<Package className="w-4 h-4" />}>Send stock</Button>
+                <Button size="sm" variant="outline" onClick={() => setStockFor(o)} leftIcon={<Package className="w-4 h-4" />}>Send stock</Button>
                 <button onClick={() => openEdit(o)} title="Edit" className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Edit className="w-4 h-4" /></button>
                 <button onClick={() => statusMut.mutate(o)} title="Toggle status" className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
                   {o.status === 'active' ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}

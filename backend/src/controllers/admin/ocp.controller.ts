@@ -160,14 +160,6 @@ export const createStockRequest = asyncHandler(async (req: Request, res: Respons
   );
   if (ocp.rows.length === 0) return notFoundResponse(res, 'OCP not found');
   if (ocp.rows[0].status !== 'active') return errorResponse(res, 'OCP is disabled.', 400);
-  const openShortages = await query(
-    `SELECT COUNT(*)::int AS count FROM ocp_stock_shortages WHERE ocp_id = $1 AND status = 'open'`,
-    [id]
-  );
-  if (Number(openShortages.rows[0]?.count || 0) > 0) {
-    return errorResponse(res, 'Resolve this OCP stock shortage before sending more stock.', 409);
-  }
-
   // Normalise + validate lines.
   const clean: { product_id: string; quality: string; quantity: number }[] = [];
   for (const it of items) {
