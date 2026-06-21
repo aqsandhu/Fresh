@@ -127,7 +127,7 @@ export async function openOcpShortageCount(client: PoolClient, ocpId: string): P
 export async function assertNoOpenOcpShortages(client: PoolClient, ocpId: string): Promise<void> {
   const count = await openOcpShortageCount(client, ocpId);
   if (count > 0) {
-    throw httpError(409, 'This OCP has unresolved stock shortages. Resolve them before receiving stock or settling cash.');
+    throw httpError(409, 'This OCP has unresolved stock shortages. Resolve them before settling cash.');
   }
 }
 

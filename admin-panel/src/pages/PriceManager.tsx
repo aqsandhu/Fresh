@@ -19,14 +19,14 @@ type Row = {
   allowHalfKg: boolean;
   allowQuarterKg: boolean;
   // Quality A (always offered)
-  price: string; halfKgPrice: string; quarterKgPrice: string;
-  restA: boolean; restPriceA: string; restHalfA: string; restQuarterA: string;
+  price: string; halfKgPrice: string; quarterKgPrice: string; halfDozenPrice: string;
+  restA: boolean; restPriceA: string; restHalfA: string; restQuarterA: string; restHalfDozenA: string;
   // Quality B
-  bEnabled: boolean; priceB: string; halfKgPriceB: string; quarterKgPriceB: string;
-  restB: boolean; restPriceB: string; restHalfB: string; restQuarterB: string;
+  bEnabled: boolean; priceB: string; halfKgPriceB: string; quarterKgPriceB: string; halfDozenPriceB: string;
+  restB: boolean; restPriceB: string; restHalfB: string; restQuarterB: string; restHalfDozenB: string;
   // Quality C
-  cEnabled: boolean; priceC: string; halfKgPriceC: string; quarterKgPriceC: string;
-  restC: boolean; restPriceC: string; restHalfC: string; restQuarterC: string;
+  cEnabled: boolean; priceC: string; halfKgPriceC: string; quarterKgPriceC: string; halfDozenPriceC: string;
+  restC: boolean; restPriceC: string; restHalfC: string; restQuarterC: string; restHalfDozenC: string;
 };
 
 const numStr = (v: number | null | undefined): string => (v == null ? '' : String(v));
@@ -40,12 +40,12 @@ function toRow(p: Product): Row {
     isActive: !!p.isActive,
     allowHalfKg: p.allowHalfKg !== false,
     allowQuarterKg: p.allowQuarterKg !== false,
-    price: numStr(p.price), halfKgPrice: numStr(p.halfKgPrice), quarterKgPrice: numStr(p.quarterKgPrice),
-    restA: p.restaurantEnabledA === true, restPriceA: numStr(p.restaurantPriceA), restHalfA: numStr(p.restaurantHalfKgPriceA), restQuarterA: numStr(p.restaurantQuarterKgPriceA),
-    bEnabled: p.priceB != null, priceB: numStr(p.priceB), halfKgPriceB: numStr(p.halfKgPriceB), quarterKgPriceB: numStr(p.quarterKgPriceB),
-    restB: p.restaurantEnabledB === true, restPriceB: numStr(p.restaurantPriceB), restHalfB: numStr(p.restaurantHalfKgPriceB), restQuarterB: numStr(p.restaurantQuarterKgPriceB),
-    cEnabled: p.priceC != null, priceC: numStr(p.priceC), halfKgPriceC: numStr(p.halfKgPriceC), quarterKgPriceC: numStr(p.quarterKgPriceC),
-    restC: p.restaurantEnabledC === true, restPriceC: numStr(p.restaurantPriceC), restHalfC: numStr(p.restaurantHalfKgPriceC), restQuarterC: numStr(p.restaurantQuarterKgPriceC),
+    price: numStr(p.price), halfKgPrice: numStr(p.halfKgPrice), quarterKgPrice: numStr(p.quarterKgPrice), halfDozenPrice: numStr(p.halfDozenPrice),
+    restA: p.restaurantEnabledA === true, restPriceA: numStr(p.restaurantPriceA), restHalfA: numStr(p.restaurantHalfKgPriceA), restQuarterA: numStr(p.restaurantQuarterKgPriceA), restHalfDozenA: numStr(p.restaurantHalfDozenPriceA),
+    bEnabled: p.priceB != null, priceB: numStr(p.priceB), halfKgPriceB: numStr(p.halfKgPriceB), quarterKgPriceB: numStr(p.quarterKgPriceB), halfDozenPriceB: numStr(p.halfDozenPriceB),
+    restB: p.restaurantEnabledB === true, restPriceB: numStr(p.restaurantPriceB), restHalfB: numStr(p.restaurantHalfKgPriceB), restQuarterB: numStr(p.restaurantQuarterKgPriceB), restHalfDozenB: numStr(p.restaurantHalfDozenPriceB),
+    cEnabled: p.priceC != null, priceC: numStr(p.priceC), halfKgPriceC: numStr(p.halfKgPriceC), quarterKgPriceC: numStr(p.quarterKgPriceC), halfDozenPriceC: numStr(p.halfDozenPriceC),
+    restC: p.restaurantEnabledC === true, restPriceC: numStr(p.restaurantPriceC), restHalfC: numStr(p.restaurantHalfKgPriceC), restQuarterC: numStr(p.restaurantQuarterKgPriceC), restHalfDozenC: numStr(p.restaurantHalfDozenPriceC),
   };
 }
 
@@ -138,21 +138,24 @@ export const PriceManager: React.FC = () => {
           price: parseFloat(r.price) || 0,
           halfKgPrice: numOrNull(r.halfKgPrice),
           quarterKgPrice: numOrNull(r.quarterKgPrice),
+          halfDozenPrice: numOrNull(r.halfDozenPrice),
           priceB: r.bEnabled ? numOrNull(r.priceB) : null,
           halfKgPriceB: r.bEnabled ? numOrNull(r.halfKgPriceB) : null,
           quarterKgPriceB: r.bEnabled ? numOrNull(r.quarterKgPriceB) : null,
+          halfDozenPriceB: r.bEnabled ? numOrNull(r.halfDozenPriceB) : null,
           priceC: r.cEnabled ? numOrNull(r.priceC) : null,
           halfKgPriceC: r.cEnabled ? numOrNull(r.halfKgPriceC) : null,
           quarterKgPriceC: r.cEnabled ? numOrNull(r.quarterKgPriceC) : null,
+          halfDozenPriceC: r.cEnabled ? numOrNull(r.halfDozenPriceC) : null,
           restaurantEnabledA: restA,
           restaurantEnabledB: restB,
           restaurantEnabledC: restC,
           availableForRestaurants: restA || restB || restC,
           // Restaurant prices only when that quality is offered to restaurants;
           // otherwise leave them untouched (undefined => not sent => preserved).
-          ...(restA ? { restaurantPriceA: numOrNull(r.restPriceA), restaurantHalfKgPriceA: numOrNull(r.restHalfA), restaurantQuarterKgPriceA: numOrNull(r.restQuarterA) } : {}),
-          ...(restB ? { restaurantPriceB: numOrNull(r.restPriceB), restaurantHalfKgPriceB: numOrNull(r.restHalfB), restaurantQuarterKgPriceB: numOrNull(r.restQuarterB) } : {}),
-          ...(restC ? { restaurantPriceC: numOrNull(r.restPriceC), restaurantHalfKgPriceC: numOrNull(r.restHalfC), restaurantQuarterKgPriceC: numOrNull(r.restQuarterC) } : {}),
+          ...(restA ? { restaurantPriceA: numOrNull(r.restPriceA), restaurantHalfKgPriceA: numOrNull(r.restHalfA), restaurantQuarterKgPriceA: numOrNull(r.restQuarterA), restaurantHalfDozenPriceA: numOrNull(r.restHalfDozenA) } : {}),
+          ...(restB ? { restaurantPriceB: numOrNull(r.restPriceB), restaurantHalfKgPriceB: numOrNull(r.restHalfB), restaurantQuarterKgPriceB: numOrNull(r.restQuarterB), restaurantHalfDozenPriceB: numOrNull(r.restHalfDozenB) } : {}),
+          ...(restC ? { restaurantPriceC: numOrNull(r.restPriceC), restaurantHalfKgPriceC: numOrNull(r.restHalfC), restaurantQuarterKgPriceC: numOrNull(r.restQuarterC), restaurantHalfDozenPriceC: numOrNull(r.restHalfDozenC) } : {}),
         });
       })
     );
@@ -236,6 +239,7 @@ function ProductPriceCard({
   product: Product; row: Row; dirty: boolean; catRest: boolean; set: (patch: Partial<Row>) => void;
 }) {
   const isKg = String(p.unitType).toLowerCase() === 'kg' || String(p.unitType).toLowerCase() === 'gram';
+  const isDozen = String(p.unitType).toLowerCase() === 'dozen';
 
   return (
     <Card className={`p-4 ${dirty ? 'ring-1 ring-amber-300 bg-amber-50/30' : ''}`}>
@@ -264,16 +268,16 @@ function ProductPriceCard({
 
       <div className="mt-2 divide-y divide-gray-50">
         <QualityEditLine label="A" tone="emerald" isKg={isKg} catRest={catRest} offered enabledToggle={null}
-          priceKey="price" halfKey="halfKgPrice" quarterKey="quarterKgPrice" restKey="restA"
-          restPriceKey="restPriceA" restHalfKey="restHalfA" restQuarterKey="restQuarterA"
+          isDozen={isDozen} priceKey="price" halfKey="halfKgPrice" quarterKey="quarterKgPrice" halfDozenKey="halfDozenPrice" restKey="restA"
+          restPriceKey="restPriceA" restHalfKey="restHalfA" restQuarterKey="restQuarterA" restHalfDozenKey="restHalfDozenA"
           allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set} />
         <QualityEditLine label="B" tone="blue" isKg={isKg} catRest={catRest} offered={r.bEnabled} enabledToggle={(v) => set({ bEnabled: v })}
-          priceKey="priceB" halfKey="halfKgPriceB" quarterKey="quarterKgPriceB" restKey="restB"
-          restPriceKey="restPriceB" restHalfKey="restHalfB" restQuarterKey="restQuarterB"
+          isDozen={isDozen} priceKey="priceB" halfKey="halfKgPriceB" quarterKey="quarterKgPriceB" halfDozenKey="halfDozenPriceB" restKey="restB"
+          restPriceKey="restPriceB" restHalfKey="restHalfB" restQuarterKey="restQuarterB" restHalfDozenKey="restHalfDozenB"
           allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set} />
         <QualityEditLine label="C" tone="amber" isKg={isKg} catRest={catRest} offered={r.cEnabled} enabledToggle={(v) => set({ cEnabled: v })}
-          priceKey="priceC" halfKey="halfKgPriceC" quarterKey="quarterKgPriceC" restKey="restC"
-          restPriceKey="restPriceC" restHalfKey="restHalfC" restQuarterKey="restQuarterC"
+          isDozen={isDozen} priceKey="priceC" halfKey="halfKgPriceC" quarterKey="quarterKgPriceC" halfDozenKey="halfDozenPriceC" restKey="restC"
+          restPriceKey="restPriceC" restHalfKey="restHalfC" restQuarterKey="restQuarterC" restHalfDozenKey="restHalfDozenC"
           allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set} />
       </div>
     </Card>
@@ -281,16 +285,16 @@ function ProductPriceCard({
 }
 
 function QualityEditLine({
-  label, tone, isKg, catRest, offered, enabledToggle,
-  priceKey, halfKey, quarterKey, restKey, restPriceKey, restHalfKey, restQuarterKey,
+  label, tone, isKg, isDozen, catRest, offered, enabledToggle,
+  priceKey, halfKey, quarterKey, halfDozenKey, restKey, restPriceKey, restHalfKey, restQuarterKey, restHalfDozenKey,
   allowHalf, allowQuarter, r, set,
 }: {
   label: 'A' | 'B' | 'C';
   tone: 'emerald' | 'blue' | 'amber';
-  isKg: boolean; catRest: boolean; offered: boolean;
+  isKg: boolean; isDozen: boolean; catRest: boolean; offered: boolean;
   enabledToggle: ((v: boolean) => void) | null;
-  priceKey: keyof Row; halfKey: keyof Row; quarterKey: keyof Row; restKey: keyof Row;
-  restPriceKey: keyof Row; restHalfKey: keyof Row; restQuarterKey: keyof Row;
+  priceKey: keyof Row; halfKey: keyof Row; quarterKey: keyof Row; halfDozenKey: keyof Row; restKey: keyof Row;
+  restPriceKey: keyof Row; restHalfKey: keyof Row; restQuarterKey: keyof Row; restHalfDozenKey: keyof Row;
   allowHalf: boolean; allowQuarter: boolean;
   r: Row; set: (patch: Partial<Row>) => void;
 }) {
@@ -325,6 +329,10 @@ function QualityEditLine({
           <label className="flex items-center gap-1.5 text-xs text-gray-500">¼kg
             <input type="number" min={0} step="0.01" disabled={dis} value={num(quarterKey)} onChange={onNum(quarterKey)} placeholder={placeholderFor(num(priceKey), 0.25)} className={inputCls} /></label>
         )}
+        {isDozen && (
+          <label className="flex items-center gap-1.5 text-xs text-gray-500">1/2 dozen
+            <input type="number" min={0} step="0.01" disabled={dis} value={num(halfDozenKey)} onChange={onNum(halfDozenKey)} placeholder={placeholderFor(num(priceKey), 0.5)} className={inputCls} /></label>
+        )}
 
         <label
           title={!catRest ? 'Enable “Category also for restaurants” on this product’s category first.' : 'Offer this quality to restaurants'}
@@ -347,6 +355,10 @@ function QualityEditLine({
           {isKg && allowQuarter && (
             <label className="flex items-center gap-1.5 text-xs text-gray-500">¼kg
               <input type="number" min={0} step="0.01" value={num(restQuarterKey)} onChange={onNum(restQuarterKey)} placeholder={placeholderFor(num(restPriceKey), 0.25)} className={inputCls} /></label>
+          )}
+          {isDozen && (
+            <label className="flex items-center gap-1.5 text-xs text-gray-500">1/2 dozen
+              <input type="number" min={0} step="0.01" value={num(restHalfDozenKey)} onChange={onNum(restHalfDozenKey)} placeholder={placeholderFor(num(restPriceKey), 0.5)} className={inputCls} /></label>
           )}
           <span className="text-[11px] text-gray-400">blank → consumer price</span>
         </div>

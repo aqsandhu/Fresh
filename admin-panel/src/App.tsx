@@ -405,6 +405,18 @@ const AppRoutes: React.FC = () => {
 
 // Main App Component
 function App() {
+  React.useEffect(() => {
+    const stopNumberWheel = (event: WheelEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.type === 'number') {
+        event.preventDefault();
+        target.blur();
+      }
+    };
+    document.addEventListener('wheel', stopNumberWheel, { capture: true, passive: false });
+    return () => document.removeEventListener('wheel', stopNumberWheel, { capture: true });
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>

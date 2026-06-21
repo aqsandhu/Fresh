@@ -277,7 +277,6 @@ export const receiveStockRequest = asyncHandler(async (req: Request, res: Respon
   let out: any;
   try {
     out = await withTransaction(async (client) => {
-      await assertNoOpenOcpShortages(client, ocpId);
       const reqRow = await client.query(
         `SELECT id, status FROM ocp_stock_requests WHERE id = $1 AND ocp_id = $2 FOR UPDATE`,
         [id, ocpId]
