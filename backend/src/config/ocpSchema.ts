@@ -98,7 +98,7 @@ export async function ensureOcpTables(): Promise<boolean> {
       await pool.query(`
         CREATE TABLE IF NOT EXISTS ocp_stock (
           ocp_id     UUID NOT NULL REFERENCES order_collection_points(id) ON DELETE CASCADE,
-          product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          product_id UUID NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
           quality    VARCHAR(1) NOT NULL DEFAULT 'A',
           quantity   NUMERIC(12,3) NOT NULL DEFAULT 0 CHECK (quantity >= 0),
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -136,7 +136,7 @@ export async function ensureOcpTables(): Promise<boolean> {
         CREATE TABLE IF NOT EXISTS ocp_stock_request_items (
           id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
           request_id UUID NOT NULL REFERENCES ocp_stock_requests(id) ON DELETE CASCADE,
-          product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+          product_id UUID REFERENCES products(id) ON DELETE SET NULL,
           quality    VARCHAR(1) NOT NULL DEFAULT 'A',
           quantity   NUMERIC(12,3) NOT NULL CHECK (quantity > 0)
         )`);

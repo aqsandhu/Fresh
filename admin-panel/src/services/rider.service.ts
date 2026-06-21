@@ -109,6 +109,22 @@ export const riderService = {
     }
   },
 
+  receiveCashSettlement: async (
+    id: string,
+    data: { password: string; note?: string }
+  ): Promise<{ id: string; amount: number; orders: number; received_at: string }> => {
+    try {
+      const response = await api.post<ApiResponse<{ id: string; amount: number; orders: number; received_at: string }>>(
+        `/admin/riders/${id}/cash-settlements/receive`,
+        data
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Error receiving rider cash:', error);
+      throw new Error(error?.response?.data?.message || 'Failed to receive rider cash');
+    }
+  },
+
   setDeliveryCharges: async (id: string, charges: RiderDeliveryCharge[]): Promise<any> => {
     try {
       const response = await api.put<ApiResponse<any>>(`/admin/riders/${id}/delivery-charges`, { charges });

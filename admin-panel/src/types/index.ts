@@ -373,6 +373,9 @@ export interface RiderStats {
   payment: {
     totalCollected: number;
     totalEarned: number;
+    codEarned?: number;
+    totalSettled?: number;
+    cashInHand?: number;
     paymentPending: number;
   };
   deliveryCharges?: Array<{

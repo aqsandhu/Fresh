@@ -114,6 +114,8 @@ router.delete('/riders/:id', adminController.deleteRider);
 router.patch('/riders/:id/status', adminController.updateRiderStatus);
 router.patch('/riders/:id/verify', adminController.verifyRider);
 router.get('/riders/:id/stats', adminController.getRiderStats);
+router.get('/riders/:id/cash-settlements', adminController.listRiderCashSettlements);
+router.post('/riders/:id/cash-settlements/receive', adminController.receiveRiderCashSettlement);
 router.get('/riders/:id/location', adminController.getRiderLocation);
 router.put('/riders/:id/delivery-charges', adminController.setRiderDeliveryCharges);
 

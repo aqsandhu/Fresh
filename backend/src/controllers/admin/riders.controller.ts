@@ -17,6 +17,32 @@ import {
 } from '../../utils/cityScope';
 
 const SALT_ROUNDS = 12;
+let riderCashTablesReady: boolean | null = null;
+
+async function hasRiderCashSettlementTables(): Promise<boolean> {
+  if (riderCashTablesReady !== null) return riderCashTablesReady;
+  try {
+    const r = await query(
+      `SELECT COUNT(*)::int AS count
+         FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN ('rider_cash_settlements', 'rider_cash_settlement_orders')`
+    );
+    riderCashTablesReady = Number(r.rows[0]?.count || 0) === 2;
+  } catch {
+    riderCashTablesReady = false;
+  }
+  return riderCashTablesReady;
+}
+
+function riderCodCashExpr(alias: string): string {
+  return `COALESCE(SUM(${alias}.paid_amount) FILTER (
+    WHERE ${alias}.status = 'delivered'
+      AND ${alias}.payment_method = 'cash_on_delivery'
+      AND ${alias}.payment_status = 'completed'
+      AND ${alias}.ocp_id IS NULL
+  ), 0)`;
+}
 
 /**
  * City-ownership guard for by-id rider endpoints. Returns false when the rider
@@ -420,6 +446,16 @@ export const getRiderStats = asyncHandler(async (req: Request, res: Response) =>
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
+  const settlementTablesReady = await hasRiderCashSettlementTables();
+  const settledSql = settlementTablesReady
+    ? `COALESCE((
+        SELECT SUM(rso.amount)
+          FROM rider_cash_settlement_orders rso
+          JOIN rider_cash_settlements rs ON rs.id = rso.settlement_id
+         WHERE rs.rider_id = $1 AND rs.status = 'received'
+      ), 0)`
+    : '0';
+
   const statsQuery = `
     SELECT
       -- Today
@@ -440,8 +476,14 @@ export const getRiderStats = asyncHandler(async (req: Request, res: Response) =>
       -- Total delivered (all time)
       COUNT(*) FILTER (WHERE o.status = 'delivered') as total_delivered,
       COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered'), 0) as total_earned,
-      -- Total collected from customers (COD)  
-      COALESCE(SUM(o.total_amount) FILTER (WHERE o.status = 'delivered'), 0) as total_collected
+      COALESCE(SUM(o.rider_delivery_charge) FILTER (
+        WHERE o.status = 'delivered'
+          AND o.payment_method = 'cash_on_delivery'
+          AND o.payment_status = 'completed'
+          AND o.ocp_id IS NULL
+      ), 0) as cod_earned,
+      ${riderCodCashExpr('o')} as total_collected,
+      ${settledSql} as total_settled
     FROM orders o
     WHERE o.rider_id = $1
   `;
@@ -456,12 +498,12 @@ export const getRiderStats = asyncHandler(async (req: Request, res: Response) =>
 
   const stats = statsResult.rows[0];
 
-  // Payment: total_collected = all COD money rider holds
-  // total_earned = rider's delivery charges earned
-  // payment_pending = total_collected - total_earned (money rider owes to company)
   const totalCollected = parseFloat(stats.total_collected) || 0;
   const totalEarned = parseFloat(stats.total_earned) || 0;
-  const paymentPending = totalCollected - totalEarned; // money rider must return
+  const codEarned = parseFloat(stats.cod_earned) || 0;
+  const totalSettled = parseFloat(stats.total_settled) || 0;
+  const cashInHand = Math.max(totalCollected - totalSettled, 0);
+  const paymentPending = Math.max(totalCollected - totalSettled - codEarned, 0);
 
   // Get delivery charges config
   const chargesResult = await query(
@@ -486,10 +528,128 @@ export const getRiderStats = asyncHandler(async (req: Request, res: Response) =>
     payment: {
       totalCollected,
       totalEarned,
+      codEarned,
+      totalSettled,
+      cashInHand,
       paymentPending,
     },
     deliveryCharges: chargesResult.rows,
   }, 'Rider stats retrieved');
+});
+
+export const listRiderCashSettlements = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
+  if (!(await hasRiderCashSettlementTables())) return successResponse(res, [], 'Rider cash settlements');
+
+  const result = await query(
+    `SELECT s.id, s.amount, s.status, s.note, s.received_at,
+            u.full_name AS received_by_name,
+            COUNT(so.order_id)::int AS order_count
+       FROM rider_cash_settlements s
+       LEFT JOIN rider_cash_settlement_orders so ON so.settlement_id = s.id
+       LEFT JOIN users u ON u.id = s.received_by
+      WHERE s.rider_id = $1
+      GROUP BY s.id, u.full_name
+      ORDER BY s.received_at DESC
+      LIMIT 100`,
+    [id]
+  );
+
+  return successResponse(
+    res,
+    result.rows.map((row: any) => ({
+      ...row,
+      amount: parseFloat(row.amount) || 0,
+      order_count: Number(row.order_count) || 0,
+    })),
+    'Rider cash settlements'
+  );
+});
+
+export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const password = String(req.body?.password || '');
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : null;
+
+  if (!(await hasRiderCashSettlementTables())) {
+    return errorResponse(res, 'Rider cash settlement module is being set up. Please try again shortly.', 503);
+  }
+  if (!password) return errorResponse(res, 'Enter your password to confirm receipt.', 400);
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
+
+  const u = await query('SELECT password_hash FROM users WHERE id = $1', [req.user?.id]);
+  const hash = u.rows[0]?.password_hash;
+  if (!hash || !(await bcrypt.compare(password, hash))) {
+    return errorResponse(res, 'Incorrect password.', 401);
+  }
+
+  let out: any;
+  try {
+    out = await withTransaction(async (client) => {
+      const rider = await client.query('SELECT id, city_id FROM riders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
+      if (rider.rows.length === 0) throw Object.assign(new Error('Rider not found'), { http: 404 });
+
+      const orders = await client.query(
+        `SELECT o.id, o.paid_amount, COALESCE(o.rider_delivery_charge, 0) AS rider_delivery_charge
+           FROM orders o
+          WHERE o.rider_id = $1
+            AND o.deleted_at IS NULL
+            AND o.status = 'delivered'
+            AND o.payment_method = 'cash_on_delivery'
+            AND o.payment_status = 'completed'
+            AND o.ocp_id IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM rider_cash_settlement_orders so WHERE so.order_id = o.id
+            )
+          ORDER BY o.delivered_at ASC NULLS LAST, o.placed_at ASC
+          FOR UPDATE`,
+        [id]
+      );
+      if (orders.rows.length === 0) {
+        throw Object.assign(new Error('No direct COD cash is due from this rider.'), { http: 400 });
+      }
+
+      const lines = orders.rows.map((order: any) => {
+        const paid = parseFloat(order.paid_amount) || 0;
+        const earned = parseFloat(order.rider_delivery_charge) || 0;
+        return { orderId: order.id, amount: Math.max(paid - earned, 0) };
+      });
+      const amount = Math.round(lines.reduce((sum: number, line: any) => sum + line.amount, 0) * 100) / 100;
+      if (amount <= 0) {
+        throw Object.assign(new Error('No payable cash is due from this rider.'), { http: 400 });
+      }
+
+      const settlement = await client.query(
+        `INSERT INTO rider_cash_settlements (rider_id, city_id, amount, note, received_by)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, amount, received_at`,
+        [id, rider.rows[0].city_id || null, amount, note, req.user?.id ?? null]
+      );
+
+      for (const line of lines) {
+        await client.query(
+          `INSERT INTO rider_cash_settlement_orders (settlement_id, order_id, amount)
+           VALUES ($1, $2, $3)`,
+          [settlement.rows[0].id, line.orderId, line.amount]
+        );
+      }
+
+      return {
+        id: settlement.rows[0].id,
+        amount: parseFloat(settlement.rows[0].amount) || 0,
+        orders: lines.length,
+        received_at: settlement.rows[0].received_at,
+      };
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 400) return errorResponse(res, err.message, 400);
+    throw err;
+  }
+
+  logger.info('Rider COD cash received', { settlementId: out.id, riderId: id, amount: out.amount, by: req.user?.id });
+  return successResponse(res, out, 'Rider cash received');
 });
 
 /**

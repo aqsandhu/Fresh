@@ -35,6 +35,8 @@ import { LeafletMap } from '@/components/ui/LeafletMap';
 import { riderService } from '@/services/rider.service';
 import { settingsService } from '@/services/settings.service';
 import { financeService } from '@/services/finance.service';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 import type { Rider, CreateRiderData, RiderStats } from '@/types';
 import { isRequired, isValidPhone, isValidCNIC } from '@/utils/validators';
 import { formatCurrency, resolveImageUrl } from '@/utils/formatters';
@@ -67,6 +69,7 @@ const VERIFICATION_STATUS = [
 
 export const Riders: React.FC = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRider, setEditingRider] = useState<Rider | null>(null);
   const [payRider, setPayRider] = useState<Rider | null>(null);
@@ -81,6 +84,7 @@ export const Riders: React.FC = () => {
   // Stats view state
   const [viewStatsRider, setViewStatsRider] = useState<Rider | null>(null);
   const [riderStats, setRiderStats] = useState<RiderStats | null>(null);
+  const [receiveCashOpen, setReceiveCashOpen] = useState(false);
   const [loadingStats, setLoadingStats] = useState(false);
   const [deliveryChargesMap, setDeliveryChargesMap] = useState<Record<string, number>>({});
   const [savingCharges, setSavingCharges] = useState(false);
@@ -111,6 +115,7 @@ export const Riders: React.FC = () => {
     queryKey: ['riders', { status: statusFilter }],
     queryFn: () => riderService.getRiders(statusFilter || undefined),
   });
+  const canReceiveRiderCash = hasPermission(user?.permissions, 'finance.rider_cash.receive');
 
   // Fetch time slots only when viewing rider stats (delivery charges editor)
   const { data: timeSlots } = useQuery({
@@ -272,7 +277,14 @@ export const Riders: React.FC = () => {
   const closeStatsView = () => {
     setViewStatsRider(null);
     setRiderStats(null);
+    setReceiveCashOpen(false);
     setDeliveryChargesMap({});
+  };
+
+  const refreshCurrentRiderStats = async () => {
+    if (!viewStatsRider) return;
+    const stats = await riderService.getRiderStats(viewStatsRider.id);
+    setRiderStats(stats);
   };
 
   const handleSaveDeliveryCharges = async () => {
@@ -536,10 +548,22 @@ export const Riders: React.FC = () => {
 
             {/* Payment Tracking */}
             <Card>
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-primary-600" /> Payment Tracking
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-primary-600" /> Payment Tracking
+                </h3>
+                {canReceiveRiderCash && (
+                  <Button
+                    size="sm"
+                    onClick={() => setReceiveCashOpen(true)}
+                    disabled={riderStats.payment.paymentPending <= 0}
+                    leftIcon={<Wallet className="w-4 h-4" />}
+                  >
+                    Receive Cash
+                  </Button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="bg-blue-50 rounded-lg p-4">
                   <p className="text-sm text-blue-600">Total Collected (COD)</p>
                   <p className="text-2xl font-bold text-blue-800">
@@ -550,6 +574,12 @@ export const Riders: React.FC = () => {
                   <p className="text-sm text-green-600">Total Earned (Delivery Charges)</p>
                   <p className="text-2xl font-bold text-green-800">
                     {formatCurrency(riderStats.payment.totalEarned)}
+                  </p>
+                </div>
+                <div className="bg-emerald-50 rounded-lg p-4">
+                  <p className="text-sm text-emerald-600">Cash Received</p>
+                  <p className="text-2xl font-bold text-emerald-800">
+                    {formatCurrency(riderStats.payment.totalSettled || 0)}
                   </p>
                 </div>
                 <div className={`rounded-lg p-4 ${riderStats.payment.paymentPending > 0 ? 'bg-red-50' : 'bg-gray-50'}`}>
@@ -615,6 +645,17 @@ export const Riders: React.FC = () => {
           <Card className="text-center py-12">
             <p className="text-gray-500">Failed to load stats.</p>
           </Card>
+        )}
+        {receiveCashOpen && (
+          <ReceiveRiderCashModal
+            rider={viewStatsRider}
+            pending={riderStats?.payment.paymentPending || 0}
+            onClose={() => setReceiveCashOpen(false)}
+            onDone={async () => {
+              setReceiveCashOpen(false);
+              await refreshCurrentRiderStats();
+            }}
+          />
         )}
       </Layout>
     );
@@ -1111,6 +1152,73 @@ function RiderPaymentModal({ rider, onClose }: { rider: Rider; onClose: () => vo
         </div>
         <Input label="Amount (Rs.)" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         <Input label="Comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
+      </div>
+    </Modal>
+  );
+}
+
+function ReceiveRiderCashModal({
+  rider,
+  pending,
+  onClose,
+  onDone,
+}: {
+  rider: Rider;
+  pending: number;
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const [password, setPassword] = useState('');
+  const [note, setNote] = useState('');
+
+  const mut = useMutation({
+    mutationFn: () => riderService.receiveCashSettlement(rider.id, {
+      password,
+      note: note.trim() || undefined,
+    }),
+    onSuccess: async (data) => {
+      toast.success(`Received ${formatCurrency(data.amount)}`);
+      await onDone();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Failed to receive cash'),
+  });
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Receive cash from ${rider.fullName}`}
+      footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={() => mut.mutate()}
+            disabled={!password || pending <= 0 || mut.isPending}
+            isLoading={mut.isPending}
+          >
+            Receive
+          </Button>
+        </div>
+      }>
+      <div className="space-y-4">
+        <div className="bg-red-50 rounded-lg p-4">
+          <p className="text-sm text-red-600">Payable COD cash</p>
+          <p className="text-2xl font-bold text-red-800">{formatCurrency(pending)}</p>
+        </div>
+        <Input
+          label="Admin password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Confirm receipt"
+        />
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Note</label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={3}
+            maxLength={300}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+          />
+        </div>
       </div>
     </Modal>
   );

@@ -20,9 +20,24 @@ import {
 import { PERMISSION_CATALOGUE } from '../config/permissions';
 import logger from '../utils/logger';
 
+async function ensureCompiledPermissionsSeeded(): Promise<void> {
+  const codes = PERMISSION_CATALOGUE.map((p) => p.code);
+  const descriptions = PERMISSION_CATALOGUE.map((p) => p.description);
+  const categories = PERMISSION_CATALOGUE.map((p) => p.category);
+  await query(
+    `INSERT INTO permissions (code, description, category)
+       SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[])
+     ON CONFLICT (code) DO UPDATE
+       SET description = EXCLUDED.description,
+           category = EXCLUDED.category`,
+    [codes, descriptions, categories]
+  );
+}
+
 /** Catalogue of every permission the backend understands. */
 export const listPermissions = asyncHandler(async (_req: Request, res: Response) => {
   try {
+    await ensureCompiledPermissionsSeeded();
     const dbRows = await query(
       `SELECT id, code, description, category FROM permissions ORDER BY category, code`
     );

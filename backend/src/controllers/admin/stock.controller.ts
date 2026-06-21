@@ -154,12 +154,17 @@ export const getStockMovements = asyncHandler(async (req: Request, res: Response
   return successResponse(res, r.rows, 'Movements');
 });
 
-// ── POST /api/admin/stock/add — purchase intake (on_hand += qty) ─────────────
+// ── POST /api/admin/stock/add — emergency correction (on_hand += qty) ─────────
 export const addStock = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Use Finance -> Stock Purchase for normal stock intake.', 403);
+  }
   const { product_id } = req.body;
   const quality = normalizeQuality(req.body.quality);
   const qty = num(req.body.quantity);
   if (!product_id || !(qty > 0)) return errorResponse(res, 'Enter a valid quantity.', 400);
+  const note = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+  if (!note) return errorResponse(res, 'A correction reason is required.', 400);
   const scope = await resolveCityScope(req);
 
   try {
@@ -168,16 +173,16 @@ export const addStock = asyncHandler(async (req: Request, res: Response) => {
       const stockCol = qualityStockColumn(quality);
       await client.query(`UPDATE products SET ${stockCol} = ${stockCol} + $1, updated_at = NOW() WHERE id = $2`, [qty, product_id]);
       await recordStockMovement(client, {
-        productId: product_id, quality, cityId: p.city_id, delta: qty, reason: 'purchase',
-        createdBy: req.user?.id ?? null, note: 'stock intake',
+        productId: product_id, quality, cityId: p.city_id, delta: qty, reason: 'adjust',
+        createdBy: req.user?.id ?? null, note,
       });
     });
   } catch (err: any) {
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
-  logger.info('Stock added', { product_id, quality, qty, by: req.user?.id });
-  return successResponse(res, { product_id, quality, added: qty }, 'Stock added');
+  logger.info('Stock correction added', { product_id, quality, qty, by: req.user?.id });
+  return successResponse(res, { product_id, quality, added: qty }, 'Stock corrected');
 });
 
 // ── POST /api/admin/stock/waste — discard from central (on_hand -= qty) ──────
