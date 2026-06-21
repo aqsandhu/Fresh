@@ -67,6 +67,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/user-tips': ['tips.view', 'tips.manage', 'settings.view', 'settings.update'],
   '/admin/rider-applications': ['rider_applications.view', 'rider_applications.manage', 'riders.view', 'riders.manage'],
   '/admin/restaurants': ['restaurants.view', 'restaurants.manage'],
+  '/admin/ocp': ['ocp.manage', 'ocp.stock.send', 'ocp.settlements.receive', 'ocp.shortages.manage'],
   '/admin/settings': ALL_SETTINGS_VIEW_CODES,
 };
 
@@ -95,6 +96,7 @@ export const ADMIN_ROUTE_FALLBACKS = [
   '/admin/user-tips',
   '/admin/rider-applications',
   '/admin/restaurants',
+  '/admin/ocp',
 ];
 
 export function hasPermission(

@@ -8,6 +8,8 @@ import { PoolClient } from 'pg';
 import { stockUnitsNeeded, qualityStockColumn } from './unitPricing';
 import { reservedColumn, recordStockMovement } from './systemStock';
 import { hasOcpTables } from '../config/ocpSchema';
+import { emitToAdmins } from '../config/socket';
+import logger from './logger';
 
 type HttpError = Error & { http: number };
 function httpError(http: number, message: string): HttpError {
@@ -114,6 +116,21 @@ export async function moveCentralToOcp(client: PoolClient, opts: CentralToOcpOpt
   });
 }
 
+export async function openOcpShortageCount(client: PoolClient, ocpId: string): Promise<number> {
+  const r = await client.query(
+    `SELECT COUNT(*)::int AS count FROM ocp_stock_shortages WHERE ocp_id = $1 AND status = 'open'`,
+    [ocpId]
+  );
+  return Number(r.rows[0]?.count || 0);
+}
+
+export async function assertNoOpenOcpShortages(client: PoolClient, ocpId: string): Promise<void> {
+  const count = await openOcpShortageCount(client, ocpId);
+  if (count > 0) {
+    throw httpError(409, 'This OCP has unresolved stock shortages. Resolve them before receiving stock or settling cash.');
+  }
+}
+
 /**
  * Deduct an OCP-fulfilled order's items from the OCP's stock when it is
  * delivered. Idempotent (skips if already deducted for this order). Floors the
@@ -156,6 +173,7 @@ export async function deductOcpStockOnDelivery(client: PoolClient, orderId: stri
     );
     const current = bal.rows[0] ? parseFloat(String(bal.rows[0].quantity)) || 0 : 0;
     const delta = Math.min(need, current); // never below 0
+    const shortage = Math.max(0, need - current);
     if (delta > 0) {
       await client.query(
         `UPDATE ocp_stock SET quantity = quantity - $1, updated_at = NOW()
@@ -175,5 +193,45 @@ export async function deductOcpStockOnDelivery(client: PoolClient, orderId: stri
         need > current ? `short by ${(need - current).toFixed(3)}` : null,
       ]
     );
+    if (shortage > 0) {
+      const p = await client.query('SELECT name_en FROM products WHERE id = $1', [it.product_id]);
+      const o = await client.query('SELECT order_number FROM orders WHERE id = $1', [orderId]);
+      const inserted = await client.query(
+        `INSERT INTO ocp_stock_shortages (ocp_id, product_id, order_id, quality, shortage_qty, note)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (ocp_id, product_id, order_id, quality) WHERE status = 'open'
+         DO UPDATE SET shortage_qty = EXCLUDED.shortage_qty, note = EXCLUDED.note
+         RETURNING id, shortage_qty`,
+        [
+          ocpId,
+          it.product_id,
+          orderId,
+          it.quality,
+          shortage,
+          `Needed ${need.toFixed(3)}, available ${current.toFixed(3)} at delivery`,
+        ]
+      );
+      const shortageId = inserted.rows[0]?.id;
+      logger.warn('OCP stock shortage recorded', {
+        shortageId,
+        ocpId,
+        productId: it.product_id,
+        orderId,
+        shortage,
+      });
+      emitToAdmins('ocp:shortage', {
+        shortageId,
+        ocpId,
+        productId: it.product_id,
+        productName: p.rows[0]?.name_en || 'Product',
+        orderId,
+        orderNumber: o.rows[0]?.order_number || null,
+        quality: it.quality,
+        shortageQty: shortage,
+        title: 'OCP stock shortage',
+        message: `${p.rows[0]?.name_en || 'Product'} short by ${shortage.toFixed(3)} at delivery`,
+        link: '/admin/ocp',
+      });
+    }
   }
 }

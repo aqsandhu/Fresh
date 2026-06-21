@@ -11,6 +11,7 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../../utils/response';
@@ -20,6 +21,7 @@ import { reservedColumn, recordStockMovement } from '../../utils/systemStock';
 import { moveCentralToOcp, assertOcpServesCity } from '../../utils/ocpStock';
 import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
 import { hasOcpTables } from '../../config/ocpSchema';
+import { normalizePhoneNumber } from '../../utils/validators';
 import logger from '../../utils/logger';
 
 const QUALITIES = ['A', 'B', 'C'] as const;
@@ -27,11 +29,14 @@ const num = (v: unknown): number => {
   const n = parseFloat(String(v));
   return Number.isFinite(n) ? n : NaN;
 };
+const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const STOCK_APPROVAL_VALUE_THRESHOLD = Math.max(0, Number(process.env.STOCK_APPROVAL_VALUE_THRESHOLD || 5000));
 
 /** Lock a product row in scope, returning its city_id (or throws http error). */
 async function lockProductInScope(client: any, id: string, scope: { cityId: string | null; unrestricted: boolean }) {
   const r = await client.query(
     `SELECT id, city_id, name_en,
+            price, price_b, price_c,
             stock_quantity, stock_quantity_b, stock_quantity_c,
             reserved_quantity, reserved_quantity_b, reserved_quantity_c
        FROM products WHERE id = $1 FOR UPDATE`,
@@ -43,6 +48,60 @@ async function lockProductInScope(client: any, id: string, scope: { cityId: stri
     throw Object.assign(new Error('Product not found'), { http: 404 });
   }
   return row;
+}
+
+function priceForQuality(product: any, quality: string): number {
+  const col = quality === 'B' ? 'price_b' : quality === 'C' ? 'price_c' : 'price';
+  const preferred = parseFloat(String(product[col] ?? ''));
+  if (Number.isFinite(preferred) && preferred >= 0) return preferred;
+  const fallback = parseFloat(String(product.price ?? ''));
+  return Number.isFinite(fallback) && fallback >= 0 ? fallback : 0;
+}
+
+async function verifySecondApprover(client: any, req: Request, phone: string, password: string): Promise<string> {
+  if (!req.user?.id) throw Object.assign(new Error('Please login again.'), { http: 401 });
+  let normalizedPhone: string;
+  try {
+    normalizedPhone = normalizePhoneNumber(phone);
+  } catch {
+    throw Object.assign(new Error('Enter a valid approver phone number.'), { http: 400 });
+  }
+  const u = await client.query(
+    `SELECT id, password_hash
+       FROM users
+      WHERE phone = $1
+        AND role IN ('admin', 'super_admin')
+        AND status = 'active'
+        AND deleted_at IS NULL
+      LIMIT 1`,
+    [normalizedPhone]
+  );
+  const approver = u.rows[0];
+  if (!approver?.password_hash || !(await bcrypt.compare(password, approver.password_hash))) {
+    throw Object.assign(new Error('Incorrect password.'), { http: 401 });
+  }
+  if (approver.id === req.user.id) {
+    throw Object.assign(new Error('A different active admin must approve this high-value stock change.'), { http: 400 });
+  }
+  return approver.id;
+}
+
+async function approvalForValue(
+  client: any,
+  req: Request,
+  value: number
+): Promise<{ approvedBy: string | null; approvedAt: string | null }> {
+  if (value < STOCK_APPROVAL_VALUE_THRESHOLD) return { approvedBy: null, approvedAt: null };
+  const phone = String(req.body?.approval_phone || req.body?.approvalPhone || '');
+  const password = String(req.body?.approval_password || req.body?.approvalPassword || req.body?.password || '');
+  if (!phone || !password) {
+    throw Object.assign(
+      new Error(`Second admin approval is required for stock changes worth Rs. ${STOCK_APPROVAL_VALUE_THRESHOLD.toLocaleString('en-PK')} or more.`),
+      { http: 400 }
+    );
+  }
+  const approvedBy = await verifySecondApprover(client, req, phone, password);
+  return { approvedBy, approvedAt: new Date().toISOString() };
 }
 
 /** Σ of a product+quality across all OCPs (physical breakdown). */
@@ -142,16 +201,76 @@ export const getStockOverview = asyncHandler(async (req: Request, res: Response)
 // ── GET /api/admin/stock/:productId/movements — recent ledger ────────────────
 export const getStockMovements = asyncHandler(async (req: Request, res: Response) => {
   if (!(await hasCatalogV2Columns())) return successResponse(res, [], 'Movements');
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) return successResponse(res, [], 'Movements');
+  const params: any[] = [req.params.productId];
+  let cityWhere = '';
+  if (!scope.unrestricted && scope.cityId) {
+    params.push(scope.cityId);
+    cityWhere = ` AND p.city_id = $${params.length}`;
+  }
   const r = await query(
     `SELECT m.id, m.quality, m.delta, m.reason, m.note, m.ref_order_id, m.ref_ocp_id, m.created_at,
-            o.name AS ocp_name
+            m.proof_url, m.evidence_quantity, m.approved_at,
+            o.name AS ocp_name, au.full_name AS approved_by_name
        FROM stock_movements m
+       JOIN products p ON p.id = m.product_id
        LEFT JOIN order_collection_points o ON o.id = m.ref_ocp_id
-      WHERE m.product_id = $1
+       LEFT JOIN users au ON au.id = m.approved_by
+      WHERE m.product_id = $1${cityWhere}
       ORDER BY m.created_at DESC LIMIT 100`,
-    [req.params.productId]
+    params
   );
   return successResponse(res, r.rows, 'Movements');
+});
+
+// Daily waste report with proof + approval metadata.
+export const getWasteReport = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await hasCatalogV2Columns())) return successResponse(res, [], 'Waste report');
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) return successResponse(res, [], 'Waste report');
+
+  const params: any[] = [];
+  const where: string[] = [`m.reason = 'waste'`];
+  if (!scope.unrestricted && scope.cityId) {
+    params.push(scope.cityId);
+    where.push(`p.city_id = $${params.length}`);
+  } else if (typeof req.query.city_id === 'string' && req.query.city_id) {
+    params.push(req.query.city_id);
+    where.push(`p.city_id = $${params.length}`);
+  }
+  const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)
+    ? req.query.date
+    : null;
+  if (date) {
+    params.push(date);
+    where.push(`m.created_at::date = $${params.length}::date`);
+  } else {
+    where.push(`m.created_at::date = CURRENT_DATE`);
+  }
+
+  const r = await query(
+    `SELECT m.id, m.product_id, p.name_en AS product_name, m.quality, m.delta, m.note,
+            m.proof_url, m.evidence_quantity, m.approved_at, m.created_at,
+            cu.full_name AS created_by_name, au.full_name AS approved_by_name
+       FROM stock_movements m
+       JOIN products p ON p.id = m.product_id
+       LEFT JOIN users cu ON cu.id = m.created_by
+       LEFT JOIN users au ON au.id = m.approved_by
+      WHERE ${where.join(' AND ')}
+      ORDER BY m.created_at DESC
+      LIMIT 500`,
+    params
+  );
+  return successResponse(
+    res,
+    r.rows.map((row: any) => ({
+      ...row,
+      delta: parseFloat(row.delta) || 0,
+      evidence_quantity: row.evidence_quantity != null ? parseFloat(row.evidence_quantity) : null,
+    })),
+    'Waste report'
+  );
 });
 
 // ── POST /api/admin/stock/add — emergency correction (on_hand += qty) ─────────
@@ -194,6 +313,13 @@ export const wasteStock = asyncHandler(async (req: Request, res: Response) => {
   // A reason is mandatory for an audit-clean waste trail.
   const reason = typeof req.body.note === 'string' ? req.body.note.trim() : '';
   if (!reason) return errorResponse(res, 'A reason is required to waste stock.', 400);
+  const proofUrl = req.file?.url || '';
+  if (!proofUrl) return errorResponse(res, 'Upload a proof image for wasted stock.', 400);
+  const evidenceQty = num(req.body.evidence_quantity ?? req.body.evidenceQuantity);
+  if (!(evidenceQty > 0)) return errorResponse(res, 'Enter the evidence quantity shown in the proof.', 400);
+  if (Math.abs(evidenceQty - qty) > 0.001) {
+    return errorResponse(res, 'Evidence quantity must match the wasted quantity.', 400);
+  }
   const scope = await resolveCityScope(req);
 
   try {
@@ -204,10 +330,17 @@ export const wasteStock = asyncHandler(async (req: Request, res: Response) => {
       const atOcps = await sumOcpStock(client, product_id, quality);
       const movable = (parseFloat(p[stockCol]) || 0) - (parseFloat(p[resCol]) || 0) - atOcps;
       if (qty > movable) throw Object.assign(new Error(`Only ${movable} available to waste (rest is reserved or at an OCP).`), { http: 400 });
+      const value = qty * priceForQuality(p, quality);
+      const approval = await approvalForValue(client, req, value);
       await client.query(`UPDATE products SET ${stockCol} = ${stockCol} - $1, updated_at = NOW() WHERE id = $2`, [qty, product_id]);
       await recordStockMovement(client, {
         productId: product_id, quality, cityId: p.city_id, delta: -qty, reason: 'waste',
-        createdBy: req.user?.id ?? null, note: reason,
+        createdBy: req.user?.id ?? null,
+        note: `${reason} | evidence ${evidenceQty} | value Rs. ${round2(value)}`,
+        proofUrl,
+        evidenceQuantity: evidenceQty,
+        approvedBy: approval.approvedBy,
+        approvedAt: approval.approvedAt,
       });
     });
   } catch (err: any) {
@@ -226,6 +359,8 @@ export const convertQuality = asyncHandler(async (req: Request, res: Response) =
   const qty = num(req.body.quantity);
   if (!product_id || !(qty > 0)) return errorResponse(res, 'Enter a valid quantity.', 400);
   if (from === to) return errorResponse(res, 'Choose two different qualities.', 400);
+  const reason = typeof req.body.note === 'string' ? req.body.note.trim() : '';
+  if (!reason) return errorResponse(res, 'A reason is required to convert stock quality.', 400);
   const scope = await resolveCityScope(req);
 
   try {
@@ -237,12 +372,26 @@ export const convertQuality = asyncHandler(async (req: Request, res: Response) =
       const atOcps = await sumOcpStock(client, product_id, from);
       const movable = (parseFloat(p[fromCol]) || 0) - (parseFloat(p[fromRes]) || 0) - atOcps;
       if (qty > movable) throw Object.assign(new Error(`Only ${movable} of Quality ${from} can be converted (rest is reserved or at an OCP).`), { http: 400 });
+      const value = qty * priceForQuality(p, from);
+      const approval = await approvalForValue(client, req, value);
       await client.query(
         `UPDATE products SET ${fromCol} = ${fromCol} - $1, ${toCol} = ${toCol} + $1, updated_at = NOW() WHERE id = $2`,
         [qty, product_id]
       );
-      await recordStockMovement(client, { productId: product_id, quality: from, cityId: p.city_id, delta: -qty, reason: 'convert_out', createdBy: req.user?.id ?? null, note: `→ Quality ${to}` });
-      await recordStockMovement(client, { productId: product_id, quality: to, cityId: p.city_id, delta: qty, reason: 'convert_in', createdBy: req.user?.id ?? null, note: `← Quality ${from}` });
+      await recordStockMovement(client, {
+        productId: product_id, quality: from, cityId: p.city_id, delta: -qty, reason: 'convert_out',
+        createdBy: req.user?.id ?? null,
+        note: `to Quality ${to} | ${reason} | value Rs. ${round2(value)}`,
+        approvedBy: approval.approvedBy,
+        approvedAt: approval.approvedAt,
+      });
+      await recordStockMovement(client, {
+        productId: product_id, quality: to, cityId: p.city_id, delta: qty, reason: 'convert_in',
+        createdBy: req.user?.id ?? null,
+        note: `from Quality ${from} | ${reason} | value Rs. ${round2(value)}`,
+        approvedBy: approval.approvedBy,
+        approvedAt: approval.approvedAt,
+      });
     });
   } catch (err: any) {
     if (err?.http) return errorResponse(res, err.message, err.http);

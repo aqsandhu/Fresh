@@ -57,7 +57,7 @@ export const getProfit = asyncHandler(async (req: Request, res: Response) => {
 
   // Shared calc — same numbers the shareholder portal shows.
   const cp = await computeCityProfit(cityId, periodFromQuery(req.query));
-  const { totalSale, orderCount, totalExpenses, profit, freshbazarShare, distributable } = cp;
+  const { totalSale, orderCount, totalExpenses, inventoryCost, operatingExpenses, profit, freshbazarShare, distributable } = cp;
 
   // Per-shareholder share + received (period) + pending (period) + balance.
   const sh = await query(
@@ -90,7 +90,7 @@ export const getProfit = asyncHandler(async (req: Request, res: Response) => {
 
   return successResponse(res, {
     needsCity: false, ready: true,
-    totalSale, orderCount, totalExpenses, profit, freshbazarShare, distributable,
+    totalSale, orderCount, totalExpenses, inventoryCost, operatingExpenses, profit, freshbazarShare, distributable,
     settings: cp.settings,
     shareholders,
   }, 'Profit');

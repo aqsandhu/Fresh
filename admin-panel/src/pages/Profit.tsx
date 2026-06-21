@@ -86,9 +86,10 @@ export const Profit: React.FC = () => {
       ) : (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
             <Card className="text-center"><p className="text-xs text-gray-500">Total sale</p><p className="text-lg font-bold text-gray-900">{money(profit?.totalSale || 0)}</p><p className="text-[11px] text-gray-400">{profit?.orderCount || 0} orders</p></Card>
-            <Card className="text-center"><p className="text-xs text-gray-500">Expenses</p><p className="text-lg font-bold text-red-600">{money(profit?.totalExpenses || 0)}</p></Card>
+            <Card className="text-center"><p className="text-xs text-gray-500">Inventory cost</p><p className="text-lg font-bold text-red-600">{money(profit?.inventoryCost || 0)}</p></Card>
+            <Card className="text-center"><p className="text-xs text-gray-500">Other expenses</p><p className="text-lg font-bold text-red-600">{money(profit?.operatingExpenses || 0)}</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Profit</p><p className={`text-lg font-bold ${(profit?.profit || 0) >= 0 ? 'text-green-700' : 'text-red-600'}`}>{money(profit?.profit || 0)}</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">FreshBazar share</p><p className="text-lg font-semibold text-gray-700">{money(profit?.freshbazarShare || 0)}</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Distributable</p><p className="text-lg font-bold text-primary-700">{money(profit?.distributable || 0)}</p></Card>

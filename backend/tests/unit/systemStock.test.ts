@@ -49,7 +49,7 @@ describe('reserveProductStock', () => {
     expect(upd.sql).toContain('(stock_quantity - reserved_quantity) >= $1'); // oversell guard
     expect(upd.params[0]).toBe(2);
     const mv = calls.find((c) => c.sql.includes('INSERT INTO stock_movements'))!;
-    expect(mv.params).toEqual(['p1', 'A', null, 0, 'reserve', 'o1', null, expect.any(String), null]);
+    expect(mv.params).toEqual(['p1', 'A', null, 0, 'reserve', 'o1', null, expect.any(String), null, null, null, null, null]);
   });
 
   it('returns false (and writes NO ledger row) when stock is insufficient', async () => {

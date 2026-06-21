@@ -1,14 +1,20 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Send, Undo2, Trash2, Repeat, ArrowLeftRight, History } from 'lucide-react';
+import { Search, Loader2, Send, Undo2, Trash2, Repeat, ArrowLeftRight, History, FileText } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
 import { stockService, type StockProduct, type StockQuality, type Quality } from '@/services/stock.service';
 import toast from 'react-hot-toast';
 
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString('en-PK');
+const todayInput = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+};
 
 // Stock is only ever ADDED through Expenses → Stock Purchasing (with grading).
 // Here the admin only MANAGES existing stock (move/convert/waste).
@@ -21,6 +27,7 @@ export const StockManagement: React.FC = () => {
   const [search, setSearch] = useState('');
   const [ctx, setCtx] = useState<ActionCtx | null>(null);
   const [historyFor, setHistoryFor] = useState<StockProduct | null>(null);
+  const [wasteReportOpen, setWasteReportOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['stock-overview'],
@@ -40,10 +47,13 @@ export const StockManagement: React.FC = () => {
   return (
     <Layout title="Stock Management" subtitle="City system stock, central (admin-held) + each OCP's holdings">
       <Card className="mb-4">
-        <div className="relative max-w-md">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…"
             className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <Button variant="outline" onClick={() => setWasteReportOpen(true)} leftIcon={<FileText className="w-4 h-4" />}>Waste report</Button>
         </div>
         <p className="text-xs text-gray-500 mt-2">
           <strong>System</strong> = city total · <strong>Reserved</strong> = held by open orders · <strong>Available</strong> = sellable now ·
@@ -95,6 +105,7 @@ export const StockManagement: React.FC = () => {
 
       {ctx && <ActionModal ctx={ctx} ocps={ocps} onClose={() => setCtx(null)} onDone={() => { setCtx(null); invalidate(); }} />}
       {historyFor && <HistoryModal product={historyFor} onClose={() => setHistoryFor(null)} />}
+      {wasteReportOpen && <WasteReportModal onClose={() => setWasteReportOpen(false)} />}
     </Layout>
   );
 };
@@ -148,6 +159,10 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
   const [toOcpId, setToOcpId] = useState('');
   const [toQuality, setToQuality] = useState<Quality>(quality === 'A' ? 'B' : 'A');
   const [reason, setReason] = useState('');
+  const [evidenceQty, setEvidenceQty] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [approvalPhone, setApprovalPhone] = useState('');
+  const [approvalPassword, setApprovalPassword] = useState('');
   const meta = ACTION_META[action];
 
   const mut = useMutation({
@@ -155,8 +170,23 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
       const quantity = parseFloat(qty) || 0;
       const base = { productId: product.id, quality, quantity };
       switch (action) {
-        case 'waste': return stockService.waste({ ...base, note: reason.trim() });
-        case 'convert': return stockService.convert({ productId: product.id, fromQuality: quality, toQuality, quantity });
+        case 'waste': return stockService.waste({
+          ...base,
+          note: reason.trim(),
+          evidenceQuantity: parseFloat(evidenceQty) || 0,
+          proofFile: proofFile!,
+          approvalPhone: approvalPhone.trim() || undefined,
+          approvalPassword: approvalPassword.trim() || undefined,
+        });
+        case 'convert': return stockService.convert({
+          productId: product.id,
+          fromQuality: quality,
+          toQuality,
+          quantity,
+          note: reason.trim(),
+          approvalPhone: approvalPhone.trim() || undefined,
+          approvalPassword: approvalPassword.trim() || undefined,
+        });
         case 'shift': return stockService.shift({ ...base, ocpId });
         case 'return': return stockService.returnFromOcp({ ...base, ocpId });
         case 'transfer': return stockService.transfer({ productId: product.id, quality, quantity, fromOcpId: ocpId, toOcpId });
@@ -172,8 +202,8 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
     parseFloat(qty) > 0 &&
     (!needsOcp || ocpId) &&
     (!needsToOcp || (toOcpId && toOcpId !== ocpId)) &&
-    (action !== 'convert' || toQuality !== quality) &&
-    (action !== 'waste' || reason.trim().length > 0);
+    (action !== 'convert' || (toQuality !== quality && reason.trim().length > 0)) &&
+    (action !== 'waste' || (reason.trim().length > 0 && parseFloat(evidenceQty) > 0 && !!proofFile));
 
   return (
     <Modal isOpen onClose={onClose} title={`${meta.title} — ${product.name} (Q${quality})`}
@@ -216,15 +246,33 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
         </div>
         {action === 'waste' && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
-            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300}
-              placeholder="Why is this stock being wasted? (e.g. spoiled, damaged)"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Evidence quantity</label>
+              <input type="number" min={0} step="0.001" value={evidenceQty} onChange={(e) => setEvidenceQty(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Proof image</label>
+              <input type="file" accept="image/*" onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200" />
+            </div>
           </div>
         )}
+        {(action === 'waste' || action === 'convert') && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300}
+                placeholder={action === 'waste' ? 'Spoiled, damaged, expired...' : 'Regrade reason'}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            </div>
+            <Input label="Approver phone (high value)" value={approvalPhone} onChange={(e) => setApprovalPhone(e.target.value)} />
+            <Input label="Approver password (high value)" type="password" value={approvalPassword} onChange={(e) => setApprovalPassword(e.target.value)} />
+          </>
+        )}
         <p className="text-xs text-gray-400">
-          {action === 'waste' && 'Removes from the city total. Only central, unreserved stock can be wasted. A reason is required.'}
+          {action === 'waste' && 'Removes from the city total. Only central, unreserved stock can be wasted.'}
           {action === 'convert' && 'Moves quantity from one quality bucket to another (central only).'}
           {action === 'shift' && 'Moves stock to the OCP. City total is unchanged (it just relocates).'}
           {action === 'return' && 'Brings stock back from the OCP to central. City total unchanged.'}
@@ -255,6 +303,9 @@ function HistoryModal({ product, onClose }: { product: StockProduct; onClose: ()
                 <span className="font-medium capitalize">{m.reason.replace('_', ' ')}</span>
                 <span className="text-gray-400"> · Q{m.quality}{m.ocpName ? ` · ${m.ocpName}` : ''}</span>
                 {m.note && <span className="text-gray-400"> · {m.note}</span>}
+                {m.evidenceQuantity != null && <span className="text-gray-400"> · evidence {fmt(m.evidenceQuantity)}</span>}
+                {m.approvedByName && <span className="text-gray-400"> · approved by {m.approvedByName}</span>}
+                {m.proofUrl && <a href={m.proofUrl} target="_blank" rel="noreferrer" className="ml-2 text-primary-600 hover:underline">Proof</a>}
               </div>
               <div className="text-right">
                 <span className={m.delta > 0 ? 'text-green-700' : m.delta < 0 ? 'text-red-600' : 'text-gray-400'}>
@@ -266,6 +317,48 @@ function HistoryModal({ product, onClose }: { product: StockProduct; onClose: ()
           ))}
         </div>
       )}
+    </Modal>
+  );
+}
+
+function WasteReportModal({ onClose }: { onClose: () => void }) {
+  const [date, setDate] = useState(todayInput());
+  const { data = [], isLoading } = useQuery({
+    queryKey: ['stock-waste-report', date],
+    queryFn: () => stockService.wasteReport(date),
+  });
+  return (
+    <Modal isOpen onClose={onClose} title="Waste report"
+      footer={<div className="flex justify-end"><Button variant="outline" onClick={onClose}>Close</Button></div>}>
+      <div className="space-y-3">
+        <Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        {isLoading ? (
+          <Loader2 className="w-5 h-5 animate-spin text-primary-600 mx-auto" />
+        ) : data.length === 0 ? (
+          <p className="text-sm text-gray-500 text-center py-6">No waste recorded for this date.</p>
+        ) : (
+          <div className="max-h-[55vh] overflow-y-auto divide-y text-sm border border-gray-100 rounded-lg">
+            {data.map((row) => (
+              <div key={row.id} className="p-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium text-gray-900">{row.productName} <span className="text-gray-400">Q{row.quality}</span></p>
+                  <p className="text-xs text-gray-500">
+                    {fmt(Math.abs(row.delta))} wasted
+                    {row.evidenceQuantity != null ? ` · evidence ${fmt(row.evidenceQuantity)}` : ''}
+                    {row.createdByName ? ` · by ${row.createdByName}` : ''}
+                  </p>
+                  {row.note && <p className="text-xs text-gray-400 mt-1">{row.note}</p>}
+                </div>
+                <div className="text-right shrink-0">
+                  {row.proofUrl && <a href={row.proofUrl} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline">Proof</a>}
+                  {row.approvedByName && <p className="text-xs text-gray-400 mt-1">Approved: {row.approvedByName}</p>}
+                  <p className="text-xs text-gray-400 mt-1">{new Date(row.createdAt).toLocaleTimeString('en-PK')}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </Modal>
   );
 }
