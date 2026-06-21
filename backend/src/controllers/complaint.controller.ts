@@ -16,7 +16,9 @@ import {
 } from '../utils/response';
 import { ensureFeedbackTables, hasComplaintImagesColumn } from '../config/feedbackSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
+import { ensureControlColumns } from '../config/controlSchema';
 import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
+import { approvalForValue } from '../utils/adminApproval';
 import { emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
@@ -328,6 +330,12 @@ export const refundComplaint = asyncHandler(async (req: Request, res: Response) 
   const amount = parseFloat(String(req.body?.amount));
   if (!Number.isFinite(amount) || amount <= 0) return errorResponse(res, 'Enter a valid refund amount.', 400);
   const source = req.body?.source === 'ocp' ? 'ocp' : 'admin';
+  // A reason is mandatory so every cash-out has an audit trail; proof optional.
+  const reason = String(req.body?.reason ?? req.body?.note ?? '').trim();
+  if (!reason) return errorResponse(res, 'A reason is required to issue a refund.', 400);
+  const proofUrl = typeof req.body?.proof_url === 'string' ? req.body.proof_url.trim() : '';
+
+  await ensureControlColumns();
 
   const cRes = await query(`SELECT id, order_id, city_id FROM complaints WHERE id = $1`, [id]);
   const complaint = cRes.rows[0];
@@ -348,10 +356,18 @@ export const refundComplaint = asyncHandler(async (req: Request, res: Response) 
       if (amount > paid - refunded + 1e-6) {
         throw Object.assign(new Error(`Refund exceeds the refundable amount (Rs. ${Math.max(0, paid - refunded)}).`), { http: 400 });
       }
+      // High-value refunds need a SECOND admin to co-sign (anti-fraud): one admin
+      // can't quietly cash out a fabricated complaint.
+      const approval = await approvalForValue(client, req, amount, { label: 'a refund' });
       const ins = await client.query(
-        `INSERT INTO refunds (order_id, complaint_id, amount, original_payment_source, note, refunded_by)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, amount, original_payment_source, created_at`,
-        [complaint.order_id, id, amount, source, req.body?.note || null, req.user?.id ?? null]
+        `INSERT INTO refunds
+           (order_id, complaint_id, amount, original_payment_source, note, reason, proof_url, refunded_by, approved_by, approved_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, amount, original_payment_source, created_at`,
+        [
+          complaint.order_id, id, amount, source, reason, reason, proofUrl || null,
+          req.user?.id ?? null, approval.approvedBy, approval.approvedAt,
+        ]
       );
       return ins.rows[0];
     });
