@@ -11,7 +11,7 @@ import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, createdResponse, errorResponse, notFoundResponse } from '../../utils/response';
 import { normalizePhoneNumber } from '../../utils/validators';
-import { hasOcpTables } from '../../config/ocpSchema';
+import { ensureOcpTables } from '../../config/ocpSchema';
 import { cityRowInScope, resolveCityScope } from '../../utils/cityScope';
 import logger from '../../utils/logger';
 
@@ -35,7 +35,7 @@ function rowToOcp(o: any) {
 
 /** GET /api/admin/ocp — list collection points (optional ?city_id=). */
 export const listOcps = asyncHandler(async (req: Request, res: Response) => {
-  if (!(await hasOcpTables())) return successResponse(res, [], 'OCPs');
+  if (!(await ensureOcpTables())) return successResponse(res, [], 'OCPs');
   const params: any[] = [];
   let where = 'WHERE o.deleted_at IS NULL';
   if (typeof req.query.city_id === 'string' && req.query.city_id) {
@@ -57,7 +57,7 @@ export const listOcps = asyncHandler(async (req: Request, res: Response) => {
 
 /** POST /api/admin/ocp — create a collection point. */
 export const createOcp = asyncHandler(async (req: Request, res: Response) => {
-  if (!(await hasOcpTables())) {
+  if (!(await ensureOcpTables())) {
     return errorResponse(res, 'OCP module is being set up. Please try again shortly.', 503);
   }
   const { name, owner_name, address, city_id, pin } = req.body;
@@ -148,6 +148,7 @@ const QUALITIES = ['A', 'B', 'C'];
 
 /** POST /api/admin/ocp/:id/stock-requests — send a stock batch to an OCP (pending). */
 export const createStockRequest = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await ensureOcpTables())) return errorResponse(res, 'OCP module is being set up. Please try again shortly.', 503);
   const { id } = req.params;
   const { items, note } = req.body as { items?: any[]; note?: string };
   if (!Array.isArray(items) || items.length === 0) {
@@ -237,7 +238,7 @@ export const listStockRequests = asyncHandler(async (req: Request, res: Response
 
 /** GET /api/admin/ocp/shortages?status=open - OCP stock shortage report. */
 export const listShortages = asyncHandler(async (req: Request, res: Response) => {
-  if (!(await hasOcpTables())) return successResponse(res, [], 'Shortages');
+  if (!(await ensureOcpTables())) return successResponse(res, [], 'Shortages');
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, [], 'Shortages');
 
@@ -285,6 +286,7 @@ export const listShortages = asyncHandler(async (req: Request, res: Response) =>
 
 /** POST /api/admin/ocp/shortages/:id/resolve - close after reconciliation. */
 export const resolveShortage = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await ensureOcpTables())) return errorResponse(res, 'OCP module is being set up. Please try again shortly.', 503);
   const { id } = req.params;
   const password = String(req.body?.password || '');
   const note = typeof req.body?.note === 'string' ? req.body.note.trim() : '';
@@ -338,7 +340,7 @@ export const resolveShortage = asyncHandler(async (req: Request, res: Response) 
 
 /** GET /api/admin/ocp/settlements?status=pending — OCP cash settlements. */
 export const listSettlements = asyncHandler(async (req: Request, res: Response) => {
-  if (!(await hasOcpTables())) return successResponse(res, [], 'Settlements');
+  if (!(await ensureOcpTables())) return successResponse(res, [], 'Settlements');
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, [], 'Settlements');
   const params: any[] = [];
@@ -383,6 +385,7 @@ export const listSettlements = asyncHandler(async (req: Request, res: Response) 
  * is a clean 409).
  */
 export const receiveSettlement = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await ensureOcpTables())) return errorResponse(res, 'OCP module is being set up. Please try again shortly.', 503);
   const { id } = req.params;
   const password = String(req.body?.password || '');
   if (!password) return errorResponse(res, 'Enter your password to confirm receipt.', 400);
