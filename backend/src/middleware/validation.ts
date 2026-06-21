@@ -272,7 +272,6 @@ export const productSchemas = {
     half_dozen_price: commonSchemas.price.allow(null, '', 0).optional(),
     unit_type: Joi.string().valid('kg', 'gram', 'piece', 'dozen', 'liter', 'ml', 'pack').default('kg'),
     unit_value: Joi.number().positive().default(1),
-    stock_quantity: Joi.number().integer().min(0).default(0),
     description_ur: Joi.string().allow('', null),
     description_en: Joi.string().allow('', null),
     is_active: Joi.boolean().default(true),
@@ -283,12 +282,10 @@ export const productSchemas = {
     allow_half_kg: Joi.boolean().optional(),
     allow_quarter_kg: Joi.boolean().optional(),
     tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
-    // Quality tiers (A = price + stock_quantity). Consumer B/C price + per-quality
-    // shared stock; "also for restaurants" flag; restaurant price per tier.
+    // Quality tiers. Stock is intentionally not accepted here; product create
+    // starts at 0 and inventory is added through the stock/finance flow.
     price_b: commonSchemas.price.allow(null, '', 0).optional(),
     price_c: commonSchemas.price.allow(null, '', 0).optional(),
-    stock_quantity_b: Joi.number().min(0).optional(),
-    stock_quantity_c: Joi.number().min(0).optional(),
     available_for_restaurants: Joi.boolean().optional(),
     restaurant_price_a: commonSchemas.price.allow(null, '', 0).optional(),
     restaurant_price_b: commonSchemas.price.allow(null, '', 0).optional(),
@@ -307,15 +304,12 @@ export const productSchemas = {
     half_dozen_price: commonSchemas.price.allow(null, '', 0).optional(),
     price_b: commonSchemas.price.allow(null, '', 0).optional(),
     price_c: commonSchemas.price.allow(null, '', 0).optional(),
-    stock_quantity_b: Joi.number().min(0).optional(),
-    stock_quantity_c: Joi.number().min(0).optional(),
     available_for_restaurants: Joi.boolean().optional(),
     restaurant_price_a: commonSchemas.price.allow(null, '', 0).optional(),
     restaurant_price_b: commonSchemas.price.allow(null, '', 0).optional(),
     restaurant_price_c: commonSchemas.price.allow(null, '', 0).optional(),
     unit_type: Joi.string().valid('kg', 'gram', 'piece', 'dozen', 'liter', 'ml', 'pack'),
     unit_value: Joi.number().positive(),
-    stock_quantity: Joi.number().integer().min(0),
     description_ur: Joi.string().allow('', null),
     description_en: Joi.string().allow('', null),
     is_active: Joi.boolean(),

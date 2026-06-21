@@ -81,7 +81,6 @@ export const productService = {
       if (data.halfKgPrice != null) formData.append('half_kg_price', String(data.halfKgPrice));
       if (data.quarterKgPrice != null) formData.append('quarter_kg_price', String(data.quarterKgPrice));
       if (data.halfDozenPrice != null) formData.append('half_dozen_price', String(data.halfDozenPrice));
-      formData.append('stock_quantity', (data.stockQuantity || 0).toString());
       formData.append('unit_type', data.unitType || 'kg');
       if (data.unitValue) formData.append('unit_value', data.unitValue.toString());
       formData.append('category_id', data.categoryId);
@@ -94,12 +93,10 @@ export const productService = {
       formData.append('allow_half_kg', (data.allowHalfKg !== false).toString());
       formData.append('allow_quarter_kg', (data.allowQuarterKg !== false).toString());
       formData.append('tags', JSON.stringify(data.tags || []));
-      // Quality tiers: consumer B/C price + per-quality shared stock, "also for
-      // restaurants" flag, and restaurant price per tier. (A = price + stock above.)
+      // Quality tiers: consumer B/C price, "also for restaurants" flag, and
+      // restaurant price per tier. Stock is added through stock/finance flows.
       if (data.priceB != null) formData.append('price_b', String(data.priceB));
       if (data.priceC != null) formData.append('price_c', String(data.priceC));
-      if (data.stockQuantityB != null) formData.append('stock_quantity_b', String(data.stockQuantityB));
-      if (data.stockQuantityC != null) formData.append('stock_quantity_c', String(data.stockQuantityC));
       formData.append('available_for_restaurants', (data.availableForRestaurants === true).toString());
       if (data.restaurantPriceA != null) formData.append('restaurant_price_a', String(data.restaurantPriceA));
       if (data.restaurantPriceB != null) formData.append('restaurant_price_b', String(data.restaurantPriceB));
@@ -138,7 +135,6 @@ export const productService = {
       if (data.halfDozenPrice !== undefined) {
         formData.append('half_dozen_price', data.halfDozenPrice == null ? '' : String(data.halfDozenPrice));
       }
-      if (data.stockQuantity !== undefined) formData.append('stock_quantity', data.stockQuantity.toString());
       if (data.unitType) formData.append('unit_type', data.unitType);
       if (data.categoryId) formData.append('category_id', data.categoryId);
       if (data.isActive !== undefined) formData.append('is_active', data.isActive.toString());
@@ -150,8 +146,6 @@ export const productService = {
       if (data.tags !== undefined) formData.append('tags', JSON.stringify(data.tags));
       if (data.priceB !== undefined) formData.append('price_b', data.priceB == null ? '' : String(data.priceB));
       if (data.priceC !== undefined) formData.append('price_c', data.priceC == null ? '' : String(data.priceC));
-      if (data.stockQuantityB !== undefined) formData.append('stock_quantity_b', data.stockQuantityB == null ? '' : String(data.stockQuantityB));
-      if (data.stockQuantityC !== undefined) formData.append('stock_quantity_c', data.stockQuantityC == null ? '' : String(data.stockQuantityC));
       if (data.availableForRestaurants !== undefined) formData.append('available_for_restaurants', data.availableForRestaurants.toString());
       if (data.restaurantPriceA !== undefined) formData.append('restaurant_price_a', data.restaurantPriceA == null ? '' : String(data.restaurantPriceA));
       if (data.restaurantPriceB !== undefined) formData.append('restaurant_price_b', data.restaurantPriceB == null ? '' : String(data.restaurantPriceB));
@@ -202,18 +196,6 @@ export const productService = {
     } catch (error: any) {
       console.error('Error moving products:', error);
       throw new Error(error?.response?.data?.message || 'Failed to move products');
-    }
-  },
-
-  updateProductStock: async (id: string, stockQuantity: number): Promise<Product> => {
-    try {
-      const response = await api.patch<ApiResponse<Product>>(`/admin/products/${id}/stock`, {
-        stock_quantity: stockQuantity,
-      });
-      return response.data;
-    } catch (error: any) {
-      console.error('Error updating product stock:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to update stock');
     }
   },
 

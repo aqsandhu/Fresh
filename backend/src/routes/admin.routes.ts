@@ -123,20 +123,17 @@ const coerceProductFields = (req: any, res: any, next: any) => {
   if (body.price !== undefined) body.price = parseFloat(body.price);
   if (body.compare_at_price !== undefined) body.compare_at_price = parseFloat(body.compare_at_price);
   if (body.unit_value !== undefined) body.unit_value = parseFloat(body.unit_value);
-  if (body.stock_quantity !== undefined) body.stock_quantity = parseInt(body.stock_quantity, 10);
   if (body.is_active !== undefined) body.is_active = body.is_active === 'true' || body.is_active === true;
   if (body.is_featured !== undefined) body.is_featured = body.is_featured === 'true' || body.is_featured === true;
   if (body.is_new_arrival !== undefined) body.is_new_arrival = body.is_new_arrival === 'true' || body.is_new_arrival === true;
   if (body.is_variable_weight !== undefined) body.is_variable_weight = body.is_variable_weight === 'true' || body.is_variable_weight === true;
   if (body.allow_half_kg !== undefined) body.allow_half_kg = body.allow_half_kg === 'true' || body.allow_half_kg === true;
   if (body.allow_quarter_kg !== undefined) body.allow_quarter_kg = body.allow_quarter_kg === 'true' || body.allow_quarter_kg === true;
-  // Quality tiers: consumer B/C price + per-quality stock, "also for restaurants"
-  // flag, and restaurant prices per tier. (A = price + stock_quantity above.)
+  // Quality tiers: consumer B/C price, "also for restaurants" flag, and
+  // restaurant prices per tier. Product stock is managed outside product edit.
   if (body.available_for_restaurants !== undefined) body.available_for_restaurants = body.available_for_restaurants === 'true' || body.available_for_restaurants === true;
   if (body.price_b !== undefined && body.price_b !== '') body.price_b = parseFloat(body.price_b);
   if (body.price_c !== undefined && body.price_c !== '') body.price_c = parseFloat(body.price_c);
-  if (body.stock_quantity_b !== undefined && body.stock_quantity_b !== '') body.stock_quantity_b = parseFloat(body.stock_quantity_b);
-  if (body.stock_quantity_c !== undefined && body.stock_quantity_c !== '') body.stock_quantity_c = parseFloat(body.stock_quantity_c);
   if (body.restaurant_price_a !== undefined && body.restaurant_price_a !== '') body.restaurant_price_a = parseFloat(body.restaurant_price_a);
   if (body.restaurant_price_b !== undefined && body.restaurant_price_b !== '') body.restaurant_price_b = parseFloat(body.restaurant_price_b);
   if (body.restaurant_price_c !== undefined && body.restaurant_price_c !== '') body.restaurant_price_c = parseFloat(body.restaurant_price_c);
