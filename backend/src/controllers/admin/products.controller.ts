@@ -180,7 +180,6 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     half_dozen_price,
     unit_type,
     unit_value,
-    stock_quantity,
     description_ur,
     description_en,
     is_featured,
@@ -250,7 +249,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
           name_ur || name_en, name_en, slug, category_id, subcategory_id,
           price, compare_at_price,
           halfKg, quarterKg, halfDozen,
-          unit_type, unit_value, stock_quantity || 0,
+          unit_type, unit_value, 0,
           description_ur || null, description_en || null, is_featured || false, is_new_arrival || false,
           primaryImage, images.length > 0 ? images : null,
           scope.cityId,
@@ -272,7 +271,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
           name_ur || name_en, name_en, slug, category_id, subcategory_id,
           price, compare_at_price,
           halfKg, quarterKg, halfDozen,
-          unit_type, unit_value, stock_quantity || 0,
+          unit_type, unit_value, 0,
           description_ur || null, description_en || null, is_featured || false, is_new_arrival || false,
           primaryImage, images.length > 0 ? images : null,
           scope.cityId,
@@ -294,20 +293,12 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
     result.rows[0].allow_quarter_kg = allowQuarter;
   }
 
-  // Quality tiers (migration 34): consumer B/C price + per-quality shared stock,
-  // the "also for restaurants" flag, and restaurant prices. Done as a follow-up
-  // update so the two INSERT branches above stay readable. Quality A = the base
-  // `price` + `stock_quantity` already inserted.
+  // Quality tiers (migration 34): consumer B/C price, the "also for
+  // restaurants" flag, and restaurant prices. Stock always starts at 0 here;
+  // inventory is added through stock purchasing / stock-management flows.
   if (await hasQualityCatalogColumns()) {
-    const normStock = (v: any) => {
-      if (v === '' || v === null || v === undefined) return 0;
-      const n = parseFloat(String(v));
-      return Number.isFinite(n) && n >= 0 ? n : 0;
-    };
     const priceB = normPrice(req.body.price_b);
     const priceC = normPrice(req.body.price_c);
-    const stockB = normStock(req.body.stock_quantity_b);
-    const stockC = normStock(req.body.stock_quantity_c);
     const availForRest = toBool(req.body.available_for_restaurants);
     const rPriceA = normPrice(req.body.restaurant_price_a);
     const rPriceB = normPrice(req.body.restaurant_price_b);
@@ -318,11 +309,11 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
          available_for_restaurants = $5,
          restaurant_price_a = $6, restaurant_price_b = $7, restaurant_price_c = $8
        WHERE id = $9`,
-      [priceB, priceC, stockB, stockC, availForRest, rPriceA, rPriceB, rPriceC, result.rows[0].id]
+      [priceB, priceC, 0, 0, availForRest, rPriceA, rPriceB, rPriceC, result.rows[0].id]
     );
     Object.assign(result.rows[0], {
       price_b: priceB, price_c: priceC,
-      stock_quantity_b: stockB, stock_quantity_c: stockC,
+      stock_quantity_b: 0, stock_quantity_c: 0,
       available_for_restaurants: availForRest,
       restaurant_price_a: rPriceA, restaurant_price_b: rPriceB, restaurant_price_c: rPriceC,
     });
@@ -380,7 +371,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     'price', 'compare_at_price',
     'half_kg_price', 'quarter_kg_price', 'half_dozen_price',
     'unit_type', 'unit_value',
-    'stock_quantity', 'description_ur', 'description_en',
+    'description_ur', 'description_en',
     'is_active', 'is_featured', 'is_new_arrival', 'tags',
     // Only writable once migration 23 has added the columns.
     ...(varWeightReady ? ['is_variable_weight', 'variable_weight_note'] : []),
@@ -388,8 +379,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     ...(unitToggleReady ? ['allow_half_kg', 'allow_quarter_kg'] : []),
     // Quality tiers — only writable once migration 34 has added the columns.
     ...(qualityReady
-      ? ['price_b', 'price_c', 'stock_quantity_b', 'stock_quantity_c',
-         'available_for_restaurants', 'restaurant_price_a', 'restaurant_price_b', 'restaurant_price_c']
+      ? ['price_b', 'price_c', 'available_for_restaurants', 'restaurant_price_a', 'restaurant_price_b', 'restaurant_price_c']
       : []),
     // Catalog v2 — only writable once migration 37 has added the columns.
     ...(catalogV2Ready ? [...CATALOG_V2_ENABLE_FLAGS, ...CATALOG_V2_FRACTION_PRICES] : []),
@@ -405,9 +395,6 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     'price_b', 'price_c', 'restaurant_price_a', 'restaurant_price_b', 'restaurant_price_c',
     ...CATALOG_V2_FRACTION_PRICES,
   ]);
-  // Per-quality stock is NOT NULL (defaults 0) — a cleared field means 0, not NULL.
-  const nonNegativeStockFields = new Set(['stock_quantity_b', 'stock_quantity_c']);
-
   const setClauses: string[] = [];
   const values: any[] = [];
   let paramIndex = 1;
@@ -429,9 +416,6 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
           const n = parseFloat(String(value));
           normalised = Number.isFinite(n) && n > 0 ? n : null;
         }
-      } else if (nonNegativeStockFields.has(key)) {
-        const n = parseFloat(String(value));
-        normalised = Number.isFinite(n) && n >= 0 ? n : 0;
       }
       setClauses.push(`${key} = $${paramIndex++}`);
       values.push(normalised);
