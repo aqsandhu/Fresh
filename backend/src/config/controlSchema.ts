@@ -73,6 +73,26 @@ async function runDdl(connectionString: string): Promise<void> {
     }
     await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_approved_by UUID`);
     await pool.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_approved_at TIMESTAMPTZ`);
+
+    // Audit trail for every variable-weight edit — feeds the customer alert and
+    // the per-editor "are weights drifting upward?" monitoring (no single edit
+    // is suspicious; a consistent upward bias across many is the signal).
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS order_item_weight_edits (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        order_id      UUID NOT NULL,
+        order_item_id UUID NOT NULL,
+        product_id    UUID,
+        edited_by     UUID,
+        old_weight    NUMERIC(12,3),
+        new_weight    NUMERIC(12,3),
+        delta         NUMERIC(12,3),
+        old_total     NUMERIC(12,2),
+        new_total     NUMERIC(12,2),
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS oiwe_editor_idx ON order_item_weight_edits (edited_by, created_at DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS oiwe_order_idx  ON order_item_weight_edits (order_id)`);
   } finally {
     await pool.end().catch(() => undefined);
   }

@@ -458,6 +458,7 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
   if (!(await hasVariableWeightColumns())) {
     return errorResponse(res, 'Weight adjustment is not available yet.', 503);
   }
+  await ensureControlColumns();
 
   const scope = await resolveCityScope(req);
   if (!(await orderInScope(scope, id))) {
@@ -468,7 +469,7 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
   try {
     updatedOrder = await withTransaction(async (client) => {
       const orderRes = await client.query(
-        `SELECT id, status, delivery_charge, discount_amount, coupon_discount, tax_amount
+        `SELECT id, user_id, status, delivery_charge, discount_amount, coupon_discount, tax_amount
            FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
         [id]
       );
@@ -484,7 +485,8 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
       }
 
       const itemRes = await client.query(
-        `SELECT oi.id, oi.unit_price,
+        `SELECT oi.id, oi.unit_price, oi.product_id, oi.product_name,
+                oi.weight_kg AS prev_weight, oi.total_price AS prev_total,
                 COALESCE(p.unit_value, 1) AS unit_value,
                 COALESCE(p.is_variable_weight, FALSE) AS is_variable_weight
            FROM order_items oi
@@ -534,7 +536,40 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
           WHERE id = $3 RETURNING *`,
         [subtotal, total, id]
       );
-      return upd.rows[0];
+
+      // Audit EVERY weight edit (old→new + value delta). No single edit is
+      // suspicious; the per-editor cumulative upward bias is what the owner's
+      // daily reconciliation flags — this is the data it reads.
+      const prevWeight = parseFloat(item.prev_weight);
+      const prevTotal = parseFloat(item.prev_total) || 0;
+      await client.query(
+        `INSERT INTO order_item_weight_edits
+           (order_id, order_item_id, product_id, edited_by, old_weight, new_weight, delta, old_total, new_total)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          id, itemId, item.product_id ?? null, req.user?.id ?? null,
+          Number.isFinite(prevWeight) ? prevWeight : null, weight,
+          Number.isFinite(prevWeight) ? roundMoney(weight - prevWeight) : null,
+          prevTotal, newTotal,
+        ]
+      );
+
+      // Tell the customer their bill changed, with the exact packed weight — the
+      // customer who receives the goods is the real-world check on the weight.
+      // Persisted (bell) + realtime, so they see it even if offline at the time.
+      const dirWord = newTotal > prevTotal ? 'barh kar' : newTotal < prevTotal ? 'kam ho kar' : 'update ho kar';
+      await client.query(
+        `INSERT INTO notifications (user_id, type, title, message, order_id)
+         VALUES ($1, 'order_amount_updated', $2, $3, $4)`,
+        [
+          order.user_id,
+          'Order total updated',
+          `${item.product_name || 'Item'} ka weight ${weight} kg hua. Aapke order ka naya total Rs. ${total} ${dirWord} hai.`,
+          id,
+        ]
+      );
+
+      return { ...upd.rows[0], _prevTotal: prevTotal, _newTotal: newTotal };
     });
   } catch (err: any) {
     if (err?.http === 404) return notFoundResponse(res, err.message);
@@ -542,7 +577,10 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
     throw err;
   }
 
-  logger.info('Order item weight updated', { orderId: id, itemId, weight, updatedBy: req.user?.id });
+  logger.info('Order item weight updated', {
+    orderId: id, itemId, weight, updatedBy: req.user?.id,
+    oldTotal: updatedOrder._prevTotal, newTotal: updatedOrder._newTotal,
+  });
   emitOrderUpdate(id, {
     orderId: id,
     totalAmount: parseFloat(updatedOrder.total_amount),
