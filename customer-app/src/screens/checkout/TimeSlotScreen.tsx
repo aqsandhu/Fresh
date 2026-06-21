@@ -17,7 +17,6 @@ import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES } from '@utils/constants
 import { formatCurrency, getVegFruitSubtotal, calculateDeliveryCharge as calcDelivery } from '@utils/helpers';
 import { Button, ErrorView, LoadingOverlay } from '@components';
 import { orderService } from '@services/order.service';
-import { cartService } from '@services/cart.service';
 import { addressService } from '@services/address.service';
 import { useCartStore, useCheckoutStore } from '@store';
 
@@ -58,7 +57,7 @@ export const TimeSlotScreen: React.FC = () => {
   const [deliverySettings, setDeliverySettings] = useState<{ base_charge: number; free_delivery_threshold: number }>({ base_charge: 100, free_delivery_threshold: 500 });
 
   const { selectedSlot, setSelectedSlot, selectedAddress, setSelectedAddress, resetCheckout } = useCheckoutStore();
-  const { items, subtotal, clearCart } = useCartStore();
+  const { items, subtotal, clearCart, syncWithBackend } = useCartStore();
 
   const loadData = useCallback(async () => {
     try {
@@ -167,7 +166,7 @@ export const TimeSlotScreen: React.FC = () => {
     }
 
     try {
-      await cartService.ensureBackendCartSynced();
+      await syncWithBackend();
 
       const orderData = {
         addressId: finalAddressId,
