@@ -36,7 +36,9 @@ import { normalizePhoneNumber } from '../../utils/validators';
 import { hasVariableWeightColumns, hasQualityCatalogColumns } from '../../config/productSchema';
 import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
 import { ensureTimeSlotBookings } from '../../config/timeSlotSchema';
+import { ensureControlColumns } from '../../config/controlSchema';
 import { validateAndClaimTimeSlot } from '../../utils/timeSlots';
+import { approvalForValue } from '../../utils/adminApproval';
 import { hasWhatsappLinkColumns } from '../../config/whatsappOrderSchema';
 import { hasUrgentDeliveryColumns, hasRestaurantOrderColumns } from '../../config/orderSchema';
 import { hasOcpTables } from '../../config/ocpSchema';
@@ -735,6 +737,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
   const doorPic = typeof door_picture_url === 'string' && door_picture_url.trim() ? door_picture_url.trim() : null;
 
   await ensureTimeSlotBookings();
+  await ensureControlColumns();
 
   let order: any;
   try {
@@ -819,6 +822,30 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
         if (cityRow.rows[0]?.id) orderCityId = cityRow.rows[0].id;
       }
 
+      // A custom/discounted price is ONLY allowed on a genuine complaint
+      // replacement: the new order must point at a real, in-scope original order
+      // AND a complaint that belongs to it. Otherwise a "manual order" could be
+      // priced at 0 to walk stock out as a free sale. Validated up front so the
+      // pricing loop can refuse override prices on a normal manual order.
+      let isReplacement = false;
+      if (replacement_for_order_id) {
+        if (!(await orderInScope(scope, replacement_for_order_id))) {
+          throw Object.assign(new Error('Original order not found.'), { http: 400 });
+        }
+        if (!complaint_id) {
+          throw Object.assign(new Error('A linked complaint is required for a replacement order.'), { http: 400 });
+        }
+        const comp = await client.query(
+          `SELECT id FROM complaints WHERE id = $1 AND order_id = $2`,
+          [complaint_id, replacement_for_order_id]
+        );
+        if (comp.rows.length === 0) {
+          throw Object.assign(new Error('The complaint does not match the original order.'), { http: 400 });
+        }
+        isReplacement = true;
+      }
+      let discountValueTotal = 0;
+
       // Price each line by its unit + quality; track the free-delivery subtotal.
       const qualityReady = await hasQualityCatalogColumns();
       const catalogV2Ready = await hasCatalogV2Columns();
@@ -853,21 +880,40 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
           throw Object.assign(new Error(`Quality ${quality} not available for ${p.name_en}.`), { http: 400 });
         }
         const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);
-        // A complaint replacement may set an admin override price per line (0 =
-        // free, or any partial amount); otherwise price by the live unit price.
+        // The live (normal) price is always the baseline.
+        const liveUnit = qualityReady
+          ? (resolveConsumerUnitPrice(p, quality, unit) ?? resolveUnitPrice(p, unit))
+          : resolveUnitPrice(p, unit);
+        // An override (free/partial) price is honoured ONLY on a complaint
+        // replacement, and can never exceed the live price. On a normal manual
+        // order any override is rejected — no zero-priced stock walkout.
         const override = item.override_price;
         const hasOverride = override !== undefined && override !== null && override !== '' && Number.isFinite(parseFloat(String(override))) && parseFloat(String(override)) >= 0;
-        const unitPrice = hasOverride
-          ? roundMoney(parseFloat(String(override)))
-          : qualityReady
-            ? (resolveConsumerUnitPrice(p, quality, unit) ?? resolveUnitPrice(p, unit))
-            : resolveUnitPrice(p, unit);
+        if (hasOverride && !isReplacement) {
+          throw Object.assign(new Error('Custom or discounted prices are only allowed on a complaint replacement order.'), { http: 400 });
+        }
+        let unitPrice = liveUnit;
+        if (hasOverride) {
+          const ov = roundMoney(parseFloat(String(override)));
+          if (ov > liveUnit + 1e-6) {
+            throw Object.assign(new Error(`A replacement line price can't exceed the normal price (Rs. ${liveUnit}).`), { http: 400 });
+          }
+          unitPrice = ov;
+        }
+        discountValueTotal += roundMoney(Math.max(0, liveUnit - unitPrice) * qty);
         const lineTotal = roundMoney(unitPrice * qty);
         subtotal += lineTotal;
         if (p.qualifies_for_free_delivery === true) vegFruitSubtotal += lineTotal;
         lines.push({ product_id: item.product_id, name: p.name_en, image: p.primary_image, sku: p.sku, unit, quality, unitPrice, qty, lineTotal });
       }
       subtotal = roundMoney(subtotal);
+
+      // A free/discounted replacement above the value threshold needs a SECOND
+      // admin to co-sign (anti-fraud) — one admin can't hand out big free stock.
+      let discountApproval: { approvedBy: string | null; approvedAt: string | null } = { approvedBy: null, approvedAt: null };
+      if (discountValueTotal > 0) {
+        discountApproval = await approvalForValue(client, req, discountValueTotal, { label: 'a free/discounted order' });
+      }
 
       // Delivery settings.
       const sset = await client.query(
@@ -940,13 +986,14 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
         o.urgent_delivery_eta = urgentEta || null;
       }
 
-      // Link a complaint replacement to its original order (validated in scope).
-      if (replacement_for_order_id && (await hasCatalogV2Columns())) {
-        const orig = await client.query(`SELECT id FROM orders WHERE id = $1 AND deleted_at IS NULL`, [replacement_for_order_id]);
-        if (orig.rows.length === 0) throw Object.assign(new Error('Original order not found.'), { http: 400 });
+      // Link the (already-validated) complaint replacement to its original order
+      // and stamp who co-approved any discount.
+      if (isReplacement && catalogV2Ready) {
         await client.query(
-          `UPDATE orders SET replacement_for_order_id = $1, complaint_id = $2 WHERE id = $3`,
-          [replacement_for_order_id, complaint_id || null, o.id]
+          `UPDATE orders SET replacement_for_order_id = $1, complaint_id = $2,
+                  discount_approved_by = $3, discount_approved_at = $4
+            WHERE id = $5`,
+          [replacement_for_order_id, complaint_id, discountApproval.approvedBy, discountApproval.approvedAt, o.id]
         );
       }
 

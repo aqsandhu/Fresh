@@ -11,7 +11,6 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
-import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../../utils/response';
@@ -19,9 +18,9 @@ import { resolveCityScope } from '../../utils/cityScope';
 import { normalizeQuality, qualityStockColumn } from '../../utils/unitPricing';
 import { reservedColumn, recordStockMovement } from '../../utils/systemStock';
 import { moveCentralToOcp, assertOcpServesCity } from '../../utils/ocpStock';
+import { approvalForValue } from '../../utils/adminApproval';
 import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
 import { hasOcpTables } from '../../config/ocpSchema';
-import { normalizePhoneNumber } from '../../utils/validators';
 import logger from '../../utils/logger';
 
 const QUALITIES = ['A', 'B', 'C'] as const;
@@ -30,7 +29,6 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : NaN;
 };
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-const STOCK_APPROVAL_VALUE_THRESHOLD = Math.max(0, Number(process.env.STOCK_APPROVAL_VALUE_THRESHOLD || 5000));
 
 /** Lock a product row in scope, returning its city_id (or throws http error). */
 async function lockProductInScope(client: any, id: string, scope: { cityId: string | null; unrestricted: boolean }) {
@@ -58,51 +56,9 @@ function priceForQuality(product: any, quality: string): number {
   return Number.isFinite(fallback) && fallback >= 0 ? fallback : 0;
 }
 
-async function verifySecondApprover(client: any, req: Request, phone: string, password: string): Promise<string> {
-  if (!req.user?.id) throw Object.assign(new Error('Please login again.'), { http: 401 });
-  let normalizedPhone: string;
-  try {
-    normalizedPhone = normalizePhoneNumber(phone);
-  } catch {
-    throw Object.assign(new Error('Enter a valid approver phone number.'), { http: 400 });
-  }
-  const u = await client.query(
-    `SELECT id, password_hash
-       FROM users
-      WHERE phone = $1
-        AND role IN ('admin', 'super_admin')
-        AND status = 'active'
-        AND deleted_at IS NULL
-      LIMIT 1`,
-    [normalizedPhone]
-  );
-  const approver = u.rows[0];
-  if (!approver?.password_hash || !(await bcrypt.compare(password, approver.password_hash))) {
-    throw Object.assign(new Error('Incorrect password.'), { http: 401 });
-  }
-  if (approver.id === req.user.id) {
-    throw Object.assign(new Error('A different active admin must approve this high-value stock change.'), { http: 400 });
-  }
-  return approver.id;
-}
-
-async function approvalForValue(
-  client: any,
-  req: Request,
-  value: number
-): Promise<{ approvedBy: string | null; approvedAt: string | null }> {
-  if (value < STOCK_APPROVAL_VALUE_THRESHOLD) return { approvedBy: null, approvedAt: null };
-  const phone = String(req.body?.approval_phone || req.body?.approvalPhone || '');
-  const password = String(req.body?.approval_password || req.body?.approvalPassword || req.body?.password || '');
-  if (!phone || !password) {
-    throw Object.assign(
-      new Error(`Second admin approval is required for stock changes worth Rs. ${STOCK_APPROVAL_VALUE_THRESHOLD.toLocaleString('en-PK')} or more.`),
-      { http: 400 }
-    );
-  }
-  const approvedBy = await verifySecondApprover(client, req, phone, password);
-  return { approvedBy, approvedAt: new Date().toISOString() };
-}
+/** High-value stock changes (waste/convert) require a second admin (shared util). */
+const approvalForStock = (client: any, req: Request, value: number) =>
+  approvalForValue(client, req, value, { label: 'a stock change' });
 
 /** Σ of a product+quality across all OCPs (physical breakdown). */
 async function sumOcpStock(client: any, productId: string, quality: string): Promise<number> {
@@ -331,7 +287,7 @@ export const wasteStock = asyncHandler(async (req: Request, res: Response) => {
       const movable = (parseFloat(p[stockCol]) || 0) - (parseFloat(p[resCol]) || 0) - atOcps;
       if (qty > movable) throw Object.assign(new Error(`Only ${movable} available to waste (rest is reserved or at an OCP).`), { http: 400 });
       const value = qty * priceForQuality(p, quality);
-      const approval = await approvalForValue(client, req, value);
+      const approval = await approvalForStock(client, req, value);
       await client.query(`UPDATE products SET ${stockCol} = ${stockCol} - $1, updated_at = NOW() WHERE id = $2`, [qty, product_id]);
       await recordStockMovement(client, {
         productId: product_id, quality, cityId: p.city_id, delta: -qty, reason: 'waste',
@@ -373,7 +329,7 @@ export const convertQuality = asyncHandler(async (req: Request, res: Response) =
       const movable = (parseFloat(p[fromCol]) || 0) - (parseFloat(p[fromRes]) || 0) - atOcps;
       if (qty > movable) throw Object.assign(new Error(`Only ${movable} of Quality ${from} can be converted (rest is reserved or at an OCP).`), { http: 400 });
       const value = qty * priceForQuality(p, from);
-      const approval = await approvalForValue(client, req, value);
+      const approval = await approvalForStock(client, req, value);
       await client.query(
         `UPDATE products SET ${fromCol} = ${fromCol} - $1, ${toCol} = ${toCol} + $1, updated_at = NOW() WHERE id = $2`,
         [qty, product_id]
