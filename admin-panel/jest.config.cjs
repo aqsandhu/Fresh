@@ -15,10 +15,10 @@ module.exports = {
   // passed (it silently failed `npm test`). Raise as component coverage grows.
   coverageThreshold: {
     global: {
-      branches: 4,
-      functions: 3,
-      lines: 5,
-      statements: 5,
+      branches: 5,
+      functions: 4,
+      lines: 8,
+      statements: 8,
     },
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
