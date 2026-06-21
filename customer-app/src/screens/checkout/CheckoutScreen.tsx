@@ -71,7 +71,7 @@ export const CheckoutScreen: React.FC = () => {
   const cityName = useOptionalCityName() || 'Your City';
   const newAddressFormRef = useRef<CheckoutAddressFormHandle>(null);
 
-  const { items, subtotal, getDeliveryCharge, loadDeliverySettings, clearCart, hasHydrated, deliverySlotCutoffPercent } =
+  const { items, subtotal, getDeliveryCharge, loadDeliverySettings, clearCart, hasHydrated, deliverySlotCutoffPercent, syncWithBackend } =
     useCartStore();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -148,6 +148,8 @@ export const CheckoutScreen: React.FC = () => {
     setCouponLoading(true);
     setCouponError('');
     try {
+      // Validate against the live cart: push the store (source of truth) first.
+      await syncWithBackend();
       const result = await cartService.applyCoupon(trimmed);
       setAppliedCoupon(result);
     } catch (err: any) {

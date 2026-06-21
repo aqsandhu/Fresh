@@ -220,7 +220,7 @@ export const useCartStore = create<CartStore>()(
         set({ isLoading: true });
         try {
           set((state) => persistActiveCityItems(state, []));
-          await cartService.clearCart();
+          await cartService.clearBackendCart();
         } finally {
           set({ isLoading: false });
         }

@@ -16,14 +16,13 @@ import { formatCurrency } from '@utils/helpers';
 import { Button, LoadingOverlay } from '@components';
 import { useCartStore, useCheckoutStore } from '@store';
 import { orderService } from '@services/order.service';
-import { cartService } from '@services/cart.service';
 
 export const PaymentScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<CartStackParamList>>();
   const [loading, setLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'wallet'>('cash');
   
-  const { items, subtotal, deliveryCharge, total, clearCart } = useCartStore();
+  const { items, subtotal, deliveryCharge, total, clearCart, syncWithBackend } = useCartStore();
   const { selectedAddress, selectedSlot, resetCheckout } = useCheckoutStore();
 
   const paymentMethods = [
@@ -62,8 +61,8 @@ export const PaymentScreen: React.FC = () => {
 
     setLoading(true);
     try {
-      // Sync local cart to backend before creating order
-      await cartService.ensureBackendCartSynced();
+      // Push the store's cart (the source of truth) to the backend before order.
+      await syncWithBackend();
 
       const orderData = {
         addressId: selectedAddress.id,
