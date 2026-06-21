@@ -13,6 +13,7 @@ import * as riderAppController from '../controllers/riderApplication.controller'
 import * as restaurantsController from '../controllers/admin/restaurants.controller';
 import * as ocpController from '../controllers/admin/ocp.controller';
 import * as stockController from '../controllers/admin/stock.controller';
+import * as reconciliationController from '../controllers/admin/reconciliation.controller';
 import {
   authenticate,
   requireAdmin,
@@ -321,6 +322,10 @@ router.post('/stock/shift', adminRateLimiter, stockController.shiftToOcp);
 router.post('/stock/return', adminRateLimiter, stockController.returnFromOcp);
 router.post('/stock/transfer', adminRateLimiter, stockController.transferOcpToOcp);
 router.get('/stock/:productId/movements', stockController.getStockMovements);
+
+// Reconciliation watchdog (super-admin only; role-checked in the controller).
+router.get('/reconciliation', reconciliationController.getReconciliation);
+router.post('/reconciliation/run', adminRateLimiter, reconciliationController.runReconciliationNow);
 
 // User guidance tips (per-city; global tips are super-admin only)
 router.get('/tips', tipsController.listTips);
