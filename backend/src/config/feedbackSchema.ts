@@ -75,7 +75,7 @@ async function runDdlOnConnection(connectionString: string): Promise<void> {
         id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         target_type  VARCHAR(20) NOT NULL CHECK (target_type IN ('product','rider','service')),
-        product_id   UUID REFERENCES products(id) ON DELETE CASCADE,
+        product_id   UUID REFERENCES products(id) ON DELETE SET NULL,
         rider_id     UUID REFERENCES riders(id)   ON DELETE CASCADE,
         order_id     UUID REFERENCES orders(id)   ON DELETE SET NULL,
         city_id      UUID REFERENCES service_cities(id) ON DELETE SET NULL,

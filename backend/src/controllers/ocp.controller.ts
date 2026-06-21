@@ -343,11 +343,17 @@ export const collectOcpPayment = asyncHandler(async (req: Request, res: Response
   try {
     out = await withTransaction(async (client) => {
       const ord = await client.query(
-        `SELECT total_amount, paid_amount, payment_status FROM orders
+        `SELECT total_amount, paid_amount, payment_status, payment_method, status FROM orders
           WHERE id = $1 AND ocp_id = $2 AND deleted_at IS NULL FOR UPDATE`,
         [id, req.ocp!.id]
       );
       if (ord.rows.length === 0) throw Object.assign(new Error('Order not found'), { http: 404 });
+      if (ord.rows[0].payment_method !== 'cash_on_delivery') {
+        throw Object.assign(new Error('Only COD orders can be collected as cash.'), { http: 400 });
+      }
+      if (!['out_for_delivery', 'delivered'].includes(ord.rows[0].status)) {
+        throw Object.assign(new Error('Cash can only be collected after the order is out for delivery.'), { http: 400 });
+      }
       const total = parseFloat(ord.rows[0].total_amount) || 0;
       const paid = parseFloat(ord.rows[0].paid_amount) || 0;
       // Already fully collected → no-op (idempotent), never double-records.
@@ -364,6 +370,7 @@ export const collectOcpPayment = asyncHandler(async (req: Request, res: Response
     });
   } catch (err: any) {
     if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
   }
   logger.info('OCP collected payment', { orderId: id, ocpId: req.ocp!.id });
@@ -376,8 +383,11 @@ export const getOcpSettlements = asyncHandler(async (req: Request, res: Response
   // Due = collected cash NOT yet tied to any settlement.
   const due = await query(
     `SELECT COALESCE(SUM(o.paid_amount), 0) AS amount, COUNT(*) AS orders
-       FROM orders o
+      FROM orders o
       WHERE o.ocp_id = $1 AND o.deleted_at IS NULL AND o.paid_amount > 0
+        AND o.status = 'delivered'
+        AND o.payment_method = 'cash_on_delivery'
+        AND o.payment_status = 'completed'
         AND NOT EXISTS (SELECT 1 FROM ocp_settlement_orders so WHERE so.order_id = o.id)`,
     [ocpId]
   );
@@ -406,8 +416,11 @@ export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response
       // Lock the free collected orders (paid, not already in a settlement).
       const orders = await client.query(
         `SELECT o.id, o.paid_amount
-           FROM orders o
+          FROM orders o
           WHERE o.ocp_id = $1 AND o.deleted_at IS NULL AND o.paid_amount > 0
+            AND o.status = 'delivered'
+            AND o.payment_method = 'cash_on_delivery'
+            AND o.payment_status = 'completed'
             AND NOT EXISTS (SELECT 1 FROM ocp_settlement_orders so WHERE so.order_id = o.id)
           FOR UPDATE`,
         [ocpId]

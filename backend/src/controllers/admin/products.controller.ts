@@ -18,6 +18,7 @@ import {
 import { parseTagsInput, tagSearchSql } from '../../utils/productTags';
 import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumns } from '../../config/productSchema';
 import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
+import { hasOcpTables } from '../../config/ocpSchema';
 
 // Catalog v2 (migration 37) column groups — reused by create + update.
 const CATALOG_V2_ENABLE_FLAGS = [
@@ -475,30 +476,33 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 
 /**
  * Delete product
- * DELETE /api/admin/products/:id              -> permanent delete (default)
- * DELETE /api/admin/products/:id?soft=true    -> soft delete (is_active = FALSE)
+ * DELETE /api/admin/products/:id              -> soft delete (is_active = FALSE)
+ * DELETE /api/admin/products/:id?hard=true    -> super-admin purge for unused dummy rows only
  *
- * Permanent delete removes the product row and its Supabase images. Order
- * history is preserved: order_items keeps its own snapshot (product_name,
- * product_image, prices) and order_items.product_id is set to NULL by the
- * FK (migration 19) — past orders keep showing the item exactly as sold.
+ * Product rows with stock, reservations, carts, orders, purchases, or stock
+ * ledger history cannot be purged. Deactivate them instead.
  */
 
 export const deleteProduct = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const soft = req.query.soft === 'true' || req.query.soft === '1';
+  const hard = req.query.hard === 'true' || req.query.hard === '1' || req.query.purge === 'true';
 
   // City isolation: a scoped admin may only delete products in their own city.
   const scope = await resolveCityScope(req);
+  const qualityReady = await hasQualityCatalogColumns();
+  const catalogV2Ready = await hasCatalogV2Columns();
+  const qualityCols = qualityReady ? ', stock_quantity_b, stock_quantity_c' : '';
+  const reservedCols = catalogV2Ready ? ', reserved_quantity, reserved_quantity_b, reserved_quantity_c' : '';
   const existing = await query(
-    'SELECT city_id, primary_image, images FROM products WHERE id = $1',
+    `SELECT city_id, primary_image, images, stock_quantity${qualityCols}${reservedCols}
+       FROM products WHERE id = $1`,
     [id]
   );
   if (existing.rows.length === 0 || !cityRowInScope(scope, existing.rows[0].city_id)) {
     return notFoundResponse(res, 'Product not found');
   }
 
-  if (soft) {
+  if (!hard) {
     await query(
       'UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1',
       [id]
@@ -507,11 +511,63 @@ export const deleteProduct = asyncHandler(async (req: Request, res: Response) =>
     return successResponse(res, null, 'Product deactivated');
   }
 
-  // cart_items also reference products — remove those rows first or the
-  // DELETE fails with an FK error that looked like "delete didn't work".
-  // order_items rows survive: their product_id FK is ON DELETE SET NULL.
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admins can permanently purge a product.', 403);
+  }
+
+  const product = existing.rows[0];
+  const onHand =
+    (parseFloat(product.stock_quantity) || 0) +
+    (qualityReady ? (parseFloat(product.stock_quantity_b) || 0) + (parseFloat(product.stock_quantity_c) || 0) : 0);
+  const reserved = catalogV2Ready
+    ? (parseFloat(product.reserved_quantity) || 0) +
+      (parseFloat(product.reserved_quantity_b) || 0) +
+      (parseFloat(product.reserved_quantity_c) || 0)
+    : 0;
+  const ocpReady = await hasOcpTables();
+  const [orders, carts, reviews, movements, purchases, ocpStock, ocpMoves, ocpRequestItems] = await Promise.all([
+    query('SELECT COUNT(*)::int AS count FROM order_items WHERE product_id = $1', [id]),
+    query('SELECT COUNT(*)::int AS count FROM cart_items WHERE product_id = $1', [id]),
+    query('SELECT COUNT(*)::int AS count FROM reviews WHERE product_id = $1', [id]).catch(() => ({ rows: [{ count: 0 }] } as any)),
+    catalogV2Ready
+      ? query('SELECT COUNT(*)::int AS count FROM stock_movements WHERE product_id = $1', [id])
+      : Promise.resolve({ rows: [{ count: 0 }] } as any),
+    query('SELECT COUNT(*)::int AS count FROM stock_purchases WHERE product_id = $1', [id]).catch(() => ({ rows: [{ count: 0 }] } as any)),
+    ocpReady
+      ? query('SELECT COUNT(*)::int AS count, COALESCE(SUM(quantity), 0) AS quantity FROM ocp_stock WHERE product_id = $1', [id])
+      : Promise.resolve({ rows: [{ count: 0, quantity: 0 }] } as any),
+    ocpReady
+      ? query('SELECT COUNT(*)::int AS count FROM ocp_stock_movements WHERE product_id = $1', [id])
+      : Promise.resolve({ rows: [{ count: 0 }] } as any),
+    ocpReady
+      ? query('SELECT COUNT(*)::int AS count FROM ocp_stock_request_items WHERE product_id = $1', [id])
+      : Promise.resolve({ rows: [{ count: 0 }] } as any),
+  ]);
+
+  const blockers = {
+    onHand,
+    reserved,
+    orderItems: Number(orders.rows[0]?.count || 0),
+    cartItems: Number(carts.rows[0]?.count || 0),
+    reviews: Number(reviews.rows[0]?.count || 0),
+    stockMovements: Number(movements.rows[0]?.count || 0),
+    stockPurchases: Number(purchases.rows[0]?.count || 0),
+    ocpStockRows: Number(ocpStock.rows[0]?.count || 0),
+    ocpStock: parseFloat(ocpStock.rows[0]?.quantity || 0) || 0,
+    ocpMovements: Number(ocpMoves.rows[0]?.count || 0),
+    ocpStockRequestItems: Number(ocpRequestItems.rows[0]?.count || 0),
+  };
+  const blocked = Object.values(blockers).some((value) => Math.abs(Number(value)) > 0);
+  if (blocked) {
+    return errorResponse(
+      res,
+      'Product has stock or business history. Deactivate it instead; permanent purge is only for unused dummy products.',
+      409,
+      blockers
+    );
+  }
+
   await withTransaction(async (client) => {
-    await client.query('DELETE FROM cart_items WHERE product_id = $1', [id]);
     await client.query('DELETE FROM products WHERE id = $1', [id]);
   });
 

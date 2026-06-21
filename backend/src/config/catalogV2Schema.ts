@@ -114,7 +114,7 @@ async function runCatalogV2Ddl(connectionString: string): Promise<void> {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS stock_movements (
         id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        product_id    UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        product_id    UUID REFERENCES products(id) ON DELETE SET NULL,
         quality       VARCHAR(1) NOT NULL DEFAULT 'A',
         city_id       UUID REFERENCES service_cities(id),
         delta         NUMERIC(12,3) NOT NULL,

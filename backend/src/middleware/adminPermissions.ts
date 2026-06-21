@@ -111,8 +111,10 @@ function resolveRequiredPermissions(
     if (m === 'POST') return ['products.create'];
     return ['products.update'];
   }
-  // Stock management (add/shift/return/transfer/waste/convert + overview).
+  // Stock management. Normal stock intake belongs to Finance -> stock purchase;
+  // /stock/add is emergency correction only.
   if (p.startsWith('/stock')) {
+    if (p === '/stock/add') return ['stock.adjust'];
     return m === 'GET' ? ['products.view'] : ['products.update'];
   }
   if (p.startsWith('/categories')) return ['categories.manage'];
@@ -120,6 +122,9 @@ function resolveRequiredPermissions(
     return m === 'GET' ? ['customers.view'] : ['customers.update'];
   }
   if (p.startsWith('/riders')) {
+    if (p.includes('/cash-settlements')) {
+      return m === 'GET' ? ['riders.view', 'finance.rider_cash.receive'] : ['finance.rider_cash.receive'];
+    }
     return m === 'GET' ? ['riders.view'] : ['riders.manage'];
   }
   if (p.startsWith('/whatsapp-orders') || p.startsWith('/atta-requests')) {

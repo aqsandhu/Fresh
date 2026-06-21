@@ -13,6 +13,24 @@ import { commitOrderSaleOnDelivery } from '../utils/systemStock';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
+let riderCashTablesReady: boolean | null = null;
+
+async function hasRiderCashSettlementTables(): Promise<boolean> {
+  if (riderCashTablesReady !== null) return riderCashTablesReady;
+  try {
+    const r = await query(
+      `SELECT COUNT(*)::int AS count
+         FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN ('rider_cash_settlements', 'rider_cash_settlement_orders')`
+    );
+    riderCashTablesReady = Number(r.rows[0]?.count || 0) === 2;
+  } catch {
+    riderCashTablesReady = false;
+  }
+  return riderCashTablesReady;
+}
+
 /**
  * Get rider profile
  * GET /api/rider/profile
@@ -564,7 +582,7 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
 
       if (task.order_id) {
         const orderResult = await client.query(
-          'SELECT id, order_number, status, user_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+          'SELECT id, order_number, status, user_id, payment_method, ocp_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
           [task.order_id]
         );
         const order = orderResult.rows[0];
@@ -581,7 +599,16 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
           await client.query(
             `UPDATE orders
              SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()),
-                 delivered_by = $1, updated_at = NOW()
+                 delivered_by = $1,
+                 payment_status = CASE
+                   WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN 'completed'::payment_status
+                   ELSE payment_status
+                 END,
+                 paid_amount = CASE
+                   WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN total_amount
+                   ELSE paid_amount
+                 END,
+                 updated_at = NOW()
              WHERE id = $2`,
             [riderId, task.order_id]
           );
@@ -1112,6 +1139,16 @@ export const getMyStats = asyncHandler(async (req: Request, res: Response) => {
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
+  const settlementTablesReady = await hasRiderCashSettlementTables();
+  const settledSql = settlementTablesReady
+    ? `COALESCE((
+        SELECT SUM(rso.amount)
+          FROM rider_cash_settlement_orders rso
+          JOIN rider_cash_settlements rs ON rs.id = rso.settlement_id
+         WHERE rs.rider_id = $1 AND rs.status = 'received'
+      ), 0)`
+    : '0';
+
   const statsResult = await query(
     `SELECT
       COUNT(*) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $2) as today_orders,
@@ -1126,7 +1163,19 @@ export const getMyStats = asyncHandler(async (req: Request, res: Response) => {
       COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $7 AND o.placed_at < $8), 0) as last_month_earnings,
       COUNT(*) FILTER (WHERE o.status = 'delivered') as total_delivered,
       COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered'), 0) as total_earned,
-      COALESCE(SUM(o.total_amount) FILTER (WHERE o.status = 'delivered'), 0) as total_collected
+      COALESCE(SUM(o.rider_delivery_charge) FILTER (
+        WHERE o.status = 'delivered'
+          AND o.payment_method = 'cash_on_delivery'
+          AND o.payment_status = 'completed'
+          AND o.ocp_id IS NULL
+      ), 0) as cod_earned,
+      COALESCE(SUM(o.paid_amount) FILTER (
+        WHERE o.status = 'delivered'
+          AND o.payment_method = 'cash_on_delivery'
+          AND o.payment_status = 'completed'
+          AND o.ocp_id IS NULL
+      ), 0) as total_collected,
+      ${settledSql} as total_settled
     FROM orders o WHERE o.rider_id = $1`,
     [riderId, todayStart, thisWeekStart.toISOString(),
      lastWeekStart.toISOString(), lastWeekEnd.toISOString(),
@@ -1136,6 +1185,9 @@ export const getMyStats = asyncHandler(async (req: Request, res: Response) => {
   const s = statsResult.rows[0];
   const totalCollected = parseFloat(s.total_collected) || 0;
   const totalEarned = parseFloat(s.total_earned) || 0;
+  const codEarned = parseFloat(s.cod_earned) || 0;
+  const totalSettled = parseFloat(s.total_settled) || 0;
+  const cashInHand = Math.max(totalCollected - totalSettled, 0);
 
   successResponse(res, {
     stats: {
@@ -1148,7 +1200,10 @@ export const getMyStats = asyncHandler(async (req: Request, res: Response) => {
     payment: {
       totalCollected,
       totalEarned,
-      paymentPending: totalCollected - totalEarned,
+      codEarned,
+      totalSettled,
+      cashInHand,
+      paymentPending: Math.max(totalCollected - totalSettled - codEarned, 0),
     },
   }, 'Rider stats retrieved');
 });

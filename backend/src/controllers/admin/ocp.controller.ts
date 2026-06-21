@@ -12,6 +12,7 @@ import { asyncHandler } from '../../middleware';
 import { successResponse, createdResponse, errorResponse, notFoundResponse } from '../../utils/response';
 import { normalizePhoneNumber } from '../../utils/validators';
 import { hasOcpTables } from '../../config/ocpSchema';
+import { cityRowInScope, resolveCityScope } from '../../utils/cityScope';
 import logger from '../../utils/logger';
 
 const PIN_ROUNDS = 10;
@@ -230,6 +231,8 @@ export const listStockRequests = asyncHandler(async (req: Request, res: Response
 /** GET /api/admin/ocp/settlements?status=pending — OCP cash settlements. */
 export const listSettlements = asyncHandler(async (req: Request, res: Response) => {
   if (!(await hasOcpTables())) return successResponse(res, [], 'Settlements');
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) return successResponse(res, [], 'Settlements');
   const params: any[] = [];
   let where = '1=1';
   const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
@@ -240,6 +243,10 @@ export const listSettlements = asyncHandler(async (req: Request, res: Response) 
   if (typeof req.query.ocp_id === 'string' && req.query.ocp_id) {
     params.push(req.query.ocp_id);
     where += ` AND s.ocp_id = $${params.length}`;
+  }
+  if (!scope.unrestricted && scope.cityId && scope.dbReady) {
+    params.push(scope.cityId);
+    where += ` AND o.city_id = $${params.length}`;
   }
   const result = await query(
     `SELECT s.id, s.amount, s.status, s.requested_at, s.received_at,
@@ -265,6 +272,7 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
   const { id } = req.params;
   const password = String(req.body?.password || '');
   if (!password) return errorResponse(res, 'Enter your password to confirm receipt.', 400);
+  const scope = await resolveCityScope(req);
 
   // Re-verify the admin's own password.
   const u = await query('SELECT password_hash FROM users WHERE id = $1', [req.user?.id]);
@@ -276,8 +284,16 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
   let out: any;
   try {
     out = await withTransaction(async (client) => {
-      const s = await client.query('SELECT id, status, amount FROM ocp_settlements WHERE id = $1 FOR UPDATE', [id]);
+      const s = await client.query(
+        `SELECT s.id, s.status, s.amount, o.city_id
+           FROM ocp_settlements s
+           JOIN order_collection_points o ON o.id = s.ocp_id
+          WHERE s.id = $1
+          FOR UPDATE OF s`,
+        [id]
+      );
       if (s.rows.length === 0) throw Object.assign(new Error('Settlement not found'), { http: 404 });
+      if (!cityRowInScope(scope, s.rows[0].city_id)) throw Object.assign(new Error('Settlement not found'), { http: 404 });
       if (s.rows[0].status !== 'pending') throw Object.assign(new Error('This settlement was already processed.'), { http: 409 });
       await client.query(
         `UPDATE ocp_settlements SET status = 'received', received_at = NOW(), received_by = $1 WHERE id = $2`,
@@ -302,11 +318,20 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
 /** POST /api/admin/ocp/settlements/:id/reject — reject; frees its orders to re-settle. */
 export const rejectSettlement = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const scope = await resolveCityScope(req);
   let out: any;
   try {
     out = await withTransaction(async (client) => {
-      const s = await client.query('SELECT id, status FROM ocp_settlements WHERE id = $1 FOR UPDATE', [id]);
+      const s = await client.query(
+        `SELECT s.id, s.status, o.city_id
+           FROM ocp_settlements s
+           JOIN order_collection_points o ON o.id = s.ocp_id
+          WHERE s.id = $1
+          FOR UPDATE OF s`,
+        [id]
+      );
       if (s.rows.length === 0) throw Object.assign(new Error('Settlement not found'), { http: 404 });
+      if (!cityRowInScope(scope, s.rows[0].city_id)) throw Object.assign(new Error('Settlement not found'), { http: 404 });
       if (s.rows[0].status !== 'pending') throw Object.assign(new Error('This settlement was already processed.'), { http: 409 });
       // Free the orders (delete membership) so they re-enter the OCP's due.
       await client.query('DELETE FROM ocp_settlement_orders WHERE settlement_id = $1', [id]);

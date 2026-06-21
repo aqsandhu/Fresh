@@ -1,53 +1,69 @@
 // ============================================================================
-// FINANCE ROUTES — /api/finance/*
-// Admin-only (role gate via requireAdmin; super_admin + city admin). City scope
-// is resolved per-request from the user/role (+ x-city-id for super_admin), so
-// these stay isolated from the central admin permission map. Super-admin-only
-// actions (profit-sharing formula, shareholder creation) are gated inside the
-// controllers.
+// FINANCE ROUTES - /api/finance/*
+// Admin-only, city-scoped, granular-permission guarded and audited.
 // ============================================================================
 
-import { Router } from 'express';
-import { authenticate, requireAdmin, verifyAdminActive, attachCityScope } from '../middleware';
+import { NextFunction, Request, Response, Router } from 'express';
+import {
+  authenticate,
+  requireAdmin,
+  verifyAdminActive,
+  attachCityScope,
+  attachAdminPermissions,
+  auditLogger,
+  ForbiddenError,
+} from '../middleware';
 import * as expenses from '../controllers/finance/expenses.controller';
 import * as workers from '../controllers/finance/workers.controller';
 import * as profit from '../controllers/finance/profit.controller';
 
 const router = Router();
 
+function requireFinancePermission(codes: string[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const perms = req.adminPermissions ?? [];
+    if (perms.includes('*') || codes.some((code) => perms.includes(code))) {
+      return next();
+    }
+    next(new ForbiddenError('You do not have permission to perform this finance action'));
+  };
+}
+
 router.use(authenticate);
 router.use(requireAdmin);
 router.use(verifyAdminActive);
+router.use(attachAdminPermissions);
 router.use(attachCityScope);
+router.use(auditLogger());
 
-// Expenses ledger + sources
-router.get('/expenses', expenses.listExpenses);
-router.post('/expenses', expenses.createExpense);
-router.post('/stock-purchase', expenses.createStockPurchase);
-router.post('/rider-payment', expenses.createRiderPayment);
-router.get('/products', expenses.listFinanceProducts);
-router.get('/riders', expenses.listFinanceRiders);
+// Expenses ledger + sources.
+router.get('/expenses', requireFinancePermission(['finance.expenses.view']), expenses.listExpenses);
+router.post('/expenses', requireFinancePermission(['finance.expenses.create']), expenses.createExpense);
+router.post('/stock-purchase', requireFinancePermission(['finance.stock_purchase.create']), expenses.createStockPurchase);
+router.post('/rider-payment', requireFinancePermission(['finance.rider_payments.create']), expenses.createRiderPayment);
+router.get('/products', requireFinancePermission(['finance.stock_purchase.create']), expenses.listFinanceProducts);
+router.get('/riders', requireFinancePermission(['finance.rider_payments.create']), expenses.listFinanceRiders);
 
-// Workers — profiles, attendance, increments, payments (logged as expenses)
-router.get('/workers', workers.listWorkers);
-router.post('/workers', workers.createWorker);
-router.get('/workers/:id', workers.getWorker);
-router.put('/workers/:id', workers.updateWorker);
-router.get('/workers/:id/attendance', workers.getWorkerAttendance);
-router.post('/workers/:id/attendance', workers.markAttendance);
-router.post('/workers/:id/increment', workers.addIncrement);
-router.post('/workers/:id/pay', workers.payWorker);
+// Workers: profiles, attendance, increments, payments.
+router.get('/workers', requireFinancePermission(['finance.workers.manage']), workers.listWorkers);
+router.post('/workers', requireFinancePermission(['finance.workers.manage']), workers.createWorker);
+router.get('/workers/:id', requireFinancePermission(['finance.workers.manage']), workers.getWorker);
+router.put('/workers/:id', requireFinancePermission(['finance.workers.manage']), workers.updateWorker);
+router.get('/workers/:id/attendance', requireFinancePermission(['finance.workers.manage']), workers.getWorkerAttendance);
+router.post('/workers/:id/attendance', requireFinancePermission(['finance.workers.manage']), workers.markAttendance);
+router.post('/workers/:id/increment', requireFinancePermission(['finance.workers.manage']), workers.addIncrement);
+router.post('/workers/:id/pay', requireFinancePermission(['finance.workers.manage']), workers.payWorker);
 
-// Profit + profit-sharing formula (formula write = super-admin, enforced inline)
-router.get('/profit', profit.getProfit);
-router.get('/profit-settings', profit.getProfitSettings);
-router.put('/profit-settings', profit.updateProfitSettings);
+// Profit + profit-sharing formula. Super-admin-only rules still apply in-controller.
+router.get('/profit', requireFinancePermission(['finance.profit.view']), profit.getProfit);
+router.get('/profit-settings', requireFinancePermission(['finance.profit.view', 'finance.profit.manage']), profit.getProfitSettings);
+router.put('/profit-settings', requireFinancePermission(['finance.profit.manage']), profit.updateProfitSettings);
 
-// Shareholders (create/edit-share = super-admin; status + pay = any admin)
-router.get('/shareholders', profit.listShareholders);
-router.post('/shareholders', profit.createShareholder);
-router.get('/shareholders/:id/payouts', profit.getShareholderPayouts);
-router.put('/shareholders/:id', profit.updateShareholder);
-router.post('/shareholders/:id/pay', profit.payShareholder);
+// Shareholders. Super-admin-only rules still apply in-controller where needed.
+router.get('/shareholders', requireFinancePermission(['finance.shareholders.view']), profit.listShareholders);
+router.post('/shareholders', requireFinancePermission(['finance.shareholders.manage']), profit.createShareholder);
+router.get('/shareholders/:id/payouts', requireFinancePermission(['finance.shareholders.view']), profit.getShareholderPayouts);
+router.put('/shareholders/:id', requireFinancePermission(['finance.shareholders.manage', 'finance.shareholders.pay']), profit.updateShareholder);
+router.post('/shareholders/:id/pay', requireFinancePermission(['finance.shareholders.pay']), profit.payShareholder);
 
 export default router;
