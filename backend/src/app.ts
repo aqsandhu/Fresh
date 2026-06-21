@@ -47,6 +47,34 @@ import { ensureOcpTables } from './config/ocpSchema';
 import { ensureCatalogV2Columns } from './config/catalogV2Schema';
 import { ensureTimeSlotBookings } from './config/timeSlotSchema';
 import { ensureControlColumns } from './config/controlSchema';
+import { ensureReconciliationTables } from './config/reconciliationSchema';
+import { query as dbQuery } from './config/database';
+import { runReconciliation } from './utils/reconciliation';
+
+let reconciliationTimer: NodeJS.Timeout | null = null;
+
+/** Daily books-watchdog. Runs ~1 min after boot only if overdue (>20h), then
+ *  every 24h. Wrapped so a failed run never crashes the server. Disabled in tests. */
+function startReconciliationScheduler(): void {
+  if (process.env.NODE_ENV === 'test') return;
+  if (reconciliationTimer) return; // retry-safe: don't double-start
+  const DAY = 24 * 60 * 60 * 1000;
+  const tick = () =>
+    runReconciliation().catch((e) =>
+      logger.error('Reconciliation tick failed', { error: (e as Error)?.message })
+    );
+  setTimeout(async () => {
+    try {
+      const last = await dbQuery(`SELECT run_at FROM reconciliation_runs ORDER BY run_at DESC LIMIT 1`);
+      const lastAt = last.rows[0]?.run_at ? new Date(last.rows[0].run_at).getTime() : 0;
+      if (Date.now() - lastAt > 20 * 60 * 60 * 1000) tick();
+    } catch {
+      /* table may not exist yet — next daily tick handles it */
+    }
+  }, 60 * 1000);
+  reconciliationTimer = setInterval(tick, DAY);
+  logger.info('Reconciliation scheduler started (daily)');
+}
 import { morganStream } from './utils/logger';
 import {
   apiRateLimiter,
@@ -335,10 +363,13 @@ const startServer = async () => {
         await ensureOcpTables();
         await ensureTimeSlotBookings();
         await ensureControlColumns();
+        await ensureReconciliationTables();
         const catalogV2Ready = await ensureCatalogV2Columns();
         if (!catalogV2Ready) {
           throw new Error('catalog-v2 columns are required but could not be ensured');
         }
+        // Start the daily reconciliation watchdog once the DB/schema is ready.
+        startReconciliationScheduler();
         // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars
         // are set. Safe to call on every boot — idempotently upserts the row.
         const adminResult = await bootstrapAdmin();
