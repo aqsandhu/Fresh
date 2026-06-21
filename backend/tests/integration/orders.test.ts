@@ -197,6 +197,13 @@ function createOrderClient() {
     if (text.includes('UPDATE cart_items')) {
       return Promise.resolve(ok([]));
     }
+    // Per-date slot validation + capacity claim.
+    if (text.includes('FROM time_slots ts') && text.includes('disabled')) {
+      return Promise.resolve(ok([{ max_orders: 50, disabled: false, past: false, wrong_day: false, passed: false }]));
+    }
+    if (text.includes('INSERT INTO time_slot_bookings')) {
+      return Promise.resolve(ok([{ booked_count: 1 }]));
+    }
     if (text.includes('UPDATE time_slots')) {
       return Promise.resolve(ok([{ id: VALID_SLOT }]));
     }
