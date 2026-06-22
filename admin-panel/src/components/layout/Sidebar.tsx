@@ -51,6 +51,7 @@ const navItems: NavItem[] = [
   { path: '/admin/ocp', label: 'Collection Points', icon: <Store className="w-5 h-5" /> },
   { path: '/admin/atta-requests', label: 'Atta Chakki', icon: <Wheat className="w-5 h-5" /> },
   { path: '/admin/baskets', label: "Today's Basket", icon: <ShoppingBasket className="w-5 h-5" /> },
+  { path: '/admin/franchise-inquiries', label: 'Franchise', icon: <Store className="w-5 h-5" /> },
   { path: '/admin/whatsapp-orders', label: 'WhatsApp Orders', icon: <MessageCircle className="w-5 h-5" /> },
   { path: '/admin/addresses', label: 'Addresses', icon: <MapPin className="w-5 h-5" /> },
   { path: '/admin/service-cities', label: 'Service Cities', icon: <MapPin className="w-5 h-5" /> },

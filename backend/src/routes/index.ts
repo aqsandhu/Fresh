@@ -26,6 +26,7 @@ import restaurantRoutes from './restaurant.routes';
 import ocpRoutes from './ocp.routes';
 import financeRoutes from './finance.routes';
 import shareholderRoutes from './shareholder.routes';
+import franchiseRoutes from './franchise.routes';
 
 const router = Router();
 
@@ -53,5 +54,6 @@ router.use('/restaurant', restaurantRoutes);
 router.use('/ocp', ocpRoutes);
 router.use('/finance', financeRoutes);
 router.use('/shareholder', shareholderRoutes);
+router.use('/franchise', franchiseRoutes);
 
 export default router;

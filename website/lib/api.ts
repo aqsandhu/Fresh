@@ -772,6 +772,20 @@ export const bannerApi = {
   },
 }
 
+// Franchise API (public lead capture)
+export const franchiseApi = {
+  submitInquiry: async (data: {
+    name: string
+    phone: string
+    email?: string
+    city?: string
+    message?: string
+  }): Promise<{ id: string }> => {
+    const response = await api.post('/franchise/inquiries', data)
+    return response.data?.data || response.data
+  },
+}
+
 // Today's Basket API (public): active combo packages for the selected city.
 export interface BasketItemPublic {
   product_id: string

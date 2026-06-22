@@ -170,6 +170,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
     { label: 'My Cart', icon: 'shopping-cart', tab: 'Cart', screen: 'CartMain' },
     { label: 'My Orders', icon: 'receipt-long', tab: 'Orders', screen: 'OrdersList' },
     { label: 'Work as Rider', icon: 'delivery-dining', tab: 'Profile', screen: 'WorkAsRider' },
+    { label: 'Franchise', icon: 'storefront', tab: 'Profile', screen: 'Franchise' },
     { label: 'Change City', icon: 'location-city', tab: 'Profile', screen: 'SelectCity' },
     { label: 'About Us', icon: 'info', tab: 'Profile', screen: 'About' },
     { label: 'Contact Us', icon: 'phone', action: 'contact' as const },
