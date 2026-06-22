@@ -330,6 +330,37 @@ class ProductService {
       return { success: true, data: { atta_chakki_enabled: false } };
     }
   }
+
+  // Map-based service area for the selected city (active polygons + popup copy).
+  async getServiceArea(): Promise<
+    ApiResponse<{
+      enabled: boolean;
+      polygons: [number, number][][];
+      message: { title: string; message_en: string; message_ur: string; whatsapp: string };
+    }>
+  > {
+    const empty = {
+      enabled: false,
+      polygons: [] as [number, number][][],
+      message: { title: '', message_en: '', message_ur: '', whatsapp: '' },
+    };
+    try {
+      const response = await apiClient.get('/site-settings/service-area', {
+        params: withCityParams(),
+      });
+      const raw = response.data?.data || response.data || {};
+      return {
+        success: true,
+        data: {
+          enabled: !!raw.enabled,
+          polygons: Array.isArray(raw.polygons) ? raw.polygons : [],
+          message: raw.message || empty.message,
+        },
+      };
+    } catch {
+      return { success: true, data: empty };
+    }
+  }
 }
 
 export const productService = new ProductService();

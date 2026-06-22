@@ -24,6 +24,30 @@ export const HERO_IMAGE_STORAGE_PATH_KEY = 'hero_image_storage_path';
 // website + app show a "coming soon" state (super-admin reversible, no code change).
 export const ATTA_CHAKKI_ENABLED_KEY = 'atta_chakki_enabled';
 
+// Out-of-area popup copy (global) for map-based service areas (migration 43).
+export const SERVICE_AREA_KEYS = {
+  title: 'service_area_out_title',
+  messageEn: 'service_area_out_msg_en',
+  messageUr: 'service_area_out_msg_ur',
+  whatsapp: 'service_area_out_whatsapp',
+} as const;
+
+export interface ServiceAreaMessages {
+  title: string;
+  message_en: string;
+  message_ur: string;
+  whatsapp: string;
+}
+
+export const SERVICE_AREA_MESSAGE_DEFAULTS: ServiceAreaMessages = {
+  title: "We're not in your area yet",
+  message_en:
+    "FreshBazar delivery hasn't started in your area yet. We're expanding fast — please share your area with us on WhatsApp and we'll prioritise it, in sha Allah.",
+  message_ur:
+    'فی الحال آپ کے علاقے میں فریش بازار کی سروسز شروع نہیں ہوئیں۔ بہت جلد ہم آپ کے علاقے میں سروسز شروع کریں گے، ان شاء اللّٰہ۔ براہِ کرم اپنا علاقہ واٹس ایپ پر بتائیں۔',
+  whatsapp: '03451111346',
+};
+
 let cachedCityColumn: boolean | null = null;
 
 async function hasSiteSettingsCityColumn(): Promise<boolean> {
@@ -336,6 +360,22 @@ export async function fetchGlobalSettings(keys: string[]): Promise<Record<string
     [keys]
   );
   return rowsToMap(result.rows);
+}
+
+/** Out-of-area popup copy with defaults applied. */
+export async function fetchServiceAreaMessages(): Promise<ServiceAreaMessages> {
+  const map = await fetchGlobalSettings([
+    SERVICE_AREA_KEYS.title,
+    SERVICE_AREA_KEYS.messageEn,
+    SERVICE_AREA_KEYS.messageUr,
+    SERVICE_AREA_KEYS.whatsapp,
+  ]);
+  return {
+    title: map[SERVICE_AREA_KEYS.title] || SERVICE_AREA_MESSAGE_DEFAULTS.title,
+    message_en: map[SERVICE_AREA_KEYS.messageEn] || SERVICE_AREA_MESSAGE_DEFAULTS.message_en,
+    message_ur: map[SERVICE_AREA_KEYS.messageUr] || SERVICE_AREA_MESSAGE_DEFAULTS.message_ur,
+    whatsapp: map[SERVICE_AREA_KEYS.whatsapp] || SERVICE_AREA_MESSAGE_DEFAULTS.whatsapp,
+  };
 }
 
 export interface BrandLogoSettings {

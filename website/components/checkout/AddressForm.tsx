@@ -22,6 +22,9 @@ import {
 } from '@/lib/geolocation'
 import GoogleMapPicker from './GoogleMapPicker'
 import DoorPhotoField from './DoorPhotoField'
+import ServiceAreaPopup from '@/components/city/ServiceAreaPopup'
+import { useServiceArea } from '@/lib/useServiceArea'
+import { isWithinServiceArea } from '@/lib/serviceArea'
 
 export type AddressFormInitial = {
   id?: string
@@ -135,6 +138,10 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 
   const [saving, setSaving] = useState(false)
 
+  // Map-based service area: block saving a delivery pin outside the city boundary.
+  const { data: serviceArea } = useServiceArea()
+  const [outOfAreaOpen, setOutOfAreaOpen] = useState(false)
+
   const handleGetGps = async () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGpsStatus('GPS is not supported on this device')
@@ -190,6 +197,18 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
     const trimmed = writtenAddress.trim()
     if (!trimmed || trimmed.length < 5) {
       toast.error('Full address must be at least 5 characters')
+      return null
+    }
+
+    // If the city has an active delivery boundary and the pin sits outside it,
+    // stop and show the "not in your area yet" popup (cities without a polygon
+    // are unrestricted, so this never blocks existing customers).
+    if (
+      mapLocation &&
+      serviceArea?.enabled &&
+      !isWithinServiceArea(mapLocation.lat, mapLocation.lng, serviceArea)
+    ) {
+      setOutOfAreaOpen(true)
       return null
     }
 
@@ -257,6 +276,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
     mapAccuracy,
     mapLocation,
     onSaved,
+    serviceArea,
     writtenAddress,
   ])
 
@@ -476,6 +496,14 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
             {submitLabel || (isEdit ? 'Update Address' : 'Save Address')}
           </Button>
         </div>
+      )}
+
+      {serviceArea && (
+        <ServiceAreaPopup
+          open={outOfAreaOpen}
+          onClose={() => setOutOfAreaOpen(false)}
+          message={serviceArea.message}
+        />
       )}
     </motion.div>
   )

@@ -9,6 +9,7 @@ import {
   fetchBrandFaviconSettings,
   fetchHeroImageSettings,
   fetchGlobalSettings,
+  fetchServiceAreaMessages,
   ATTA_CHAKKI_ENABLED_KEY,
 } from '../utils/siteSettings';
 import { query } from '../config/database';
@@ -66,6 +67,27 @@ router.get('/public-config', asyncHandler(async (_req, res) => {
     res,
     { atta_chakki_enabled: map[ATTA_CHAKKI_ENABLED_KEY] === 'true' },
     'Public config retrieved'
+  );
+}));
+
+// Public: active service-area polygons + out-of-area popup copy for a city.
+// `enabled` is false when the city has no active polygon (no gating applied).
+router.get('/service-area', asyncHandler(async (req, res) => {
+  const cityId = await resolvePublicCityId(req);
+  const [areas, message] = await Promise.all([
+    cityId
+      ? query(
+          `SELECT polygon FROM service_areas WHERE city_id = $1 AND is_active = true`,
+          [cityId]
+        )
+      : Promise.resolve({ rows: [] as Array<{ polygon: unknown }> }),
+    fetchServiceAreaMessages(),
+  ]);
+  const polygons = areas.rows.map((r) => r.polygon);
+  successResponse(
+    res,
+    { enabled: polygons.length > 0, polygons, message },
+    'Service area retrieved'
   );
 }));
 

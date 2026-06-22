@@ -18,13 +18,15 @@ import MapView, { Marker, Circle } from 'react-native-maps';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { CartStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
-import { Button, Input, LoadingOverlay } from '@components';
+import { Button, Input, LoadingOverlay, ServiceAreaModal } from '@components';
 import { DoorPhotoCropModal } from '@components/common/DoorPhotoCropModal';
 import { AddressTypePicker } from '@components/checkout/AddressTypePicker';
 import { normalizeAddressType, type AddressTypeValue } from '@/constants/addressTypes';
 import { pickDoorPhotoFromLibrary } from '@/lib/pickDoorPhoto';
 import { addressService } from '@services/address.service';
+import { productService } from '@services/product.service';
 import { getAccuratePosition } from '@/lib/geolocation';
+import { isWithinServiceArea, type ServiceAreaData } from '@/lib/serviceArea';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '@utils/constants';
 
@@ -53,8 +55,20 @@ export const AddAddressScreen: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
+  const [serviceArea, setServiceArea] = useState<ServiceAreaData | null>(null);
+  const [outOfAreaVisible, setOutOfAreaVisible] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const mapRef = useRef<MapView>(null);
+
+  useEffect(() => {
+    let active = true;
+    productService.getServiceArea().then((res) => {
+      if (active && res.success) setServiceArea(res.data as ServiceAreaData);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!addressId) return;
@@ -194,7 +208,16 @@ export const AddAddressScreen: React.FC = () => {
 
   const handleSave = async () => {
     if (!validate()) return;
-    
+
+    // Block saving a delivery pin outside the city's active service boundary.
+    if (
+      serviceArea?.enabled &&
+      !isWithinServiceArea(region.latitude, region.longitude, serviceArea)
+    ) {
+      setOutOfAreaVisible(true);
+      return;
+    }
+
     setIsSaving(true);
     try {
       const addressData = {
@@ -452,6 +475,14 @@ export const AddAddressScreen: React.FC = () => {
       <View style={styles.footer}>
         <Button title={isEditing ? 'Update Address' : 'Save Address'} onPress={handleSave} size="large" />
       </View>
+
+      {serviceArea && (
+        <ServiceAreaModal
+          visible={outOfAreaVisible}
+          onClose={() => setOutOfAreaVisible(false)}
+          message={serviceArea.message}
+        />
+      )}
     </SafeAreaView>
   );
 };

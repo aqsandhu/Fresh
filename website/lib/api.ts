@@ -772,4 +772,22 @@ export const bannerApi = {
   },
 }
 
+// Service area API (public): active delivery polygons + out-of-area popup copy.
+export const serviceAreaApi = {
+  get: async (): Promise<import('./serviceArea').ServiceAreaData> => {
+    const response = await api.get('/site-settings/service-area', { params: withCityParams() })
+    const data = response.data?.data || response.data
+    return {
+      enabled: Boolean(data?.enabled),
+      polygons: Array.isArray(data?.polygons) ? data.polygons : [],
+      message: data?.message || {
+        title: '',
+        message_en: '',
+        message_ur: '',
+        whatsapp: '',
+      },
+    }
+  },
+}
+
 export default api
