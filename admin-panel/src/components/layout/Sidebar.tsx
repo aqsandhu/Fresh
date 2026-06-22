@@ -46,6 +46,7 @@ const navItems: NavItem[] = [
   { path: '/admin/catalog', label: 'Catalog', icon: <Package className="w-5 h-5" /> },
   { path: '/admin/management', label: 'Management', icon: <Boxes className="w-5 h-5" /> },
   { path: '/admin/customers', label: 'Customers', icon: <Users className="w-5 h-5" /> },
+  { path: '/admin/abandoned-carts', label: 'Abandoned Carts', icon: <ShoppingCart className="w-5 h-5" /> },
   { path: '/admin/riders-hub', label: 'Riders', icon: <Bike className="w-5 h-5" />, badge: 'riderApplications' },
   { path: '/admin/restaurants', label: 'Restaurants', icon: <UtensilsCrossed className="w-5 h-5" />, badge: 'restaurantRequests' },
   { path: '/admin/ocp', label: 'Collection Points', icon: <Store className="w-5 h-5" /> },

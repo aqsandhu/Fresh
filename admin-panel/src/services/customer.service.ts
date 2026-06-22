@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, apiClient } from './api';
 import type { Customer, Address, ApiResponse } from '@/types';
 
 interface CustomerFilters {
@@ -6,9 +6,20 @@ interface CustomerFilters {
   limit?: number;
   search?: string;
   status?: string;
+  segment?: string;
+  days?: number;
 }
 
 export const customerService = {
+  /** Download a customer segment as a CSV blob. */
+  exportCustomers: async (filters: { segment?: string; days?: number; search?: string } = {}): Promise<Blob> => {
+    const response = await apiClient.get('/admin/customers/export', {
+      params: filters,
+      responseType: 'blob',
+    });
+    return response.data as Blob;
+  },
+
   getCustomers: async (filters: CustomerFilters = {}): Promise<{ customers: Customer[]; pagination: any }> => {
     try {
       const response = await api.get<ApiResponse<{ customers: Customer[]; pagination: any }>>('/admin/customers', filters);

@@ -11,3 +11,4 @@ export { GuidanceTips } from './GuidanceTips';
 export { ComingSoon } from './ComingSoon';
 export { ServiceAreaModal } from './ServiceAreaModal';
 export { AiChatWidget } from './AiChatWidget';
+export { MarketingCartTracker } from './MarketingCartTracker';

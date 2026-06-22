@@ -6,12 +6,18 @@ import { settingsApi } from '@/lib/api'
 export interface PublicConfig {
   /** When false the Atta Chakki service shows a "coming soon" state. */
   atta_chakki_enabled: boolean
+  /** Facebook Pixel ID (empty when not configured). */
+  fb_pixel_id?: string
+  /** Google Tag / GA4 measurement ID (empty when not configured). */
+  google_tag_id?: string
 }
 
 // Defaults are intentionally conservative ("off") so a paused feature never
 // flashes its full UI before the real flag loads.
 const DEFAULT_CONFIG: PublicConfig = {
   atta_chakki_enabled: false,
+  fb_pixel_id: '',
+  google_tag_id: '',
 }
 
 /**

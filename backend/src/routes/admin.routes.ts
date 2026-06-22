@@ -17,6 +17,7 @@ import * as reconciliationController from '../controllers/admin/reconciliation.c
 import * as serviceAreasController from '../controllers/admin/serviceAreas.controller';
 import * as basketsController from '../controllers/admin/baskets.controller';
 import * as franchiseController from '../controllers/franchise.controller';
+import * as marketingController from '../controllers/marketing.controller';
 import {
   authenticate,
   requireAdmin,
@@ -265,6 +266,13 @@ router.delete('/service-areas/:id', serviceAreasController.deleteServiceArea);
 // Franchise inquiries (leads triage; any authenticated admin)
 router.get('/franchise-inquiries', franchiseController.listFranchiseInquiries);
 router.put('/franchise-inquiries/:id', adminRateLimiter, franchiseController.updateFranchiseInquiry);
+
+// Marketing — abandoned carts + reminders + ad-pixel settings
+router.get('/marketing/abandoned-carts', marketingController.listAbandonedCarts);
+router.post('/marketing/run-reminders', adminRateLimiter, marketingController.runRemindersNow);
+router.get('/marketing/settings', marketingController.getMarketingSettings);
+router.put('/marketing/settings', adminRateLimiter, marketingController.updateMarketingSettings);
+router.get('/customers/export', adminController.exportCustomersCsv);
 
 // Today's Basket (combo packages; super-admin only, role-checked in controller)
 router.get('/baskets', basketsController.getBaskets);

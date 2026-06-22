@@ -7,7 +7,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AppNavigator } from '@navigation';
 import { useNetworkStatus } from '@hooks';
 import { COLORS, SPACING } from '@utils/constants';
-import { ErrorBoundary, AiChatWidget } from '@components/common';
+import { ErrorBoundary, AiChatWidget, MarketingCartTracker } from '@components/common';
 import { VariableWeightNoticeModal } from '@components/common/VariableWeightNoticeModal';
 
 // Create React Query client
@@ -75,6 +75,7 @@ export default function App() {
             <AppNavigator />
             <VariableWeightNoticeModal />
             <AiChatWidget />
+            <MarketingCartTracker />
           </QueryClientProvider>
         </ErrorBoundary>
       </SafeAreaProvider>

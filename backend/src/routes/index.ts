@@ -28,6 +28,7 @@ import financeRoutes from './finance.routes';
 import shareholderRoutes from './shareholder.routes';
 import franchiseRoutes from './franchise.routes';
 import aiChatRoutes from './aiChat.routes';
+import marketingRoutes from './marketing.routes';
 
 const router = Router();
 
@@ -57,5 +58,6 @@ router.use('/finance', financeRoutes);
 router.use('/shareholder', shareholderRoutes);
 router.use('/franchise', franchiseRoutes);
 router.use('/ai-chat', aiChatRoutes);
+router.use('/marketing', marketingRoutes);
 
 export default router;

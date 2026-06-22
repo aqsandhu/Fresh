@@ -14,6 +14,7 @@ import {
 } from '../utils/siteSettings';
 import { query } from '../config/database';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
+import { MARKETING_KEYS } from '../controllers/marketing.controller';
 
 const router = Router();
 
@@ -61,11 +62,20 @@ router.get('/whatsapp-order', asyncHandler(async (req, res) => {
 
 // Public: global feature flags / config for storefront + apps (no auth required).
 // Defaults are intentionally "off/coming-soon" when a flag has never been set.
+// Ad-pixel IDs are public by nature (rendered in the page).
 router.get('/public-config', asyncHandler(async (_req, res) => {
-  const map = await fetchGlobalSettings([ATTA_CHAKKI_ENABLED_KEY]);
+  const map = await fetchGlobalSettings([
+    ATTA_CHAKKI_ENABLED_KEY,
+    MARKETING_KEYS.fbPixelId,
+    MARKETING_KEYS.googleTagId,
+  ]);
   successResponse(
     res,
-    { atta_chakki_enabled: map[ATTA_CHAKKI_ENABLED_KEY] === 'true' },
+    {
+      atta_chakki_enabled: map[ATTA_CHAKKI_ENABLED_KEY] === 'true',
+      fb_pixel_id: map[MARKETING_KEYS.fbPixelId] || '',
+      google_tag_id: map[MARKETING_KEYS.googleTagId] || '',
+    },
     'Public config retrieved'
   );
 }));

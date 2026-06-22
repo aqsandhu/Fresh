@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Wheat, Save, ShieldAlert, Bot, CheckCircle2 } from 'lucide-react';
+import { Wheat, Save, ShieldAlert, Bot, CheckCircle2, Megaphone, Send } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { settingsService } from '@/services/settings.service';
+import { marketingService } from '@/services/marketing.service';
 import { useAuthContext } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -96,6 +97,48 @@ export const Platform: React.FC = () => {
       toast.success('API key removed');
     },
     onError: (err: any) => toast.error(err?.message || 'Failed to remove key'),
+  });
+
+  // ---- Marketing (ad pixels + abandoned-cart reminders) ----
+  const [fbPixel, setFbPixel] = useState('');
+  const [googleTag, setGoogleTag] = useState('');
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderDelay, setReminderDelay] = useState(6);
+
+  const { data: mkt } = useQuery({
+    queryKey: ['marketing-settings'],
+    queryFn: marketingService.getSettings,
+    enabled: isSuperAdmin,
+  });
+
+  useEffect(() => {
+    if (mkt) {
+      setFbPixel(mkt.fbPixelId || '');
+      setGoogleTag(mkt.googleTagId || '');
+      setReminderEnabled(Boolean(mkt.reminderEnabled));
+      setReminderDelay(mkt.reminderDelayHours || 6);
+    }
+  }, [mkt]);
+
+  const mktSaveMutation = useMutation({
+    mutationFn: () =>
+      marketingService.updateSettings({
+        fbPixelId: fbPixel,
+        googleTagId: googleTag,
+        reminderEnabled,
+        reminderDelayHours: reminderDelay,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['marketing-settings'] });
+      toast.success('Marketing settings saved');
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to save marketing settings'),
+  });
+
+  const runRemindersMutation = useMutation({
+    mutationFn: marketingService.runReminders,
+    onSuccess: (d) => toast.success(`Sent ${d.sent} reminder(s)`),
+    onError: (err: any) => toast.error(err?.message || 'Failed to run reminders'),
   });
 
   if (!authLoading && !isSuperAdmin) {
@@ -241,6 +284,66 @@ export const Platform: React.FC = () => {
             <Button onClick={() => aiSaveMutation.mutate()} isLoading={aiSaveMutation.isPending}>
               <Save className="w-4 h-4 mr-2" /> Save AI settings
             </Button>
+          </div>
+        </Card>
+
+        {/* Marketing */}
+        <Card className="p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-1 flex items-center gap-2">
+            <Megaphone className="w-5 h-5 text-primary-600" /> Marketing &amp; Retargeting
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            Add ad-platform pixel IDs to build retargeting audiences, and auto-remind registered
+            customers who left items in their cart.
+          </p>
+
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Input
+                label="Facebook Pixel ID"
+                value={fbPixel}
+                onChange={(e) => setFbPixel(e.target.value)}
+                placeholder="e.g. 123456789012345"
+              />
+              <Input
+                label="Google Tag / GA4 ID"
+                value={googleTag}
+                onChange={(e) => setGoogleTag(e.target.value)}
+                placeholder="e.g. G-XXXXXXX"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-end gap-4">
+              <label className="flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={reminderEnabled}
+                  onChange={(e) => setReminderEnabled(e.target.checked)}
+                />
+                Send abandoned-cart reminders
+              </label>
+              <div className="w-40">
+                <Input
+                  label="Remind after (hours)"
+                  type="number"
+                  value={reminderDelay}
+                  onChange={(e) => setReminderDelay(Number(e.target.value) || 6)}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => mktSaveMutation.mutate()} isLoading={mktSaveMutation.isPending}>
+                <Save className="w-4 h-4 mr-2" /> Save marketing settings
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => runRemindersMutation.mutate()}
+                isLoading={runRemindersMutation.isPending}
+              >
+                <Send className="w-4 h-4 mr-2" /> Run reminders now
+              </Button>
+            </div>
           </div>
         </Card>
       </div>
