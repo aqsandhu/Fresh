@@ -70,13 +70,25 @@ export const setupSentryMiddleware = (app: Application): void => {
 export const setupSentryErrorHandler = (app: Application): void => {
   if (!process.env.SENTRY_DSN) return;
 
-  // Error handler middleware
-  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-    Sentry.captureException(err);
+  // Error handler middleware. Report ONLY genuine server errors (5xx). Expected
+  // client errors — 401 (missing/expired token), 403, 404, 422 validation — are
+  // normal traffic and must NOT flood Sentry; an error without a statusCode is
+  // treated as 500 (truly unexpected). This is the single capture point.
+  app.use((err: any, req: Request, _res: Response, next: NextFunction) => {
+    const status = typeof err?.statusCode === 'number' ? err.statusCode : 500;
+    if (status >= 500) {
+      Sentry.withScope((scope) => {
+        scope.setTag('path', req.path);
+        scope.setTag('method', req.method);
+        const userId = (req as { user?: { id?: string } }).user?.id;
+        if (userId) scope.setUser({ id: userId });
+        Sentry.captureException(err);
+      });
+    }
     next(err);
   });
 
-  logger.info('Sentry error handler attached');
+  logger.info('Sentry error handler attached (5xx only)');
 };
 
 /**

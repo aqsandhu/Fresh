@@ -4,7 +4,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import logger from '../utils/logger';
-import { captureException, clearSentryUser } from '../config/sentry';
+import { clearSentryUser } from '../config/sentry';
 
 // Custom API Error class
 export class ApiError extends Error {
@@ -113,17 +113,9 @@ export const errorHandler = (
     message = 'Invalid JSON';
   }
 
-  // Send error to Sentry (non-blocking)
-  if (statusCode >= 500) {
-    captureException(err instanceof Error ? err : new Error(String(err)), {
-      path: req.path,
-      method: req.method,
-      statusCode,
-      userId: req.user?.id,
-    });
-  }
-
-  // Clear Sentry user context after request
+  // Error reporting to Sentry happens once, in setupSentryErrorHandler (5xx only,
+  // with request context) — runs before this handler. We only clear the
+  // per-request Sentry user context here.
   clearSentryUser();
 
   // Log error — skip noisy stack traces for expected auth failures.
