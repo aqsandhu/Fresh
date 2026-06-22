@@ -6,6 +6,8 @@
 // ============================================================================
 
 import { fetchGlobalSettings } from '../utils/siteSettings';
+import { query } from '../config/database';
+import { isMissingTable } from '../utils/dbErrors';
 import logger from '../utils/logger';
 
 export const AI_KEYS = {
@@ -40,25 +42,95 @@ const DEFAULT_MODELS: Record<string, string> = {
 const MAX_TOKENS = 350;
 const REQUEST_TIMEOUT_MS = 20000;
 
-// Compact knowledge so the model can guide users without big prompts.
-const SYSTEM_PROMPT = `You are "FreshBazar Assistant", the friendly customer-care chatbot for FreshBazar, a Pakistani online grocery & fresh-produce delivery service.
+// Compact but expert knowledge so the model can guide users with few tokens.
+const SYSTEM_PROMPT = `You are "FreshBazar Assistant", the official customer-care chatbot for FreshBazar — a Pakistani online grocery & fresh-produce delivery service (vegetables, fruits, dry fruits, chicken).
 
-Be warm, concise and to the point (2-4 short sentences, use simple English or Roman Urdu if the user writes that way). Never invent prices, stock, or order details — if unsure, tell the user to check the relevant page or contact support.
+STYLE: Warm, concise, expert. Reply in 2-5 short sentences or a tiny bullet list. Mirror the user's language (English, Urdu, or Roman Urdu). Get to the point. Never invent prices, stock, order IDs or policies — if you don't have it, say so and point to the right page/support.
 
-You can help with:
-- Products: vegetables, fruits, dry fruits, chicken; qualities A/B/C; browse via the Shop/Categories.
-- Ordering: add items to cart, choose a delivery address (pin on map) and a time slot, then place the order (Cash on Delivery supported). Free delivery on qualifying orders.
-- Today's Basket: ready-made combo packages customers can add to cart in one tap.
-- Complaints & reviews: customers can file a complaint or leave a review from their Orders / Support section.
-- Work as Rider: people can apply to deliver via the "Work as Rider" page.
-- Register as Restaurant: businesses can sign up via the Restaurant section for bulk pricing.
-- Franchise: entrepreneurs can apply on the Franchise page to bring FreshBazar to their city.
-- About Us / Contact Us: company info and support contact are in the footer/menu.
-- Service areas: delivery is available in selected cities/areas; if outside, customers can request service via WhatsApp.
+YOU CAN HELP WITH:
+- Products & categories: help users find items and share consumer retail price/availability (use the live catalog below when present).
+- Ordering (consumer): add items to cart → open cart → confirm delivery address (drop the map pin) → pick a delivery time slot → place order. Cash on Delivery supported; qualifying orders get free delivery.
+- Today's Basket: ready-made combo packages — "Add basket to cart" adds all items at once.
+- Restaurants (B2B): businesses Register as Restaurant in the Restaurant section and, once approved, log in to order at special business pricing. NEVER reveal or quote restaurant/wholesale prices — tell them to register & log in to see business rates.
+- Work as Rider: open "Work as Rider", fill the application (name, contact, area, vehicle/CNIC details) and submit; the team reviews and contacts applicants.
+- Complaints: from Orders/Support, file a complaint on the relevant order (photos optional); the team reviews and can resolve/refund.
+- Reviews: after delivery, rate the order/products from Orders or the product page.
+- Franchise: entrepreneurs apply on the Franchise page to bring FreshBazar to their city.
+- Service areas: delivery is limited to covered areas; if a pin is outside, the app shows a message + a WhatsApp number to request service there.
+- About/Contact: company info & support contact are in the footer/menu.
 
-If asked something outside FreshBazar, politely steer back to how you can help with shopping or services.`;
+RULES: Stay on FreshBazar topics. Be accurate and safe. Don't promise discounts/refunds you can't guarantee. Keep it short.`;
 
-/** Load AI config (env key takes precedence over the DB setting). */
+const PRODUCT_INTENT =
+  /price|rate|kitn|available|stock|kg|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|product|item|buy|kharid|menu|chahi|milt|milega|konsi|kaunsi|kya hai|kya hain/i;
+
+/**
+ * Build a tiny live-catalog context for product-related questions only, so most
+ * messages stay cheap. Consumer retail price only — restaurant prices excluded.
+ */
+async function buildLiveContext(message: string, cityId?: string | null): Promise<string> {
+  const tokens = message
+    .toLowerCase()
+    .replace(/[^a-z0-9؀-ۿ\s]/gi, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3)
+    .slice(0, 8);
+
+  let products: Array<{ name_en: string; price: number; unit_type: string; stock_status: string }> = [];
+  if (tokens.length) {
+    const patterns = tokens.map((t) => `%${t}%`);
+    try {
+      const r = await query(
+        `SELECT name_en, price, unit_type, stock_status
+           FROM products
+          WHERE is_active = true ${cityId ? 'AND city_id = $2' : ''}
+            AND (name_en ILIKE ANY($1) OR name_ur ILIKE ANY($1))
+          ORDER BY is_featured DESC, name_en ASC
+          LIMIT 6`,
+        cityId ? [patterns, cityId] : [patterns]
+      );
+      products = r.rows;
+    } catch (err) {
+      if (!isMissingTable(err)) logger.warn('AI catalog lookup failed', { error: (err as Error)?.message });
+    }
+  }
+
+  if (!PRODUCT_INTENT.test(message) && products.length === 0) return '';
+
+  let cats: string[] = [];
+  try {
+    const c = await query(
+      `SELECT name_en FROM categories
+        WHERE is_active = true ${cityId ? 'AND city_id = $1' : ''}
+        ORDER BY display_order ASC, name_en ASC LIMIT 15`,
+      cityId ? [cityId] : []
+    );
+    cats = c.rows.map((r) => r.name_en).filter(Boolean);
+  } catch {
+    /* ignore */
+  }
+
+  const lines = [
+    '[FreshBazar live catalog — consumer retail prices in PKR. Do NOT quote any wholesale/restaurant prices.]',
+  ];
+  if (cats.length) lines.push(`Categories: ${cats.join(', ')}`);
+  if (products.length) {
+    lines.push('Matching products:');
+    for (const p of products) {
+      const avail = p.stock_status === 'out_of_stock' ? 'out of stock' : 'in stock';
+      const unit = p.unit_type ? `/${p.unit_type}` : '';
+      lines.push(`- ${p.name_en}: Rs.${Math.round(Number(p.price))}${unit} (${avail})`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Load AI config. Environment variables take precedence over DB settings, so the
+ * whole assistant can be configured purely via Render env vars:
+ *   AI_CHAT_API_KEY (required to enable), AI_CHAT_PROVIDER, AI_CHAT_MODEL,
+ *   AI_CHAT_BASE_URL, AI_CHAT_DISABLED.
+ */
 export async function getAiConfig(): Promise<AiConfig> {
   const map = await fetchGlobalSettings([
     AI_KEYS.provider,
@@ -67,13 +139,13 @@ export async function getAiConfig(): Promise<AiConfig> {
     AI_KEYS.baseUrl,
     AI_KEYS.disabled,
   ]);
-  const envKey = process.env.AI_CHAT_API_KEY?.trim() || '';
+  const env = (k: string) => (process.env[k] || '').trim();
   return {
-    provider: (map[AI_KEYS.provider] || 'anthropic').trim().toLowerCase(),
-    apiKey: envKey || (map[AI_KEYS.apiKey] || '').trim(),
-    model: (map[AI_KEYS.model] || '').trim(),
-    baseUrl: (map[AI_KEYS.baseUrl] || '').trim().replace(/\/+$/, ''),
-    disabled: (map[AI_KEYS.disabled] || '') === 'true',
+    provider: (env('AI_CHAT_PROVIDER') || map[AI_KEYS.provider] || 'anthropic').toLowerCase(),
+    apiKey: env('AI_CHAT_API_KEY') || (map[AI_KEYS.apiKey] || '').trim(),
+    model: env('AI_CHAT_MODEL') || (map[AI_KEYS.model] || '').trim(),
+    baseUrl: (env('AI_CHAT_BASE_URL') || map[AI_KEYS.baseUrl] || '').replace(/\/+$/, ''),
+    disabled: env('AI_CHAT_DISABLED') === 'true' || (map[AI_KEYS.disabled] || '') === 'true',
   };
 }
 
@@ -103,20 +175,27 @@ async function postJson(url: string, headers: Record<string, string>, body: unkn
   }
 }
 
-/** Generate a reply from the configured provider for a short message history. */
-export async function generateReply(history: ChatMessage[]): Promise<string> {
+/**
+ * Generate a reply from the configured provider for a short message history.
+ * Injects a tiny live-catalog context for product questions (city-scoped).
+ */
+export async function generateReply(history: ChatMessage[], cityId?: string | null): Promise<string> {
   const cfg = await getAiConfig();
   if (!aiEnabled(cfg)) throw new Error('AI assistant is not configured');
 
   const model = cfg.model || DEFAULT_MODELS[cfg.provider] || DEFAULT_MODELS.anthropic;
   const provider = cfg.provider;
 
+  const lastUser = [...history].reverse().find((m) => m.role === 'user')?.content || '';
+  const context = await buildLiveContext(lastUser, cityId);
+  const systemPrompt = context ? `${SYSTEM_PROMPT}\n\n${context}` : SYSTEM_PROMPT;
+
   try {
     if (provider === 'anthropic') {
       const data = await postJson(
         'https://api.anthropic.com/v1/messages',
         { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
-        { model, max_tokens: MAX_TOKENS, system: SYSTEM_PROMPT, messages: history }
+        { model, max_tokens: MAX_TOKENS, system: systemPrompt, messages: history }
       );
       return String(data?.content?.[0]?.text || '').trim();
     }
@@ -127,7 +206,7 @@ export async function generateReply(history: ChatMessage[]): Promise<string> {
         `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`,
         {},
         {
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          systemInstruction: { parts: [{ text: systemPrompt }] },
           contents: history.map((m) => ({
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.content }],
@@ -146,7 +225,7 @@ export async function generateReply(history: ChatMessage[]): Promise<string> {
       {
         model,
         max_tokens: MAX_TOKENS,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history],
+        messages: [{ role: 'system', content: systemPrompt }, ...history],
       }
     );
     return String(data?.choices?.[0]?.message?.content || '').trim();

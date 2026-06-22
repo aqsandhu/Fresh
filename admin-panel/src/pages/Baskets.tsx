@@ -69,7 +69,7 @@ export const Baskets: React.FC = () => {
 
   const { data: productsData } = useQuery({
     queryKey: ['admin-products-for-baskets', selectedCityId],
-    queryFn: () => productService.getProducts({ limit: 500 } as any),
+    queryFn: () => productService.getProducts({ limit: 200 } as any),
     enabled: isSuperAdmin && modalOpen,
   });
   const products = productsData?.products || [];

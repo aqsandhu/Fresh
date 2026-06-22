@@ -12,6 +12,7 @@ import {
   createdResponse,
 } from '../../utils/response';
 import logger from '../../utils/logger';
+import { isMissingTable } from '../../utils/dbErrors';
 
 interface BasketItemInput {
   product_id?: string;
@@ -79,16 +80,21 @@ async function fetchBasketWithItems(basketId: string) {
 export const getBaskets = asyncHandler(async (req: Request, res: Response) => {
   if (!requireSuperAdmin(req, res)) return;
   const cityId = (req.query.cityId || req.query.city_id) as string | undefined;
-  const baskets = cityId
-    ? await query(`SELECT id FROM baskets WHERE city_id = $1 ORDER BY created_at DESC`, [cityId])
-    : await query(`SELECT id FROM baskets ORDER BY created_at DESC`);
+  try {
+    const baskets = cityId
+      ? await query(`SELECT id FROM baskets WHERE city_id = $1 ORDER BY created_at DESC`, [cityId])
+      : await query(`SELECT id FROM baskets ORDER BY created_at DESC`);
 
-  const full = [];
-  for (const row of baskets.rows) {
-    const b = await fetchBasketWithItems(row.id);
-    if (b) full.push(b);
+    const full = [];
+    for (const row of baskets.rows) {
+      const b = await fetchBasketWithItems(row.id);
+      if (b) full.push(b);
+    }
+    successResponse(res, full, 'Baskets retrieved');
+  } catch (err) {
+    if (isMissingTable(err)) return successResponse(res, [], 'Baskets retrieved');
+    throw err;
   }
-  successResponse(res, full, 'Baskets retrieved');
 });
 
 /**

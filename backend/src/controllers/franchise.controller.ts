@@ -12,6 +12,7 @@ import {
   notFoundResponse,
 } from '../utils/response';
 import logger from '../utils/logger';
+import { isMissingTable } from '../utils/dbErrors';
 
 const VALID_STATUSES = ['new', 'contacted', 'closed'];
 
@@ -53,18 +54,23 @@ export const submitFranchiseInquiry = asyncHandler(async (req: Request, res: Res
  */
 export const listFranchiseInquiries = asyncHandler(async (req: Request, res: Response) => {
   const status = req.query.status as string | undefined;
-  const result =
-    status && VALID_STATUSES.includes(status)
-      ? await query(
-          `SELECT id, name, phone, email, city, message, status, created_at
-             FROM franchise_inquiries WHERE status = $1 ORDER BY created_at DESC`,
-          [status]
-        )
-      : await query(
-          `SELECT id, name, phone, email, city, message, status, created_at
-             FROM franchise_inquiries ORDER BY created_at DESC`
-        );
-  successResponse(res, result.rows, 'Franchise inquiries retrieved');
+  try {
+    const result =
+      status && VALID_STATUSES.includes(status)
+        ? await query(
+            `SELECT id, name, phone, email, city, message, status, created_at
+               FROM franchise_inquiries WHERE status = $1 ORDER BY created_at DESC`,
+            [status]
+          )
+        : await query(
+            `SELECT id, name, phone, email, city, message, status, created_at
+               FROM franchise_inquiries ORDER BY created_at DESC`
+          );
+    successResponse(res, result.rows, 'Franchise inquiries retrieved');
+  } catch (err) {
+    if (isMissingTable(err)) return successResponse(res, [], 'Franchise inquiries retrieved');
+    throw err;
+  }
 });
 
 /**
