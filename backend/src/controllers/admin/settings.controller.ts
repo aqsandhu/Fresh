@@ -798,7 +798,7 @@ export const updateAiChatSettings = asyncHandler(async (req: Request, res: Respo
 
   if (req.body.provider !== undefined) {
     const provider = String(req.body.provider).trim().toLowerCase();
-    const allowed = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
+    const allowed = ['anthropic', 'openai', 'openai-compatible', 'gemini', 'deepseek', 'grok', 'xai'];
     await upsertGlobalSiteSetting(
       AI_KEYS.provider,
       allowed.includes(provider) ? provider : 'anthropic',

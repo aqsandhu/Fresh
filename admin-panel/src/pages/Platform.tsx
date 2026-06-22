@@ -13,9 +13,11 @@ import toast from 'react-hot-toast';
 
 const AI_PROVIDERS = [
   { value: 'anthropic', label: 'Anthropic (Claude)' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'grok', label: 'Grok (xAI)' },
+  { value: 'gemini', label: 'Google Gemini' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'openai-compatible', label: 'OpenAI-compatible (custom base URL)' },
-  { value: 'gemini', label: 'Google Gemini' },
 ];
 
 /**
