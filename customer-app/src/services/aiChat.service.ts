@@ -17,8 +17,12 @@ export const aiChatService = {
     }
   },
 
-  async sendMessage(messages: ChatMessage[]): Promise<{ reply: string }> {
-    const res = await apiClient.post('/ai-chat/message', { messages }, { params: withCityParams() });
+  async sendMessage(messages: ChatMessage[], page?: string): Promise<{ reply: string }> {
+    const res = await apiClient.post(
+      '/ai-chat/message',
+      { messages, page },
+      { params: withCityParams() }
+    );
     return res.data?.data || res.data;
   },
 };
