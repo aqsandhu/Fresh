@@ -10,3 +10,4 @@ export { StarRating } from './StarRating';
 export { GuidanceTips } from './GuidanceTips';
 export { ComingSoon } from './ComingSoon';
 export { ServiceAreaModal } from './ServiceAreaModal';
+export { AiChatWidget } from './AiChatWidget';

@@ -27,6 +27,7 @@ import ocpRoutes from './ocp.routes';
 import financeRoutes from './finance.routes';
 import shareholderRoutes from './shareholder.routes';
 import franchiseRoutes from './franchise.routes';
+import aiChatRoutes from './aiChat.routes';
 
 const router = Router();
 
@@ -55,5 +56,6 @@ router.use('/ocp', ocpRoutes);
 router.use('/finance', financeRoutes);
 router.use('/shareholder', shareholderRoutes);
 router.use('/franchise', franchiseRoutes);
+router.use('/ai-chat', aiChatRoutes);
 
 export default router;
