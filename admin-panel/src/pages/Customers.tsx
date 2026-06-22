@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Search, MapPin, X, Home, Briefcase, Building, Navigation, Image, Star, Trash2 } from 'lucide-react';
+import { Users, Search, MapPin, X, Home, Briefcase, Building, Navigation, Image, Star, Trash2, Download } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Table } from '@/components/ui/Table';
+import { Select } from '@/components/ui/Select';
 import { customerService } from '@/services/customer.service';
 import { useAuthContext } from '@/context/AuthContext';
 import { formatCurrency, resolveImageUrl } from '@/utils/formatters';
@@ -19,15 +20,46 @@ export const Customers: React.FC = () => {
   const isSuperAdmin = user?.role === 'super_admin';
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [segment, setSegment] = useState('');
+  const [days, setDays] = useState(30);
+  const [exporting, setExporting] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [deleteOrders, setDeleteOrders] = useState(false);
   const [deleteAddresses, setDeleteAddresses] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['customers', page, search],
-    queryFn: () => customerService.getCustomers({ page, limit: 20, search: search || undefined }),
+    queryKey: ['customers', page, search, segment, days],
+    queryFn: () =>
+      customerService.getCustomers({
+        page,
+        limit: 20,
+        search: search || undefined,
+        segment: segment || undefined,
+        days: segment === 'lapsed' ? days : undefined,
+      }),
   });
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const blob = await customerService.exportCustomers({
+        segment: segment || undefined,
+        days: segment === 'lapsed' ? days : undefined,
+        search: search || undefined,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `customers-${segment || 'all'}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to export customers');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const { data: addresses, isLoading: addressesLoading } = useQuery({
     queryKey: ['customer-addresses', selectedCustomer?.id],
@@ -159,9 +191,9 @@ export const Customers: React.FC = () => {
   return (
     <Layout title="Customers" subtitle="View registered customers">
       <Card>
-        {/* Search */}
-        <div className="p-4 border-b">
-          <div className="relative max-w-md">
+        {/* Search + marketing segment filters */}
+        <div className="p-4 border-b flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
@@ -171,6 +203,32 @@ export const Customers: React.FC = () => {
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
+          <div className="w-52">
+            <Select
+              options={[
+                { value: '', label: 'All customers' },
+                { value: 'abandoned_cart', label: 'Added to cart, no order' },
+                { value: 'lapsed', label: 'No order in N days' },
+              ]}
+              value={segment}
+              onChange={(e) => { setSegment(e.target.value); setPage(1); }}
+            />
+          </div>
+          {segment === 'lapsed' && (
+            <div className="w-28">
+              <input
+                type="number"
+                min={1}
+                value={days}
+                onChange={(e) => { setDays(Number(e.target.value) || 30); setPage(1); }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Days"
+              />
+            </div>
+          )}
+          <Button variant="outline" onClick={handleExport} isLoading={exporting}>
+            <Download className="w-4 h-4 mr-2" /> Export CSV
+          </Button>
         </div>
 
         {customers.length === 0 && !isLoading ? (

@@ -10,6 +10,7 @@ import BrandFavicon from '@/components/BrandFavicon'
 import ErrorBoundary from '@/components/providers/ErrorBoundary'
 import TodaysBasketModal from '@/components/basket/TodaysBasketModal'
 import AiChatWidget from '@/components/ai/AiChatWidget'
+import MarketingTracker from '@/components/marketing/MarketingTracker'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -68,6 +69,7 @@ export default function RootLayout({
             </div>
             <TodaysBasketModal />
             <AiChatWidget />
+            <MarketingTracker />
             <Toaster
               position="top-center"
               toastOptions={{

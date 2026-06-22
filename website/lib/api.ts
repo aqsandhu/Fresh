@@ -679,9 +679,29 @@ export const settingsApi = {
   },
 
   // Global feature flags / config (public). Defaults to "off" when never set.
-  getPublicConfig: async (): Promise<{ atta_chakki_enabled: boolean }> => {
+  getPublicConfig: async (): Promise<{
+    atta_chakki_enabled: boolean
+    fb_pixel_id?: string
+    google_tag_id?: string
+  }> => {
     const response = await api.get('/site-settings/public-config')
     return response.data?.data || response.data
+  },
+}
+
+// Marketing API (public): cart snapshots for abandonment tracking / retargeting.
+export const marketingApi = {
+  snapshotCart: async (payload: {
+    deviceId: string
+    items: { name: string; quantity: number; price: number; quality?: string }[]
+    subtotal: number
+    phone?: string
+  }): Promise<void> => {
+    try {
+      await api.post('/marketing/cart-snapshot', payload)
+    } catch {
+      // Non-blocking: snapshot failures must never affect the shopping flow.
+    }
   },
 }
 

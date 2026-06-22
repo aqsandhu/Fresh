@@ -16,6 +16,20 @@ import {
 } from '../../utils/cityScope';
 import { normalizePhoneNumber } from '../../utils/validators';
 
+// Marketing migration (46) may lag behind code — guard references so the
+// Customers tab never breaks if abandoned_carts hasn't been created yet.
+let cachedAbandonedTable: boolean | null = null;
+async function hasAbandonedCartsTable(): Promise<boolean> {
+  if (cachedAbandonedTable !== null) return cachedAbandonedTable;
+  try {
+    const r = await query(`SELECT to_regclass('public.abandoned_carts') AS t`);
+    cachedAbandonedTable = Boolean(r.rows[0]?.t);
+  } catch {
+    cachedAbandonedTable = false;
+  }
+  return cachedAbandonedTable;
+}
+
 export const getAdminAddresses = asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 100, search, city, area } = req.query;
   const scope = await resolveCityScope(req);
@@ -251,6 +265,23 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
   whereSql += custCity.sql;
   paramIndex = custCity.nextIndex;
 
+  // Marketing segments: "lapsed" (no order in N days, incl. never-ordered) and
+  // "abandoned_cart" (has an active cart but hasn't ordered it).
+  const segment = String(req.query.segment || '');
+  const daysRaw = parseInt(String(req.query.days || ''), 10);
+  const daysVal = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : 30;
+  if (segment === 'lapsed') {
+    whereSql += ` AND NOT EXISTS (
+      SELECT 1 FROM orders o2 WHERE o2.user_id = u.id AND o2.deleted_at IS NULL
+        AND o2.created_at > NOW() - ($${paramIndex} || ' days')::interval)`;
+    params.push(String(daysVal));
+    paramIndex++;
+  } else if (segment === 'abandoned_cart' && (await hasAbandonedCartsTable())) {
+    whereSql += ` AND EXISTS (
+      SELECT 1 FROM abandoned_carts ac WHERE ac.user_id = u.id
+        AND ac.status = 'active' AND ac.item_count > 0)`;
+  }
+
   const orderScopeSql = orderCityMatchSql(custCity.cityIdParam, custCity.cityNameParam, 'o', 'oaddr');
   const addressScopeSql = addressCityMatchSql(custCity.cityNameParam, 'a');
 
@@ -272,7 +303,10 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
          LEFT JOIN addresses oaddr ON o.address_id = oaddr.id
          WHERE o.user_id = u.id AND o.status = 'delivered' AND o.deleted_at IS NULL${orderScopeSql}) as total_spent,
       (SELECT COUNT(*) FROM addresses a
-         WHERE a.user_id = u.id AND a.deleted_at IS NULL${addressScopeSql}) as total_addresses
+         WHERE a.user_id = u.id AND a.deleted_at IS NULL${addressScopeSql}) as total_addresses,
+      (SELECT MAX(o.created_at) FROM orders o
+         LEFT JOIN addresses oaddr ON o.address_id = oaddr.id
+         WHERE o.user_id = u.id AND o.deleted_at IS NULL${orderScopeSql}) as last_order_at
     FROM users u
     ${whereSql}
     ORDER BY u.created_at DESC
@@ -292,6 +326,79 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
       totalPages: Math.ceil(total / parseInt(limit as string)),
     },
   }, 'Customers retrieved successfully');
+});
+
+/**
+ * Export a customer segment as CSV (for Meta/Google custom audiences).
+ * GET /api/admin/customers/export?segment=&days=&search=
+ */
+export const exportCustomersCsv = asyncHandler(async (req: Request, res: Response) => {
+  const scope = await resolveCityScope(req);
+  const { search } = req.query;
+
+  let whereSql = `WHERE u.role = 'customer' AND u.deleted_at IS NULL`;
+  const params: any[] = [];
+  let paramIndex = 1;
+
+  if (search) {
+    whereSql += ` AND (u.full_name ILIKE $${paramIndex} OR u.phone ILIKE $${paramIndex} OR u.email ILIKE $${paramIndex})`;
+    params.push(`%${search}%`);
+    paramIndex++;
+  }
+
+  const custCity = customerCityExistsClause(scope, 'u', params, paramIndex);
+  whereSql += custCity.sql;
+  paramIndex = custCity.nextIndex;
+
+  const segment = String(req.query.segment || '');
+  const daysRaw = parseInt(String(req.query.days || ''), 10);
+  const daysVal = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : 30;
+  if (segment === 'lapsed') {
+    whereSql += ` AND NOT EXISTS (
+      SELECT 1 FROM orders o2 WHERE o2.user_id = u.id AND o2.deleted_at IS NULL
+        AND o2.created_at > NOW() - ($${paramIndex} || ' days')::interval)`;
+    params.push(String(daysVal));
+    paramIndex++;
+  } else if (segment === 'abandoned_cart' && (await hasAbandonedCartsTable())) {
+    whereSql += ` AND EXISTS (
+      SELECT 1 FROM abandoned_carts ac WHERE ac.user_id = u.id
+        AND ac.status = 'active' AND ac.item_count > 0)`;
+  }
+
+  const orderScopeSql = orderCityMatchSql(custCity.cityIdParam, custCity.cityNameParam, 'o', 'oaddr');
+
+  const result = await query(
+    `SELECT u.full_name, u.phone, u.email, u.created_at,
+       (SELECT COUNT(*) FROM orders o
+          LEFT JOIN addresses oaddr ON o.address_id = oaddr.id
+          WHERE o.user_id = u.id AND o.deleted_at IS NULL${orderScopeSql}) as total_orders,
+       (SELECT MAX(o.created_at) FROM orders o
+          LEFT JOIN addresses oaddr ON o.address_id = oaddr.id
+          WHERE o.user_id = u.id AND o.deleted_at IS NULL${orderScopeSql}) as last_order_at
+     FROM users u ${whereSql}
+     ORDER BY u.created_at DESC
+     LIMIT 50000`,
+    params
+  );
+
+  const esc = (v: unknown) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = ['name', 'phone', 'email', 'total_orders', 'last_order_at', 'joined_at'];
+  const lines = [header.join(',')];
+  for (const r of result.rows) {
+    lines.push(
+      [r.full_name, r.phone, r.email, r.total_orders, r.last_order_at, r.created_at]
+        .map(esc)
+        .join(',')
+    );
+  }
+
+  const filename = `customers-${segment || 'all'}-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(lines.join('\n'));
 });
 
 /**

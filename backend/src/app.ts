@@ -50,8 +50,24 @@ import { ensureControlColumns } from './config/controlSchema';
 import { ensureReconciliationTables } from './config/reconciliationSchema';
 import { query as dbQuery } from './config/database';
 import { runReconciliation } from './utils/reconciliation';
+import { runAbandonedCartReminders } from './controllers/marketing.controller';
 
 let reconciliationTimer: NodeJS.Timeout | null = null;
+let marketingTimer: NodeJS.Timeout | null = null;
+
+/** Hourly abandoned-cart reminder pass (no-op unless enabled in settings). */
+function startMarketingScheduler(): void {
+  if (process.env.NODE_ENV === 'test') return;
+  if (marketingTimer) return;
+  const HOUR = 60 * 60 * 1000;
+  const tick = () =>
+    runAbandonedCartReminders().catch((e) =>
+      logger.error('Abandoned-cart reminder tick failed', { error: (e as Error)?.message })
+    );
+  setTimeout(tick, 2 * 60 * 1000); // first pass ~2 min after boot
+  marketingTimer = setInterval(tick, HOUR);
+  logger.info('Marketing scheduler started (hourly)');
+}
 
 /** Daily books-watchdog. Runs ~1 min after boot only if overdue (>20h), then
  *  every 24h. Wrapped so a failed run never crashes the server. Disabled in tests. */
@@ -370,6 +386,8 @@ const startServer = async () => {
         }
         // Start the daily reconciliation watchdog once the DB/schema is ready.
         startReconciliationScheduler();
+        // Hourly abandoned-cart reminder pass (gated by marketing settings).
+        startMarketingScheduler();
         // Admin bootstrap: no-op unless ADMIN_PHONE and ADMIN_PASSWORD env vars
         // are set. Safe to call on every boot — idempotently upserts the row.
         const adminResult = await bootstrapAdmin();
