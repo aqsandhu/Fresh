@@ -53,6 +53,8 @@ jest.mock('lucide-react', () => ({
   MessageSquareWarning: () => <span data-testid="complaints-icon">Complaints</span>,
   Loader2: () => <span data-testid="loader-icon">Loader</span>,
   ArrowRight: () => <span data-testid="arrow-icon">Arrow</span>,
+  ShoppingBasket: () => <span data-testid="basket-icon">Basket</span>,
+  Store: () => <span data-testid="store-icon">Store</span>,
 }));
 
 jest.mock('@/store/cartStore', () => ({
@@ -76,6 +78,9 @@ jest.mock('@/lib/api', () => ({
   },
   bannerApi: {
     getSettings: jest.fn().mockResolvedValue({}),
+  },
+  settingsApi: {
+    getPublicConfig: jest.fn().mockResolvedValue({ atta_chakki_enabled: false }),
   },
 }));
 
