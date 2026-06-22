@@ -437,24 +437,34 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     // permanent decrement on delivery) instead of the legacy hard-deduct.
     const catalogV2Ready = await hasCatalogV2Columns();
 
+    // Lock + fetch ALL ordered products in ONE batched query (was an N+1 loop of
+    // per-item SELECT ... FOR UPDATE, repeated again later — a major source of
+    // connection-hold under concurrent checkouts). ORDER BY id keeps the row-lock
+    // order deterministic across concurrent orders, so no deadlocks. The locked
+    // rows carry every column both loops below need, so the second loop reuses
+    // this map instead of re-querying.
+    const orderedProductIds = cartItemsResult.rows.map((r) => r.product_id);
+    const lockedProductsResult = await client.query(
+      `SELECT id, price, half_kg_price, quarter_kg_price, half_dozen_price,
+              stock_status, is_active, name_en, city_id, primary_image, sku, stock_quantity
+              ${qualityReady ? ', price_b, price_c, stock_quantity_b, stock_quantity_c' : ''}
+              ${catalogV2Ready ? CATALOG_V2_CONSUMER_COLS : ''}
+         FROM products
+        WHERE id = ANY($1::uuid[])
+        ORDER BY id
+        FOR UPDATE`,
+      [orderedProductIds]
+    );
+    const lockedProductById = new Map<string, any>();
+    for (const row of lockedProductsResult.rows) lockedProductById.set(String(row.id), row);
+
     // Re-fetch current product prices — never trust stale cart_items.unit_price.
     for (const item of cartItemsResult.rows) {
-      const priceResult = await client.query(
-        `SELECT price, half_kg_price, quarter_kg_price, half_dozen_price,
-                stock_status, is_active, name_en, city_id
-                ${qualityReady ? ', price_b, price_c, stock_quantity_b, stock_quantity_c' : ''}
-                ${catalogV2Ready ? CATALOG_V2_CONSUMER_COLS : ''}
-           FROM products
-          WHERE id = $1
-          FOR UPDATE`,
-        [item.product_id]
-      );
-
-      if (priceResult.rows.length === 0) {
+      const product = lockedProductById.get(String(item.product_id));
+      if (!product) {
         throw new BadRequestError(`Product unavailable: ${item.product_id}`);
       }
 
-      const product = priceResult.rows[0];
       const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
       if (!product.is_active) {
         throw new BadRequestError(`Product unavailable: ${product.name_en}`);
@@ -747,49 +757,35 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       }
     }
 
-    // Create order items and decrement stock
+    // Create order items (batched) and decrement stock (per-item, atomic).
+    // The per-item product SELECT ... FOR UPDATE here was redundant — every row
+    // is already locked + fetched in lockedProductById above — so we reuse it.
+    // order_items are collected and inserted in ONE multi-row statement after the
+    // loop; the stock reserve/decrement + order_count stay per-item (the atomic
+    // oversell guards must run individually).
+    const orderItemRows: any[][] = [];
     for (const item of cartItemsResult.rows) {
-      const productResult = await client.query(
-        `SELECT name_en, primary_image, sku, stock_quantity, stock_status
-           FROM products WHERE id = $1 FOR UPDATE`,
-        [item.product_id]
-      );
-
-      if (productResult.rows.length === 0) {
+      const product = lockedProductById.get(String(item.product_id));
+      if (!product) {
         throw new NotFoundError(`Product not found: ${item.product_id}`);
       }
 
-      const product = productResult.rows[0];
       const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
       const stockDeduction = stockUnitsNeeded(item.quantity, item.unit);
       const unitPrice = parseFloat(String(item.unit_price));
       const totalPrice = unitPrice * item.quantity;
 
-      if (qualityReady) {
-        await client.query(
-          `INSERT INTO order_items (
-            order_id, product_id, product_name, product_image, product_sku,
-            unit_price, quantity, total_price, weight_kg, unit, quality
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-          [
-            order.id, item.product_id, product.name_en, product.primary_image, product.sku,
-            unitPrice, item.quantity, totalPrice, item.weight_kg || null,
-            item.unit || 'full', quality,
-          ]
-        );
-      } else {
-        await client.query(
-          `INSERT INTO order_items (
-            order_id, product_id, product_name, product_image, product_sku,
-            unit_price, quantity, total_price, weight_kg, unit
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [
-            order.id, item.product_id, product.name_en, product.primary_image, product.sku,
-            unitPrice, item.quantity, totalPrice, item.weight_kg || null,
-            item.unit || 'full',
-          ]
-        );
-      }
+      orderItemRows.push(
+        qualityReady
+          ? [
+              order.id, item.product_id, product.name_en, product.primary_image, product.sku,
+              unitPrice, item.quantity, totalPrice, item.weight_kg || null, item.unit || 'full', quality,
+            ]
+          : [
+              order.id, item.product_id, product.name_en, product.primary_image, product.sku,
+              unitPrice, item.quantity, totalPrice, item.weight_kg || null, item.unit || 'full',
+            ]
+      );
 
       // Catalog v2: SOFT-RESERVE the shared bucket (reserved += need, atomic guard
       // available >= need). The permanent decrement happens on delivery. Legacy
@@ -828,6 +824,24 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       await client.query(
         'UPDATE products SET order_count = order_count + $1 WHERE id = $2',
         [item.quantity, item.product_id]
+      );
+    }
+
+    // Insert all order items in ONE multi-row statement (was one INSERT/item).
+    if (orderItemRows.length > 0) {
+      const colCount = qualityReady ? 11 : 10;
+      const valuesSql = orderItemRows
+        .map(
+          (_, r) =>
+            `(${Array.from({ length: colCount }, (_, c) => `$${r * colCount + c + 1}`).join(', ')})`
+        )
+        .join(', ');
+      const colNames = qualityReady
+        ? 'order_id, product_id, product_name, product_image, product_sku, unit_price, quantity, total_price, weight_kg, unit, quality'
+        : 'order_id, product_id, product_name, product_image, product_sku, unit_price, quantity, total_price, weight_kg, unit';
+      await client.query(
+        `INSERT INTO order_items (${colNames}) VALUES ${valuesSql}`,
+        orderItemRows.flat()
       );
     }
 

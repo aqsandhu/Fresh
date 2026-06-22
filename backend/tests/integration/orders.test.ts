@@ -187,10 +187,15 @@ function createOrderClient() {
       return Promise.resolve(ok([{ city_id: null }]));
     }
     if (text.includes('FROM products') && text.includes('half_kg_price') && text.includes('FOR UPDATE')) {
+      // Batched lock+fetch: WHERE id = ANY(...) FOR UPDATE — must include id so
+      // createOrder can build its product map, plus the columns the second loop
+      // reuses (primary_image, sku, stock_quantity).
       return Promise.resolve(
         ok([{
+          id: VALID_PRODUCT2,
           price: '100', half_kg_price: null, quarter_kg_price: null, half_dozen_price: null,
           stock_status: 'active', is_active: true, name_en: 'Tomatoes', city_id: VALID_CITY,
+          primary_image: null, sku: 'TOM-1', stock_quantity: 50,
         }])
       );
     }
