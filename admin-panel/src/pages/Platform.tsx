@@ -1,12 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Wheat, Save, ShieldAlert } from 'lucide-react';
+import { Wheat, Save, ShieldAlert, Bot, CheckCircle2 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { settingsService } from '@/services/settings.service';
 import { useAuthContext } from '@/context/AuthContext';
 import toast from 'react-hot-toast';
+
+const AI_PROVIDERS = [
+  { value: 'anthropic', label: 'Anthropic (Claude)' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'openai-compatible', label: 'OpenAI-compatible (custom base URL)' },
+  { value: 'gemini', label: 'Google Gemini' },
+];
 
 /**
  * Super-admin-only global platform configuration: feature flags and integrations
@@ -39,6 +48,54 @@ export const Platform: React.FC = () => {
       toast.success('Platform settings saved');
     },
     onError: (err: any) => toast.error(err?.message || 'Failed to save platform settings'),
+  });
+
+  // ---- AI chatbot config ----
+  const [aiProvider, setAiProvider] = useState('anthropic');
+  const [aiModel, setAiModel] = useState('');
+  const [aiBaseUrl, setAiBaseUrl] = useState('');
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [aiDisabled, setAiDisabled] = useState(false);
+
+  const { data: ai } = useQuery({
+    queryKey: ['ai-settings'],
+    queryFn: settingsService.getAiSettings,
+    enabled: isSuperAdmin,
+  });
+
+  useEffect(() => {
+    if (ai) {
+      setAiProvider(ai.provider || 'anthropic');
+      setAiModel(ai.model || '');
+      setAiBaseUrl(ai.baseUrl || '');
+      setAiDisabled(Boolean(ai.disabled));
+    }
+  }, [ai]);
+
+  const aiSaveMutation = useMutation({
+    mutationFn: () =>
+      settingsService.updateAiSettings({
+        provider: aiProvider,
+        model: aiModel,
+        baseUrl: aiBaseUrl,
+        disabled: aiDisabled,
+        ...(aiApiKey.trim() ? { apiKey: aiApiKey.trim() } : {}),
+      }),
+    onSuccess: () => {
+      setAiApiKey('');
+      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
+      toast.success('AI settings saved');
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to save AI settings'),
+  });
+
+  const aiClearKeyMutation = useMutation({
+    mutationFn: () => settingsService.updateAiSettings({ clearKey: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
+      toast.success('API key removed');
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to remove key'),
   });
 
   if (!authLoading && !isSuperAdmin) {
@@ -105,6 +162,84 @@ export const Platform: React.FC = () => {
             >
               <Save className="w-4 h-4 mr-2" />
               Save changes
+            </Button>
+          </div>
+        </Card>
+
+        {/* AI chatbot */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-medium text-gray-900 flex items-center gap-2">
+              <Bot className="w-5 h-5 text-primary-600" /> AI Assistant
+            </h2>
+            {ai?.enabled ? (
+              <span className="inline-flex items-center gap-1 text-sm text-green-600">
+                <CheckCircle2 className="w-4 h-4" /> Live
+              </span>
+            ) : (
+              <span className="text-sm text-gray-400">Off</span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 mb-4">
+            Paste an API key to switch the customer chatbot on. The key is stored securely on the
+            server and never shown again. Keep replies cheap by choosing a small/fast model.
+          </p>
+
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <Select
+                label="Provider"
+                options={AI_PROVIDERS}
+                value={aiProvider}
+                onChange={(e) => setAiProvider(e.target.value)}
+              />
+              <Input
+                label="Model (optional)"
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+                placeholder="e.g. claude-haiku-4-5-20251001"
+              />
+            </div>
+
+            {aiProvider === 'openai-compatible' && (
+              <Input
+                label="Base URL"
+                value={aiBaseUrl}
+                onChange={(e) => setAiBaseUrl(e.target.value)}
+                placeholder="https://your-endpoint/v1"
+              />
+            )}
+
+            <div>
+              <Input
+                label="API key"
+                type="password"
+                value={aiApiKey}
+                onChange={(e) => setAiApiKey(e.target.value)}
+                placeholder={ai?.hasKey ? '•••••••••• (key set — leave blank to keep)' : 'Paste API key'}
+              />
+              {ai?.hasKey && (
+                <button
+                  type="button"
+                  onClick={() => aiClearKeyMutation.mutate()}
+                  className="mt-1 text-xs text-red-600 hover:underline"
+                >
+                  Remove saved key (turns the assistant off)
+                </button>
+              )}
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={!aiDisabled}
+                onChange={(e) => setAiDisabled(!e.target.checked)}
+              />
+              Assistant enabled (uncheck to temporarily turn it off without removing the key)
+            </label>
+
+            <Button onClick={() => aiSaveMutation.mutate()} isLoading={aiSaveMutation.isPending}>
+              <Save className="w-4 h-4 mr-2" /> Save AI settings
             </Button>
           </div>
         </Card>

@@ -411,4 +411,8 @@ router.put('/settings/business-hours', adminController.updateBusinessHours);
 router.get('/settings/platform', adminController.getPlatformSettings);
 router.put('/settings/platform', adminController.updatePlatformSettings);
 
+// AI chatbot config (super-admin only; API key write-only, never returned)
+router.get('/settings/ai-chat', adminController.getAiChatSettings);
+router.put('/settings/ai-chat', adminRateLimiter, adminController.updateAiChatSettings);
+
 export default router;

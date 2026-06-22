@@ -772,6 +772,22 @@ export const bannerApi = {
   },
 }
 
+// AI assistant API (public). Key stays on the server.
+export interface AiChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+export const aiChatApi = {
+  getStatus: async (): Promise<{ enabled: boolean }> => {
+    const response = await api.get('/ai-chat/status')
+    return response.data?.data || response.data
+  },
+  sendMessage: async (messages: AiChatMessage[]): Promise<{ reply: string }> => {
+    const response = await api.post('/ai-chat/message', { messages })
+    return response.data?.data || response.data
+  },
+}
+
 // Franchise API (public lead capture)
 export const franchiseApi = {
   submitInquiry: async (data: {

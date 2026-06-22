@@ -175,4 +175,36 @@ export const settingsService = {
     );
     return response.data;
   },
+
+  // AI chatbot config (super-admin only). API key is write-only (never returned).
+  getAiSettings: async (): Promise<{
+    provider: string;
+    model: string;
+    baseUrl: string;
+    disabled: boolean;
+    hasKey: boolean;
+    enabled: boolean;
+  }> => {
+    const response = await api.get<ApiResponse<any>>('/admin/settings/ai-chat');
+    return response.data;
+  },
+
+  updateAiSettings: async (settings: {
+    provider?: string;
+    model?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    disabled?: boolean;
+    clearKey?: boolean;
+  }): Promise<{
+    provider: string;
+    model: string;
+    baseUrl: string;
+    disabled: boolean;
+    hasKey: boolean;
+    enabled: boolean;
+  }> => {
+    const response = await api.put<ApiResponse<any>>('/admin/settings/ai-chat', settings);
+    return response.data;
+  },
 };

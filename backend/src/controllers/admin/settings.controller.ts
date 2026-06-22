@@ -34,6 +34,7 @@ import {
   ATTA_CHAKKI_ENABLED_KEY,
 } from '../../utils/siteSettings';
 import { hasRestaurantDeliveryColumns } from '../../config/restaurantSchema';
+import { AI_KEYS, getAiConfig, aiEnabled } from '../../services/aiChat.service';
 
 export const getBrandLogoSettings = asyncHandler(async (req: Request, res: Response) => {
   const brand = await fetchBrandLogoSettings();
@@ -755,6 +756,73 @@ export const updatePlatformSettings = asyncHandler(async (req: Request, res: Res
   const map = await fetchGlobalSettings([ATTA_CHAKKI_ENABLED_KEY]);
   logger.info('Platform settings updated', { updatedBy: userId });
   successResponse(res, serializePlatformFlags(map), 'Platform settings updated');
+});
+
+// ============================================================================
+// AI CHATBOT CONFIG (super-admin only) — key is write-only, never returned
+// ============================================================================
+
+async function serializeAiSettings() {
+  const cfg = await getAiConfig();
+  return {
+    provider: cfg.provider,
+    model: cfg.model,
+    base_url: cfg.baseUrl,
+    disabled: cfg.disabled,
+    has_key: Boolean(cfg.apiKey),
+    enabled: aiEnabled(cfg),
+  };
+}
+
+/**
+ * Get AI chatbot config (masked — no API key returned).
+ * GET /api/admin/settings/ai-chat
+ */
+export const getAiChatSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can view AI settings', 403);
+  }
+  successResponse(res, await serializeAiSettings(), 'AI settings retrieved');
+});
+
+/**
+ * Update AI chatbot config. The API key is only written when provided; pass
+ * clear_key=true to remove it. The key is never echoed back.
+ * PUT /api/admin/settings/ai-chat
+ */
+export const updateAiChatSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can change AI settings', 403);
+  }
+  const userId = req.user?.id;
+
+  if (req.body.provider !== undefined) {
+    const provider = String(req.body.provider).trim().toLowerCase();
+    const allowed = ['anthropic', 'openai', 'openai-compatible', 'gemini'];
+    await upsertGlobalSiteSetting(
+      AI_KEYS.provider,
+      allowed.includes(provider) ? provider : 'anthropic',
+      userId
+    );
+  }
+  if (req.body.model !== undefined) {
+    await upsertGlobalSiteSetting(AI_KEYS.model, String(req.body.model).trim().slice(0, 100), userId);
+  }
+  if (req.body.base_url !== undefined) {
+    await upsertGlobalSiteSetting(AI_KEYS.baseUrl, String(req.body.base_url).trim().slice(0, 300), userId);
+  }
+  if (req.body.disabled !== undefined) {
+    const disabled = req.body.disabled === true || req.body.disabled === 'true';
+    await upsertGlobalSiteSetting(AI_KEYS.disabled, disabled ? 'true' : 'false', userId);
+  }
+  if (req.body.clear_key === true || req.body.clear_key === 'true') {
+    await upsertGlobalSiteSetting(AI_KEYS.apiKey, '', userId);
+  } else if (typeof req.body.api_key === 'string' && req.body.api_key.trim()) {
+    await upsertGlobalSiteSetting(AI_KEYS.apiKey, req.body.api_key.trim(), userId);
+  }
+
+  logger.info('AI chat settings updated', { updatedBy: userId });
+  successResponse(res, await serializeAiSettings(), 'AI settings updated');
 });
 
 // ============================================================================

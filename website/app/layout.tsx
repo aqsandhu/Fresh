@@ -9,6 +9,7 @@ import AppProviders from '@/components/providers/AppProviders'
 import BrandFavicon from '@/components/BrandFavicon'
 import ErrorBoundary from '@/components/providers/ErrorBoundary'
 import TodaysBasketModal from '@/components/basket/TodaysBasketModal'
+import AiChatWidget from '@/components/ai/AiChatWidget'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -66,6 +67,7 @@ export default function RootLayout({
               <ConditionalMobileNav />
             </div>
             <TodaysBasketModal />
+            <AiChatWidget />
             <Toaster
               position="top-center"
               toastOptions={{
