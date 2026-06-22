@@ -41,8 +41,10 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
 
-# Copy migrations if they exist
-COPY --from=builder --chown=nodejs:nodejs /app/migrations* ./migrations/ 2>/dev/null || true
+# (SQL migrations live in the repo's /database folder; they're applied in
+#  Supabase + auto-ensured on boot, so they are NOT needed in the runtime image.
+#  The previous COPY here used shell redirection that isn't valid in a Dockerfile
+#  and would break the build.)
 
 # Create uploads directory
 RUN mkdir -p uploads && chown -R nodejs:nodejs uploads
