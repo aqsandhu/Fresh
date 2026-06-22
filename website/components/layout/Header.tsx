@@ -258,11 +258,8 @@ export default function Header() {
       </div>
 
       {/* Main Header + search (click-outside closes idle search) */}
-      <div
-        ref={searchAreaRef}
-        className="container mx-auto px-3 sm:px-4 h-9 lg:h-[43px] flex items-center py-0"
-      >
-        <div className="flex items-center justify-between gap-2 sm:gap-3 w-full h-full min-h-0">
+      <div ref={searchAreaRef} className="container mx-auto px-3 sm:px-4">
+        <div className="h-9 lg:h-[43px] flex items-center justify-between gap-2 sm:gap-3 w-full min-h-0 py-0">
           <Link
             href="/"
             className="shrink-0 flex items-center h-full leading-none p-0 m-0"
@@ -488,7 +485,7 @@ export default function Header() {
             exit={{ height: 0, opacity: 0 }}
             className="lg:hidden overflow-hidden border-t border-gray-100"
           >
-            <nav className="container mx-auto px-4 py-4 space-y-1">
+            <nav className="container mx-auto px-4 py-4 space-y-1 max-h-[calc(100dvh-8rem)] overflow-y-auto overscroll-contain">
               {navLinks.map((link) => (
                 <Link
                   key={link.href}
