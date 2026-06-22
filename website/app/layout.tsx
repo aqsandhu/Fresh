@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast'
 import AppProviders from '@/components/providers/AppProviders'
 import BrandFavicon from '@/components/BrandFavicon'
 import ErrorBoundary from '@/components/providers/ErrorBoundary'
+import SentryInit from '@/components/providers/SentryInit'
 import TodaysBasketModal from '@/components/basket/TodaysBasketModal'
 import AiChatWidget from '@/components/ai/AiChatWidget'
 import MarketingTracker from '@/components/marketing/MarketingTracker'
@@ -60,6 +61,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <ErrorBoundary>
           <AppProviders>
+            <SentryInit />
             <BrandFavicon />
             <div className="min-h-screen flex flex-col">
               <ConditionalHeader />
