@@ -58,7 +58,7 @@ STYLE: Warm, concise, expert. Reply in 2-5 short sentences or a tiny bullet list
 IMPORTANT — WHAT YOU CANNOT DO: You cannot add items to the cart, change quantities, fill the address, or place/checkout orders yourself. Never say "should I add it for you?" or claim you added/ordered anything. Instead, share the item's link and guide the user to do it.
 
 YOU CAN HELP WITH:
-- Products & categories: help users find items and share consumer retail price/availability from the live catalog below. When a user wants an item, give its markdown link (e.g. [Tomato](/product/ID) — use exactly the link shown in the catalog) and say: "open it, choose the quality (A/B/C) and quantity — the page lets you pick ½ kg or ¼ kg where allowed, or 1, 2, 3+ kg (each item has a minimum), then tap Add to Cart."
+- Products & categories: help users find items and share consumer retail price/availability from the live catalog below. Match the user's wording smartly — they often type Roman Urdu (e.g. "badam" = Almond/بادام گری, "gobi" = Cauliflower, "tamatar" = Tomato, "pyaz" = Onion, "anday" = Eggs). If there is no exact match but a related/closest product exists in the catalog, OFFER that one (e.g. "Badam ke liye humare paas Almond/بادام گری hai") instead of saying "not found". Only say a product isn't available when truly nothing in the catalog relates. When you name an item, give its markdown link (e.g. [Tomato](/product/ID) — use exactly the link shown in the catalog) and say: "open it, choose the quality (A/B/C) and quantity — the page lets you pick ½ kg or ¼ kg where allowed, or 1, 2, 3+ kg (each item has a minimum), then tap Add to Cart."
 - Ordering/checkout (GUIDE only, you don't perform it): after adding items → open Cart → Checkout → confirm delivery address by dropping the map pin → pick a delivery time slot → Place Order (Cash on Delivery supported; qualifying orders get free delivery). Tell them which buttons to tap.
 - Today's Basket: ready-made combo packages — opening it and tapping "Add basket to cart" adds all items at once.
 - Restaurants (B2B): businesses Register as Restaurant in the Restaurant section and, once approved, log in to order at special business pricing. NEVER reveal or quote restaurant/wholesale prices — tell them to register & log in to see business rates.
@@ -128,44 +128,82 @@ async function buildContext(message: string, opts: ChatContextOpts): Promise<str
   if (page) lines.push(`The user is currently on this page: ${page}.`);
 
   // Product lookup — only for product-related questions.
+  type Prod = {
+    id: string;
+    name_en: string;
+    name_ur: string | null;
+    price: number;
+    unit_type: string;
+    stock_status: string;
+  };
+  const fmtProduct = (p: Prod) => {
+    const avail = p.stock_status === 'out_of_stock' ? 'out of stock' : 'in stock';
+    const unit = p.unit_type ? `/${p.unit_type}` : '';
+    const nm = p.name_ur ? `${p.name_en} / ${p.name_ur}` : p.name_en;
+    return `- [${nm}](/product/${p.id}): Rs.${Math.round(Number(p.price))}${unit} (${avail})`;
+  };
+
   if (PRODUCT_INTENT.test(message)) {
+    // 1) Cheap keyword pre-filter (works for exact English/Urdu names).
     const tokens = message
       .toLowerCase()
       .replace(/[^a-z0-9؀-ۿ\s]/gi, ' ')
       .split(/\s+/)
       .filter((w) => w.length >= 3)
       .slice(0, 8);
-    let products: Array<{ id: string; name_en: string; price: number; unit_type: string; stock_status: string }> = [];
+    let products: Prod[] = [];
     if (tokens.length) {
       const patterns = tokens.map((t) => `%${t}%`);
       try {
         const r = await query(
-          `SELECT id, name_en, price, unit_type, stock_status
+          `SELECT id, name_en, name_ur, price, unit_type, stock_status
              FROM products
             WHERE is_active = true ${cityId ? 'AND city_id = $2' : ''}
-              AND (name_en ILIKE ANY($1) OR name_ur ILIKE ANY($1))
+              AND (name_en ILIKE ANY($1) OR name_ur ILIKE ANY($1)
+                   OR EXISTS (SELECT 1 FROM unnest(COALESCE(tags, ARRAY[]::text[])) tg WHERE tg ILIKE ANY($1)))
             ORDER BY is_featured DESC, name_en ASC
-            LIMIT 6`,
+            LIMIT 8`,
           cityId ? [patterns, cityId] : [patterns]
         );
-        products = r.rows;
+        products = r.rows as Prod[];
       } catch (err) {
         if (!isMissingTable(err)) logger.warn('AI catalog lookup failed', { error: (err as Error)?.message });
       }
     }
+
     if (products.length) {
       lines.push(
         'Matching products (consumer retail price in PKR; share the link so the user picks quality & quantity there):'
       );
-      for (const p of products) {
-        const avail = p.stock_status === 'out_of_stock' ? 'out of stock' : 'in stock';
-        const unit = p.unit_type ? `/${p.unit_type}` : '';
-        lines.push(`- [${p.name_en}](/product/${p.id}): Rs.${Math.round(Number(p.price))}${unit} (${avail})`);
-      }
+      for (const p of products) lines.push(fmtProduct(p));
     } else {
-      lines.push(
-        `No product matching the user's question is available in ${cityName || 'the selected city'} right now. Tell them it is NOT available on FreshBazar at the moment — do NOT make up a price — and suggest browsing the Categories for similar items.`
-      );
+      // 2) No keyword hit (common with Roman-Urdu like "badam"). Give the AI the
+      // city catalog so IT matches by transliteration / Urdu name / synonym —
+      // instead of wrongly replying "not found".
+      let catalog: Prod[] = [];
+      try {
+        const r = await query(
+          `SELECT id, name_en, name_ur, price, unit_type, stock_status
+             FROM products
+            WHERE is_active = true ${cityId ? 'AND city_id = $1' : ''}
+            ORDER BY is_featured DESC, name_en ASC
+            LIMIT 200`,
+          cityId ? [cityId] : []
+        );
+        catalog = r.rows as Prod[];
+      } catch (err) {
+        if (!isMissingTable(err)) logger.warn('AI catalog list failed', { error: (err as Error)?.message });
+      }
+      if (catalog.length) {
+        lines.push(
+          "No exact keyword match. Below is this city's product list — find the CLOSEST product to what the user asked, matching by English name, Urdu name, Roman-Urdu transliteration, synonym or partial word (e.g. \"badam\" → Almond/بادام گری, \"gobi\" → Cauliflower, \"tamatar\" → Tomato). Share that product's link + price. Only say it's not available if truly nothing in this list relates:"
+        );
+        for (const p of catalog) lines.push(fmtProduct(p));
+      } else {
+        lines.push(
+          `No products are available in ${cityName || 'the selected city'} right now — tell the user that honestly and do NOT make up a price.`
+        );
+      }
     }
   }
 
