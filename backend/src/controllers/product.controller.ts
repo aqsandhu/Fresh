@@ -176,6 +176,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     created_at: 'created_at',
     price: 'price',
     name_en: 'name_en',
+    name_ur: 'name_ur',
     name: 'name_en',
     popularity: 'order_count',
     view_count: 'view_count',

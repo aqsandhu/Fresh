@@ -84,8 +84,8 @@ export const commonSchemas = {
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(20),
   
-  // Sorting
-  sortBy: Joi.string().valid('created_at', 'price', 'name', 'popularity'),
+  // Sorting (clients send name_en/name_ur; the controller maps them to columns)
+  sortBy: Joi.string().valid('created_at', 'price', 'name', 'name_en', 'name_ur', 'popularity'),
   sortOrder: Joi.string().valid('asc', 'desc').default('desc'),
   
   // Search

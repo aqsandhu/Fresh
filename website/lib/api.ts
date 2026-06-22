@@ -802,8 +802,12 @@ export const aiChatApi = {
     const response = await api.get('/ai-chat/status')
     return response.data?.data || response.data
   },
-  sendMessage: async (messages: AiChatMessage[]): Promise<{ reply: string }> => {
-    const response = await api.post('/ai-chat/message', { messages }, { params: withCityParams() })
+  sendMessage: async (messages: AiChatMessage[], page?: string): Promise<{ reply: string }> => {
+    const response = await api.post(
+      '/ai-chat/message',
+      { messages, page },
+      { params: withCityParams() }
+    )
     return response.data?.data || response.data
   },
 }
