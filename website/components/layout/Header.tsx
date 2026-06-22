@@ -23,8 +23,10 @@ import {
   MessageSquareWarning,
   Bike,
   UtensilsCrossed,
+  ShoppingBasket,
 } from 'lucide-react'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
+import { useBasketUi } from '@/store/basketUi'
 import { cn, formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import CartDropdown from './CartDropdown'
 import { productsApi, categoriesApi, bannerApi } from '@/lib/api'
@@ -47,6 +49,7 @@ export default function Header() {
   const router = useRouter()
   const { getTotalItems, items, hasHydrated: cartHasHydrated } = useCartStore()
   const { isAuthenticated, user } = useAuthStore()
+  const openBasket = useBasketUi((s) => s.open)
 
   useEffect(() => { setHasMounted(true) }, [])
 
@@ -310,6 +313,19 @@ export default function Header() {
               <Search className="w-5 h-5 text-gray-600" />
             </button>
 
+            {/* Today's Basket — desktop icon with hover tooltip */}
+            <button
+              type="button"
+              onClick={openBasket}
+              aria-label="Today's Basket"
+              className="relative group hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <ShoppingBasket className="w-5 h-5 text-gray-600" />
+              <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
+                Today&apos;s Basket
+              </span>
+            </button>
+
             {/* Work as Rider — desktop icon with hover tooltip */}
             <Link
               href="/work-as-rider"
@@ -506,6 +522,17 @@ export default function Header() {
                 </Link>
               ))}
               <hr className="my-2" />
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false)
+                  openBasket()
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                <ShoppingBasket className="w-5 h-5" />
+                Today&apos;s Basket
+              </button>
               <Link
                 href="/orders"
                 onClick={() => setIsMenuOpen(false)}

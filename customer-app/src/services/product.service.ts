@@ -331,6 +331,37 @@ class ProductService {
     }
   }
 
+  // Today's Basket combos (public) for the selected city.
+  async getBaskets(): Promise<
+    ApiResponse<
+      Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        total_price: number;
+        image_url: string | null;
+        items: Array<{
+          product_id: string;
+          name: string;
+          image: string | null;
+          quality: string;
+          quantity: number;
+          unit: string;
+        }>;
+      }>
+    >
+  > {
+    try {
+      const response = await apiClient.get('/site-settings/baskets', {
+        params: withCityParams(),
+      });
+      const raw = response.data?.data || response.data || [];
+      return { success: true, data: Array.isArray(raw) ? raw : [] };
+    } catch {
+      return { success: true, data: [] };
+    }
+  }
+
   // Map-based service area for the selected city (active polygons + popup copy).
   async getServiceArea(): Promise<
     ApiResponse<{

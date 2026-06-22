@@ -772,6 +772,31 @@ export const bannerApi = {
   },
 }
 
+// Today's Basket API (public): active combo packages for the selected city.
+export interface BasketItemPublic {
+  product_id: string
+  name: string
+  image: string | null
+  quality: string
+  quantity: number
+  unit: string
+}
+export interface BasketPublic {
+  id: string
+  name: string
+  description: string | null
+  total_price: number
+  image_url: string | null
+  items: BasketItemPublic[]
+}
+export const basketApi = {
+  getAll: async (): Promise<BasketPublic[]> => {
+    const response = await api.get('/site-settings/baskets', { params: withCityParams() })
+    const data = response.data?.data || response.data
+    return Array.isArray(data) ? data : []
+  },
+}
+
 // Service area API (public): active delivery polygons + out-of-area popup copy.
 export const serviceAreaApi = {
   get: async (): Promise<import('./serviceArea').ServiceAreaData> => {

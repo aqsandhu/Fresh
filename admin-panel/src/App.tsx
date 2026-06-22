@@ -40,6 +40,7 @@ import {
   Settings,
   Platform,
   ServiceAreas,
+  Baskets,
 } from '@/pages';
 import './App.css';
 
@@ -409,6 +410,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <ServiceAreas />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/baskets"
+        element={
+          <ProtectedRoute>
+            <Baskets />
           </ProtectedRoute>
         }
       />

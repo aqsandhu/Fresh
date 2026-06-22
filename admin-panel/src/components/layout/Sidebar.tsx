@@ -13,6 +13,7 @@ import {
   MapPinned,
   Settings,
   SlidersHorizontal,
+  ShoppingBasket,
   Shield,
   Ticket,
   Star,
@@ -49,6 +50,7 @@ const navItems: NavItem[] = [
   { path: '/admin/restaurants', label: 'Restaurants', icon: <UtensilsCrossed className="w-5 h-5" />, badge: 'restaurantRequests' },
   { path: '/admin/ocp', label: 'Collection Points', icon: <Store className="w-5 h-5" /> },
   { path: '/admin/atta-requests', label: 'Atta Chakki', icon: <Wheat className="w-5 h-5" /> },
+  { path: '/admin/baskets', label: "Today's Basket", icon: <ShoppingBasket className="w-5 h-5" /> },
   { path: '/admin/whatsapp-orders', label: 'WhatsApp Orders', icon: <MessageCircle className="w-5 h-5" /> },
   { path: '/admin/addresses', label: 'Addresses', icon: <MapPin className="w-5 h-5" /> },
   { path: '/admin/service-cities', label: 'Service Cities', icon: <MapPin className="w-5 h-5" /> },
@@ -111,6 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
               if (item.path === '/admin/roles' && user?.role !== 'super_admin') return false;
               if (item.path === '/admin/platform' && user?.role !== 'super_admin') return false;
               if (item.path === '/admin/service-areas' && user?.role !== 'super_admin') return false;
+              if (item.path === '/admin/baskets' && user?.role !== 'super_admin') return false;
               return canAccessRoute(item.path, user?.permissions);
             })
             .map((item) => (

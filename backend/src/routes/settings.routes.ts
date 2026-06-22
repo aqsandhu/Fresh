@@ -91,6 +91,63 @@ router.get('/service-area', asyncHandler(async (req, res) => {
   );
 }));
 
+// Public: active "Today's Basket" combos for the selected city, with items.
+router.get('/baskets', asyncHandler(async (req, res) => {
+  const cityId = await resolvePublicCityId(req);
+  const baskets = cityId
+    ? await query(
+        `SELECT id, name, description, total_price, image_url
+           FROM baskets
+          WHERE is_active = true AND (city_id = $1 OR city_id IS NULL)
+          ORDER BY created_at DESC`,
+        [cityId]
+      )
+    : await query(
+        `SELECT id, name, description, total_price, image_url
+           FROM baskets
+          WHERE is_active = true AND city_id IS NULL
+          ORDER BY created_at DESC`
+      );
+
+  const ids = baskets.rows.map((b) => b.id);
+  let itemsByBasket: Record<string, any[]> = {};
+  if (ids.length > 0) {
+    const items = await query(
+      `SELECT bi.basket_id, bi.product_id, bi.quality, bi.quantity, bi.unit,
+              p.name_en, p.name_ur, p.primary_image
+         FROM basket_items bi
+         JOIN products p ON p.id = bi.product_id
+        WHERE bi.basket_id = ANY($1::uuid[]) AND p.is_active = true
+        ORDER BY bi.created_at ASC`,
+      [ids]
+    );
+    itemsByBasket = items.rows.reduce((acc: Record<string, any[]>, row) => {
+      (acc[row.basket_id] = acc[row.basket_id] || []).push({
+        product_id: row.product_id,
+        name: row.name_en || row.name_ur,
+        image: row.primary_image,
+        quality: row.quality,
+        quantity: Number(row.quantity),
+        unit: row.unit,
+      });
+      return acc;
+    }, {});
+  }
+
+  const result = baskets.rows
+    .map((b) => ({
+      id: b.id,
+      name: b.name,
+      description: b.description,
+      total_price: Number(b.total_price),
+      image_url: b.image_url,
+      items: itemsByBasket[b.id] || [],
+    }))
+    .filter((b) => b.items.length > 0);
+
+  successResponse(res, result, 'Baskets retrieved');
+}));
+
 // Public: Get active service cities (no auth required)
 router.get('/cities', asyncHandler(async (req, res) => {
   const result = await query(

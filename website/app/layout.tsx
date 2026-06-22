@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast'
 import AppProviders from '@/components/providers/AppProviders'
 import BrandFavicon from '@/components/BrandFavicon'
 import ErrorBoundary from '@/components/providers/ErrorBoundary'
+import TodaysBasketModal from '@/components/basket/TodaysBasketModal'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -64,6 +65,7 @@ export default function RootLayout({
               <ConditionalFooter />
               <ConditionalMobileNav />
             </div>
+            <TodaysBasketModal />
             <Toaster
               position="top-center"
               toastOptions={{
