@@ -44,7 +44,7 @@ export default function CategoryPage() {
       const sort = sortMap[sortBy]
       return productsApi.getAll({
         category: category!.id,
-        limit: 50,
+        limit: 2000,
         sortBy: sort.sortBy,
         sortOrder: sort.sortOrder,
         ...(minPrice ? { minPrice: parseInt(minPrice) } : {}),
@@ -182,7 +182,7 @@ export default function CategoryPage() {
                 key={product.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
+                transition={{ delay: Math.min(index * 0.05, 0.4) }}
               >
                 <ProductCard product={product} />
               </motion.div>
