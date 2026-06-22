@@ -19,7 +19,9 @@ import toast from 'react-hot-toast'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
+import ComingSoon from '@/components/ui/ComingSoon'
 import { attaChakkiApi, addressesApi } from '@/lib/api'
+import { usePublicConfig } from '@/lib/usePublicConfig'
 import { useAuthStore } from '@/store/cartStore'
 import { Address } from '@/types'
 
@@ -62,6 +64,7 @@ type AttaChakkiFormData = z.infer<typeof attaChakkiSchema>
 export default function AttaChakkiPage() {
   const router = useRouter()
   const { isAuthenticated } = useAuthStore()
+  const { config, isLoading: configLoading } = usePublicConfig()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [loadingAddresses, setLoadingAddresses] = useState(false)
@@ -115,6 +118,25 @@ export default function AttaChakkiPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  // Atta Chakki can be paused by the super admin (Settings → platform flags).
+  // While the flag is loading, show a spinner to avoid flashing the form.
+  if (configLoading) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
+  if (!config.atta_chakki_enabled) {
+    return (
+      <ComingSoon
+        titleEn="Atta Chakki Service"
+        titleUr="آٹا چکی سروس"
+        icon={Wheat}
+      />
+    )
   }
 
   return (

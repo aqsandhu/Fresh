@@ -8,6 +8,8 @@ import {
   fetchBrandLogoSettings,
   fetchBrandFaviconSettings,
   fetchHeroImageSettings,
+  fetchGlobalSettings,
+  ATTA_CHAKKI_ENABLED_KEY,
 } from '../utils/siteSettings';
 import { query } from '../config/database';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
@@ -54,6 +56,17 @@ router.get('/whatsapp-order', asyncHandler(async (req, res) => {
   const cityId = await resolvePublicCityId(req);
   const settings = await fetchWhatsAppOrderSettings(cityId);
   successResponse(res, settings, 'WhatsApp order settings retrieved');
+}));
+
+// Public: global feature flags / config for storefront + apps (no auth required).
+// Defaults are intentionally "off/coming-soon" when a flag has never been set.
+router.get('/public-config', asyncHandler(async (_req, res) => {
+  const map = await fetchGlobalSettings([ATTA_CHAKKI_ENABLED_KEY]);
+  successResponse(
+    res,
+    { atta_chakki_enabled: map[ATTA_CHAKKI_ENABLED_KEY] === 'true' },
+    'Public config retrieved'
+  );
 }));
 
 // Public: Get active service cities (no auth required)

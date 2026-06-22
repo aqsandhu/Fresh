@@ -38,6 +38,7 @@ import {
   Restaurants,
   OrderCollectionPoints,
   Settings,
+  Platform,
 } from '@/pages';
 import './App.css';
 
@@ -391,6 +392,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/platform"
+        element={
+          <ProtectedRoute>
+            <Platform />
           </ProtectedRoute>
         }
       />

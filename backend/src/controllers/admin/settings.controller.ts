@@ -30,6 +30,8 @@ import {
   upsertHeroImageSettings,
   deleteHeroImageFromStorage,
   clearHeroImageSettings,
+  fetchGlobalSettings,
+  ATTA_CHAKKI_ENABLED_KEY,
 } from '../../utils/siteSettings';
 import { hasRestaurantDeliveryColumns } from '../../config/restaurantSchema';
 
@@ -706,6 +708,53 @@ export const updateBusinessHours = asyncHandler(async (req: Request, res: Respon
   await upsertGlobalSiteSetting('business_hours_data', JSON.stringify(hours), userId);
 
   successResponse(res, hours, 'Business hours updated');
+});
+
+// ============================================================================
+// PLATFORM FEATURE FLAGS (super-admin only, global)
+// ============================================================================
+
+/** Serialize the global feature flags from a key→value map. */
+function serializePlatformFlags(map: Record<string, string>) {
+  return {
+    atta_chakki_enabled: map[ATTA_CHAKKI_ENABLED_KEY] === 'true',
+  };
+}
+
+/**
+ * Get global platform feature flags.
+ * GET /api/admin/settings/platform
+ */
+export const getPlatformSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can view platform settings', 403);
+  }
+  const map = await fetchGlobalSettings([ATTA_CHAKKI_ENABLED_KEY]);
+  successResponse(res, serializePlatformFlags(map), 'Platform settings retrieved');
+});
+
+/**
+ * Update global platform feature flags (whitelist only).
+ * PUT /api/admin/settings/platform
+ */
+export const updatePlatformSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can change platform settings', 403);
+  }
+  const userId = req.user?.id;
+  const toBool = (v: unknown) => v === true || v === 'true';
+
+  if (req.body.atta_chakki_enabled !== undefined) {
+    await upsertGlobalSiteSetting(
+      ATTA_CHAKKI_ENABLED_KEY,
+      toBool(req.body.atta_chakki_enabled) ? 'true' : 'false',
+      userId
+    );
+  }
+
+  const map = await fetchGlobalSettings([ATTA_CHAKKI_ENABLED_KEY]);
+  logger.info('Platform settings updated', { updatedBy: userId });
+  successResponse(res, serializePlatformFlags(map), 'Platform settings updated');
 });
 
 // ============================================================================

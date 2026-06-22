@@ -677,6 +677,12 @@ export const settingsApi = {
     const response = await api.get('/orders/time-slots', { params })
     return response.data?.data || response.data || []
   },
+
+  // Global feature flags / config (public). Defaults to "off" when never set.
+  getPublicConfig: async (): Promise<{ atta_chakki_enabled: boolean }> => {
+    const response = await api.get('/site-settings/public-config')
+    return response.data?.data || response.data
+  },
 }
 
 // Addresses API

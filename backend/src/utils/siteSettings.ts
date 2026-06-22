@@ -20,6 +20,10 @@ export const BRAND_FAVICON_STORAGE_PATH_KEY = 'brand_favicon_storage_path';
 export const HERO_IMAGE_URL_KEY = 'hero_image_url';
 export const HERO_IMAGE_STORAGE_PATH_KEY = 'hero_image_storage_path';
 
+// Global feature flag: when 'true' the Atta Chakki service is live; otherwise the
+// website + app show a "coming soon" state (super-admin reversible, no code change).
+export const ATTA_CHAKKI_ENABLED_KEY = 'atta_chakki_enabled';
+
 let cachedCityColumn: boolean | null = null;
 
 async function hasSiteSettingsCityColumn(): Promise<boolean> {
@@ -307,6 +311,31 @@ export async function upsertGlobalSiteSetting(
       [key, value, userId || null]
     );
   }
+}
+
+/** Read one global (city_id NULL) setting value, or null when unset. */
+export async function fetchGlobalSetting(key: string): Promise<string | null> {
+  const hasCityColumn = await hasSiteSettingsCityColumn();
+  const result = await query(
+    hasCityColumn
+      ? `SELECT value FROM site_settings WHERE key = $1 AND city_id IS NULL LIMIT 1`
+      : `SELECT value FROM site_settings WHERE key = $1 LIMIT 1`,
+    [key]
+  );
+  return result.rows[0]?.value ?? null;
+}
+
+/** Read several global (city_id NULL) settings as a key→value map. */
+export async function fetchGlobalSettings(keys: string[]): Promise<Record<string, string>> {
+  if (!keys.length) return {};
+  const hasCityColumn = await hasSiteSettingsCityColumn();
+  const result = await query(
+    hasCityColumn
+      ? `SELECT key, value FROM site_settings WHERE key = ANY($1::text[]) AND city_id IS NULL`
+      : `SELECT key, value FROM site_settings WHERE key = ANY($1::text[])`,
+    [keys]
+  );
+  return rowsToMap(result.rows);
 }
 
 export interface BrandLogoSettings {
