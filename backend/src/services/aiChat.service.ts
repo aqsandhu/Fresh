@@ -69,7 +69,9 @@ YOU CAN HELP WITH:
 - Service areas: delivery is limited to covered areas; if a pin is outside, the app shows a message + a WhatsApp number to request service there.
 - About/Contact: company info & support contact are in the footer/menu.
 
-RULES: Stay on FreshBazar topics. Be accurate and safe. Only guide and share links — never perform actions. Don't promise discounts/refunds you can't guarantee. Keep it short.`;
+RULES: Stay on FreshBazar topics. Be accurate and safe. Only guide and share links — never perform actions. Don't promise discounts/refunds you can't guarantee.
+
+WRITING STYLE: Reply in plain, simple sentences in the user's language (English, Urdu, or Roman Urdu). Keep it to 2-4 short sentences, or a short numbered list (1. 2. 3.) for steps. Do NOT use markdown bold, asterisks (*), headings (#), or decorative emoji. The ONLY formatting allowed is product links written exactly as [Name](/product/ID). Be warm but efficient — give the user a clear, useful answer with no fluff.`;
 
 const PRODUCT_INTENT =
   /price|rate|kitn|available|stock|kg|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|product|item|buy|kharid|menu|chahi|milt|milega|konsi|kaunsi|kya hai|kya hain/i;
@@ -186,6 +188,26 @@ async function postJson(url: string, headers: Record<string, string>, body: unkn
 }
 
 /**
+ * Ensure the conversation starts with a user turn and roles alternate. Clients
+ * include a greeting (assistant) as the first message, which Anthropic/Gemini
+ * reject — so drop leading assistant turns and merge accidental same-role repeats.
+ */
+function sanitizeHistory(history: ChatMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const m of history) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant') || !m.content?.trim()) continue;
+    if (out.length === 0 && m.role !== 'user') continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.role === m.role) {
+      prev.content = `${prev.content}\n${m.content}`;
+      continue;
+    }
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
+}
+
+/**
  * Generate a reply from the configured provider for a short message history.
  * Injects a tiny live-catalog context for product questions (city-scoped).
  */
@@ -198,7 +220,11 @@ export async function generateReply(history: ChatMessage[], cityId?: string | nu
   const family = preset.family;
   const model = cfg.model || preset.model;
 
-  const lastUser = [...history].reverse().find((m) => m.role === 'user')?.content || '';
+  // Anthropic & Gemini require the conversation to START with a user turn and to
+  // alternate. Clients include a greeting (assistant) first, so drop any leading
+  // assistant turns and collapse accidental same-role repeats.
+  const convo = sanitizeHistory(history);
+  const lastUser = [...convo].reverse().find((m) => m.role === 'user')?.content || '';
   const context = await buildLiveContext(lastUser, cityId);
   const systemPrompt = context ? `${SYSTEM_PROMPT}\n\n${context}` : SYSTEM_PROMPT;
 
@@ -207,7 +233,7 @@ export async function generateReply(history: ChatMessage[], cityId?: string | nu
       const data = await postJson(
         'https://api.anthropic.com/v1/messages',
         { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
-        { model, max_tokens: MAX_TOKENS, system: systemPrompt, messages: history }
+        { model, max_tokens: MAX_TOKENS, system: systemPrompt, messages: convo }
       );
       return String(data?.content?.[0]?.text || '').trim();
     }
@@ -219,7 +245,7 @@ export async function generateReply(history: ChatMessage[], cityId?: string | nu
         {},
         {
           systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: history.map((m) => ({
+          contents: convo.map((m) => ({
             role: m.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: m.content }],
           })),
@@ -238,7 +264,7 @@ export async function generateReply(history: ChatMessage[], cityId?: string | nu
       {
         model,
         max_tokens: MAX_TOKENS,
-        messages: [{ role: 'system', content: systemPrompt }, ...history],
+        messages: [{ role: 'system', content: systemPrompt }, ...convo],
       }
     );
     return String(data?.choices?.[0]?.message?.content || '').trim();
