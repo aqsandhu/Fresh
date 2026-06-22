@@ -22,6 +22,7 @@ import { useAuthStore, useCartStore, useNotificationStore, useCartUiStore } from
 import { productService } from '@services/product.service';
 import { Category, StoreProduct } from '@app-types';
 import { BrandLogo } from '@components/BrandLogo';
+import { TodaysBasketModal } from '@components/home/TodaysBasketModal';
 
 interface BannerSettings {
   leftText: string;
@@ -53,6 +54,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   const { toggleCartDropdown, setMobileHeaderBottomY } = useCartUiStore();
   const headerWrapRef = useRef<View>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [basketOpen, setBasketOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<StoreProduct[]>([]);
@@ -154,6 +156,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   const menuLinks = [
     { label: 'Home', icon: 'home', tab: 'Home', screen: 'HomeMain' },
     { label: 'Shop All Products', icon: 'grid-view', tab: 'Shop', screen: 'ProductsMain' },
+    { label: "Today's Basket", icon: 'shopping-basket', action: 'basket' as const },
     ...categories.map((c) => ({
       label: c.name,
       icon: 'category',
@@ -341,6 +344,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                       openStaticPage('contact');
                     } else if ('action' in link && link.action === 'faq') {
                       openStaticPage('faq');
+                    } else if ('action' in link && link.action === 'basket') {
+                      setMenuOpen(false);
+                      setBasketOpen(true);
                     } else if ('params' in link && link.params) {
                       closeAndNavigate(link.tab, link.screen, link.params);
                     } else {
@@ -372,6 +378,8 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           </View>
         </View>
       </Modal>
+
+      <TodaysBasketModal visible={basketOpen} onClose={() => setBasketOpen(false)} />
     </>
   );
 };

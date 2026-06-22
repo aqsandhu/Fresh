@@ -29,3 +29,4 @@ export { OrderCollectionPoints } from './OrderCollectionPoints';
 export { Settings } from './Settings';
 export { Platform } from './Platform';
 export { ServiceAreas } from './ServiceAreas';
+export { Baskets } from './Baskets';

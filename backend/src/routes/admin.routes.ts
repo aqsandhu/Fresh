@@ -15,6 +15,7 @@ import * as ocpController from '../controllers/admin/ocp.controller';
 import * as stockController from '../controllers/admin/stock.controller';
 import * as reconciliationController from '../controllers/admin/reconciliation.controller';
 import * as serviceAreasController from '../controllers/admin/serviceAreas.controller';
+import * as basketsController from '../controllers/admin/baskets.controller';
 import {
   authenticate,
   requireAdmin,
@@ -259,6 +260,12 @@ router.get('/service-areas', serviceAreasController.getServiceAreas);
 router.post('/service-areas', adminRateLimiter, serviceAreasController.createServiceArea);
 router.put('/service-areas/:id', adminRateLimiter, serviceAreasController.updateServiceArea);
 router.delete('/service-areas/:id', serviceAreasController.deleteServiceArea);
+
+// Today's Basket (combo packages; super-admin only, role-checked in controller)
+router.get('/baskets', basketsController.getBaskets);
+router.post('/baskets', adminRateLimiter, basketsController.createBasket);
+router.put('/baskets/:id', adminRateLimiter, basketsController.updateBasket);
+router.delete('/baskets/:id', basketsController.deleteBasket);
 
 // Delivery Zones
 router.get('/delivery-zones', adminController.getDeliveryZones);
