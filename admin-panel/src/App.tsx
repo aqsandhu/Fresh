@@ -39,6 +39,7 @@ import {
   OrderCollectionPoints,
   Settings,
   Platform,
+  ServiceAreas,
 } from '@/pages';
 import './App.css';
 
@@ -400,6 +401,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Platform />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/service-areas"
+        element={
+          <ProtectedRoute>
+            <ServiceAreas />
           </ProtectedRoute>
         }
       />

@@ -14,6 +14,7 @@ import * as restaurantsController from '../controllers/admin/restaurants.control
 import * as ocpController from '../controllers/admin/ocp.controller';
 import * as stockController from '../controllers/admin/stock.controller';
 import * as reconciliationController from '../controllers/admin/reconciliation.controller';
+import * as serviceAreasController from '../controllers/admin/serviceAreas.controller';
 import {
   authenticate,
   requireAdmin,
@@ -249,6 +250,15 @@ router.post('/cities', adminController.addCity);
 router.put('/cities/:id/toggle', adminController.toggleCity);
 router.delete('/cities/:id', adminController.deleteCity);
 router.post('/cities/import-catalog', adminController.importCityCatalog);
+
+// Service Areas (map polygons; super-admin only, role-checked in controller).
+// Literal '/messages' paths MUST precede '/service-areas/:id'.
+router.get('/service-areas/messages', serviceAreasController.getServiceAreaMessages);
+router.put('/service-areas/messages', adminRateLimiter, serviceAreasController.updateServiceAreaMessages);
+router.get('/service-areas', serviceAreasController.getServiceAreas);
+router.post('/service-areas', adminRateLimiter, serviceAreasController.createServiceArea);
+router.put('/service-areas/:id', adminRateLimiter, serviceAreasController.updateServiceArea);
+router.delete('/service-areas/:id', serviceAreasController.deleteServiceArea);
 
 // Delivery Zones
 router.get('/delivery-zones', adminController.getDeliveryZones);

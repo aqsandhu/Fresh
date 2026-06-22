@@ -52,6 +52,7 @@ const navItems: NavItem[] = [
   { path: '/admin/whatsapp-orders', label: 'WhatsApp Orders', icon: <MessageCircle className="w-5 h-5" /> },
   { path: '/admin/addresses', label: 'Addresses', icon: <MapPin className="w-5 h-5" /> },
   { path: '/admin/service-cities', label: 'Service Cities', icon: <MapPin className="w-5 h-5" /> },
+  { path: '/admin/service-areas', label: 'Service Areas', icon: <MapPinned className="w-5 h-5" /> },
   { path: '/admin/delivery-zones', label: 'Delivery Zones', icon: <MapPinned className="w-5 h-5" /> },
   { path: '/admin/coupons-used', label: 'Coupons Used', icon: <Ticket className="w-5 h-5" /> },
   { path: '/admin/reviews', label: 'Reviews', icon: <Star className="w-5 h-5" /> },
@@ -109,6 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
             .filter((item) => {
               if (item.path === '/admin/roles' && user?.role !== 'super_admin') return false;
               if (item.path === '/admin/platform' && user?.role !== 'super_admin') return false;
+              if (item.path === '/admin/service-areas' && user?.role !== 'super_admin') return false;
               return canAccessRoute(item.path, user?.permissions);
             })
             .map((item) => (
