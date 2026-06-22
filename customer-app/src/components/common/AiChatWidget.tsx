@@ -19,10 +19,21 @@ import { aiChatService, type ChatMessage } from '@services/aiChat.service';
 const GREETING: ChatMessage = {
   role: 'assistant',
   content:
-    "Assalam-o-Alaikum! I'm the FreshBazar assistant. Ask me about products, ordering, delivery, franchise, or anything else.",
+    "Assalam-o-Alaikum! I'm the FreshBazar assistant. Ask me about products, prices, ordering, delivery, riders, or franchise — I'm here to help.",
 };
 
 const LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g;
+
+/** Strip stray markdown so no "stars"/symbols leak into the chat. */
+function cleanText(s: string): string {
+  return s
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/__/g, '')
+    .replace(/`/g, '')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-•]\s+/gm, '• ');
+}
 
 /** Render markdown links [label](url) as highlighted labels (no raw URLs). */
 function renderRich(text: string): React.ReactNode[] {
@@ -32,16 +43,16 @@ function renderRich(text: string): React.ReactNode[] {
   let i = 0;
   LINK_RE.lastIndex = 0;
   while ((m = LINK_RE.exec(text)) !== null) {
-    if (m.index > last) nodes.push(text.slice(last, m.index));
+    if (m.index > last) nodes.push(cleanText(text.slice(last, m.index)));
     nodes.push(
       <Text key={i} style={styles.linkText}>
-        {m[1]}
+        {cleanText(m[1]).trim()}
       </Text>
     );
     last = LINK_RE.lastIndex;
     i++;
   }
-  if (last < text.length) nodes.push(text.slice(last));
+  if (last < text.length) nodes.push(cleanText(text.slice(last)));
   return nodes;
 }
 

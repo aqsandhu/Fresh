@@ -1,19 +1,33 @@
 'use client'
 
-import { useEffect, useRef, useState, Fragment } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, X, Send, Loader2, Bot } from 'lucide-react'
+import { MessageCircle, X, Send, Loader2, Bot, ShoppingCart, ShoppingBasket } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { aiChatApi, type AiChatMessage } from '@/lib/api'
 
 const GREETING: AiChatMessage = {
   role: 'assistant',
   content:
-    "Assalam-o-Alaikum! 👋 I'm the FreshBazar assistant. Ask me about products, ordering, delivery, franchise, or anything else.",
+    "Assalam-o-Alaikum! I'm the FreshBazar assistant. Ask me about products, prices, ordering, delivery, riders, or franchise — I'm here to help.",
 }
 
-const LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g
+// Finds markdown links, bare product paths, and bare URLs in one pass.
+const TOKEN_RE = /\[([^\]]+)\]\(([^)]+)\)|(\/product\/[A-Za-z0-9_-]+)|(https?:\/\/[^\s)]+)/g
+// Words that get a small inline icon (matches the storefront's icons).
+const KEYWORD_RE = /\b(carts?|baskets?)\b/gi
+
+/** Strip stray markdown so no "stars"/symbols leak into the chat. */
+function cleanText(s: string): string {
+  return s
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/__/g, '')
+    .replace(/`/g, '')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-•]\s+/gm, '• ')
+}
 
 export default function AiChatWidget() {
   const [open, setOpen] = useState(false)
@@ -35,46 +49,73 @@ export default function AiChatWidget() {
 
   if (!status?.enabled) return null
 
-  /** Render markdown links [label](url) as clickable links; rest as text. */
-  const renderMessage = (text: string) => {
+  /** Plain text → nodes with a small cart/basket icon beside those words. */
+  const withIcons = (text: string, keyPrefix: string): React.ReactNode[] => {
     const nodes: React.ReactNode[] = []
     let last = 0
     let m: RegExpExecArray | null
     let i = 0
-    LINK_RE.lastIndex = 0
-    while ((m = LINK_RE.exec(text)) !== null) {
-      if (m.index > last) nodes.push(<Fragment key={`t${i}`}>{text.slice(last, m.index)}</Fragment>)
-      const label = m[1]
-      const url = m[2]
-      if (url.startsWith('/')) {
-        nodes.push(
-          <Link
-            key={`l${i}`}
-            href={url}
-            onClick={() => setOpen(false)}
-            className="font-semibold text-primary-600 underline underline-offset-2"
-          >
-            {label}
-          </Link>
-        )
-      } else {
-        nodes.push(
-          <a
-            key={`l${i}`}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-semibold text-primary-600 underline underline-offset-2"
-          >
-            {label}
-          </a>
-        )
-      }
-      last = LINK_RE.lastIndex
+    KEYWORD_RE.lastIndex = 0
+    while ((m = KEYWORD_RE.exec(text)) !== null) {
+      if (m.index > last) nodes.push(text.slice(last, m.index))
+      const word = m[1]
+      const isBasket = /basket/i.test(word)
+      nodes.push(
+        <span key={`${keyPrefix}i${i}`} className="inline-flex items-center gap-0.5 font-medium text-primary-700">
+          {word}
+          {isBasket ? (
+            <ShoppingBasket className="inline h-3.5 w-3.5" />
+          ) : (
+            <ShoppingCart className="inline h-3.5 w-3.5" />
+          )}
+        </span>
+      )
+      last = KEYWORD_RE.lastIndex
       i++
     }
-    if (last < text.length) nodes.push(<Fragment key={`t${i}`}>{text.slice(last)}</Fragment>)
+    if (last < text.length) nodes.push(text.slice(last))
     return nodes
+  }
+
+  const linkNode = (label: string, url: string, key: string) =>
+    url.startsWith('/') ? (
+      <Link
+        key={key}
+        href={url}
+        onClick={() => setOpen(false)}
+        className="font-semibold text-primary-600 underline underline-offset-2"
+      >
+        {label}
+      </Link>
+    ) : (
+      <a
+        key={key}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="font-semibold text-primary-600 underline underline-offset-2"
+      >
+        {label}
+      </a>
+    )
+
+  /** Render an assistant message: links clickable, markdown stripped, icons inlined. */
+  const renderMessage = (raw: string): React.ReactNode[] => {
+    const out: React.ReactNode[] = []
+    let last = 0
+    let m: RegExpExecArray | null
+    let i = 0
+    TOKEN_RE.lastIndex = 0
+    while ((m = TOKEN_RE.exec(raw)) !== null) {
+      if (m.index > last) out.push(...withIcons(cleanText(raw.slice(last, m.index)), `p${i}`))
+      if (m[1] && m[2]) out.push(linkNode(cleanText(m[1]).trim(), m[2], `l${i}`))
+      else if (m[3]) out.push(linkNode('View product', m[3], `l${i}`))
+      else if (m[4]) out.push(linkNode(m[4], m[4], `l${i}`))
+      last = TOKEN_RE.lastIndex
+      i++
+    }
+    if (last < raw.length) out.push(...withIcons(cleanText(raw.slice(last)), 'pE'))
+    return out
   }
 
   const send = async () => {
@@ -99,11 +140,11 @@ export default function AiChatWidget() {
 
   return (
     <>
-      {/* Launcher */}
+      {/* Launcher — sits ABOVE the floating city button (no overlap) */}
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Chat with FreshBazar assistant"
-        className="fixed bottom-20 right-4 z-[81] flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg transition-colors hover:bg-primary-700 lg:bottom-6"
+        className="fixed bottom-36 right-4 z-[55] flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg transition-colors hover:bg-primary-700 lg:bottom-24"
       >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>
@@ -115,9 +156,9 @@ export default function AiChatWidget() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-            className="fixed z-[80] flex flex-col overflow-hidden border border-gray-200 bg-white shadow-2xl
+            className="fixed z-[70] flex flex-col overflow-hidden border border-gray-200 bg-white shadow-2xl
                        inset-x-3 bottom-3 top-16 rounded-3xl
-                       lg:inset-auto lg:right-6 lg:bottom-24 lg:top-auto lg:h-[560px] lg:w-[380px] lg:rounded-2xl"
+                       lg:inset-auto lg:right-6 lg:bottom-24 lg:top-auto lg:h-[70vh] lg:max-h-[560px] lg:w-[380px] lg:rounded-2xl"
           >
             {/* Header */}
             <div className="flex items-center gap-3 bg-primary-600 px-4 py-3 text-white">
