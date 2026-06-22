@@ -15,6 +15,17 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { aiChatService, type ChatMessage } from '@services/aiChat.service';
+import { navigationRef } from '@/navigation/navigationUtils';
+
+/** Best-effort current screen name for page-aware answers. */
+function currentPage(): string | undefined {
+  try {
+    const ref = navigationRef as any;
+    return ref.isReady() ? ref.getCurrentRoute()?.name : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const GREETING: ChatMessage = {
   role: 'assistant',
@@ -83,7 +94,7 @@ export const AiChatWidget: React.FC = () => {
     setInput('');
     setSending(true);
     try {
-      const { reply } = await aiChatService.sendMessage(next.slice(-8));
+      const { reply } = await aiChatService.sendMessage(next.slice(-8), currentPage());
       setMessages((m) => [...m, { role: 'assistant', content: reply }]);
     } catch {
       setMessages((m) => [
