@@ -241,8 +241,9 @@ export const productSchemas = {
     minPrice: commonSchemas.price,
     maxPrice: commonSchemas.price,
     page: commonSchemas.page,
-    // Storefront "Shop All" pulls a full page of products; allow up to 200.
-    limit: Joi.number().integer().min(1).max(200).default(20),
+    // Storefront "Shop All" / category pages pull the full catalog in one go;
+    // allow a large page so adding many products never truncates the listing.
+    limit: Joi.number().integer().min(1).max(2000).default(20),
     sortBy: commonSchemas.sortBy,
     sortOrder: commonSchemas.sortOrder,
     featured: Joi.boolean(),

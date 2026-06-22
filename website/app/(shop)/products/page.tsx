@@ -36,7 +36,7 @@ export default function AllProductsPage() {
     queryFn: () => {
       const sort = sortMap[sortBy]
       return productsApi.getAll({
-        limit: 200,
+        limit: 2000,
         sortBy: sort.sortBy,
         sortOrder: sort.sortOrder,
         ...(minPrice ? { minPrice: parseInt(minPrice) } : {}),
@@ -165,7 +165,7 @@ export default function AllProductsPage() {
                 className="min-w-0"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.03 }}
+                transition={{ delay: Math.min(index * 0.03, 0.4) }}
               >
                 <ProductCard product={product} />
               </motion.div>
