@@ -5,6 +5,7 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../middleware';
 import { successResponse, errorResponse } from '../utils/response';
+import { resolvePublicCityId } from '../utils/cityScope';
 import { getAiConfig, aiEnabled, generateReply, type ChatMessage } from '../services/aiChat.service';
 
 const MAX_HISTORY = 8;
@@ -50,7 +51,8 @@ export const postMessage = asyncHandler(async (req: Request, res: Response) => {
   }
 
   try {
-    const reply = await generateReply(history);
+    const cityId = await resolvePublicCityId(req);
+    const reply = await generateReply(history, cityId);
     if (!reply) {
       return errorResponse(res, 'No response generated. Please try again.', 502);
     }

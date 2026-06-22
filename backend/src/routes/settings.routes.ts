@@ -15,6 +15,7 @@ import {
 import { query } from '../config/database';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { MARKETING_KEYS } from '../controllers/marketing.controller';
+import { isMissingTable } from '../utils/dbErrors';
 
 const router = Router();
 
@@ -84,16 +85,19 @@ router.get('/public-config', asyncHandler(async (_req, res) => {
 // `enabled` is false when the city has no active polygon (no gating applied).
 router.get('/service-area', asyncHandler(async (req, res) => {
   const cityId = await resolvePublicCityId(req);
-  const [areas, message] = await Promise.all([
-    cityId
-      ? query(
-          `SELECT polygon FROM service_areas WHERE city_id = $1 AND is_active = true`,
-          [cityId]
-        )
-      : Promise.resolve({ rows: [] as Array<{ polygon: unknown }> }),
-    fetchServiceAreaMessages(),
-  ]);
-  const polygons = areas.rows.map((r) => r.polygon);
+  const message = await fetchServiceAreaMessages();
+  let polygons: unknown[] = [];
+  if (cityId) {
+    try {
+      const areas = await query(
+        `SELECT polygon FROM service_areas WHERE city_id = $1 AND is_active = true`,
+        [cityId]
+      );
+      polygons = areas.rows.map((r) => r.polygon);
+    } catch (err) {
+      if (!isMissingTable(err)) throw err;
+    }
+  }
   successResponse(
     res,
     { enabled: polygons.length > 0, polygons, message },
@@ -104,6 +108,7 @@ router.get('/service-area', asyncHandler(async (req, res) => {
 // Public: active "Today's Basket" combos for the selected city, with items.
 router.get('/baskets', asyncHandler(async (req, res) => {
   const cityId = await resolvePublicCityId(req);
+  try {
   const baskets = cityId
     ? await query(
         `SELECT id, name, description, total_price, image_url
@@ -156,6 +161,10 @@ router.get('/baskets', asyncHandler(async (req, res) => {
     .filter((b) => b.items.length > 0);
 
   successResponse(res, result, 'Baskets retrieved');
+  } catch (err) {
+    if (isMissingTable(err)) return successResponse(res, [], 'Baskets retrieved');
+    throw err;
+  }
 }));
 
 // Public: Get active service cities (no auth required)

@@ -48,6 +48,7 @@ import { ensureCatalogV2Columns } from './config/catalogV2Schema';
 import { ensureTimeSlotBookings } from './config/timeSlotSchema';
 import { ensureControlColumns } from './config/controlSchema';
 import { ensureReconciliationTables } from './config/reconciliationSchema';
+import { ensureFeatureTables } from './config/featureSchema';
 import { query as dbQuery } from './config/database';
 import { runReconciliation } from './utils/reconciliation';
 import { runAbandonedCartReminders } from './controllers/marketing.controller';
@@ -380,6 +381,9 @@ const startServer = async () => {
         await ensureTimeSlotBookings();
         await ensureControlColumns();
         await ensureReconciliationTables();
+        // Auto-create the 2026-06 epic tables (service areas, baskets, franchise,
+        // marketing) so the features work even before migrations 43-46 are run.
+        await ensureFeatureTables();
         const catalogV2Ready = await ensureCatalogV2Columns();
         if (!catalogV2Ready) {
           throw new Error('catalog-v2 columns are required but could not be ensured');

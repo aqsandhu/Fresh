@@ -80,7 +80,7 @@ export const ProductsScreen: React.FC = () => {
 
       const res = await productService.getProducts({
 
-        limit: 200,
+        limit: 100,
 
         sortBy: apiSort.sortBy,
 

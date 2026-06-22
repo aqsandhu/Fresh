@@ -23,8 +23,8 @@ export const SORT_LABELS: Record<SortOption, string> = {
 export const sortMap: Record<Exclude<SortOption, 'relevance'>, { sortBy: string; sortOrder: string }> = {
   'price-asc': { sortBy: 'price', sortOrder: 'asc' },
   'price-desc': { sortBy: 'price', sortOrder: 'desc' },
-  'name-asc': { sortBy: 'name_en', sortOrder: 'asc' },
-  'name-desc': { sortBy: 'name_en', sortOrder: 'desc' },
+  'name-asc': { sortBy: 'name', sortOrder: 'asc' },
+  'name-desc': { sortBy: 'name', sortOrder: 'desc' },
 };
 
 interface ProductFiltersToolbarProps {

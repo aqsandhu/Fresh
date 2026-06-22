@@ -13,6 +13,7 @@ import {
 } from '../../utils/response';
 import logger from '../../utils/logger';
 import { isValidPolygonRing } from '../../utils/geo';
+import { isMissingTable } from '../../utils/dbErrors';
 import {
   fetchServiceAreaMessages,
   upsertGlobalSiteSetting,
@@ -35,18 +36,22 @@ export const getServiceAreas = asyncHandler(async (req: Request, res: Response) 
   if (!requireSuperAdmin(req, res)) return;
 
   const cityId = (req.query.cityId || req.query.city_id) as string | undefined;
-  const result = cityId
-    ? await query(
-        `SELECT id, city_id, name, polygon, is_active, created_at, updated_at
-           FROM service_areas WHERE city_id = $1 ORDER BY created_at DESC`,
-        [cityId]
-      )
-    : await query(
-        `SELECT id, city_id, name, polygon, is_active, created_at, updated_at
-           FROM service_areas ORDER BY created_at DESC`
-      );
-
-  successResponse(res, result.rows, 'Service areas retrieved');
+  try {
+    const result = cityId
+      ? await query(
+          `SELECT id, city_id, name, polygon, is_active, created_at, updated_at
+             FROM service_areas WHERE city_id = $1 ORDER BY created_at DESC`,
+          [cityId]
+        )
+      : await query(
+          `SELECT id, city_id, name, polygon, is_active, created_at, updated_at
+             FROM service_areas ORDER BY created_at DESC`
+        );
+    successResponse(res, result.rows, 'Service areas retrieved');
+  } catch (err) {
+    if (isMissingTable(err)) return successResponse(res, [], 'Service areas retrieved');
+    throw err;
+  }
 });
 
 /**

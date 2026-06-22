@@ -1,4 +1,5 @@
 import apiClient from './api';
+import { withCityParams } from '@/lib/apiHelpers';
 
 export type ChatRole = 'user' | 'assistant';
 export interface ChatMessage {
@@ -17,7 +18,7 @@ export const aiChatService = {
   },
 
   async sendMessage(messages: ChatMessage[]): Promise<{ reply: string }> {
-    const res = await apiClient.post('/ai-chat/message', { messages });
+    const res = await apiClient.post('/ai-chat/message', { messages }, { params: withCityParams() });
     return res.data?.data || res.data;
   },
 };

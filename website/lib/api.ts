@@ -803,7 +803,7 @@ export const aiChatApi = {
     return response.data?.data || response.data
   },
   sendMessage: async (messages: AiChatMessage[]): Promise<{ reply: string }> => {
-    const response = await api.post('/ai-chat/message', { messages })
+    const response = await api.post('/ai-chat/message', { messages }, { params: withCityParams() })
     return response.data?.data || response.data
   },
 }

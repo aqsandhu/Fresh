@@ -11,6 +11,7 @@ import {
   fetchGlobalSettings,
   upsertGlobalSiteSetting,
 } from '../utils/siteSettings';
+import { isMissingTable } from '../utils/dbErrors';
 import logger from '../utils/logger';
 
 export const MARKETING_KEYS = {
@@ -45,22 +46,27 @@ export const snapshotCart = asyncHandler(async (req: Request, res: Response) => 
   // Empty cart → mark any existing snapshot inactive (treat as resolved).
   const status = itemCount > 0 ? 'active' : 'ordered';
 
-  await query(
-    `INSERT INTO abandoned_carts
-       (device_id, user_id, city_id, phone, items, item_count, subtotal, status, last_activity_at)
-     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, NOW())
-     ON CONFLICT (device_id) DO UPDATE SET
-       user_id = COALESCE(EXCLUDED.user_id, abandoned_carts.user_id),
-       city_id = COALESCE(EXCLUDED.city_id, abandoned_carts.city_id),
-       phone = COALESCE(EXCLUDED.phone, abandoned_carts.phone),
-       items = EXCLUDED.items,
-       item_count = EXCLUDED.item_count,
-       subtotal = EXCLUDED.subtotal,
-       status = EXCLUDED.status,
-       last_activity_at = NOW(),
-       reminded_at = CASE WHEN EXCLUDED.status = 'active' THEN NULL ELSE abandoned_carts.reminded_at END`,
-    [deviceId, userId, cityId, phone, JSON.stringify(items), itemCount, subtotal, status]
-  );
+  try {
+    await query(
+      `INSERT INTO abandoned_carts
+         (device_id, user_id, city_id, phone, items, item_count, subtotal, status, last_activity_at)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, NOW())
+       ON CONFLICT (device_id) DO UPDATE SET
+         user_id = COALESCE(EXCLUDED.user_id, abandoned_carts.user_id),
+         city_id = COALESCE(EXCLUDED.city_id, abandoned_carts.city_id),
+         phone = COALESCE(EXCLUDED.phone, abandoned_carts.phone),
+         items = EXCLUDED.items,
+         item_count = EXCLUDED.item_count,
+         subtotal = EXCLUDED.subtotal,
+         status = EXCLUDED.status,
+         last_activity_at = NOW(),
+         reminded_at = CASE WHEN EXCLUDED.status = 'active' THEN NULL ELSE abandoned_carts.reminded_at END`,
+      [deviceId, userId, cityId, phone, JSON.stringify(items), itemCount, subtotal, status]
+    );
+  } catch (err) {
+    // Table not created yet (migration lag) — never break the shopping flow.
+    if (!isMissingTable(err)) throw err;
+  }
 
   successResponse(res, { ok: true }, 'Snapshot saved');
 });
@@ -88,21 +94,25 @@ export const listAbandonedCarts = asyncHandler(async (req: Request, res: Respons
     idx++;
   }
 
-  const result = await query(
-    `SELECT ac.id, ac.device_id, ac.user_id, ac.city_id, ac.item_count, ac.subtotal,
-            ac.status, ac.last_activity_at, ac.reminded_at, ac.created_at,
-            COALESCE(u.full_name, '') AS customer_name,
-            COALESCE(u.phone, ac.phone) AS phone,
-            ac.items
-       FROM abandoned_carts ac
-       LEFT JOIN users u ON u.id = ac.user_id
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY ac.last_activity_at DESC
-      LIMIT 500`,
-    params
-  );
-
-  successResponse(res, result.rows, 'Abandoned carts retrieved');
+  try {
+    const result = await query(
+      `SELECT ac.id, ac.device_id, ac.user_id, ac.city_id, ac.item_count, ac.subtotal,
+              ac.status, ac.last_activity_at, ac.reminded_at, ac.created_at,
+              COALESCE(u.full_name, '') AS customer_name,
+              COALESCE(u.phone, ac.phone) AS phone,
+              ac.items
+         FROM abandoned_carts ac
+         LEFT JOIN users u ON u.id = ac.user_id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY ac.last_activity_at DESC
+        LIMIT 500`,
+      params
+    );
+    successResponse(res, result.rows, 'Abandoned carts retrieved');
+  } catch (err) {
+    if (isMissingTable(err)) return successResponse(res, [], 'Abandoned carts retrieved');
+    throw err;
+  }
 });
 
 /** Core reminder pass — notifies registered abandoners once. Returns count. */
@@ -116,14 +126,20 @@ export async function runAbandonedCartReminders(): Promise<number> {
   const delayHours = Math.max(1, parseInt(map[MARKETING_KEYS.reminderDelayHours] || '6', 10) || 6);
 
   // Registered abandoners, idle longer than the delay, never reminded.
-  const due = await query(
-    `SELECT id, user_id FROM abandoned_carts
-      WHERE status = 'active' AND item_count > 0 AND user_id IS NOT NULL
-        AND reminded_at IS NULL
-        AND last_activity_at < NOW() - ($1 || ' hours')::interval
-      LIMIT 200`,
-    [String(delayHours)]
-  );
+  let due;
+  try {
+    due = await query(
+      `SELECT id, user_id FROM abandoned_carts
+        WHERE status = 'active' AND item_count > 0 AND user_id IS NOT NULL
+          AND reminded_at IS NULL
+          AND last_activity_at < NOW() - ($1 || ' hours')::interval
+        LIMIT 200`,
+      [String(delayHours)]
+    );
+  } catch (err) {
+    if (isMissingTable(err)) return 0;
+    throw err;
+  }
 
   let sent = 0;
   for (const row of due.rows) {
