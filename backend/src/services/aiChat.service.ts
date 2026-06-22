@@ -69,6 +69,8 @@ YOU CAN HELP WITH:
 - Service areas: delivery is limited to covered areas; if a pin is outside, the app shows a message + a WhatsApp number to request service there.
 - About/Contact: company info & support contact are in the footer/menu.
 
+USING REAL FACTS: A "REAL FACTS" block may be added below with the active delivery cities, the user's selected city, the current page, and any matching products. ALWAYS rely on it. Never name a city, price, or product that is not in it. If the facts say a product isn't available, tell the user it's not on FreshBazar right now and never guess a price. To change city, tell the user to tap the city/location button and pick another. If you don't have a fact, say so honestly instead of guessing.
+
 RULES: Stay on FreshBazar topics. Be accurate and safe. Only guide and share links — never perform actions. Don't promise discounts/refunds you can't guarantee.
 
 WRITING STYLE: Reply in plain, simple sentences in the user's language (English, Urdu, or Roman Urdu). Keep it to 2-4 short sentences, or a short numbered list (1. 2. 3.) for steps. Do NOT use markdown bold, asterisks (*), headings (#), or decorative emoji. The ONLY formatting allowed is product links written exactly as [Name](/product/ID). Be warm but efficient — give the user a clear, useful answer with no fluff.`;
@@ -76,64 +78,97 @@ WRITING STYLE: Reply in plain, simple sentences in the user's language (English,
 const PRODUCT_INTENT =
   /price|rate|kitn|available|stock|kg|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|product|item|buy|kharid|menu|chahi|milt|milega|konsi|kaunsi|kya hai|kya hain/i;
 
+export interface ChatContextOpts {
+  cityId?: string | null;
+  page?: string | null;
+}
+
 /**
- * Build a tiny live-catalog context for product-related questions only, so most
- * messages stay cheap. Consumer retail price only — restaurant prices excluded.
+ * Build a compact REAL-FACTS context: active cities, the user's selected city,
+ * the current page, and (for product questions) matching products with links.
+ * The model is told to rely ONLY on these facts so it never invents a city,
+ * price, or availability. Consumer retail price only — restaurant prices excluded.
  */
-async function buildLiveContext(message: string, cityId?: string | null): Promise<string> {
-  const tokens = message
-    .toLowerCase()
-    .replace(/[^a-z0-9؀-ۿ\s]/gi, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length >= 3)
-    .slice(0, 8);
+async function buildContext(message: string, opts: ChatContextOpts): Promise<string> {
+  const { cityId, page } = opts;
+  const lines: string[] = [
+    '[REAL FACTS — use ONLY these. Never invent a city, price, or whether a product exists.]',
+  ];
 
-  let products: Array<{ id: string; name_en: string; price: number; unit_type: string; stock_status: string }> = [];
-  if (tokens.length) {
-    const patterns = tokens.map((t) => `%${t}%`);
-    try {
-      const r = await query(
-        `SELECT id, name_en, price, unit_type, stock_status
-           FROM products
-          WHERE is_active = true ${cityId ? 'AND city_id = $2' : ''}
-            AND (name_en ILIKE ANY($1) OR name_ur ILIKE ANY($1))
-          ORDER BY is_featured DESC, name_en ASC
-          LIMIT 6`,
-        cityId ? [patterns, cityId] : [patterns]
-      );
-      products = r.rows;
-    } catch (err) {
-      if (!isMissingTable(err)) logger.warn('AI catalog lookup failed', { error: (err as Error)?.message });
-    }
-  }
-
-  if (!PRODUCT_INTENT.test(message) && products.length === 0) return '';
-
-  let cats: string[] = [];
+  // Active service cities (so city questions are answered correctly).
   try {
-    const c = await query(
-      `SELECT name_en FROM categories
-        WHERE is_active = true ${cityId ? 'AND city_id = $1' : ''}
-        ORDER BY display_order ASC, name_en ASC LIMIT 15`,
-      cityId ? [cityId] : []
+    const c = await query(`SELECT name FROM service_cities WHERE is_active = true ORDER BY name`);
+    const names = c.rows.map((r) => r.name).filter(Boolean);
+    lines.push(
+      names.length
+        ? `FreshBazar currently delivers in these cities: ${names.join(', ')}. The user can switch city anytime by tapping the city/location button on screen and choosing another city.`
+        : 'No delivery cities are active right now.'
     );
-    cats = c.rows.map((r) => r.name_en).filter(Boolean);
   } catch {
     /* ignore */
   }
 
-  const lines = [
-    '[FreshBazar live catalog — consumer retail prices in PKR. Do NOT quote any wholesale/restaurant prices.]',
-  ];
-  if (cats.length) lines.push(`Categories: ${cats.join(', ')}`);
-  if (products.length) {
-    lines.push('Matching products (share the link so the user can pick quality & quantity there):');
-    for (const p of products) {
-      const avail = p.stock_status === 'out_of_stock' ? 'out of stock' : 'in stock';
-      const unit = p.unit_type ? `/${p.unit_type}` : '';
-      lines.push(`- [${p.name_en}](/product/${p.id}): Rs.${Math.round(Number(p.price))}${unit} (${avail})`);
+  // The user's selected city (resolved to a name).
+  let cityName: string | null = null;
+  if (cityId) {
+    try {
+      const r = await query(`SELECT name FROM service_cities WHERE id = $1`, [cityId]);
+      cityName = r.rows[0]?.name || null;
+    } catch {
+      /* ignore */
     }
   }
+  lines.push(
+    cityName
+      ? `The user's currently selected delivery city is: ${cityName}.`
+      : "The user has not selected a city yet — ask them to choose one from the city/location button."
+  );
+
+  // Current page/screen the user is on.
+  if (page) lines.push(`The user is currently on this page: ${page}.`);
+
+  // Product lookup — only for product-related questions.
+  if (PRODUCT_INTENT.test(message)) {
+    const tokens = message
+      .toLowerCase()
+      .replace(/[^a-z0-9؀-ۿ\s]/gi, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length >= 3)
+      .slice(0, 8);
+    let products: Array<{ id: string; name_en: string; price: number; unit_type: string; stock_status: string }> = [];
+    if (tokens.length) {
+      const patterns = tokens.map((t) => `%${t}%`);
+      try {
+        const r = await query(
+          `SELECT id, name_en, price, unit_type, stock_status
+             FROM products
+            WHERE is_active = true ${cityId ? 'AND city_id = $2' : ''}
+              AND (name_en ILIKE ANY($1) OR name_ur ILIKE ANY($1))
+            ORDER BY is_featured DESC, name_en ASC
+            LIMIT 6`,
+          cityId ? [patterns, cityId] : [patterns]
+        );
+        products = r.rows;
+      } catch (err) {
+        if (!isMissingTable(err)) logger.warn('AI catalog lookup failed', { error: (err as Error)?.message });
+      }
+    }
+    if (products.length) {
+      lines.push(
+        'Matching products (consumer retail price in PKR; share the link so the user picks quality & quantity there):'
+      );
+      for (const p of products) {
+        const avail = p.stock_status === 'out_of_stock' ? 'out of stock' : 'in stock';
+        const unit = p.unit_type ? `/${p.unit_type}` : '';
+        lines.push(`- [${p.name_en}](/product/${p.id}): Rs.${Math.round(Number(p.price))}${unit} (${avail})`);
+      }
+    } else {
+      lines.push(
+        `No product matching the user's question is available in ${cityName || 'the selected city'} right now. Tell them it is NOT available on FreshBazar at the moment — do NOT make up a price — and suggest browsing the Categories for similar items.`
+      );
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -211,7 +246,10 @@ function sanitizeHistory(history: ChatMessage[]): ChatMessage[] {
  * Generate a reply from the configured provider for a short message history.
  * Injects a tiny live-catalog context for product questions (city-scoped).
  */
-export async function generateReply(history: ChatMessage[], cityId?: string | null): Promise<string> {
+export async function generateReply(
+  history: ChatMessage[],
+  opts: ChatContextOpts = {}
+): Promise<string> {
   const cfg = await getAiConfig();
   if (!aiEnabled(cfg)) throw new Error('AI assistant is not configured');
 
@@ -225,7 +263,7 @@ export async function generateReply(history: ChatMessage[], cityId?: string | nu
   // assistant turns and collapse accidental same-role repeats.
   const convo = sanitizeHistory(history);
   const lastUser = [...convo].reverse().find((m) => m.role === 'user')?.content || '';
-  const context = await buildLiveContext(lastUser, cityId);
+  const context = await buildContext(lastUser, opts);
   const systemPrompt = context ? `${SYSTEM_PROMPT}\n\n${context}` : SYSTEM_PROMPT;
 
   try {

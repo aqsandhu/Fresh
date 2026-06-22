@@ -126,7 +126,8 @@ export default function AiChatWidget() {
     setInput('')
     setSending(true)
     try {
-      const { reply } = await aiChatApi.sendMessage(next.slice(-8))
+      const page = typeof window !== 'undefined' ? window.location.pathname : undefined
+      const { reply } = await aiChatApi.sendMessage(next.slice(-8), page)
       setMessages((mm) => [...mm, { role: 'assistant', content: reply }])
     } catch {
       setMessages((mm) => [
@@ -144,7 +145,7 @@ export default function AiChatWidget() {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Chat with FreshBazar assistant"
-        className="fixed bottom-36 right-4 z-[55] flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg transition-colors hover:bg-primary-700 lg:bottom-24"
+        className="fixed bottom-[8.5rem] right-4 z-[55] flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg transition-colors hover:bg-primary-700 lg:bottom-[5.25rem]"
       >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>
@@ -158,7 +159,7 @@ export default function AiChatWidget() {
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
             className="fixed z-[70] flex flex-col overflow-hidden border border-gray-200 bg-white shadow-2xl
                        inset-x-3 bottom-3 top-16 rounded-3xl
-                       lg:inset-auto lg:right-6 lg:bottom-24 lg:top-auto lg:h-[70vh] lg:max-h-[560px] lg:w-[380px] lg:rounded-2xl"
+                       lg:inset-auto lg:right-6 lg:bottom-[5.25rem] lg:top-auto lg:h-[70vh] lg:max-h-[560px] lg:w-[380px] lg:rounded-2xl"
           >
             {/* Header */}
             <div className="flex items-center gap-3 bg-primary-600 px-4 py-3 text-white">

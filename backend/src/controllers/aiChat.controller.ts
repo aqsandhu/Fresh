@@ -52,7 +52,8 @@ export const postMessage = asyncHandler(async (req: Request, res: Response) => {
 
   try {
     const cityId = await resolvePublicCityId(req);
-    const reply = await generateReply(history, cityId);
+    const page = typeof req.body.page === 'string' ? req.body.page.trim().slice(0, 160) : null;
+    const reply = await generateReply(history, { cityId, page });
     if (!reply) {
       return errorResponse(res, 'No response generated. Please try again.', 502);
     }
