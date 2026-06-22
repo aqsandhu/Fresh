@@ -22,6 +22,29 @@ const GREETING: ChatMessage = {
     "Assalam-o-Alaikum! I'm the FreshBazar assistant. Ask me about products, ordering, delivery, franchise, or anything else.",
 };
 
+const LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g;
+
+/** Render markdown links [label](url) as highlighted labels (no raw URLs). */
+function renderRich(text: string): React.ReactNode[] {
+  const nodes: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  LINK_RE.lastIndex = 0;
+  while ((m = LINK_RE.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    nodes.push(
+      <Text key={i} style={styles.linkText}>
+        {m[1]}
+      </Text>
+    );
+    last = LINK_RE.lastIndex;
+    i++;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
 export const AiChatWidget: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
@@ -95,7 +118,9 @@ export const AiChatWidget: React.FC = () => {
                   style={[styles.bubbleRow, m.role === 'user' ? styles.rowEnd : styles.rowStart]}
                 >
                   <View style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.botBubble]}>
-                    <Text style={m.role === 'user' ? styles.userText : styles.botText}>{m.content}</Text>
+                    <Text style={m.role === 'user' ? styles.userText : styles.botText}>
+                      {m.role === 'assistant' ? renderRich(m.content) : m.content}
+                    </Text>
                   </View>
                 </View>
               ))}
@@ -176,7 +201,8 @@ const styles = StyleSheet.create({
   userBubble: { backgroundColor: COLORS.primary600, borderBottomRightRadius: 4 },
   botBubble: { backgroundColor: COLORS.white, borderWidth: 1, borderColor: COLORS.gray100, borderBottomLeftRadius: 4 },
   userText: { color: COLORS.white, fontSize: 14 },
-  botText: { color: COLORS.gray800, fontSize: 14 },
+  botText: { color: COLORS.gray800, fontSize: 14, lineHeight: 20 },
+  linkText: { color: COLORS.primary600, fontWeight: '700' },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, Fragment } from 'react'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageCircle, X, Send, Loader2, Bot } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -9,8 +10,10 @@ import { aiChatApi, type AiChatMessage } from '@/lib/api'
 const GREETING: AiChatMessage = {
   role: 'assistant',
   content:
-    "Assalam-o-Alaikum! I'm the FreshBazar assistant. Ask me about products, ordering, delivery, franchise, or anything else 🙂",
+    "Assalam-o-Alaikum! 👋 I'm the FreshBazar assistant. Ask me about products, ordering, delivery, franchise, or anything else.",
 }
+
+const LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g
 
 export default function AiChatWidget() {
   const [open, setOpen] = useState(false)
@@ -19,7 +22,6 @@ export default function AiChatWidget() {
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Only show the widget when an API key is configured (cheap status check).
   const { data: status } = useQuery({
     queryKey: ['ai-chat-status'],
     queryFn: aiChatApi.getStatus,
@@ -33,6 +35,48 @@ export default function AiChatWidget() {
 
   if (!status?.enabled) return null
 
+  /** Render markdown links [label](url) as clickable links; rest as text. */
+  const renderMessage = (text: string) => {
+    const nodes: React.ReactNode[] = []
+    let last = 0
+    let m: RegExpExecArray | null
+    let i = 0
+    LINK_RE.lastIndex = 0
+    while ((m = LINK_RE.exec(text)) !== null) {
+      if (m.index > last) nodes.push(<Fragment key={`t${i}`}>{text.slice(last, m.index)}</Fragment>)
+      const label = m[1]
+      const url = m[2]
+      if (url.startsWith('/')) {
+        nodes.push(
+          <Link
+            key={`l${i}`}
+            href={url}
+            onClick={() => setOpen(false)}
+            className="font-semibold text-primary-600 underline underline-offset-2"
+          >
+            {label}
+          </Link>
+        )
+      } else {
+        nodes.push(
+          <a
+            key={`l${i}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-primary-600 underline underline-offset-2"
+          >
+            {label}
+          </a>
+        )
+      }
+      last = LINK_RE.lastIndex
+      i++
+    }
+    if (last < text.length) nodes.push(<Fragment key={`t${i}`}>{text.slice(last)}</Fragment>)
+    return nodes
+  }
+
   const send = async () => {
     const text = input.trim()
     if (!text || sending) return
@@ -41,12 +85,11 @@ export default function AiChatWidget() {
     setInput('')
     setSending(true)
     try {
-      // Send only the recent turns to keep tokens low.
       const { reply } = await aiChatApi.sendMessage(next.slice(-8))
-      setMessages((m) => [...m, { role: 'assistant', content: reply }])
+      setMessages((mm) => [...mm, { role: 'assistant', content: reply }])
     } catch {
-      setMessages((m) => [
-        ...m,
+      setMessages((mm) => [
+        ...mm,
         { role: 'assistant', content: 'Sorry, I could not respond right now. Please try again.' },
       ])
     } finally {
@@ -60,7 +103,7 @@ export default function AiChatWidget() {
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Chat with FreshBazar assistant"
-        className="fixed bottom-20 lg:bottom-6 right-4 z-[80] flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg hover:bg-primary-700 transition-colors"
+        className="fixed bottom-20 right-4 z-[81] flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg transition-colors hover:bg-primary-700 lg:bottom-6"
       >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>
@@ -68,65 +111,75 @@ export default function AiChatWidget() {
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.97 }}
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.97 }}
-            className="fixed bottom-36 lg:bottom-24 right-4 z-[80] flex h-[60vh] max-h-[520px] w-[calc(100vw-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl border border-gray-100"
+            exit={{ opacity: 0, y: 24, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+            className="fixed z-[80] flex flex-col overflow-hidden border border-gray-200 bg-white shadow-2xl
+                       inset-x-3 bottom-3 top-16 rounded-3xl
+                       lg:inset-auto lg:right-6 lg:bottom-24 lg:top-auto lg:h-[560px] lg:w-[380px] lg:rounded-2xl"
           >
-            <div className="flex items-center gap-2 bg-primary-600 px-4 py-3 text-white">
-              <Bot className="h-5 w-5" />
-              <div>
-                <p className="text-sm font-semibold leading-tight">FreshBazar Assistant</p>
-                <p className="text-[11px] text-primary-100">Here to help</p>
+            {/* Header */}
+            <div className="flex items-center gap-3 bg-primary-600 px-4 py-3 text-white">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20">
+                <Bot className="h-5 w-5" />
               </div>
+              <div className="flex-1">
+                <p className="text-sm font-semibold leading-tight">FreshBazar Assistant</p>
+                <p className="flex items-center gap-1 text-[11px] text-primary-100">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-300" /> Online
+                </p>
+              </div>
+              <button onClick={() => setOpen(false)} aria-label="Close" className="rounded-lg p-1.5 hover:bg-white/10">
+                <X className="h-5 w-5" />
+              </button>
             </div>
 
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
-              {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
+            {/* Messages */}
+            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto overscroll-contain bg-gray-50 p-3">
+              {messages.map((msg, idx) => (
+                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
-                    className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${
-                      m.role === 'user'
-                        ? 'bg-primary-600 text-white rounded-br-sm'
-                        : 'bg-white text-gray-800 border border-gray-100 rounded-bl-sm'
+                    className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed shadow-sm ${
+                      msg.role === 'user'
+                        ? 'rounded-br-md bg-primary-600 text-white'
+                        : 'rounded-bl-md border border-gray-100 bg-white text-gray-800'
                     }`}
                   >
-                    {m.content}
+                    {msg.role === 'assistant' ? renderMessage(msg.content) : msg.content}
                   </div>
                 </div>
               ))}
               {sending && (
                 <div className="flex justify-start">
-                  <div className="rounded-2xl rounded-bl-sm border border-gray-100 bg-white px-3 py-2">
+                  <div className="rounded-2xl rounded-bl-md border border-gray-100 bg-white px-3.5 py-2.5 shadow-sm">
                     <Loader2 className="h-4 w-4 animate-spin text-primary-500" />
                   </div>
                 </div>
               )}
             </div>
 
+            {/* Input */}
             <form
               onSubmit={(e) => {
                 e.preventDefault()
                 send()
               }}
-              className="flex items-center gap-2 border-t border-gray-100 p-2"
+              className="flex items-center gap-2 border-t border-gray-100 bg-white p-2.5"
             >
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Type your message…"
-                className="flex-1 rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="min-w-0 flex-1 rounded-full border border-gray-200 px-4 py-2.5 text-[15px] focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
               />
               <button
                 type="submit"
                 disabled={sending || !input.trim()}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-600 text-white disabled:opacity-50"
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
                 aria-label="Send"
               >
-                <Send className="h-4 w-4" />
+                <Send className="h-5 w-5" />
               </button>
             </form>
           </motion.div>
