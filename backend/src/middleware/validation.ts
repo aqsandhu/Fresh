@@ -248,17 +248,27 @@ export const productSchemas = {
     sortOrder: commonSchemas.sortOrder,
     featured: Joi.boolean(),
     inStock: Joi.boolean(),
+    // City scope — MUST be allowed, else stripUnknown deletes it and the
+    // listing leaks products from every city (resolvePublicCityId reads it).
+    city_id: commonSchemas.uuid,
+    city: Joi.string().max(100),
   }),
   search: Joi.object({
     q: commonSchemas.search,
     page: commonSchemas.page,
     limit: commonSchemas.limit,
+    city_id: commonSchemas.uuid,
+    city: Joi.string().max(100),
   }),
   limitOnly: Joi.object({
     limit: commonSchemas.limit,
+    city_id: commonSchemas.uuid,
+    city: Joi.string().max(100),
   }),
   related: Joi.object({
     limit: commonSchemas.limit.default(8),
+    city_id: commonSchemas.uuid,
+    city: Joi.string().max(100),
   }),
   
   create: Joi.object({
