@@ -60,6 +60,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [banner, setBanner] = useState<BannerSettings>(DEFAULT_BANNER);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [attaEnabled, setAttaEnabled] = useState(false);
   const { selectedCityId } = useCityContext();
 
   useEffect(() => {
@@ -71,6 +72,12 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       if (res.success) setCategories(res.data.slice(0, 8));
     });
   }, [selectedCityId]);
+
+  useEffect(() => {
+    productService.getPublicConfig().then((res) => {
+      if (res.success) setAttaEnabled(res.data.atta_chakki_enabled);
+    });
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -154,7 +161,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       screen: 'CategoryProducts',
       params: { categoryId: c.id, categoryName: c.name },
     })),
-    { label: 'Atta Chakki', icon: 'grain', tab: 'Profile', screen: 'AttaChakkiMain' },
+    ...(attaEnabled
+      ? [{ label: 'Atta Chakki', icon: 'grain', tab: 'Profile', screen: 'AttaChakkiMain' }]
+      : []),
     { label: 'My Cart', icon: 'shopping-cart', tab: 'Cart', screen: 'CartMain' },
     { label: 'My Orders', icon: 'receipt-long', tab: 'Orders', screen: 'OrdersList' },
     { label: 'Work as Rider', icon: 'delivery-dining', tab: 'Profile', screen: 'WorkAsRider' },

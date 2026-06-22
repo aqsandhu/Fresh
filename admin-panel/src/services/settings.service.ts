@@ -157,4 +157,22 @@ export const settingsService = {
       throw new Error(error?.response?.data?.message || 'Failed to update notification settings');
     }
   },
+
+  // Global platform feature flags (super-admin only on the backend).
+  getPlatformSettings: async (): Promise<{ attaChakkiEnabled: boolean }> => {
+    const response = await api.get<ApiResponse<{ attaChakkiEnabled: boolean }>>(
+      '/admin/settings/platform'
+    );
+    return response.data;
+  },
+
+  updatePlatformSettings: async (settings: {
+    attaChakkiEnabled?: boolean;
+  }): Promise<{ attaChakkiEnabled: boolean }> => {
+    const response = await api.put<ApiResponse<{ attaChakkiEnabled: boolean }>>(
+      '/admin/settings/platform',
+      settings
+    );
+    return response.data;
+  },
 };

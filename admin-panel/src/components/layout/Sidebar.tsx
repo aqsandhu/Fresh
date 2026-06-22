@@ -12,6 +12,7 @@ import {
   MapPin,
   MapPinned,
   Settings,
+  SlidersHorizontal,
   Shield,
   Ticket,
   Star,
@@ -58,6 +59,7 @@ const navItems: NavItem[] = [
   { path: '/admin/user-tips', label: 'User Tips', icon: <Lightbulb className="w-5 h-5" /> },
   { path: '/admin/roles', label: 'Admin Roles', icon: <Shield className="w-5 h-5" /> },
   { path: '/admin/settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
+  { path: '/admin/platform', label: 'Platform', icon: <SlidersHorizontal className="w-5 h-5" /> },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
@@ -106,6 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
           {navItems
             .filter((item) => {
               if (item.path === '/admin/roles' && user?.role !== 'super_admin') return false;
+              if (item.path === '/admin/platform' && user?.role !== 'super_admin') return false;
               return canAccessRoute(item.path, user?.permissions);
             })
             .map((item) => (

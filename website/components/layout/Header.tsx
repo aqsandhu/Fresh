@@ -29,6 +29,7 @@ import { cn, formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import CartDropdown from './CartDropdown'
 import { productsApi, categoriesApi, bannerApi } from '@/lib/api'
 import { useCityContext } from '@/context/CityContext'
+import { usePublicConfig } from '@/lib/usePublicConfig'
 import { Product, Category } from '@/types'
 import { phoneToTelHref } from '@/lib/phoneStorage'
 import NotificationBell from '@/components/notifications/NotificationBell'
@@ -50,6 +51,8 @@ export default function Header() {
   useEffect(() => { setHasMounted(true) }, [])
 
   const { selectedCityId } = useCityContext()
+  const { config: publicConfig } = usePublicConfig()
+  const attaEnabled = publicConfig.atta_chakki_enabled
 
   // Dynamic categories for navbar (scoped to selected service city)
   const [categories, setCategories] = useState<Category[]>([])
@@ -64,7 +67,7 @@ export default function Header() {
   const navLinks = [
     { href: '/', label: 'Home', icon: Home },
     ...categories.map(cat => ({ href: `/category/${cat.slug}`, label: cat.name, icon: null })),
-    { href: '/atta-chakki', label: 'Atta Chakki', icon: Wheat },
+    ...(attaEnabled ? [{ href: '/atta-chakki', label: 'Atta Chakki', icon: Wheat }] : []),
     { href: '/restaurant/login', label: 'Restaurant', icon: UtensilsCrossed },
   ]
 

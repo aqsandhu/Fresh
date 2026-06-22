@@ -385,4 +385,8 @@ router.delete('/settings/time-slots/:id', adminController.deleteTimeSlot);
 router.get('/settings/business-hours', adminController.getBusinessHours);
 router.put('/settings/business-hours', adminController.updateBusinessHours);
 
+// Platform feature flags (super-admin only; role-checked in the controller)
+router.get('/settings/platform', adminController.getPlatformSettings);
+router.put('/settings/platform', adminController.updatePlatformSettings);
+
 export default router;

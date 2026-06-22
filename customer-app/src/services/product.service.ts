@@ -318,6 +318,18 @@ class ProductService {
   async getBanners(): Promise<ApiResponse<Banner[]>> {
     return { success: true, data: [] };
   }
+
+  // Global feature flags / config (public). Defaults to "off" on any error so a
+  // paused feature never shows its full UI.
+  async getPublicConfig(): Promise<ApiResponse<{ atta_chakki_enabled: boolean }>> {
+    try {
+      const response = await apiClient.get('/site-settings/public-config');
+      const raw = response.data?.data || response.data || {};
+      return { success: true, data: { atta_chakki_enabled: raw.atta_chakki_enabled === true } };
+    } catch {
+      return { success: true, data: { atta_chakki_enabled: false } };
+    }
+  }
 }
 
 export const productService = new ProductService();

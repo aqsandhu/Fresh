@@ -8,3 +8,4 @@ export { EmptyState } from './EmptyState';
 export { ErrorBoundary } from './ErrorBoundary';
 export { StarRating } from './StarRating';
 export { GuidanceTips } from './GuidanceTips';
+export { ComingSoon } from './ComingSoon';

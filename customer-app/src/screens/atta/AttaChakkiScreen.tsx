@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -13,11 +14,24 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ATTA_CHAKKI } from '@utils/constants';
-import { Button } from '@components';
+import { Button, ComingSoon } from '@components';
+import { productService } from '@services/product.service';
 import { formatCurrency } from '@utils/helpers';
 
 export const AttaChakkiScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
+  // Atta Chakki can be paused by the super admin (Settings → platform flags).
+  const [attaEnabled, setAttaEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    productService.getPublicConfig().then((res) => {
+      if (active) setAttaEnabled(res.data.atta_chakki_enabled);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const features = [
     {
@@ -47,6 +61,18 @@ export const AttaChakkiScreen: React.FC = () => {
     { number: '2', title: 'Schedule Pickup', description: 'We collect wheat from your address' },
     { number: '3', title: 'Get Fresh Atta', description: 'Fresh atta delivered to your door' },
   ];
+
+  if (attaEnabled === null) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!attaEnabled) {
+    return <ComingSoon titleEn="Atta Chakki Service" titleUr="آٹا چکی سروس" icon="grain" />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -155,6 +181,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.white,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     paddingHorizontal: SPACING.lg,
