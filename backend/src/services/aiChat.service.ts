@@ -32,11 +32,19 @@ interface AiConfig {
   disabled: boolean;
 }
 
-const DEFAULT_MODELS: Record<string, string> = {
-  anthropic: 'claude-haiku-4-5-20251001',
-  openai: 'gpt-4o-mini',
-  'openai-compatible': 'gpt-4o-mini',
-  gemini: 'gemini-1.5-flash',
+// Provider presets. `family` decides which API shape to use; `base` is the
+// default endpoint (so users don't need to set AI_CHAT_BASE_URL for known
+// providers). Anything OpenAI-compatible (DeepSeek, Grok/xAI, etc.) reuses the
+// OpenAI chat-completions shape.
+type ProviderFamily = 'anthropic' | 'gemini' | 'openai';
+const PROVIDER_PRESETS: Record<string, { family: ProviderFamily; base?: string; model: string }> = {
+  anthropic: { family: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  gemini: { family: 'gemini', model: 'gemini-1.5-flash' },
+  openai: { family: 'openai', base: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  'openai-compatible': { family: 'openai', model: 'gpt-4o-mini' },
+  deepseek: { family: 'openai', base: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  grok: { family: 'openai', base: 'https://api.x.ai/v1', model: 'grok-2-latest' },
+  xai: { family: 'openai', base: 'https://api.x.ai/v1', model: 'grok-2-latest' },
 };
 
 const MAX_TOKENS = 350;
@@ -183,15 +191,17 @@ export async function generateReply(history: ChatMessage[], cityId?: string | nu
   const cfg = await getAiConfig();
   if (!aiEnabled(cfg)) throw new Error('AI assistant is not configured');
 
-  const model = cfg.model || DEFAULT_MODELS[cfg.provider] || DEFAULT_MODELS.anthropic;
   const provider = cfg.provider;
+  const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS['openai-compatible'];
+  const family = preset.family;
+  const model = cfg.model || preset.model;
 
   const lastUser = [...history].reverse().find((m) => m.role === 'user')?.content || '';
   const context = await buildLiveContext(lastUser, cityId);
   const systemPrompt = context ? `${SYSTEM_PROMPT}\n\n${context}` : SYSTEM_PROMPT;
 
   try {
-    if (provider === 'anthropic') {
+    if (family === 'anthropic') {
       const data = await postJson(
         'https://api.anthropic.com/v1/messages',
         { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
@@ -200,7 +210,7 @@ export async function generateReply(history: ChatMessage[], cityId?: string | nu
       return String(data?.content?.[0]?.text || '').trim();
     }
 
-    if (provider === 'gemini') {
+    if (family === 'gemini') {
       const base = cfg.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
       const data = await postJson(
         `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`,
@@ -217,8 +227,9 @@ export async function generateReply(history: ChatMessage[], cityId?: string | nu
       return String(data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
     }
 
-    // openai + openai-compatible (any base URL)
-    const base = cfg.baseUrl || 'https://api.openai.com/v1';
+    // OpenAI-compatible (OpenAI, DeepSeek, Grok/xAI, custom). Base URL comes from
+    // the user's setting, else the provider preset, else OpenAI.
+    const base = cfg.baseUrl || preset.base || 'https://api.openai.com/v1';
     const data = await postJson(
       `${base}/chat/completions`,
       { authorization: `Bearer ${cfg.apiKey}` },
