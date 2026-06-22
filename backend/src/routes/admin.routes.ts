@@ -16,6 +16,7 @@ import * as stockController from '../controllers/admin/stock.controller';
 import * as reconciliationController from '../controllers/admin/reconciliation.controller';
 import * as serviceAreasController from '../controllers/admin/serviceAreas.controller';
 import * as basketsController from '../controllers/admin/baskets.controller';
+import * as franchiseController from '../controllers/franchise.controller';
 import {
   authenticate,
   requireAdmin,
@@ -260,6 +261,10 @@ router.get('/service-areas', serviceAreasController.getServiceAreas);
 router.post('/service-areas', adminRateLimiter, serviceAreasController.createServiceArea);
 router.put('/service-areas/:id', adminRateLimiter, serviceAreasController.updateServiceArea);
 router.delete('/service-areas/:id', serviceAreasController.deleteServiceArea);
+
+// Franchise inquiries (leads triage; any authenticated admin)
+router.get('/franchise-inquiries', franchiseController.listFranchiseInquiries);
+router.put('/franchise-inquiries/:id', adminRateLimiter, franchiseController.updateFranchiseInquiry);
 
 // Today's Basket (combo packages; super-admin only, role-checked in controller)
 router.get('/baskets', basketsController.getBaskets);

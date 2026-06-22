@@ -41,6 +41,7 @@ import {
   Platform,
   ServiceAreas,
   Baskets,
+  FranchiseInquiries,
 } from '@/pages';
 import './App.css';
 
@@ -418,6 +419,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Baskets />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/franchise-inquiries"
+        element={
+          <ProtectedRoute>
+            <FranchiseInquiries />
           </ProtectedRoute>
         }
       />

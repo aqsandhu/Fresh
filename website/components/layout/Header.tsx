@@ -24,6 +24,7 @@ import {
   Bike,
   UtensilsCrossed,
   ShoppingBasket,
+  Store,
 } from 'lucide-react'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { useBasketUi } from '@/store/basketUi'
@@ -580,6 +581,14 @@ export default function Header() {
               >
                 <Bike className="w-5 h-5" />
                 Work as Rider
+              </Link>
+              <Link
+                href="/franchise"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-600 hover:bg-gray-50"
+              >
+                <Store className="w-5 h-5" />
+                Franchise
               </Link>
             </nav>
           </motion.div>

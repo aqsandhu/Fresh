@@ -22,6 +22,7 @@ import {
 } from '@screens';
 import { SelectCityScreen } from '@screens/city';
 import { StaticPageScreen } from '@screens/info/StaticPageScreen';
+import { FranchiseScreen } from '@screens/info/FranchiseScreen';
 import { AddAddressScreen } from '@screens/checkout/AddAddressScreen';
 import {
   RestaurantLoginScreen,
@@ -62,6 +63,7 @@ export const ProfileNavigator: React.FC = () => {
       <Stack.Screen name="MyComplaints" component={MyComplaintsScreen} />
       <Stack.Screen name="NewComplaint" component={NewComplaintScreen} />
       <Stack.Screen name="WorkAsRider" component={WorkAsRiderScreen} />
+      <Stack.Screen name="Franchise" component={FranchiseScreen} />
       <Stack.Screen name="RestaurantLogin" component={RestaurantLoginScreen} />
       <Stack.Screen name="RestaurantRegister" component={RestaurantRegisterScreen} />
       <Stack.Screen name="RestaurantShop" component={RestaurantShopScreen} />

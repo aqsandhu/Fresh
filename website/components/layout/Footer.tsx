@@ -27,6 +27,7 @@ const footerLinks = {
   ],
   company: [
     { label: 'About Us', href: '/about' },
+    { label: 'Franchise', href: '/franchise' },
     { label: 'Work as Rider', href: '/work-as-rider' },
     { label: 'Collection Point Login', href: '/ocp/login' },
     { label: 'Shareholder Login', href: '/shareholder/login' },
