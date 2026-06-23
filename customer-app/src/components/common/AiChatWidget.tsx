@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -33,7 +34,7 @@ const GREETING: ChatMessage = {
     "Assalam-o-Alaikum! I'm the FreshBazar assistant. Ask me about products, prices, ordering, delivery, riders, or franchise — I'm here to help.",
 };
 
-const LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/g;
+const TOKEN_RE = /\[([^\]]+)\]\(([^)]+)\)|(\/product\/[A-Za-z0-9_-]+)|(https?:\/\/[^\s)]+)/g;
 
 /** Strip stray markdown so no "stars"/symbols leak into the chat. */
 function cleanText(s: string): string {
@@ -46,24 +47,26 @@ function cleanText(s: string): string {
     .replace(/^\s*[-•]\s+/gm, '• ');
 }
 
-/** Render markdown links [label](url) as highlighted labels (no raw URLs). */
-function renderRich(text: string): React.ReactNode[] {
+/** Render assistant links as tappable labels (no raw product URLs). */
+function renderRich(text: string, onOpenLink: (url: string) => void): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   let last = 0;
   let m: RegExpExecArray | null;
   let i = 0;
-  LINK_RE.lastIndex = 0;
-  while ((m = LINK_RE.exec(text)) !== null) {
+  TOKEN_RE.lastIndex = 0;
+  while ((m = TOKEN_RE.exec(text)) !== null) {
     if (m.index > last) nodes.push(cleanText(text.slice(last, m.index)));
-    const isProduct = m[2].includes('/product/');
+    const label = m[1] || (m[3] ? 'View product' : m[4] || '');
+    const url = m[2] || m[3] || m[4] || '';
+    const isProduct = url.startsWith('/product/');
     nodes.push(
-      <Text key={i} style={styles.linkText}>
+      <Text key={i} style={styles.linkText} onPress={() => onOpenLink(url)}>
         {isProduct ? <MaterialIcons name="shopping-cart" size={13} color={COLORS.primary600} /> : null}
         {isProduct ? ' ' : ''}
-        {cleanText(m[1]).trim()}
+        {cleanText(label).trim()}
       </Text>
     );
-    last = LINK_RE.lastIndex;
+    last = TOKEN_RE.lastIndex;
     i++;
   }
   if (last < text.length) nodes.push(cleanText(text.slice(last)));
@@ -88,6 +91,31 @@ export const AiChatWidget: React.FC = () => {
   }, [messages, open, sending]);
 
   if (!status?.enabled) return null;
+
+  const openLink = (url: string) => {
+    if (!url) return;
+    if (url.startsWith('/product/')) {
+      let productId = '';
+      try {
+        productId = decodeURIComponent(url.split('/product/')[1]?.split(/[?#]/)[0] || '');
+      } catch {
+        productId = '';
+      }
+      if (!productId) return;
+      setOpen(false);
+      setTimeout(() => {
+        if (!navigationRef.isReady()) return;
+        (navigationRef as any).navigate('Main', {
+          screen: 'Shop',
+          params: { screen: 'ProductDetail', params: { productId } },
+        });
+      }, 0);
+      return;
+    }
+    if (/^https?:\/\//i.test(url)) {
+      Linking.openURL(url).catch(() => {});
+    }
+  };
 
   const send = async () => {
     const text = input.trim();
@@ -144,7 +172,7 @@ export const AiChatWidget: React.FC = () => {
                 >
                   <View style={[styles.bubble, m.role === 'user' ? styles.userBubble : styles.botBubble]}>
                     <Text style={m.role === 'user' ? styles.userText : styles.botText}>
-                      {m.role === 'assistant' ? renderRich(m.content) : m.content}
+                      {m.role === 'assistant' ? renderRich(m.content, openLink) : m.content}
                     </Text>
                   </View>
                 </View>
