@@ -3,14 +3,21 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, X, Send, Loader2, Bot, ShoppingCart } from 'lucide-react'
+import { MessageCircle, X, Send, Loader2, Headphones, ShoppingCart } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { aiChatApi, type AiChatMessage } from '@/lib/api'
+import { useAuthStore } from '@/store/cartStore'
 
-const GREETING: AiChatMessage = {
-  role: 'assistant',
-  content:
-    "Assalam-o-Alaikum! I'm the FreshBazar assistant. Ask me about products, prices, ordering, delivery, riders, or franchise — I'm here to help.",
+/** First name only, for a personal greeting — empty when not signed in. */
+function firstName(u: { full_name?: string; name?: string } | null | undefined): string {
+  const raw = (u?.full_name || u?.name || '').trim()
+  return raw ? raw.split(/\s+/)[0] : ''
+}
+
+/** Warm, human-sounding opening line (personalised when we know the name). */
+function welcomeText(name: string): string {
+  const salam = name ? `Assalam-o-Alaikum ${name}!` : 'Assalam-o-Alaikum!'
+  return `${salam} FreshBazar mein khush-aamdeed. Agar aap ko FreshBazar istemal karne mein kisi bhi qisam ki rahnumai chahiye to mujhe batayein — main aap ki kis silsile mein madad karun?`
 }
 
 // Finds markdown links, bare product paths, and bare URLs in one pass.
@@ -39,10 +46,12 @@ function productPathFromUrl(url: string): string | null {
 
 export default function AiChatWidget() {
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<AiChatMessage[]>([GREETING])
+  const [messages, setMessages] = useState<AiChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [welcoming, setWelcoming] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const { user, isAuthenticated } = useAuthStore()
 
   const { data: status } = useQuery({
     queryKey: ['ai-chat-status'],
@@ -53,7 +62,24 @@ export default function AiChatWidget() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, open, sending])
+  }, [messages, open, sending, welcoming])
+
+  // When the panel first opens, wait ~2s (showing a typing bubble) then greet the
+  // customer by name if signed in — feels like a real person, not a canned bot.
+  useEffect(() => {
+    if (!open || messages.length > 0) return
+    setWelcoming(true)
+    const t = setTimeout(() => {
+      setWelcoming(false)
+      const name = isAuthenticated ? firstName(user) : ''
+      setMessages((m) => (m.length === 0 ? [{ role: 'assistant', content: welcomeText(name) }] : m))
+    }, 2000)
+    return () => {
+      clearTimeout(t)
+      setWelcoming(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   if (!status?.enabled) return null
 
@@ -132,7 +158,7 @@ export default function AiChatWidget() {
     } catch {
       setMessages((mm) => [
         ...mm,
-        { role: 'assistant', content: 'Sorry, I could not respond right now. Please try again.' },
+        { role: 'assistant', content: 'Maazrat, abhi jawab nahi de paya. Bara karam thori der baad dobara message kar dijiye ga.' },
       ])
     } finally {
       setSending(false)
@@ -144,7 +170,7 @@ export default function AiChatWidget() {
       {/* Launcher — sits ABOVE the floating city button (no overlap) */}
       <button
         onClick={() => setOpen((o) => !o)}
-        aria-label="Chat with FreshBazar assistant"
+        aria-label="Chat with FreshBazar Support"
         className="fixed bottom-[8.5rem] right-4 z-[55] flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg transition-colors hover:bg-primary-700 lg:bottom-[5.25rem]"
       >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
@@ -164,10 +190,10 @@ export default function AiChatWidget() {
             {/* Header */}
             <div className="flex items-center gap-3 bg-primary-600 px-4 py-3 text-white">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20">
-                <Bot className="h-5 w-5" />
+                <Headphones className="h-5 w-5" />
               </div>
               <div className="flex-1">
-                <p className="text-sm font-semibold leading-tight">FreshBazar Assistant</p>
+                <p className="text-sm font-semibold leading-tight">FreshBazar Support</p>
                 <p className="flex items-center gap-1 text-[11px] text-primary-100">
                   <span className="inline-block h-1.5 w-1.5 rounded-full bg-green-300" /> Online
                 </p>
@@ -193,7 +219,7 @@ export default function AiChatWidget() {
                   </div>
                 </div>
               ))}
-              {sending && (
+              {(sending || welcoming) && (
                 <div className="flex justify-start">
                   <div className="rounded-2xl rounded-bl-md border border-gray-100 bg-white px-3.5 py-2.5 shadow-sm">
                     <Loader2 className="h-4 w-4 animate-spin text-primary-500" />
