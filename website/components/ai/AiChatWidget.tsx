@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, X, Send, Loader2, Bot } from 'lucide-react'
+import { MessageCircle, X, Send, Loader2, Bot, ShoppingCart } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { aiChatApi, type AiChatMessage } from '@/lib/api'
 
@@ -47,8 +47,25 @@ export default function AiChatWidget() {
 
   if (!status?.enabled) return null
 
-  const linkNode = (label: string, url: string, key: string) =>
-    url.startsWith('/') ? (
+  // Product links render as a self-contained "cart" chip (dir=ltr so the icon
+  // always sits left of the name and the chip never reorders the surrounding
+  // Urdu text). Other links stay as plain underlined links.
+  const linkNode = (label: string, url: string, key: string) => {
+    if (url.startsWith('/product/')) {
+      return (
+        <Link
+          key={key}
+          href={url}
+          onClick={() => setOpen(false)}
+          dir="ltr"
+          className="my-0.5 inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1 text-[13px] font-semibold text-primary-700 transition-colors hover:bg-primary-100"
+        >
+          <ShoppingCart className="h-3.5 w-3.5 flex-shrink-0" />
+          <span>{label}</span>
+        </Link>
+      )
+    }
+    return url.startsWith('/') ? (
       <Link
         key={key}
         href={url}
@@ -68,6 +85,7 @@ export default function AiChatWidget() {
         {label}
       </a>
     )
+  }
 
   /** Render an assistant message: links clickable, markdown stripped. */
   const renderMessage = (raw: string): React.ReactNode[] => {

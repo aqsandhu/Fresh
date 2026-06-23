@@ -60,7 +60,7 @@ LANGUAGE & CULTURE (STRICT — never break this): FreshBazar is a PAKISTANI MUSL
 IMPORTANT — WHAT YOU CANNOT DO: You cannot add items to the cart, change quantities, fill the address, or place/checkout orders yourself. Never say "should I add it for you?" or claim you added/ordered anything. Instead, share the item's link and guide the user to do it.
 
 YOU CAN HELP WITH:
-- Products & categories: find items and give the price ONLY from the user's selected city's catalog below (it is today's live rate). Match wording smartly — users often type Roman Urdu ("badam" = Almond/بادام گری, "gobi" = Cauliflower, "tamatar" = Tomato, "pyaz" = Onion, "anday" = Eggs). If no exact match but a related product exists, OFFER the closest one instead of "not found". Only say "not available" when truly nothing relates. PRICE: state the available quality's rate plainly (e.g. "Quality A Rs 3800/kg"; if more than one quality, give those rates briefly). Put the product link on its OWN line. Then one simple line to guide: link kholein, quality (A/B/C) aur quantity chunein, phir Add to Cart dabायें. Keep it short — don't over-explain.
+- Products & categories: find items and give the price ONLY from the user's selected city's catalog below (it is today's live rate). Match wording smartly — users often type Roman Urdu ("badam" = Almond/بادام گری, "gobi" = Cauliflower, "tamatar" = Tomato, "pyaz" = Onion, "anday" = Eggs). If no exact match but a related product exists, OFFER the closest one instead of "not found". Only say "not available" when truly nothing relates. PRICE: the facts below list ONLY the qualities that are IN STOCK today, each with its rate — quote those exactly (e.g. "Quality A Rs 3800/kg"; if more than one quality is listed, give each briefly). NEVER quote a quality that is not listed, and never invent a rate. Put the product link on its OWN line. Then one short guide line, e.g. "Link kholen, quality (A/B/C) aur quantity chunen, phir Add to Cart dabaen." Keep it short — don't over-explain.
 - Ordering/checkout (GUIDE only, you don't perform it): after adding items → open Cart → Checkout → confirm delivery address by dropping the map pin → pick a delivery time slot → Place Order (Cash on Delivery supported; qualifying orders get free delivery). Tell them which buttons to tap.
 - Today's Basket: ready-made combo packages — opening it and tapping "Add basket to cart" adds all items at once.
 - Restaurants (B2B): businesses Register as Restaurant in the Restaurant section and, once approved, log in to order at special business pricing. NEVER reveal or quote restaurant/wholesale prices — tell them to register & log in to see business rates.
@@ -90,13 +90,40 @@ export interface ChatContextOpts {
   page?: string | null;
 }
 
+// Generic filler/interrogative words that never name a product — used so a plain
+// question like "delivery kya hai?" doesn't trigger a whole-catalog dump.
+const STOPWORDS = new Set([
+  'kya', 'kia', 'hai', 'hain', 'hay', 'hy', 'kaise', 'kese', 'kab', 'kahan', 'kaha',
+  'how', 'what', 'the', 'and', 'aur', 'for', 'you', 'your', 'mujhe', 'muje', 'mera', 'meri',
+  'kar', 'karo', 'kr', 'plz', 'please', 'bhai', 'app', 'aap',
+]);
+
+// Which optional `products` columns exist depends on how many migrations have run
+// (legacy → unified-quality → catalog-v2). Probe once and cache, so the catalog
+// query only selects columns that actually exist and never crashes with
+// "column does not exist" on an older database.
+let productColsCache: Set<string> | null = null;
+async function productColumns(): Promise<Set<string>> {
+  if (productColsCache) return productColsCache;
+  try {
+    const r = await query(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'products'`
+    );
+    productColsCache = new Set<string>(r.rows.map((x: { column_name: string }) => x.column_name));
+  } catch {
+    productColsCache = new Set<string>();
+  }
+  return productColsCache;
+}
+
 /**
  * Build a compact REAL-FACTS context: active cities, the user's selected city,
  * the current page, and (for product questions) matching products with links.
  * The model is told to rely ONLY on these facts so it never invents a city,
  * price, or availability. Consumer retail price only — restaurant prices excluded.
  */
-async function buildContext(message: string, opts: ChatContextOpts): Promise<string> {
+export async function buildContext(message: string, opts: ChatContextOpts): Promise<string> {
   const { cityId, page } = opts;
   const lines: string[] = [
     '[REAL FACTS — use ONLY these. Never invent a city, price, or whether a product exists.]',
@@ -135,28 +162,27 @@ async function buildContext(message: string, opts: ChatContextOpts): Promise<str
   if (page) lines.push(`The user is currently on this page: ${page}.`);
 
   // Product lookup — only for product-related questions, and ONLY for the user's
-  // selected city (never across cities). Prices are this city's today's rate.
+  // selected city (never across cities). We surface, per product, only the
+  // QUALITIES that are actually buyable today (enabled + on-hand stock), each
+  // with its today's rate — mirroring exactly what the storefront sells.
   type Prod = {
     id: string;
     name_en: string;
     name_ur: string | null;
-    price: number;
+    unit_type: string | null;
+    price: number | null;
     price_b: number | null;
     price_c: number | null;
-    unit_type: string;
-    stock_status: string;
+    stock_quantity: number | null;
+    stock_quantity_b: number | null;
+    stock_quantity_c: number | null;
+    reserved_quantity: number | null;
+    reserved_quantity_b: number | null;
+    reserved_quantity_c: number | null;
+    consumer_enabled_a: boolean | null;
+    consumer_enabled_b: boolean | null;
+    consumer_enabled_c: boolean | null;
   };
-  const fmtProduct = (p: Prod) => {
-    const avail = p.stock_status === 'out_of_stock' ? 'out of stock' : 'in stock';
-    const unit = p.unit_type ? `/${p.unit_type}` : '';
-    const nm = p.name_ur ? `${p.name_en} / ${p.name_ur}` : p.name_en;
-    const parts = [`A Rs.${Math.round(Number(p.price))}`];
-    if (p.price_b != null) parts.push(`B Rs.${Math.round(Number(p.price_b))}`);
-    if (p.price_c != null) parts.push(`C Rs.${Math.round(Number(p.price_c))}`);
-    const priceStr = parts.length > 1 ? `${parts.join(', ')}${unit}` : `Rs.${Math.round(Number(p.price))}${unit}`;
-    return `- [${nm}](/product/${p.id}): ${priceStr} (${avail})`;
-  };
-  const SELECT_COLS = 'id, name_en, name_ur, price, price_b, price_c, unit_type, stock_status';
 
   if (PRODUCT_INTENT.test(message)) {
     if (!cityId) {
@@ -164,63 +190,118 @@ async function buildContext(message: string, opts: ChatContextOpts): Promise<str
         'The user asked about a product/price but has NOT selected a city. Do NOT quote any product or price — politely ask them to choose their city first (tap the city/location button).'
       );
     } else {
-      // 1) Cheap keyword pre-filter (works for exact English/Urdu names).
+      const cols = await productColumns();
+      const wanted = [
+        'id', 'name_en', 'name_ur', 'unit_type', 'price', 'price_b', 'price_c',
+        'stock_quantity', 'stock_quantity_b', 'stock_quantity_c',
+        'reserved_quantity', 'reserved_quantity_b', 'reserved_quantity_c',
+        'consumer_enabled_a', 'consumer_enabled_b', 'consumer_enabled_c',
+      ];
+      const selectCols = wanted.filter((c) => cols.has(c)).join(', ') || 'id, name_en, price, unit_type';
+      const hasEnableFlags = cols.has('consumer_enabled_a');
+      const hasFeatured = cols.has('is_featured');
+      const orderBy = hasFeatured ? 'is_featured DESC, name_en ASC' : 'name_en ASC';
+      const nameUrClause = cols.has('name_ur') ? ' OR name_ur ILIKE ANY($1)' : '';
+      const tagClause = cols.has('tags')
+        ? ` OR EXISTS (SELECT 1 FROM unnest(COALESCE(tags, ARRAY[]::text[])) tg WHERE tg ILIKE ANY($1))`
+        : '';
+
+      const num = (v: unknown) => (v == null ? 0 : Number(v) || 0);
+      // A quality is buyable when its enable-flag is on (or absent on older DBs)
+      // AND on-hand (stock - reserved) > 0 — same rule as the consumer storefront.
+      const availableTiers = (p: Prod): Array<{ q: 'A' | 'B' | 'C'; price: number }> => {
+        const t: Array<{ q: 'A' | 'B' | 'C'; price: number }> = [];
+        if (
+          (hasEnableFlags ? p.consumer_enabled_a !== false : true) &&
+          p.price != null &&
+          num(p.stock_quantity) - num(p.reserved_quantity) > 0
+        )
+          t.push({ q: 'A', price: Number(p.price) });
+        if (
+          (hasEnableFlags ? p.consumer_enabled_b === true : true) &&
+          p.price_b != null &&
+          num(p.stock_quantity_b) - num(p.reserved_quantity_b) > 0
+        )
+          t.push({ q: 'B', price: Number(p.price_b) });
+        if (
+          (hasEnableFlags ? p.consumer_enabled_c === true : true) &&
+          p.price_c != null &&
+          num(p.stock_quantity_c) - num(p.reserved_quantity_c) > 0
+        )
+          t.push({ q: 'C', price: Number(p.price_c) });
+        return t;
+      };
+      // Returns a fact line for in-stock products only; null when nothing is buyable.
+      const fmtProduct = (p: Prod): string | null => {
+        const tiers = availableTiers(p);
+        if (!tiers.length) return null;
+        const unit = p.unit_type ? `/${p.unit_type}` : '';
+        const nm = p.name_ur ? `${p.name_en} / ${p.name_ur}` : p.name_en;
+        const priceStr = tiers.map((t) => `Quality ${t.q} Rs.${Math.round(t.price)}${unit}`).join(', ');
+        return `- [${nm}](/product/${p.id}): ${priceStr}`;
+      };
+      const fmtAvail = (list: Prod[]) =>
+        list.map(fmtProduct).filter((x): x is string => x !== null);
+
+      // Content tokens (drop fillers) for a cheap keyword pre-filter.
       const tokens = message
         .toLowerCase()
         .replace(/[^a-z0-9؀-ۿ\s]/gi, ' ')
         .split(/\s+/)
-        .filter((w) => w.length >= 3)
+        .filter((w) => w.length >= 3 && !STOPWORDS.has(w))
         .slice(0, 8);
-      let products: Prod[] = [];
+
+      let rows: Prod[] = [];
       if (tokens.length) {
         const patterns = tokens.map((t) => `%${t}%`);
         try {
           const r = await query(
-            `SELECT ${SELECT_COLS}
+            `SELECT ${selectCols}
                FROM products
               WHERE is_active = true AND city_id = $2
-                AND (name_en ILIKE ANY($1) OR name_ur ILIKE ANY($1)
-                     OR EXISTS (SELECT 1 FROM unnest(COALESCE(tags, ARRAY[]::text[])) tg WHERE tg ILIKE ANY($1)))
-              ORDER BY is_featured DESC, name_en ASC
-              LIMIT 8`,
+                AND (name_en ILIKE ANY($1)${nameUrClause}${tagClause})
+              ORDER BY ${orderBy}
+              LIMIT 12`,
             [patterns, cityId]
           );
-          products = r.rows as Prod[];
+          rows = r.rows as Prod[];
         } catch (err) {
           if (!isMissingTable(err)) logger.warn('AI catalog lookup failed', { error: (err as Error)?.message });
         }
       }
 
-      if (products.length) {
+      const listed = fmtAvail(rows);
+      if (listed.length) {
         lines.push(
-          `Matching products in ${cityName || 'the selected city'} (today's consumer price per quality A/B/C in PKR; share the link):`
+          `Matching products in ${cityName || 'the selected city'} (today's in-stock qualities & rates — quote ONLY these):`
         );
-        for (const p of products) lines.push(fmtProduct(p));
-      } else {
-        // 2) No keyword hit (common with Roman-Urdu like "badam"). Give the AI the
-        // CITY catalog so IT matches by transliteration / Urdu name / synonym.
+        lines.push(...listed);
+      } else if (tokens.length) {
+        // No keyword hit (common with Roman-Urdu like "badam"). Give the AI the
+        // city's in-stock catalog so IT matches by transliteration / synonym.
         let catalog: Prod[] = [];
         try {
           const r = await query(
-            `SELECT ${SELECT_COLS}
+            `SELECT ${selectCols}
                FROM products
               WHERE is_active = true AND city_id = $1
-              ORDER BY is_featured DESC, name_en ASC
-              LIMIT 200`,
+              ORDER BY ${orderBy}
+              LIMIT 120`,
             [cityId]
           );
           catalog = r.rows as Prod[];
         } catch (err) {
           if (!isMissingTable(err)) logger.warn('AI catalog list failed', { error: (err as Error)?.message });
         }
-        if (catalog.length) {
+        const catList = fmtAvail(catalog);
+        if (catList.length) {
           lines.push(
-            `No exact keyword match. Below is ${cityName || 'this city'}'s product list (today's price per quality A/B/C) — find the CLOSEST product to what the user asked (English name, Urdu name, Roman-Urdu transliteration, synonym or partial word; e.g. "badam" → Almond/بادام گری, "gobi" → Cauliflower, "tamatar" → Tomato). Share that product's link + rate. Say "not available" only if truly nothing relates:`
+            `No exact keyword match. Below is ${cityName || 'this city'}'s in-stock product list (today's qualities & rates). Find the CLOSEST product the user means (English name, Urdu name, Roman-Urdu transliteration, synonym or partial word; e.g. "badam" → Almond/بادام گری, "gobi" → Cauliflower, "tamatar" → Tomato) and share its link + rate. Say "not available" only if truly nothing relates:`
           );
-          for (const p of catalog) lines.push(fmtProduct(p));
+          lines.push(...catList);
         } else {
           lines.push(
-            `No products are available in ${cityName || 'the selected city'} right now — tell the user honestly and do NOT make up a price.`
+            `No products are in stock in ${cityName || 'the selected city'} right now — tell the user honestly and do NOT make up a price.`
           );
         }
       }

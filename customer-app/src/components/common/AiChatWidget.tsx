@@ -55,8 +55,11 @@ function renderRich(text: string): React.ReactNode[] {
   LINK_RE.lastIndex = 0;
   while ((m = LINK_RE.exec(text)) !== null) {
     if (m.index > last) nodes.push(cleanText(text.slice(last, m.index)));
+    const isProduct = m[2].includes('/product/');
     nodes.push(
       <Text key={i} style={styles.linkText}>
+        {isProduct ? <MaterialIcons name="shopping-cart" size={13} color={COLORS.primary600} /> : null}
+        {isProduct ? ' ' : ''}
         {cleanText(m[1]).trim()}
       </Text>
     );
