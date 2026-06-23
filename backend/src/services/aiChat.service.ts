@@ -83,7 +83,7 @@ WRITING STYLE (keep it clean & simple so the customer easily understands and buy
 - Warm, simple, to the point — no fluff.`;
 
 const PRODUCT_INTENT =
-  /price|rate|qeemat|keemat|kg|kilo|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|products|items|menu|stock/i;
+  /price|rate|kitn|qeemat|keemat|kg|kilo|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|products|items|menu|stock/i;
 
 export interface ChatContextOpts {
   cityId?: string | null;
