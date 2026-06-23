@@ -31,6 +31,7 @@ import { useCityContext } from '@/context/CityContext';
 import { TAB_BAR_BASE_HEIGHT } from '@/lib/tabBarMetrics';
 
 type ProductDetailRouteProp = RouteProp<ShopStackParamList, 'ProductDetail'>;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const ProductDetailScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ShopStackParamList>>();
@@ -76,7 +77,9 @@ export const ProductDetailScreen: React.FC = () => {
   const loadProduct = useCallback(async () => {
     try {
       setError(null);
-      const response = await productService.getProductById(productId);
+      const response = UUID_RE.test(productId)
+        ? await productService.getProductById(productId)
+        : await productService.getProductBySlug(productId);
       if (response.success) {
         setProduct(response.data);
         if (response.data.categoryId) {

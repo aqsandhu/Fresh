@@ -33,6 +33,8 @@ import UnitSelector, { getSelectedUnitPrice } from '@/components/ui/UnitSelector
 import { unitLabelShort, offeredQualities, qualityStock } from '@/lib/unitPricing'
 import { Product, ProductUnit, ProductQuality } from '@/types'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
 export default function ProductDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -47,7 +49,7 @@ export default function ProductDetailPage() {
 
   const { data: product, isLoading } = useQuery({
     queryKey: ['product', id],
-    queryFn: () => productsApi.getById(id),
+    queryFn: () => (UUID_RE.test(id) ? productsApi.getById(id) : productsApi.getBySlug(id)),
   })
 
   const qualities = product ? offeredQualities(product) : (['A'] as ProductQuality[])
@@ -58,7 +60,7 @@ export default function ProductDetailPage() {
 
   const cartItem = items.find(
     (item) =>
-      item.product.id === id &&
+      item.product.id === (product?.id || id) &&
       (item.unit || 'full') === selectedUnit &&
       (item.quality || 'A') === selectedQuality
   )
@@ -70,7 +72,7 @@ export default function ProductDetailPage() {
   })
 
   const relatedProducts: Product[] = (relatedData?.products || [])
-    .filter((p: Product) => p.id !== id)
+    .filter((p: Product) => p.id !== (product?.id || id))
     .slice(0, 4)
 
   useEffect(() => {

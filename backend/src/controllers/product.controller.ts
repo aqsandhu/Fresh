@@ -8,6 +8,7 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, paginatedResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
 import { tagSearchSql } from '../utils/productTags';
+import { isValidUUID } from '../utils/validators';
 import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumns } from '../config/productSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasFeedbackTables } from '../config/feedbackSchema';
@@ -232,6 +233,9 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getProductById = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!isValidUUID(id)) {
+    return notFoundResponse(res, 'Product not found');
+  }
   const publicCityId = await resolvePublicCityId(req);
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
@@ -420,6 +424,9 @@ export const getNewArrivals = asyncHandler(async (req: Request, res: Response) =
  */
 export const getRelatedProducts = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!isValidUUID(id)) {
+    return notFoundResponse(res, 'Product not found');
+  }
   const { limit = 8 } = req.query;
   const publicCityId = await resolvePublicCityId(req);
 
