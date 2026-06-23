@@ -35,10 +35,8 @@ router.get('/favicon', asyncHandler(async (_req, res) => {
 // Public: Get banner settings (no auth required)
 router.get('/banner', asyncHandler(async (req, res) => {
   const cityId = await resolvePublicCityId(req);
-  const [banner, whatsapp] = await Promise.all([
-    fetchBannerSettings(cityId),
-    fetchWhatsAppOrderSettings(cityId),
-  ]);
+  const banner = await fetchBannerSettings(cityId);
+  const whatsapp = await fetchWhatsAppOrderSettings(cityId);
   successResponse(res, { ...banner, ...whatsapp }, 'Banner settings retrieved');
 }));
 
