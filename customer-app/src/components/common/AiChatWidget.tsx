@@ -63,6 +63,47 @@ function productPathFromUrl(url: string): string | null {
   }
 }
 
+// FreshBazar page links the assistant may share (the prompt's ALLOWED PAGES list)
+// mapped to in-app navigation, so page links work in the app like on the web.
+type PageTarget =
+  | { root: 'Main'; tab: string; screen?: string }
+  | { root: 'CartFlow'; screen: string };
+
+const PAGE_ROUTES: Record<string, PageTarget> = {
+  '/products': { root: 'Main', tab: 'Shop', screen: 'ProductsMain' },
+  '/search': { root: 'Main', tab: 'Shop', screen: 'Search' },
+  '/cart': { root: 'Main', tab: 'Cart' },
+  // Checkout opens from the Cart tab (its Checkout button) — safer than jumping
+  // straight into the checkout flow with a possibly-empty cart.
+  '/checkout': { root: 'Main', tab: 'Cart' },
+  '/orders': { root: 'Main', tab: 'Orders', screen: 'OrdersList' },
+  '/profile': { root: 'Main', tab: 'Profile', screen: 'ProfileMain' },
+  '/addresses': { root: 'Main', tab: 'Profile', screen: 'MyAddresses' },
+  '/wishlist': { root: 'Main', tab: 'Profile', screen: 'Wishlist' },
+  '/settings': { root: 'Main', tab: 'Profile', screen: 'Settings' },
+  '/support': { root: 'Main', tab: 'Profile', screen: 'Support' },
+  '/work-as-rider': { root: 'Main', tab: 'Profile', screen: 'WorkAsRider' },
+  '/franchise': { root: 'Main', tab: 'Profile', screen: 'Franchise' },
+  '/restaurant/register': { root: 'Main', tab: 'Profile', screen: 'RestaurantRegister' },
+  '/restaurant/login': { root: 'Main', tab: 'Profile', screen: 'RestaurantLogin' },
+  '/atta-chakki': { root: 'Main', tab: 'Profile', screen: 'AttaChakkiMain' },
+};
+
+/** Navigate to a shared FreshBazar page path; returns false if it isn't a known page. */
+function navigateToPagePath(url: string): boolean {
+  const path = url.split(/[?#]/)[0].replace(/\/+$/, '') || '/';
+  const target = PAGE_ROUTES[path];
+  if (!target || !navigationRef.isReady()) return false;
+  if (target.root === 'CartFlow') {
+    (navigationRef as any).navigate('CartFlow', { screen: target.screen });
+  } else if (target.screen) {
+    (navigationRef as any).navigate('Main', { screen: target.tab, params: { screen: target.screen } });
+  } else {
+    (navigationRef as any).navigate('Main', { screen: target.tab });
+  }
+  return true;
+}
+
 /** Render assistant links as tappable labels (no raw product URLs). */
 function renderRich(text: string, onOpenLink: (url: string) => void): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
@@ -149,6 +190,14 @@ export const AiChatWidget: React.FC = () => {
           params: { screen: 'ProductDetail', params: { productId } },
         });
       }, 0);
+      return;
+    }
+    // Internal FreshBazar page link (e.g. /orders, /work-as-rider) → navigate in-app.
+    if (url.startsWith('/')) {
+      if (PAGE_ROUTES[url.split(/[?#]/)[0].replace(/\/+$/, '')]) {
+        setOpen(false);
+        setTimeout(() => navigateToPagePath(url), 0);
+      }
       return;
     }
     if (/^https?:\/\//i.test(url)) {
