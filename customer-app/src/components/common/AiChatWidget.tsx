@@ -29,10 +29,9 @@ function currentPage(): string | undefined {
   }
 }
 
-/** First name only, for a personal greeting — empty when not signed in. */
-function firstName(u: { fullName?: string; full_name?: string; name?: string } | null): string {
-  const raw = (u?.fullName || u?.full_name || u?.name || '').trim();
-  return raw ? raw.split(/\s+/)[0] : '';
+/** Full name for a personal greeting — empty when not signed in. */
+function customerName(u: { fullName?: string; full_name?: string; name?: string } | null): string {
+  return (u?.fullName || u?.full_name || u?.name || '').trim();
 }
 
 /** Warm, human-sounding opening line (personalised when we know the name). */
@@ -118,7 +117,7 @@ export const AiChatWidget: React.FC = () => {
     setWelcoming(true);
     const t = setTimeout(() => {
       setWelcoming(false);
-      const name = isAuthenticated ? firstName(user) : '';
+      const name = isAuthenticated ? customerName(user) : '';
       setMessages((m) => (m.length === 0 ? [{ role: 'assistant', content: welcomeText(name) }] : m));
     }, 2000);
     return () => {
