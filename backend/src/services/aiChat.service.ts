@@ -60,7 +60,7 @@ LANGUAGE & CULTURE (STRICT — never break this): FreshBazar is a PAKISTANI MUSL
 IMPORTANT — WHAT YOU CANNOT DO: You cannot add items to the cart, change quantities, fill the address, or place/checkout orders yourself. Never say "should I add it for you?" or claim you added/ordered anything. Instead, share the item's link and guide the user to do it.
 
 YOU CAN HELP WITH:
-- Products & categories: help users find items and share consumer retail price/availability from the live catalog below. Match the user's wording smartly — they often type Roman Urdu (e.g. "badam" = Almond/بادام گری, "gobi" = Cauliflower, "tamatar" = Tomato, "pyaz" = Onion, "anday" = Eggs). If there is no exact match but a related/closest product exists in the catalog, OFFER that one (e.g. "Badam ke liye humare paas Almond/بادام گری hai") instead of saying "not found". Only say a product isn't available when truly nothing in the catalog relates. When you name an item, give its markdown link (e.g. [Tomato](/product/ID) — use exactly the link shown in the catalog) and say: "open it, choose the quality (A/B/C) and quantity — the page lets you pick ½ kg or ¼ kg where allowed, or 1, 2, 3+ kg (each item has a minimum), then tap Add to Cart."
+- Products & categories: find items and give the price ONLY from the user's selected city's catalog below (it is today's live rate). Match wording smartly — users often type Roman Urdu ("badam" = Almond/بادام گری, "gobi" = Cauliflower, "tamatar" = Tomato, "pyaz" = Onion, "anday" = Eggs). If no exact match but a related product exists, OFFER the closest one instead of "not found". Only say "not available" when truly nothing relates. PRICE: state the available quality's rate plainly (e.g. "Quality A Rs 3800/kg"; if more than one quality, give those rates briefly). Put the product link on its OWN line. Then one simple line to guide: link kholein, quality (A/B/C) aur quantity chunein, phir Add to Cart dabायें. Keep it short — don't over-explain.
 - Ordering/checkout (GUIDE only, you don't perform it): after adding items → open Cart → Checkout → confirm delivery address by dropping the map pin → pick a delivery time slot → Place Order (Cash on Delivery supported; qualifying orders get free delivery). Tell them which buttons to tap.
 - Today's Basket: ready-made combo packages — opening it and tapping "Add basket to cart" adds all items at once.
 - Restaurants (B2B): businesses Register as Restaurant in the Restaurant section and, once approved, log in to order at special business pricing. NEVER reveal or quote restaurant/wholesale prices — tell them to register & log in to see business rates.
@@ -71,11 +71,16 @@ YOU CAN HELP WITH:
 - Service areas: delivery is limited to covered areas; if a pin is outside, the app shows a message + a WhatsApp number to request service there.
 - About/Contact: company info & support contact are in the footer/menu.
 
-USING REAL FACTS: A "REAL FACTS" block may be added below with the active delivery cities, the user's selected city, the current page, and any matching products. ALWAYS rely on it. Never name a city, price, or product that is not in it. If the facts say a product isn't available, tell the user it's not on FreshBazar right now and never guess a price. To change city, tell the user to tap the city/location button and pick another. If you don't have a fact, say so honestly instead of guessing.
+USING REAL FACTS: A "REAL FACTS" block may be added below with the active delivery cities, the user's selected city, the current page, and matching products (with per-quality prices). ALWAYS rely on it. Never name a city, price, or product that is not in it. Quote prices ONLY from the user's selected city. If NO city is selected, do NOT quote any product/price — politely ask the user to choose a city first. If a product isn't in the facts, say it's not available and never guess a price. To change city, tell the user to tap the city/location button and pick another.
 
 RULES: Stay on FreshBazar topics. Be accurate and safe. Only guide and share links — never perform actions. Don't promise discounts/refunds you can't guarantee.
 
-WRITING STYLE: Reply in plain, simple sentences in the user's language (English, Urdu, or Roman Urdu). Keep it to 2-4 short sentences, or a short numbered list (1. 2. 3.) for steps. Do NOT use markdown bold, asterisks (*), headings (#), or decorative emoji. The ONLY formatting allowed is product links written exactly as [Name](/product/ID). Be warm but efficient — give the user a clear, useful answer with no fluff.`;
+WRITING STYLE (keep it clean & simple so the customer easily understands and buys):
+- Reply in the user's language. If replying in Urdu, write the WHOLE sentence in Urdu — do NOT jumble English words in the middle of an Urdu sentence (it scrambles the text). Product names/links may stay as given.
+- Put any product link on its OWN separate line.
+- For weights use simple words: پاؤ (¼ kg), آدھا کلو (½ kg), 1 kg, 2 kg, etc. Do not write confusing unit phrases.
+- 2-4 short sentences max, or a short numbered list (1. 2. 3.). No markdown bold, asterisks (*), headings (#), or decorative emoji. The only formatting allowed is product links as [Name](/product/ID).
+- Warm, simple, to the point — no fluff.`;
 
 const PRODUCT_INTENT =
   /price|rate|kitn|available|stock|kg|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|product|item|buy|kharid|menu|chahi|milt|milega|konsi|kaunsi|kya hai|kya hain/i;
@@ -129,12 +134,15 @@ async function buildContext(message: string, opts: ChatContextOpts): Promise<str
   // Current page/screen the user is on.
   if (page) lines.push(`The user is currently on this page: ${page}.`);
 
-  // Product lookup — only for product-related questions.
+  // Product lookup — only for product-related questions, and ONLY for the user's
+  // selected city (never across cities). Prices are this city's today's rate.
   type Prod = {
     id: string;
     name_en: string;
     name_ur: string | null;
     price: number;
+    price_b: number | null;
+    price_c: number | null;
     unit_type: string;
     stock_status: string;
   };
@@ -142,69 +150,79 @@ async function buildContext(message: string, opts: ChatContextOpts): Promise<str
     const avail = p.stock_status === 'out_of_stock' ? 'out of stock' : 'in stock';
     const unit = p.unit_type ? `/${p.unit_type}` : '';
     const nm = p.name_ur ? `${p.name_en} / ${p.name_ur}` : p.name_en;
-    return `- [${nm}](/product/${p.id}): Rs.${Math.round(Number(p.price))}${unit} (${avail})`;
+    const parts = [`A Rs.${Math.round(Number(p.price))}`];
+    if (p.price_b != null) parts.push(`B Rs.${Math.round(Number(p.price_b))}`);
+    if (p.price_c != null) parts.push(`C Rs.${Math.round(Number(p.price_c))}`);
+    const priceStr = parts.length > 1 ? `${parts.join(', ')}${unit}` : `Rs.${Math.round(Number(p.price))}${unit}`;
+    return `- [${nm}](/product/${p.id}): ${priceStr} (${avail})`;
   };
+  const SELECT_COLS = 'id, name_en, name_ur, price, price_b, price_c, unit_type, stock_status';
 
   if (PRODUCT_INTENT.test(message)) {
-    // 1) Cheap keyword pre-filter (works for exact English/Urdu names).
-    const tokens = message
-      .toLowerCase()
-      .replace(/[^a-z0-9؀-ۿ\s]/gi, ' ')
-      .split(/\s+/)
-      .filter((w) => w.length >= 3)
-      .slice(0, 8);
-    let products: Prod[] = [];
-    if (tokens.length) {
-      const patterns = tokens.map((t) => `%${t}%`);
-      try {
-        const r = await query(
-          `SELECT id, name_en, name_ur, price, unit_type, stock_status
-             FROM products
-            WHERE is_active = true ${cityId ? 'AND city_id = $2' : ''}
-              AND (name_en ILIKE ANY($1) OR name_ur ILIKE ANY($1)
-                   OR EXISTS (SELECT 1 FROM unnest(COALESCE(tags, ARRAY[]::text[])) tg WHERE tg ILIKE ANY($1)))
-            ORDER BY is_featured DESC, name_en ASC
-            LIMIT 8`,
-          cityId ? [patterns, cityId] : [patterns]
-        );
-        products = r.rows as Prod[];
-      } catch (err) {
-        if (!isMissingTable(err)) logger.warn('AI catalog lookup failed', { error: (err as Error)?.message });
-      }
-    }
-
-    if (products.length) {
+    if (!cityId) {
       lines.push(
-        'Matching products (consumer retail price in PKR; share the link so the user picks quality & quantity there):'
+        'The user asked about a product/price but has NOT selected a city. Do NOT quote any product or price — politely ask them to choose their city first (tap the city/location button).'
       );
-      for (const p of products) lines.push(fmtProduct(p));
     } else {
-      // 2) No keyword hit (common with Roman-Urdu like "badam"). Give the AI the
-      // city catalog so IT matches by transliteration / Urdu name / synonym —
-      // instead of wrongly replying "not found".
-      let catalog: Prod[] = [];
-      try {
-        const r = await query(
-          `SELECT id, name_en, name_ur, price, unit_type, stock_status
-             FROM products
-            WHERE is_active = true ${cityId ? 'AND city_id = $1' : ''}
-            ORDER BY is_featured DESC, name_en ASC
-            LIMIT 200`,
-          cityId ? [cityId] : []
-        );
-        catalog = r.rows as Prod[];
-      } catch (err) {
-        if (!isMissingTable(err)) logger.warn('AI catalog list failed', { error: (err as Error)?.message });
+      // 1) Cheap keyword pre-filter (works for exact English/Urdu names).
+      const tokens = message
+        .toLowerCase()
+        .replace(/[^a-z0-9؀-ۿ\s]/gi, ' ')
+        .split(/\s+/)
+        .filter((w) => w.length >= 3)
+        .slice(0, 8);
+      let products: Prod[] = [];
+      if (tokens.length) {
+        const patterns = tokens.map((t) => `%${t}%`);
+        try {
+          const r = await query(
+            `SELECT ${SELECT_COLS}
+               FROM products
+              WHERE is_active = true AND city_id = $2
+                AND (name_en ILIKE ANY($1) OR name_ur ILIKE ANY($1)
+                     OR EXISTS (SELECT 1 FROM unnest(COALESCE(tags, ARRAY[]::text[])) tg WHERE tg ILIKE ANY($1)))
+              ORDER BY is_featured DESC, name_en ASC
+              LIMIT 8`,
+            [patterns, cityId]
+          );
+          products = r.rows as Prod[];
+        } catch (err) {
+          if (!isMissingTable(err)) logger.warn('AI catalog lookup failed', { error: (err as Error)?.message });
+        }
       }
-      if (catalog.length) {
+
+      if (products.length) {
         lines.push(
-          "No exact keyword match. Below is this city's product list — find the CLOSEST product to what the user asked, matching by English name, Urdu name, Roman-Urdu transliteration, synonym or partial word (e.g. \"badam\" → Almond/بادام گری, \"gobi\" → Cauliflower, \"tamatar\" → Tomato). Share that product's link + price. Only say it's not available if truly nothing in this list relates:"
+          `Matching products in ${cityName || 'the selected city'} (today's consumer price per quality A/B/C in PKR; share the link):`
         );
-        for (const p of catalog) lines.push(fmtProduct(p));
+        for (const p of products) lines.push(fmtProduct(p));
       } else {
-        lines.push(
-          `No products are available in ${cityName || 'the selected city'} right now — tell the user that honestly and do NOT make up a price.`
-        );
+        // 2) No keyword hit (common with Roman-Urdu like "badam"). Give the AI the
+        // CITY catalog so IT matches by transliteration / Urdu name / synonym.
+        let catalog: Prod[] = [];
+        try {
+          const r = await query(
+            `SELECT ${SELECT_COLS}
+               FROM products
+              WHERE is_active = true AND city_id = $1
+              ORDER BY is_featured DESC, name_en ASC
+              LIMIT 200`,
+            [cityId]
+          );
+          catalog = r.rows as Prod[];
+        } catch (err) {
+          if (!isMissingTable(err)) logger.warn('AI catalog list failed', { error: (err as Error)?.message });
+        }
+        if (catalog.length) {
+          lines.push(
+            `No exact keyword match. Below is ${cityName || 'this city'}'s product list (today's price per quality A/B/C) — find the CLOSEST product to what the user asked (English name, Urdu name, Roman-Urdu transliteration, synonym or partial word; e.g. "badam" → Almond/بادام گری, "gobi" → Cauliflower, "tamatar" → Tomato). Share that product's link + rate. Say "not available" only if truly nothing relates:`
+          );
+          for (const p of catalog) lines.push(fmtProduct(p));
+        } else {
+          lines.push(
+            `No products are available in ${cityName || 'the selected city'} right now — tell the user honestly and do NOT make up a price.`
+          );
+        }
       }
     }
   }
