@@ -73,6 +73,8 @@ YOU CAN HELP WITH:
 
 USING REAL FACTS: A "REAL FACTS" block may be added below with the active delivery cities, the user's selected city, the current page, and matching products (with per-quality prices). ALWAYS rely on it. Never name a city, price, or product that is not in it. Quote prices ONLY from the user's selected city. If NO city is selected, do NOT quote any product/price — politely ask the user to choose a city first. If a product isn't in the facts, say it's not available and never guess a price. To change city, tell the user to tap the city/location button and pick another.
 
+PRODUCT LINKS — CRITICAL: Only ever output a product link by copying an EXACT [Name](/product/ID) entry from the REAL FACTS block. NEVER invent, guess, build, shorten or modify a /product/ link or ID, and never attach a price to a product that is not listed in REAL FACTS. If the product the user named is NOT in REAL FACTS, do NOT create a link, do NOT give it a price, and do NOT describe it — clearly tell the user it is not available in their selected city and suggest searching in the app or changing city.
+
 RULES: Stay on FreshBazar topics. Be accurate and safe. Only guide and share links — never perform actions. Don't promise discounts/refunds you can't guarantee.
 
 WRITING STYLE (keep it clean & simple so the customer easily understands and buys):
@@ -701,7 +703,7 @@ function parseAmount(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function extractAmountHits(text: string): AmountHit[] {
+function extractAmountHits(text: string, loose: boolean): AmountHit[] {
   const spans = collectUrlSpans(text);
   const out: AmountHit[] = [];
   const seen = new Set<string>();
@@ -733,7 +735,11 @@ function extractAmountHits(text: string): AmountHit[] {
     }
   }
 
-  if (PRICE_CONTEXT_RE.test(text)) {
+  // The loose generic-number sweep only runs for product questions. On the
+  // no-intent path it would flag phone numbers / timings, so we keep only the
+  // explicit money patterns above (Rs X, X/kg, X روپے) which are unambiguously
+  // prices and must still be verified.
+  if (loose && PRICE_CONTEXT_RE.test(text)) {
     const generic = /\b([0-9][0-9,]*(?:\.[0-9]+)?)\b/g;
     let m: RegExpExecArray | null;
     while ((m = generic.exec(text)) !== null) {
@@ -763,7 +769,12 @@ function previousNonEmptyLineBounds(text: string, start: number): { start: numbe
 }
 
 function validateAiReply(reply: string, bundle: ContextBundle): string {
-  if (!bundle.productIntent || !reply) return reply;
+  // Validation keys off the REPLY content, NOT the question's intent. Even when
+  // intent detection missed (so no facts were injected), the model must never
+  // emit a /product/ link or product price we did not verify — otherwise it
+  // fabricates an ID/rate. With no verified facts, ANY product link/price is
+  // unverified and gets blocked.
+  if (!reply) return reply;
 
   const factById = new Map(bundle.productFacts.map((f) => [f.id, f]));
   const allowedIds = new Set(bundle.productFacts.map((f) => f.id));
@@ -798,7 +809,7 @@ function validateAiReply(reply: string, bundle: ContextBundle): string {
     productLinks.push({ id: linkMatch[1], index: linkMatch.index });
   }
 
-  const amounts = extractAmountHits(reply);
+  const amounts = extractAmountHits(reply, bundle.productIntent);
   for (const hit of amounts) {
     const line = lineBounds(reply, hit.index);
     let contextIds = productLinksInRange(productLinks, line.start, line.end);
