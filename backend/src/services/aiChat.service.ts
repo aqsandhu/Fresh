@@ -39,12 +39,12 @@ interface AiConfig {
 type ProviderFamily = 'anthropic' | 'gemini' | 'openai';
 const PROVIDER_PRESETS: Record<string, { family: ProviderFamily; base?: string; model: string }> = {
   anthropic: { family: 'anthropic', model: 'claude-haiku-4-5-20251001' },
-  gemini: { family: 'gemini', model: 'gemini-1.5-flash' },
+  gemini: { family: 'gemini', model: 'gemini-2.5-flash' },
   openai: { family: 'openai', base: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   'openai-compatible': { family: 'openai', model: 'gpt-4o-mini' },
   deepseek: { family: 'openai', base: 'https://api.deepseek.com', model: 'deepseek-chat' },
-  grok: { family: 'openai', base: 'https://api.x.ai/v1', model: 'grok-2-latest' },
-  xai: { family: 'openai', base: 'https://api.x.ai/v1', model: 'grok-2-latest' },
+  grok: { family: 'openai', base: 'https://api.x.ai/v1', model: 'grok-4.3' },
+  xai: { family: 'openai', base: 'https://api.x.ai/v1', model: 'grok-4.3' },
 };
 
 const MAX_TOKENS = 350;
@@ -83,7 +83,7 @@ WRITING STYLE (keep it clean & simple so the customer easily understands and buy
 - Warm, simple, to the point — no fluff.`;
 
 const PRODUCT_INTENT =
-  /price|rate|kitn|available|stock|kg|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|product|item|buy|kharid|menu|chahi|milt|milega|konsi|kaunsi|kya hai|kya hain/i;
+  /price|rate|qeemat|keemat|kg|kilo|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|product|buy|kharid|menu|stock/i;
 
 export interface ChatContextOpts {
   cityId?: string | null;
@@ -95,8 +95,105 @@ export interface ChatContextOpts {
 const STOPWORDS = new Set([
   'kya', 'kia', 'hai', 'hain', 'hay', 'hy', 'kaise', 'kese', 'kab', 'kahan', 'kaha',
   'how', 'what', 'the', 'and', 'aur', 'for', 'you', 'your', 'mujhe', 'muje', 'mera', 'meri',
-  'kar', 'karo', 'kr', 'plz', 'please', 'bhai', 'app', 'aap',
+  'kar', 'karo', 'kr', 'plz', 'please', 'bhai', 'app', 'aap', 'rate', 'price', 'qeemat',
+  'keemat', 'kitna', 'kitne', 'kitni', 'chahiye', 'chahye', 'available',
 ]);
+
+const PRODUCT_ALIASES: Record<string, string[]> = {
+  adrak: ['ginger'],
+  aam: ['mango'],
+  aloo: ['potato'],
+  akhrot: ['walnut'],
+  anaar: ['pomegranate'],
+  anar: ['pomegranate'],
+  angoor: ['grapes'],
+  anda: ['egg', 'eggs'],
+  anday: ['egg', 'eggs'],
+  badam: ['almond'],
+  baingan: ['eggplant'],
+  bhindi: ['okra'],
+  chukandar: ['beetroot'],
+  dhania: ['coriander'],
+  gobi: ['cauliflower', 'cabbage'],
+  gajar: ['carrot'],
+  hari: ['green'],
+  kaju: ['cashew'],
+  karela: ['bitter gourd'],
+  kela: ['banana'],
+  kele: ['banana'],
+  khajoor: ['dates'],
+  kharbooza: ['melon'],
+  kheera: ['cucumber'],
+  kishmish: ['raisins'],
+  lauki: ['bottle gourd'],
+  lahsan: ['garlic'],
+  lehsan: ['garlic'],
+  leemu: ['lemon'],
+  malta: ['orange'],
+  mirch: ['chilli', 'chili', 'pepper'],
+  mooli: ['radish'],
+  matar: ['peas'],
+  nashpati: ['pear'],
+  nimbu: ['lemon'],
+  palak: ['spinach'],
+  pista: ['pistachio'],
+  podina: ['mint'],
+  pyaz: ['onion'],
+  piyaz: ['onion'],
+  sangtra: ['orange'],
+  seb: ['apple'],
+  shaljam: ['turnip'],
+  shimla: ['capsicum', 'bell pepper'],
+  tamatar: ['tomato'],
+  tarbooz: ['watermelon'],
+  tori: ['ridge gourd'],
+};
+
+const COMMON_PRODUCT_TERMS = new Set([
+  ...Object.keys(PRODUCT_ALIASES),
+  ...Object.values(PRODUCT_ALIASES).flat().flatMap((v) => v.split(/\s+/)),
+  'apple', 'banana', 'mango', 'onion', 'tomato', 'potato', 'garlic', 'ginger',
+  'carrot', 'cucumber', 'almond', 'egg', 'eggs', 'okra', 'spinach', 'cauliflower',
+  'cabbage', 'capsicum', 'chilli', 'chili', 'pepper',
+]);
+
+const NON_PRODUCT_TERMS = new Set([
+  'address', 'admin', 'area', 'bot', 'cart', 'chat', 'checkout', 'city', 'complaint',
+  'contact', 'coupon', 'delivery', 'fee', 'fees', 'franchise', 'login', 'order', 'orders',
+  'payment', 'profile', 'refund', 'restaurant', 'rider', 'service', 'slot', 'support',
+  'whatsapp',
+]);
+
+const AVAILABILITY_WORD_RE = /\b(available|milt[ai]?|milega|milti|milta|chahiye|chahye|hai)\b/i;
+const CATALOG_BROWSE_RE = /\b(menu|products?|items?|list|sabzi|sabziyan|fruits?|vegetables?|veggies|konsi|kaunsi)\b/i;
+
+function productSearchTokens(message: string): string[] {
+  return message
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF\s]/gi, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !STOPWORDS.has(w))
+    .slice(0, 8);
+}
+
+function hasProductIntent(message: string): boolean {
+  const tokens = productSearchTokens(message);
+  if (PRODUCT_INTENT.test(message)) return true;
+  if (tokens.some((t) => COMMON_PRODUCT_TERMS.has(t) || Boolean(PRODUCT_ALIASES[t]))) return true;
+  return AVAILABILITY_WORD_RE.test(message) && tokens.some((t) => !NON_PRODUCT_TERMS.has(t));
+}
+
+interface ProductFactMeta {
+  id: string;
+  prices: number[];
+}
+
+interface ContextBundle {
+  text: string;
+  productIntent: boolean;
+  selectedCity: boolean;
+  productFacts: ProductFactMeta[];
+}
 
 // Which optional `products` columns exist depends on how many migrations have run
 // (legacy → unified-quality → catalog-v2). Probe once and cache, so the catalog
@@ -123,11 +220,13 @@ async function productColumns(): Promise<Set<string>> {
  * The model is told to rely ONLY on these facts so it never invents a city,
  * price, or availability. Consumer retail price only — restaurant prices excluded.
  */
-export async function buildContext(message: string, opts: ChatContextOpts): Promise<string> {
+async function buildContextBundle(message: string, opts: ChatContextOpts): Promise<ContextBundle> {
   const { cityId, page } = opts;
   const lines: string[] = [
     '[REAL FACTS — use ONLY these. Never invent a city, price, or whether a product exists.]',
   ];
+  const productFactsById = new Map<string, ProductFactMeta>();
+  const productIntent = hasProductIntent(message);
 
   // Active service cities (so city questions are answered correctly).
   try {
@@ -182,9 +281,20 @@ export async function buildContext(message: string, opts: ChatContextOpts): Prom
     consumer_enabled_a: boolean | null;
     consumer_enabled_b: boolean | null;
     consumer_enabled_c: boolean | null;
+    half_kg_price: number | null;
+    quarter_kg_price: number | null;
+    half_dozen_price: number | null;
+    half_kg_price_b: number | null;
+    quarter_kg_price_b: number | null;
+    half_dozen_price_b: number | null;
+    half_kg_price_c: number | null;
+    quarter_kg_price_c: number | null;
+    half_dozen_price_c: number | null;
+    allow_half_kg: boolean | null;
+    allow_quarter_kg: boolean | null;
   };
 
-  if (PRODUCT_INTENT.test(message)) {
+  if (productIntent) {
     if (!cityId) {
       lines.push(
         'The user asked about a product/price but has NOT selected a city. Do NOT quote any product or price — politely ask them to choose their city first (tap the city/location button).'
@@ -196,6 +306,10 @@ export async function buildContext(message: string, opts: ChatContextOpts): Prom
         'stock_quantity', 'stock_quantity_b', 'stock_quantity_c',
         'reserved_quantity', 'reserved_quantity_b', 'reserved_quantity_c',
         'consumer_enabled_a', 'consumer_enabled_b', 'consumer_enabled_c',
+        'half_kg_price', 'quarter_kg_price', 'half_dozen_price',
+        'half_kg_price_b', 'quarter_kg_price_b', 'half_dozen_price_b',
+        'half_kg_price_c', 'quarter_kg_price_c', 'half_dozen_price_c',
+        'allow_half_kg', 'allow_quarter_kg',
       ];
       const selectCols = wanted.filter((c) => cols.has(c)).join(', ') || 'id, name_en, price, unit_type';
       const hasEnableFlags = cols.has('consumer_enabled_a');
@@ -218,38 +332,80 @@ export async function buildContext(message: string, opts: ChatContextOpts): Prom
         )
           t.push({ q: 'A', price: Number(p.price) });
         if (
-          (hasEnableFlags ? p.consumer_enabled_b === true : true) &&
+          (hasEnableFlags ? p.consumer_enabled_b !== false : true) &&
           p.price_b != null &&
           num(p.stock_quantity_b) - num(p.reserved_quantity_b) > 0
         )
           t.push({ q: 'B', price: Number(p.price_b) });
         if (
-          (hasEnableFlags ? p.consumer_enabled_c === true : true) &&
+          (hasEnableFlags ? p.consumer_enabled_c !== false : true) &&
           p.price_c != null &&
           num(p.stock_quantity_c) - num(p.reserved_quantity_c) > 0
         )
           t.push({ q: 'C', price: Number(p.price_c) });
         return t;
       };
+      const priceNum = (v: unknown): number | null => {
+        if (v === null || v === undefined || v === '') return null;
+        const n = Number(v);
+        return Number.isFinite(n) && n >= 0 ? n : null;
+      };
+      const roundMoney = (n: number): number => Math.round(n * 100) / 100;
+      const fmtPrice = (n: number): string => {
+        const rounded = roundMoney(n);
+        return Number.isInteger(rounded)
+          ? String(Math.round(rounded))
+          : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+      };
+      const explicitFraction = (p: Prod, q: 'A' | 'B' | 'C', unit: 'half_kg' | 'quarter_kg' | 'half_dozen'): number | null => {
+        const suffix = unit === 'half_kg' ? 'half_kg' : unit === 'quarter_kg' ? 'quarter_kg' : 'half_dozen';
+        const key = q === 'A' ? `${suffix}_price` : `${suffix}_price_${q.toLowerCase()}`;
+        return priceNum((p as any)[key]);
+      };
+      const unitOptions = (p: Prod, q: 'A' | 'B' | 'C', base: number): Array<{ label: string; price: number }> => {
+        const unit = String(p.unit_type || '').toLowerCase();
+        if (unit === 'kg' || unit === 'gram') {
+          const opts: Array<{ label: string; price: number }> = [{ label: '1 kg', price: base }];
+          if (p.allow_half_kg !== false) {
+            opts.push({ label: 'half kg', price: explicitFraction(p, q, 'half_kg') ?? base * 0.5 });
+          }
+          if (p.allow_quarter_kg !== false) {
+            opts.push({ label: 'quarter kg', price: explicitFraction(p, q, 'quarter_kg') ?? base * 0.25 });
+          }
+          return opts;
+        }
+        if (unit === 'dozen') {
+          return [
+            { label: 'dozen', price: base },
+            { label: 'half dozen', price: explicitFraction(p, q, 'half_dozen') ?? base * 0.5 },
+          ];
+        }
+        return [{ label: unit ? `1 ${unit}` : '1 unit', price: base }];
+      };
       // Returns a fact line for in-stock products only; null when nothing is buyable.
       const fmtProduct = (p: Prod): string | null => {
         const tiers = availableTiers(p);
         if (!tiers.length) return null;
-        const unit = p.unit_type ? `/${p.unit_type}` : '';
         const nm = p.name_ur ? `${p.name_en} / ${p.name_ur}` : p.name_en;
-        const priceStr = tiers.map((t) => `Quality ${t.q} Rs.${Math.round(t.price)}${unit}`).join(', ');
+        const factPrices: number[] = [];
+        const priceStr = tiers
+          .map((t) => {
+            const opts = unitOptions(p, t.q, t.price);
+            factPrices.push(...opts.map((o) => roundMoney(o.price)));
+            return `Quality ${t.q}: ${opts.map((o) => `${o.label} Rs.${fmtPrice(o.price)}`).join(', ')}`;
+          })
+          .join('; ');
+        productFactsById.set(p.id, { id: p.id, prices: factPrices });
         return `- [${nm}](/product/${p.id}): ${priceStr}`;
       };
       const fmtAvail = (list: Prod[]) =>
         list.map(fmtProduct).filter((x): x is string => x !== null);
 
       // Content tokens (drop fillers) for a cheap keyword pre-filter.
-      const tokens = message
-        .toLowerCase()
-        .replace(/[^a-z0-9؀-ۿ\s]/gi, ' ')
-        .split(/\s+/)
-        .filter((w) => w.length >= 3 && !STOPWORDS.has(w))
-        .slice(0, 8);
+      const baseTokens = productSearchTokens(message);
+      const tokens = Array.from(
+        new Set(baseTokens.flatMap((t) => [t, ...(PRODUCT_ALIASES[t] || [])]))
+      ).slice(0, 16);
 
       let rows: Prod[] = [];
       if (tokens.length) {
@@ -276,9 +432,17 @@ export async function buildContext(message: string, opts: ChatContextOpts): Prom
           `Matching products in ${cityName || 'the selected city'} (today's in-stock qualities & rates — quote ONLY these):`
         );
         lines.push(...listed);
+      } else if (rows.length) {
+        lines.push(
+          `The requested product exists in ${cityName || 'the selected city'} but has no enabled in-stock consumer quality right now. Tell the user it is not in stock/available today. Do NOT quote a rate or create a product link.`
+        );
+      } else if (tokens.length && !CATALOG_BROWSE_RE.test(message)) {
+        lines.push(
+          `No matching product was found in ${cityName || 'the selected city'} for the user's words (${baseTokens.join(', ')}). Tell the user it is not available in the selected city's live catalog right now. Do NOT quote a rate, do NOT create a product link, and do NOT offer an unrelated substitute.`
+        );
       } else if (tokens.length) {
-        // No keyword hit (common with Roman-Urdu like "badam"). Give the AI the
-        // city's in-stock catalog so IT matches by transliteration / synonym.
+        // Generic browse/menu question: show the in-stock catalog. Specific
+        // no-match questions are handled above to avoid fake product links.
         let catalog: Prod[] = [];
         try {
           const r = await query(
@@ -286,7 +450,7 @@ export async function buildContext(message: string, opts: ChatContextOpts): Prom
                FROM products
               WHERE is_active = true AND city_id = $1
               ORDER BY ${orderBy}
-              LIMIT 120`,
+              LIMIT 80`,
             [cityId]
           );
           catalog = r.rows as Prod[];
@@ -298,6 +462,9 @@ export async function buildContext(message: string, opts: ChatContextOpts): Prom
           lines.push(
             `No exact keyword match. Below is ${cityName || 'this city'}'s in-stock product list (today's qualities & rates). Find the CLOSEST product the user means (English name, Urdu name, Roman-Urdu transliteration, synonym or partial word; e.g. "badam" → Almond/بادام گری, "gobi" → Cauliflower, "tamatar" → Tomato) and share its link + rate. Say "not available" only if truly nothing relates:`
           );
+          lines.push(
+            'STRICT MATCH RULE: do not recommend a different item just because it is available. If the requested product is not clearly present in the list below, say it is not available. Never create a product link or rate yourself.'
+          );
           lines.push(...catList);
         } else {
           lines.push(
@@ -308,7 +475,16 @@ export async function buildContext(message: string, opts: ChatContextOpts): Prom
     }
   }
 
-  return lines.join('\n');
+  return {
+    text: lines.join('\n'),
+    productIntent,
+    selectedCity: Boolean(cityId),
+    productFacts: Array.from(productFactsById.values()),
+  };
+}
+
+export async function buildContext(message: string, opts: ChatContextOpts): Promise<string> {
+  return (await buildContextBundle(message, opts)).text;
 }
 
 /**
@@ -381,6 +557,56 @@ function sanitizeHistory(history: ChatMessage[]): ChatMessage[] {
   return out;
 }
 
+const PRODUCT_LINK_ID_RE = /\/product\/([A-Za-z0-9_-]+)/g;
+const RUPEE_AMOUNT_RE = /\b(?:rs\.?|pkr|rupees)\s*([0-9][0-9,]*(?:\.[0-9]+)?)/gi;
+
+function moneyKey(n: number): string {
+  return String(Math.round(n * 100));
+}
+
+function safeProductFallback(bundle: ContextBundle): string {
+  if (!bundle.selectedCity) {
+    return 'Product ka verified rate batane ke liye pehle apni city select karen. City/location button se city choose kar ke dobara pooch lein.';
+  }
+  return 'Mujhe is product ka verified live rate/link selected city ke catalog mein nahi mil raha, is liye main rate guess nahi karunga. App mein product search kar lein ya city change kar ke check karen.';
+}
+
+function validateAiReply(reply: string, bundle: ContextBundle): string {
+  if (!bundle.productIntent || !reply) return reply;
+
+  const allowedIds = new Set(bundle.productFacts.map((f) => f.id));
+  const allowedPrices = new Set(bundle.productFacts.flatMap((f) => f.prices.map(moneyKey)));
+
+  PRODUCT_LINK_ID_RE.lastIndex = 0;
+  let linkMatch: RegExpExecArray | null;
+  let sawValidProductLink = false;
+  while ((linkMatch = PRODUCT_LINK_ID_RE.exec(reply)) !== null) {
+    if (!allowedIds.has(linkMatch[1])) {
+      logger.warn('AI chat reply blocked invalid product link', { productId: linkMatch[1] });
+      return safeProductFallback(bundle);
+    }
+    sawValidProductLink = true;
+  }
+
+  RUPEE_AMOUNT_RE.lastIndex = 0;
+  let amountMatch: RegExpExecArray | null;
+  let sawRupeeAmount = false;
+  while ((amountMatch = RUPEE_AMOUNT_RE.exec(reply)) !== null) {
+    sawRupeeAmount = true;
+    const amount = Number(amountMatch[1].replace(/,/g, ''));
+    if (Number.isFinite(amount) && !allowedPrices.has(moneyKey(amount))) {
+      logger.warn('AI chat reply blocked invalid product price', { amount });
+      return safeProductFallback(bundle);
+    }
+  }
+  if (sawRupeeAmount && !sawValidProductLink) {
+    logger.warn('AI chat reply blocked product price without verified link');
+    return safeProductFallback(bundle);
+  }
+
+  return reply;
+}
+
 /**
  * Generate a reply from the configured provider for a short message history.
  * Injects a tiny live-catalog context for product questions (city-scoped).
@@ -402,8 +628,10 @@ export async function generateReply(
   // assistant turns and collapse accidental same-role repeats.
   const convo = sanitizeHistory(history);
   const lastUser = [...convo].reverse().find((m) => m.role === 'user')?.content || '';
-  const context = await buildContext(lastUser, opts);
+  const contextBundle = await buildContextBundle(lastUser, opts);
+  const context = contextBundle.text;
   const systemPrompt = context ? `${SYSTEM_PROMPT}\n\n${context}` : SYSTEM_PROMPT;
+  const safeReply = (s: unknown) => validateAiReply(String(s || '').trim(), contextBundle);
 
   try {
     if (family === 'anthropic') {
@@ -412,7 +640,7 @@ export async function generateReply(
         { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
         { model, max_tokens: MAX_TOKENS, system: systemPrompt, messages: convo }
       );
-      return String(data?.content?.[0]?.text || '').trim();
+      return safeReply(data?.content?.[0]?.text);
     }
 
     if (family === 'gemini') {
@@ -429,7 +657,7 @@ export async function generateReply(
           generationConfig: { maxOutputTokens: MAX_TOKENS },
         }
       );
-      return String(data?.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+      return safeReply(data?.candidates?.[0]?.content?.parts?.[0]?.text);
     }
 
     // OpenAI-compatible (OpenAI, DeepSeek, Grok/xAI, custom). Base URL comes from
@@ -444,7 +672,7 @@ export async function generateReply(
         messages: [{ role: 'system', content: systemPrompt }, ...convo],
       }
     );
-    return String(data?.choices?.[0]?.message?.content || '').trim();
+    return safeReply(data?.choices?.[0]?.message?.content);
   } catch (err: any) {
     logger.warn('AI chat generation failed', { provider, message: err?.message });
     throw err;
