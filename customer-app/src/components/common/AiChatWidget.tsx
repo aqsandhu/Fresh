@@ -47,6 +47,16 @@ function cleanText(s: string): string {
     .replace(/^\s*[-•]\s+/gm, '• ');
 }
 
+function productPathFromUrl(url: string): string | null {
+  if (url.startsWith('/product/')) return url.split(/[?#]/)[0];
+  try {
+    const u = new URL(url);
+    return u.pathname.startsWith('/product/') ? u.pathname : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Render assistant links as tappable labels (no raw product URLs). */
 function renderRich(text: string, onOpenLink: (url: string) => void): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
@@ -58,12 +68,13 @@ function renderRich(text: string, onOpenLink: (url: string) => void): React.Reac
     if (m.index > last) nodes.push(cleanText(text.slice(last, m.index)));
     const label = m[1] || (m[3] ? 'View product' : m[4] || '');
     const url = m[2] || m[3] || m[4] || '';
-    const isProduct = url.startsWith('/product/');
+    const isProduct = Boolean(productPathFromUrl(url));
+    const displayLabel = isProduct && (/^https?:\/\//i.test(label) || label === url) ? 'View product' : label;
     nodes.push(
       <Text key={i} style={styles.linkText} onPress={() => onOpenLink(url)}>
         {isProduct ? <MaterialIcons name="shopping-cart" size={13} color={COLORS.primary600} /> : null}
         {isProduct ? ' ' : ''}
-        {cleanText(label).trim()}
+        {cleanText(displayLabel).trim()}
       </Text>
     );
     last = TOKEN_RE.lastIndex;
@@ -94,10 +105,11 @@ export const AiChatWidget: React.FC = () => {
 
   const openLink = (url: string) => {
     if (!url) return;
-    if (url.startsWith('/product/')) {
+    const productPath = productPathFromUrl(url);
+    if (productPath) {
       let productId = '';
       try {
-        productId = decodeURIComponent(url.split('/product/')[1]?.split(/[?#]/)[0] || '');
+        productId = decodeURIComponent(productPath.split('/product/')[1] || '');
       } catch {
         productId = '';
       }

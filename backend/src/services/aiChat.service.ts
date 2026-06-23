@@ -166,6 +166,7 @@ const NON_PRODUCT_TERMS = new Set([
 
 const AVAILABILITY_WORD_RE = /\b(available|milt[ai]?|milega|milti|milta|chahiye|chahye|hai)\b/i;
 const CATALOG_BROWSE_RE = /\b(menu|products?|items?|list|sabzi|sabziyan|fruits?|vegetables?|veggies|konsi|kaunsi)\b/i;
+type ProductAnswerMode = 'none' | 'needs_city' | 'available' | 'out_of_stock' | 'no_match' | 'empty_catalog';
 
 function productSearchTokens(message: string): string[] {
   return message
@@ -186,13 +187,41 @@ function hasProductIntent(message: string): boolean {
 interface ProductFactMeta {
   id: string;
   prices: number[];
+  names: string[];
+  terms: string[];
 }
 
 interface ContextBundle {
   text: string;
   productIntent: boolean;
   selectedCity: boolean;
+  answerMode: ProductAnswerMode;
   productFacts: ProductFactMeta[];
+}
+
+const GENERIC_LINK_LABEL_TERMS = new Set([
+  'view', 'open', 'product', 'item', 'link', 'buy', 'shop', 'fresh', 'freshbazar',
+  'quality', 'rate', 'price', 'qeemat', 'keemat', 'cart', 'add',
+]);
+
+function normalizeWords(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF\s]/gi, ' ')
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 2);
+}
+
+function buildProductTerms(names: string[]): string[] {
+  const terms = new Set<string>(names.flatMap(normalizeWords));
+  for (const [alias, targets] of Object.entries(PRODUCT_ALIASES)) {
+    const targetTerms = targets.flatMap(normalizeWords);
+    if (targetTerms.some((t) => terms.has(t))) {
+      normalizeWords(alias).forEach((t) => terms.add(t));
+    }
+  }
+  return Array.from(terms);
 }
 
 // Which optional `products` columns exist depends on how many migrations have run
@@ -227,6 +256,7 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
   ];
   const productFactsById = new Map<string, ProductFactMeta>();
   const productIntent = hasProductIntent(message);
+  let answerMode: ProductAnswerMode = productIntent ? (cityId ? 'none' : 'needs_city') : 'none';
 
   // Active service cities (so city questions are answered correctly).
   try {
@@ -299,6 +329,7 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
       lines.push(
         'The user asked about a product/price but has NOT selected a city. Do NOT quote any product or price — politely ask them to choose their city first (tap the city/location button).'
       );
+      answerMode = 'needs_city';
     } else {
       const cols = await productColumns();
       const wanted = [
@@ -387,6 +418,7 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
         const tiers = availableTiers(p);
         if (!tiers.length) return null;
         const nm = p.name_ur ? `${p.name_en} / ${p.name_ur}` : p.name_en;
+        const names = [p.name_en, p.name_ur].filter((x): x is string => Boolean(x));
         const factPrices: number[] = [];
         const priceStr = tiers
           .map((t) => {
@@ -395,7 +427,12 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
             return `Quality ${t.q}: ${opts.map((o) => `${o.label} Rs.${fmtPrice(o.price)}`).join(', ')}`;
           })
           .join('; ');
-        productFactsById.set(p.id, { id: p.id, prices: factPrices });
+        productFactsById.set(p.id, {
+          id: p.id,
+          prices: factPrices,
+          names,
+          terms: buildProductTerms(names),
+        });
         return `- [${nm}](/product/${p.id}): ${priceStr}`;
       };
       const fmtAvail = (list: Prod[]) =>
@@ -432,14 +469,17 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
           `Matching products in ${cityName || 'the selected city'} (today's in-stock qualities & rates — quote ONLY these):`
         );
         lines.push(...listed);
+        answerMode = 'available';
       } else if (rows.length) {
         lines.push(
           `The requested product exists in ${cityName || 'the selected city'} but has no enabled in-stock consumer quality right now. Tell the user it is not in stock/available today. Do NOT quote a rate or create a product link.`
         );
+        answerMode = 'out_of_stock';
       } else if (tokens.length && !CATALOG_BROWSE_RE.test(message)) {
         lines.push(
           `No matching product was found in ${cityName || 'the selected city'} for the user's words (${baseTokens.join(', ')}). Tell the user it is not available in the selected city's live catalog right now. Do NOT quote a rate, do NOT create a product link, and do NOT offer an unrelated substitute.`
         );
+        answerMode = 'no_match';
       } else if (tokens.length) {
         // Generic browse/menu question: show the in-stock catalog. Specific
         // no-match questions are handled above to avoid fake product links.
@@ -466,10 +506,12 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
             'STRICT MATCH RULE: do not recommend a different item just because it is available. If the requested product is not clearly present in the list below, say it is not available. Never create a product link or rate yourself.'
           );
           lines.push(...catList);
+          answerMode = 'available';
         } else {
           lines.push(
             `No products are in stock in ${cityName || 'the selected city'} right now — tell the user honestly and do NOT make up a price.`
           );
+          answerMode = 'empty_catalog';
         }
       }
     }
@@ -479,6 +521,7 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
     text: lines.join('\n'),
     productIntent,
     selectedCity: Boolean(cityId),
+    answerMode,
     productFacts: Array.from(productFactsById.values()),
   };
 }
@@ -558,50 +601,201 @@ function sanitizeHistory(history: ChatMessage[]): ChatMessage[] {
 }
 
 const PRODUCT_LINK_ID_RE = /\/product\/([A-Za-z0-9_-]+)/g;
-const RUPEE_AMOUNT_RE = /\b(?:rs\.?|pkr|rupees)\s*([0-9][0-9,]*(?:\.[0-9]+)?)/gi;
+const MARKDOWN_PRODUCT_LINK_RE = /\[([^\]]{1,140})\]\(([^)]*\/product\/([A-Za-z0-9_-]+)[^)]*)\)/g;
+const URL_SPAN_RE = /(https?:\/\/[^\s)]+|\/product\/[A-Za-z0-9_-]+)/g;
+const PRICE_CONTEXT_RE = /\b(quality|rate|price|qeemat|keemat|kg|kilo|dozen|rs\.?|pkr|rupees?|rupay|rupiya|per)\b|روپے|₨/i;
+
+interface ProductLinkHit {
+  id: string;
+  index: number;
+}
+
+interface AmountHit {
+  value: number;
+  index: number;
+}
 
 function moneyKey(n: number): string {
   return String(Math.round(n * 100));
 }
 
 function safeProductFallback(bundle: ContextBundle): string {
-  if (!bundle.selectedCity) {
+  if (bundle.answerMode === 'needs_city' || !bundle.selectedCity) {
     return 'Product ka verified rate batane ke liye pehle apni city select karen. City/location button se city choose kar ke dobara pooch lein.';
   }
+  if (bundle.answerMode === 'out_of_stock') {
+    return 'Ye product selected city mein abhi in stock nahi hai, is liye main rate ya link quote nahi karunga. App mein dobara search kar lein ya baad mein check karen.';
+  }
+  if (bundle.answerMode === 'no_match') {
+    return 'Mujhe ye product selected city ke live catalog mein nahi mila, is liye main rate ya link guess nahi karunga. App mein product search kar lein ya city change kar ke check karen.';
+  }
+  if (bundle.answerMode === 'empty_catalog') {
+    return 'Selected city mein abhi verified in-stock product list available nahi ho rahi, is liye main rate ya link guess nahi karunga. Thori der baad dobara check karen.';
+  }
   return 'Mujhe is product ka verified live rate/link selected city ke catalog mein nahi mil raha, is liye main rate guess nahi karunga. App mein product search kar lein ya city change kar ke check karen.';
+}
+
+function labelMatchesProduct(label: string, fact: ProductFactMeta): boolean {
+  const labelTerms = normalizeWords(label)
+    .filter((t) => !GENERIC_LINK_LABEL_TERMS.has(t) && !STOPWORDS.has(t));
+  if (!labelTerms.length) return true;
+  const factTerms = new Set(fact.terms);
+  return labelTerms.some((t) => factTerms.has(t));
+}
+
+function unavailableReplyLooksSafe(reply: string, mode: ProductAnswerMode): boolean {
+  const text = reply.toLowerCase();
+  if (mode === 'needs_city') return /\b(city|location|select|choose|shehar)\b/.test(text);
+  return (
+    /not\s+(available|in stock|found)/.test(text) ||
+    /out\s+of\s+stock/.test(text) ||
+    /\b(nahi|nahin|unavailable)\b/.test(text) ||
+    /نہیں|ختم/.test(reply) ||
+    /\b(stock|catalog)\b/.test(text)
+  );
+}
+
+function collectUrlSpans(text: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  URL_SPAN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = URL_SPAN_RE.exec(text)) !== null) {
+    spans.push({ start: m.index, end: m.index + m[0].length });
+  }
+  return spans;
+}
+
+function inSpan(index: number, spans: Array<{ start: number; end: number }>): boolean {
+  return spans.some((s) => index >= s.start && index < s.end);
+}
+
+function parseAmount(raw: string): number | null {
+  const n = Number(raw.replace(/,/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractAmountHits(text: string): AmountHit[] {
+  const spans = collectUrlSpans(text);
+  const out: AmountHit[] = [];
+  const seen = new Set<string>();
+  const add = (raw: string, index: number, explicit: boolean) => {
+    if (inSpan(index, spans)) return;
+    const value = parseAmount(raw);
+    if (value == null) return;
+    if (!explicit && value < 10) return;
+    const key = `${index}:${moneyKey(value)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ value, index });
+  };
+
+  const patterns: Array<{ re: RegExp; group: number; explicit: boolean }> = [
+    { re: /\b(?:rs\.?|pkr|rupees?|rupay|rupiya|₨)\s*([0-9][0-9,]*(?:\.[0-9]+)?)/gi, group: 1, explicit: true },
+    { re: /روپے\s*([0-9][0-9,]*(?:\.[0-9]+)?)/g, group: 1, explicit: true },
+    { re: /\b([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:rs\.?|pkr|rupees?|rupay|rupiya|₨)\b/gi, group: 1, explicit: true },
+    { re: /([0-9][0-9,]*(?:\.[0-9]+)?)\s*روپے/g, group: 1, explicit: true },
+    { re: /\b([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:\/\s*(?:kg|kilo|dozen|unit|piece|pcs?)|per\s+(?:kg|kilo|dozen|unit|piece|pcs?))\b/gi, group: 1, explicit: true },
+  ];
+
+  for (const { re, group, explicit } of patterns) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const raw = m[group];
+      add(raw, m.index + m[0].indexOf(raw), explicit);
+    }
+  }
+
+  if (PRICE_CONTEXT_RE.test(text)) {
+    const generic = /\b([0-9][0-9,]*(?:\.[0-9]+)?)\b/g;
+    let m: RegExpExecArray | null;
+    while ((m = generic.exec(text)) !== null) {
+      add(m[1], m.index, false);
+    }
+  }
+
+  return out;
+}
+
+function lineBounds(text: string, index: number): { start: number; end: number } {
+  const start = text.lastIndexOf('\n', index) + 1;
+  const next = text.indexOf('\n', index);
+  return { start, end: next === -1 ? text.length : next };
+}
+
+function productLinksInRange(links: ProductLinkHit[], start: number, end: number): string[] {
+  return links.filter((l) => l.index >= start && l.index < end).map((l) => l.id);
+}
+
+function previousNonEmptyLineBounds(text: string, start: number): { start: number; end: number } | null {
+  let end = start - 1;
+  while (end >= 0 && /\s/.test(text[end])) end--;
+  if (end < 0) return null;
+  const prevStart = text.lastIndexOf('\n', end) + 1;
+  return { start: prevStart, end: end + 1 };
 }
 
 function validateAiReply(reply: string, bundle: ContextBundle): string {
   if (!bundle.productIntent || !reply) return reply;
 
+  const factById = new Map(bundle.productFacts.map((f) => [f.id, f]));
   const allowedIds = new Set(bundle.productFacts.map((f) => f.id));
   const allowedPrices = new Set(bundle.productFacts.flatMap((f) => f.prices.map(moneyKey)));
+
+  MARKDOWN_PRODUCT_LINK_RE.lastIndex = 0;
+  let markdownMatch: RegExpExecArray | null;
+  while ((markdownMatch = MARKDOWN_PRODUCT_LINK_RE.exec(reply)) !== null) {
+    const label = markdownMatch[1];
+    const id = markdownMatch[3];
+    const fact = factById.get(id);
+    if (!fact) {
+      logger.warn('AI chat reply blocked invalid markdown product link', { productId: id });
+      return safeProductFallback(bundle);
+    }
+    if (!labelMatchesProduct(label, fact)) {
+      logger.warn('AI chat reply blocked mismatched product link label', { productId: id, label });
+      return safeProductFallback(bundle);
+    }
+  }
 
   PRODUCT_LINK_ID_RE.lastIndex = 0;
   let linkMatch: RegExpExecArray | null;
   let sawValidProductLink = false;
+  const productLinks: ProductLinkHit[] = [];
   while ((linkMatch = PRODUCT_LINK_ID_RE.exec(reply)) !== null) {
     if (!allowedIds.has(linkMatch[1])) {
       logger.warn('AI chat reply blocked invalid product link', { productId: linkMatch[1] });
       return safeProductFallback(bundle);
     }
     sawValidProductLink = true;
+    productLinks.push({ id: linkMatch[1], index: linkMatch.index });
   }
 
-  RUPEE_AMOUNT_RE.lastIndex = 0;
-  let amountMatch: RegExpExecArray | null;
-  let sawRupeeAmount = false;
-  while ((amountMatch = RUPEE_AMOUNT_RE.exec(reply)) !== null) {
-    sawRupeeAmount = true;
-    const amount = Number(amountMatch[1].replace(/,/g, ''));
-    if (Number.isFinite(amount) && !allowedPrices.has(moneyKey(amount))) {
-      logger.warn('AI chat reply blocked invalid product price', { amount });
+  const amounts = extractAmountHits(reply);
+  for (const hit of amounts) {
+    const line = lineBounds(reply, hit.index);
+    let contextIds = productLinksInRange(productLinks, line.start, line.end);
+    if (!contextIds.length) {
+      const prev = previousNonEmptyLineBounds(reply, line.start);
+      if (prev) contextIds = productLinksInRange(productLinks, prev.start, prev.end);
+    }
+    const priceSet = contextIds.length
+      ? new Set(contextIds.flatMap((id) => factById.get(id)?.prices.map(moneyKey) || []))
+      : allowedPrices;
+    if (!priceSet.has(moneyKey(hit.value))) {
+      logger.warn('AI chat reply blocked invalid product price', { amount: hit.value, contextIds });
       return safeProductFallback(bundle);
     }
   }
-  if (sawRupeeAmount && !sawValidProductLink) {
+  if (amounts.length && !sawValidProductLink) {
     logger.warn('AI chat reply blocked product price without verified link');
     return safeProductFallback(bundle);
+  }
+  if (!bundle.productFacts.length && ['needs_city', 'out_of_stock', 'no_match', 'empty_catalog'].includes(bundle.answerMode)) {
+    if (!unavailableReplyLooksSafe(reply, bundle.answerMode)) {
+      logger.warn('AI chat reply blocked unsafe no-facts answer', { answerMode: bundle.answerMode });
+      return safeProductFallback(bundle);
+    }
   }
 
   return reply;
