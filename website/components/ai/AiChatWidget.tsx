@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, X, Send, Loader2, Bot, ShoppingCart, ShoppingBasket } from 'lucide-react'
+import { MessageCircle, X, Send, Loader2, Bot } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { aiChatApi, type AiChatMessage } from '@/lib/api'
 
@@ -15,8 +15,6 @@ const GREETING: AiChatMessage = {
 
 // Finds markdown links, bare product paths, and bare URLs in one pass.
 const TOKEN_RE = /\[([^\]]+)\]\(([^)]+)\)|(\/product\/[A-Za-z0-9_-]+)|(https?:\/\/[^\s)]+)/g
-// Words that get a small inline icon (matches the storefront's icons).
-const KEYWORD_RE = /\b(carts?|baskets?)\b/gi
 
 /** Strip stray markdown so no "stars"/symbols leak into the chat. */
 function cleanText(s: string): string {
@@ -49,34 +47,6 @@ export default function AiChatWidget() {
 
   if (!status?.enabled) return null
 
-  /** Plain text → nodes with a small cart/basket icon beside those words. */
-  const withIcons = (text: string, keyPrefix: string): React.ReactNode[] => {
-    const nodes: React.ReactNode[] = []
-    let last = 0
-    let m: RegExpExecArray | null
-    let i = 0
-    KEYWORD_RE.lastIndex = 0
-    while ((m = KEYWORD_RE.exec(text)) !== null) {
-      if (m.index > last) nodes.push(text.slice(last, m.index))
-      const word = m[1]
-      const isBasket = /basket/i.test(word)
-      nodes.push(
-        <span key={`${keyPrefix}i${i}`} className="inline-flex items-center gap-0.5 font-medium text-primary-700">
-          {word}
-          {isBasket ? (
-            <ShoppingBasket className="inline h-3.5 w-3.5" />
-          ) : (
-            <ShoppingCart className="inline h-3.5 w-3.5" />
-          )}
-        </span>
-      )
-      last = KEYWORD_RE.lastIndex
-      i++
-    }
-    if (last < text.length) nodes.push(text.slice(last))
-    return nodes
-  }
-
   const linkNode = (label: string, url: string, key: string) =>
     url.startsWith('/') ? (
       <Link
@@ -99,7 +69,7 @@ export default function AiChatWidget() {
       </a>
     )
 
-  /** Render an assistant message: links clickable, markdown stripped, icons inlined. */
+  /** Render an assistant message: links clickable, markdown stripped. */
   const renderMessage = (raw: string): React.ReactNode[] => {
     const out: React.ReactNode[] = []
     let last = 0
@@ -107,14 +77,14 @@ export default function AiChatWidget() {
     let i = 0
     TOKEN_RE.lastIndex = 0
     while ((m = TOKEN_RE.exec(raw)) !== null) {
-      if (m.index > last) out.push(...withIcons(cleanText(raw.slice(last, m.index)), `p${i}`))
+      if (m.index > last) out.push(cleanText(raw.slice(last, m.index)))
       if (m[1] && m[2]) out.push(linkNode(cleanText(m[1]).trim(), m[2], `l${i}`))
       else if (m[3]) out.push(linkNode('View product', m[3], `l${i}`))
       else if (m[4]) out.push(linkNode(m[4], m[4], `l${i}`))
       last = TOKEN_RE.lastIndex
       i++
     }
-    if (last < raw.length) out.push(...withIcons(cleanText(raw.slice(last)), 'pE'))
+    if (last < raw.length) out.push(cleanText(raw.slice(last)))
     return out
   }
 
@@ -182,6 +152,7 @@ export default function AiChatWidget() {
               {messages.map((msg, idx) => (
                 <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
+                    dir="auto"
                     className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-[14px] leading-relaxed shadow-sm ${
                       msg.role === 'user'
                         ? 'rounded-br-md bg-primary-600 text-white'
