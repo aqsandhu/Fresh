@@ -287,4 +287,38 @@ describe('aiChat buildContext', () => {
     expect(reply).not.toContain('live catalog');
     expect((global as any).fetch).toHaveBeenCalledTimes(1);
   });
+
+  // Regression: a product the user names with NO price/availability trigger word
+  // (e.g. just "kiwi") is NOT flagged as product-intent, so the provider IS
+  // called. The model used to be free to fabricate a /product/ link + rate with
+  // zero validation. Validation now keys off the reply content, so the fake link
+  // and price must be stripped even though intent detection missed.
+  it('blocks a fabricated product link/price even when intent detection misses', async () => {
+    installDb({ keyword: [], catalog: [ALMOND] });
+    mockProviderReply('[Kiwi](/product/p-fake)\nQuality A: 1 kg Rs.999');
+
+    const reply = await generateReply(
+      [{ role: 'user', content: 'kiwi' }],
+      { cityId: 'city-lhr' }
+    );
+
+    expect((global as any).fetch).toHaveBeenCalledTimes(1); // provider WAS used
+    expect(reply).not.toContain('/product/p-fake'); // fake link stripped
+    expect(reply).not.toContain('Rs.999'); // fake price stripped
+    expect(reply).not.toContain('Kiwi'); // no invented product claim
+    expect(reply.toLowerCase()).toContain('verified'); // safe fallback
+  });
+
+  it('lets a genuine non-product reply pass through unchanged', async () => {
+    installDb({ keyword: [], catalog: [ALMOND] });
+    mockProviderReply('Assalam-o-Alaikum! Aap ki kaise madad kar sakta hoon?');
+
+    const reply = await generateReply(
+      [{ role: 'user', content: 'salam' }],
+      { cityId: 'city-lhr' }
+    );
+
+    expect((global as any).fetch).toHaveBeenCalledTimes(1);
+    expect(reply).toContain('Assalam-o-Alaikum'); // not blocked, no false positive
+  });
 });
