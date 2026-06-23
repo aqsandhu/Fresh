@@ -83,7 +83,7 @@ WRITING STYLE (keep it clean & simple so the customer easily understands and buy
 - Warm, simple, to the point — no fluff.`;
 
 const PRODUCT_INTENT =
-  /price|rate|qeemat|keemat|kg|kilo|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|product|buy|kharid|menu|stock/i;
+  /price|rate|qeemat|keemat|kg|kilo|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|products|items|menu|stock/i;
 
 export interface ChatContextOpts {
   cityId?: string | null;
@@ -160,7 +160,7 @@ const COMMON_PRODUCT_TERMS = new Set([
 const NON_PRODUCT_TERMS = new Set([
   'address', 'admin', 'area', 'bot', 'cart', 'chat', 'checkout', 'city', 'complaint',
   'contact', 'coupon', 'delivery', 'fee', 'fees', 'franchise', 'login', 'order', 'orders',
-  'payment', 'profile', 'refund', 'restaurant', 'rider', 'service', 'slot', 'support',
+  'link', 'payment', 'profile', 'refund', 'restaurant', 'rider', 'service', 'slot', 'support',
   'whatsapp',
 ]);
 
@@ -186,6 +186,9 @@ function hasProductIntent(message: string): boolean {
 
 interface ProductFactMeta {
   id: string;
+  displayName: string;
+  href: string;
+  priceText: string;
   prices: number[];
   names: string[];
   terms: string[];
@@ -429,6 +432,9 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
           .join('; ');
         productFactsById.set(p.id, {
           id: p.id,
+          displayName: nm,
+          href: `/product/${p.id}`,
+          priceText: priceStr,
           prices: factPrices,
           names,
           terms: buildProductTerms(names),
@@ -635,6 +641,27 @@ function safeProductFallback(bundle: ContextBundle): string {
   return 'Mujhe is product ka verified live rate/link selected city ke catalog mein nahi mil raha, is liye main rate guess nahi karunga. App mein product search kar lein ya city change kar ke check karen.';
 }
 
+function deterministicProductReply(bundle: ContextBundle): string | null {
+  if (!bundle.productIntent) return null;
+  if (bundle.answerMode === 'none') {
+    return 'Kis product ka verified rate chahiye? Product ka naam likh dein, main selected city ke live catalog se rate bata dunga.';
+  }
+  if (bundle.answerMode !== 'available') {
+    return safeProductFallback(bundle);
+  }
+  if (!bundle.productFacts.length) {
+    return safeProductFallback(bundle);
+  }
+
+  const visibleFacts = bundle.productFacts.slice(0, 6);
+  const lines = visibleFacts.map((fact) => `[${fact.displayName}](${fact.href})\n${fact.priceText}`);
+  if (bundle.productFacts.length > visibleFacts.length) {
+    lines.push(`Mazeed ${bundle.productFacts.length - visibleFacts.length} products app mein Products/Menu par dekh sakte hain.`);
+  }
+  lines.push('Link kholen, quality aur quantity chunen, phir Add to Cart dabaen.');
+  return lines.join('\n\n');
+}
+
 function labelMatchesProduct(label: string, fact: ProductFactMeta): boolean {
   const labelTerms = normalizeWords(label)
     .filter((t) => !GENERIC_LINK_LABEL_TERMS.has(t) && !STOPWORDS.has(t));
@@ -823,6 +850,8 @@ export async function generateReply(
   const convo = sanitizeHistory(history);
   const lastUser = [...convo].reverse().find((m) => m.role === 'user')?.content || '';
   const contextBundle = await buildContextBundle(lastUser, opts);
+  const deterministicReply = deterministicProductReply(contextBundle);
+  if (deterministicReply) return deterministicReply;
   const context = contextBundle.text;
   const systemPrompt = context ? `${SYSTEM_PROMPT}\n\n${context}` : SYSTEM_PROMPT;
   const safeReply = (s: unknown) => validateAiReply(String(s || '').trim(), contextBundle);

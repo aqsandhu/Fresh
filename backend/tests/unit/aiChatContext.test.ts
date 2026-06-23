@@ -191,7 +191,7 @@ describe('aiChat buildContext', () => {
     expect(ctx.toLowerCase()).toContain('city');
   });
 
-  it('blocks provider replies that invent a product link or price outside live facts', async () => {
+  it('answers product prices from live catalog without calling the provider', async () => {
     installDb({ keyword: [ALMOND] });
     mockProviderReply('[Mango](/product/p-fake)\nQuality A: 1 kg Rs.999');
 
@@ -200,64 +200,35 @@ describe('aiChat buildContext', () => {
       { cityId: 'city-lhr' }
     );
 
-    expect(reply).toContain('verified live rate');
+    expect(reply).toContain('/product/p-almond');
+    expect(reply).toContain('Quality A: 1 kg Rs.3800');
+    expect(reply).toContain('half kg Rs.2000');
+    expect(reply).toContain('quarter kg Rs.950');
+    expect(reply).not.toContain('Mango');
     expect(reply).not.toContain('/product/p-fake');
     expect(reply).not.toContain('Rs.999');
+    expect((global as any).fetch).not.toHaveBeenCalled();
   });
 
-  it('blocks a wrong markdown label even when the linked product id is valid', async () => {
-    installDb({ keyword: [ALMOND] });
-    mockProviderReply('[Mango](/product/p-almond)\nQuality A: 1 kg Rs.3800');
-
-    const reply = await generateReply(
-      [{ role: 'user', content: 'almond ka rate kya hai' }],
-      { cityId: 'city-lhr' }
-    );
-
-    expect(reply).toContain('verified live rate');
-    expect(reply).not.toContain('[Mango]');
-  });
-
-  it('blocks fake prices written without Rs prefix', async () => {
-    installDb({ keyword: [ALMOND] });
-    mockProviderReply('[Almond](/product/p-almond)\nQuality A 999 per kg');
-
-    const reply = await generateReply(
-      [{ role: 'user', content: 'almond ka rate kya hai' }],
-      { cityId: 'city-lhr' }
-    );
-
-    expect(reply).toContain('verified live rate');
-    expect(reply).not.toContain('999 per kg');
-  });
-
-  it('blocks fake prices written as rupay suffix', async () => {
-    installDb({ keyword: [ALMOND] });
-    mockProviderReply('[Almond](/product/p-almond)\nQuality A 999 rupay');
-
-    const reply = await generateReply(
-      [{ role: 'user', content: 'almond ka rate kya hai' }],
-      { cityId: 'city-lhr' }
-    );
-
-    expect(reply).toContain('verified live rate');
-    expect(reply).not.toContain('999 rupay');
-  });
-
-  it('blocks a price that belongs to a different allowed product', async () => {
+  it('answers browse/menu questions with verified catalog facts only', async () => {
     installDb({ keyword: [], catalog: [ALMOND, ONION] });
-    mockProviderReply('[Almond](/product/p-almond) Quality A Rs.60');
+    mockProviderReply('[Mango](/product/p-fake) Quality A Rs.999');
 
     const reply = await generateReply(
       [{ role: 'user', content: 'sabzi menu dikhao' }],
       { cityId: 'city-lhr' }
     );
 
-    expect(reply).toContain('verified live rate');
-    expect(reply).not.toContain('Rs.60');
+    expect(reply).toContain('/product/p-almond');
+    expect(reply).toContain('/product/p-onion');
+    expect(reply).toContain('Quality A: 1 kg Rs.3800');
+    expect(reply).toContain('Quality B: 1 kg Rs.60');
+    expect(reply).not.toContain('/product/p-fake');
+    expect(reply).not.toContain('Rs.999');
+    expect((global as any).fetch).not.toHaveBeenCalled();
   });
 
-  it('blocks unsafe no-match answers even without a link or number', async () => {
+  it('does not invent a link or price for a no-match product', async () => {
     installDb({ keyword: [], catalog: [ALMOND] });
     mockProviderReply('Kiwi available hai, app se order kar lein.');
 
@@ -268,18 +239,52 @@ describe('aiChat buildContext', () => {
 
     expect(reply).toContain('live catalog');
     expect(reply).not.toContain('available hai');
+    expect(reply).not.toContain('/product/');
+    expect((global as any).fetch).not.toHaveBeenCalled();
   });
 
-  it('allows a valid verified product link and price', async () => {
+  it('asks for city before quoting product prices without calling the provider', async () => {
     installDb({ keyword: [ALMOND] });
     mockProviderReply('[Almond](/product/p-almond)\nQuality A: 1 kg Rs.3800');
 
     const reply = await generateReply(
       [{ role: 'user', content: 'almond ka rate kya hai' }],
+      { cityId: null }
+    );
+
+    expect(reply.toLowerCase()).toContain('city');
+    expect(reply).not.toContain('/product/');
+    expect(reply).not.toContain('Rs.3800');
+    expect((global as any).fetch).not.toHaveBeenCalled();
+  });
+
+  it('asks for a product name when the user asks for a rate too generally', async () => {
+    installDb({ keyword: [], catalog: [ALMOND] });
+    mockProviderReply('[Mango](/product/p-fake)\nQuality A: 1 kg Rs.999');
+
+    const reply = await generateReply(
+      [{ role: 'user', content: 'rate kya hai' }],
       { cityId: 'city-lhr' }
     );
 
-    expect(reply).toContain('/product/p-almond');
-    expect(reply).toContain('Rs.3800');
+    expect(reply).toContain('Kis product');
+    expect(reply).not.toContain('/product/');
+    expect(reply).not.toContain('Rs.999');
+    expect((global as any).fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps non-catalog product support questions on the provider path', async () => {
+    installDb({ keyword: [], catalog: [ALMOND] });
+    mockProviderReply('Link reload kar ke dobara try karen; masla rahe to support se rabta karen.');
+
+    const reply = await generateReply(
+      [{ role: 'user', content: 'product link open nahi ho raha' }],
+      { cityId: 'city-lhr' }
+    );
+
+    expect(reply).toContain('Link reload');
+    expect(reply).not.toContain('Kis product');
+    expect(reply).not.toContain('live catalog');
+    expect((global as any).fetch).toHaveBeenCalledTimes(1);
   });
 });
