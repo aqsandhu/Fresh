@@ -27,6 +27,16 @@ function cleanText(s: string): string {
     .replace(/^\s*[-•]\s+/gm, '• ')
 }
 
+function productPathFromUrl(url: string): string | null {
+  if (url.startsWith('/product/')) return url.split(/[?#]/)[0]
+  try {
+    const u = new URL(url)
+    return u.pathname.startsWith('/product/') ? u.pathname : null
+  } catch {
+    return null
+  }
+}
+
 export default function AiChatWidget() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<AiChatMessage[]>([GREETING])
@@ -51,17 +61,19 @@ export default function AiChatWidget() {
   // always sits left of the name and the chip never reorders the surrounding
   // Urdu text). Other links stay as plain underlined links.
   const linkNode = (label: string, url: string, key: string) => {
-    if (url.startsWith('/product/')) {
+    const productPath = productPathFromUrl(url)
+    if (productPath) {
+      const productLabel = /^https?:\/\//i.test(label) || label === url ? 'View product' : label
       return (
         <Link
           key={key}
-          href={url}
+          href={productPath}
           onClick={() => setOpen(false)}
           dir="ltr"
           className="my-0.5 inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1 text-[13px] font-semibold text-primary-700 transition-colors hover:bg-primary-100"
         >
           <ShoppingCart className="h-3.5 w-3.5 flex-shrink-0" />
-          <span>{label}</span>
+          <span>{productLabel}</span>
         </Link>
       )
     }
