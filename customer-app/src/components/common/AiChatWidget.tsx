@@ -17,6 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { aiChatService, type ChatMessage } from '@services/aiChat.service';
 import { navigationRef } from '@/navigation/navigationUtils';
+import { useAuthStore } from '@store';
 
 /** Best-effort current screen name for page-aware answers. */
 function currentPage(): string | undefined {
@@ -28,11 +29,17 @@ function currentPage(): string | undefined {
   }
 }
 
-const GREETING: ChatMessage = {
-  role: 'assistant',
-  content:
-    "Assalam-o-Alaikum! I'm the FreshBazar assistant. Ask me about products, prices, ordering, delivery, riders, or franchise — I'm here to help.",
-};
+/** First name only, for a personal greeting — empty when not signed in. */
+function firstName(u: { fullName?: string; full_name?: string; name?: string } | null): string {
+  const raw = (u?.fullName || u?.full_name || u?.name || '').trim();
+  return raw ? raw.split(/\s+/)[0] : '';
+}
+
+/** Warm, human-sounding opening line (personalised when we know the name). */
+function welcomeText(name: string): string {
+  const salam = name ? `Assalam-o-Alaikum ${name}!` : 'Assalam-o-Alaikum!';
+  return `${salam} FreshBazar mein khush-aamdeed. Agar aap ko FreshBazar istemal karne mein kisi bhi qisam ki rahnumai chahiye to mujhe batayein — main aap ki kis silsile mein madad karun?`;
+}
 
 const TOKEN_RE = /\[([^\]]+)\]\(([^)]+)\)|(\/product\/[A-Za-z0-9_-]+)|(https?:\/\/[^\s)]+)/g;
 
@@ -86,10 +93,13 @@ function renderRich(text: string, onOpenLink: (url: string) => void): React.Reac
 
 export const AiChatWidget: React.FC = () => {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [welcoming, setWelcoming] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const user = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   const { data: status } = useQuery({
     queryKey: ['ai-chat-status'],
@@ -99,7 +109,25 @@ export const AiChatWidget: React.FC = () => {
 
   useEffect(() => {
     if (open) setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
-  }, [messages, open, sending]);
+  }, [messages, open, sending, welcoming]);
+
+  // When the panel first opens, wait ~2s (showing a typing bubble) and then
+  // greet the customer by name if signed in — feels like a real person replying.
+  useEffect(() => {
+    if (!open || messages.length > 0) return;
+    setWelcoming(true);
+    const t = setTimeout(() => {
+      setWelcoming(false);
+      const name = isAuthenticated ? firstName(user) : '';
+      setMessages((m) => (m.length === 0 ? [{ role: 'assistant', content: welcomeText(name) }] : m));
+    }, 2000);
+    return () => {
+      clearTimeout(t);
+      setWelcoming(false);
+    };
+    // Only re-run when the panel opens/closes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!status?.enabled) return null;
 
@@ -142,7 +170,7 @@ export const AiChatWidget: React.FC = () => {
     } catch {
       setMessages((m) => [
         ...m,
-        { role: 'assistant', content: 'Sorry, I could not respond right now. Please try again.' },
+        { role: 'assistant', content: 'Maazrat, abhi jawab nahi de paya. Bara karam thori der baad dobara message kar dijiye ga.' },
       ]);
     } finally {
       setSending(false);
@@ -155,7 +183,7 @@ export const AiChatWidget: React.FC = () => {
         style={styles.fab}
         onPress={() => setOpen(true)}
         activeOpacity={0.85}
-        accessibilityLabel="Chat with FreshBazar assistant"
+        accessibilityLabel="Chat with FreshBazar Support"
       >
         <MaterialIcons name="chat" size={26} color={COLORS.white} />
       </TouchableOpacity>
@@ -168,8 +196,8 @@ export const AiChatWidget: React.FC = () => {
           <View style={styles.sheet}>
             <View style={styles.header}>
               <View style={styles.headerTitle}>
-                <MaterialIcons name="smart-toy" size={20} color={COLORS.white} />
-                <Text style={styles.headerText}>FreshBazar Assistant</Text>
+                <MaterialIcons name="support-agent" size={20} color={COLORS.white} />
+                <Text style={styles.headerText}>FreshBazar Support</Text>
               </View>
               <TouchableOpacity onPress={() => setOpen(false)}>
                 <MaterialIcons name="close" size={24} color={COLORS.white} />
@@ -189,7 +217,7 @@ export const AiChatWidget: React.FC = () => {
                   </View>
                 </View>
               ))}
-              {sending && (
+              {(sending || welcoming) && (
                 <View style={[styles.bubbleRow, styles.rowStart]}>
                   <View style={[styles.bubble, styles.botBubble]}>
                     <ActivityIndicator size="small" color={COLORS.primary600} />

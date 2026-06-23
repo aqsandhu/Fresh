@@ -80,6 +80,19 @@ const EGGS = {
   allow_half_kg: true, allow_quarter_kg: true,
 };
 
+// Okra with an Urdu name (بھنڈی) and no B/C — used for the Urdu / lone-name cases.
+const BHINDI = {
+  id: 'p-bhindi', name_en: 'Okra', name_ur: 'بھنڈی', unit_type: 'kg',
+  price: 120, price_b: null, price_c: null,
+  stock_quantity: 30, stock_quantity_b: 0, stock_quantity_c: 0,
+  reserved_quantity: 0, reserved_quantity_b: 0, reserved_quantity_c: 0,
+  consumer_enabled_a: true, consumer_enabled_b: false, consumer_enabled_c: false,
+  half_kg_price: null, quarter_kg_price: null, half_dozen_price: null,
+  half_kg_price_b: null, quarter_kg_price_b: null, half_dozen_price_b: null,
+  half_kg_price_c: null, quarter_kg_price_c: null, half_dozen_price_c: null,
+  allow_half_kg: true, allow_quarter_kg: true,
+};
+
 /** Route mocked queries by SQL shape so call-order doesn't matter. */
 function installDb(opts: { keyword?: any[]; catalog?: any[] }) {
   mockQuery.mockImplementation(async (sql: unknown) => {
@@ -237,7 +250,7 @@ describe('aiChat buildContext', () => {
       { cityId: 'city-lhr' }
     );
 
-    expect(reply).toContain('live catalog');
+    expect(reply.toLowerCase()).toContain('available nahi');
     expect(reply).not.toContain('available hai');
     expect(reply).not.toContain('/product/');
     expect((global as any).fetch).not.toHaveBeenCalled();
@@ -267,7 +280,7 @@ describe('aiChat buildContext', () => {
       { cityId: 'city-lhr' }
     );
 
-    expect(reply).toContain('Kis product');
+    expect(reply).toContain('Kis product'); // asks which product instead of quoting
     expect(reply).not.toContain('/product/');
     expect(reply).not.toContain('Rs.999');
     expect((global as any).fetch).not.toHaveBeenCalled();
@@ -306,7 +319,7 @@ describe('aiChat buildContext', () => {
     expect(reply).not.toContain('/product/p-fake'); // fake link stripped
     expect(reply).not.toContain('Rs.999'); // fake price stripped
     expect(reply).not.toContain('Kiwi'); // no invented product claim
-    expect(reply.toLowerCase()).toContain('verified'); // safe fallback
+    expect(reply.toLowerCase()).toMatch(/products section|available nahi/); // safe fallback
   });
 
   it('lets a genuine non-product reply pass through unchanged', async () => {
@@ -320,5 +333,32 @@ describe('aiChat buildContext', () => {
 
     expect((global as any).fetch).toHaveBeenCalledTimes(1);
     expect(reply).toContain('Assalam-o-Alaikum'); // not blocked, no false positive
+  });
+
+  // Regression: the reported bug — an Urdu-script product question (with an Urdu
+  // "rate" word) used to miss intent detection entirely, so the catalog was never
+  // searched and the bot wrongly said it had no link. Urdu triggers fix it.
+  it('finds an Urdu-script product question (بھنڈی کا ریٹ) via name_ur', async () => {
+    installDb({ keyword: [BHINDI] });
+    const ctx = await buildContext('بھنڈی کا ریٹ کیا ہے', { cityId: 'city-lhr' });
+
+    expect(ctx).toContain('/product/p-bhindi');
+    expect(ctx).toContain('Quality A: 1 kg Rs.120');
+  });
+
+  it('recognises a lone product name with NO trigger word via a real DB match', async () => {
+    installDb({ keyword: [BHINDI] });
+    mockProviderReply('[Okra](/product/p-fake)\nRs.999'); // used only if intent missed
+    // "بھنڈی" alone has no rate/price/availability word — a real DB match must
+    // still upgrade it to a product answer, exactly like the website search bar.
+    const reply = await generateReply(
+      [{ role: 'user', content: 'بھنڈی' }],
+      { cityId: 'city-lhr' }
+    );
+
+    expect(reply).toContain('/product/p-bhindi');
+    expect(reply).toContain('Rs.120');
+    expect(reply).not.toContain('/product/p-fake');
+    expect((global as any).fetch).not.toHaveBeenCalled(); // deterministic, no LLM
   });
 });

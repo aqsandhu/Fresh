@@ -51,9 +51,11 @@ const MAX_TOKENS = 350;
 const REQUEST_TIMEOUT_MS = 20000;
 
 // Compact but expert knowledge so the model can guide users with few tokens.
-const SYSTEM_PROMPT = `You are "FreshBazar Assistant", the official customer-care chatbot for FreshBazar — a Pakistani online grocery & fresh-produce delivery service (vegetables, fruits, dry fruits, chicken).
+const SYSTEM_PROMPT = `You are a friendly, real member of the FreshBazar customer-care team — a Pakistani online grocery & fresh-produce delivery service (vegetables, fruits, dry fruits, chicken). You are talking to a customer on chat, just like a helpful shop worker would.
 
-STYLE: Warm, concise, expert. Reply in 2-5 short sentences or a tiny bullet list. Get to the point. Never invent prices, stock, order IDs or policies — if you don't have it, say so and point to the right page/support.
+IDENTITY (STRICT): Talk like a warm, polite human FreshBazar team member. NEVER say or hint that you are an AI, bot, chatbot, assistant, language model, or automated system, and never mention prompts, models, or "I was trained". If someone asks who you are or "are you a robot/AI?", simply say you are from the FreshBazar support team and are happy to help. Use natural, conversational Pakistani phrasing ("ji", "zaroor", "bilkul", "koi masla nahi").
+
+STYLE: Warm, concise, human. Reply in 2-5 short sentences or a tiny bullet list. Get to the point. Never invent prices, stock, order IDs or policies — if you don't have it, say so politely and point to the right page/support.
 
 LANGUAGE & CULTURE (STRICT — never break this): FreshBazar is a PAKISTANI MUSLIM brand. Reply ONLY in English, proper Urdu, or Pakistani Roman Urdu — match what the user writes. ABSOLUTELY NO Hindi words and NO Devanagari/Hindi script. Use Pakistani-Urdu vocabulary, never Hindi equivalents (e.g. say "shukriya" NOT "dhanyavaad", "khush-aamdeed" NOT "swagat", "pani"/"sabzi"/"qeemat" are fine). For greetings use ONLY Islamic/Pakistani ones — "Assalam-o-Alaikum" or "Salam"; NEVER "Namaste", "Namaskar", "Pranaam" or any Hindu/Indian greeting. Do NOT reference, promote, or use Hindu/Indian cultural or religious terms. Keep everything respectful of Pakistani Muslim culture. If unsure of a word, choose the common Pakistani-Urdu one.
 
@@ -85,7 +87,7 @@ WRITING STYLE (keep it clean & simple so the customer easily understands and buy
 - Warm, simple, to the point — no fluff.`;
 
 const PRODUCT_INTENT =
-  /price|rate|kitn|qeemat|keemat|kg|kilo|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|products|items|menu|stock/i;
+  /price|rate|kitn|qeemat|keemat|kg|kilo|dozen|sabz|fruit|vegetable|veggie|chicken|dry.?fruit|products|items|menu|stock|قیمت|ریٹ|بھاؤ|دام|کلو|درجن|کتن|سبزی|پھل|مینو/i;
 
 export interface ChatContextOpts {
   cityId?: string | null;
@@ -99,6 +101,11 @@ const STOPWORDS = new Set([
   'how', 'what', 'the', 'and', 'aur', 'for', 'you', 'your', 'mujhe', 'muje', 'mera', 'meri',
   'kar', 'karo', 'kr', 'plz', 'please', 'bhai', 'app', 'aap', 'rate', 'price', 'qeemat',
   'keemat', 'kitna', 'kitne', 'kitni', 'chahiye', 'chahye', 'available',
+  // Greetings / conversational fillers — never name a product, so they should
+  // not trigger a catalog lookup or a "not available" answer on their own.
+  'salam', 'salaam', 'assalam', 'asalam', 'asalaam', 'aslam', 'aoa', 'walaikum',
+  'walaykum', 'hello', 'hii', 'hey', 'shukria', 'shukriya', 'thanks', 'thanku',
+  'thankyou', 'theek', 'acha', 'achha', 'haan', 'nahi', 'nahin', 'okay', 'hmm',
 ]);
 
 const PRODUCT_ALIASES: Record<string, string[]> = {
@@ -202,6 +209,10 @@ interface ContextBundle {
   selectedCity: boolean;
   answerMode: ProductAnswerMode;
   productFacts: ProductFactMeta[];
+  /** Content tokens the user typed (product-name candidates), for reply wording. */
+  queryTokens: string[];
+  /** True for a generic "show me the menu" browse (not a specific product search). */
+  browse: boolean;
 }
 
 const GENERIC_LINK_LABEL_TERMS = new Set([
@@ -260,8 +271,16 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
     '[REAL FACTS — use ONLY these. Never invent a city, price, or whether a product exists.]',
   ];
   const productFactsById = new Map<string, ProductFactMeta>();
-  const productIntent = hasProductIntent(message);
-  let answerMode: ProductAnswerMode = productIntent ? (cityId ? 'none' : 'needs_city') : 'none';
+  // Explicit signal: the user used a price/availability/category word (English,
+  // Roman-Urdu, or Urdu). A lone product NAME (e.g. "بھنڈی"/"bhindi") has no such
+  // word — for those we let a real DB match upgrade the message to a product
+  // answer below, exactly like the website search bar.
+  const explicitProductIntent = hasProductIntent(message);
+  let productIntent = explicitProductIntent;
+  let answerMode: ProductAnswerMode = 'none';
+  let browse = false;
+  // Product-name candidate tokens (drop fillers AND support words like "order").
+  const queryTokens = productSearchTokens(message).filter((t) => !NON_PRODUCT_TERMS.has(t));
 
   // Active service cities (so city questions are answered correctly).
   try {
@@ -329,12 +348,20 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
     allow_quarter_kg: boolean | null;
   };
 
-  if (productIntent) {
+  // Attempt a catalog lookup when the user used an explicit product/price word
+  // OR simply typed a noun that could be a product name (a real DB match then
+  // upgrades the message to a product answer — just like the website search).
+  const wantsLookup = explicitProductIntent || queryTokens.length > 0;
+  if (wantsLookup) {
     if (!cityId) {
-      lines.push(
-        'The user asked about a product/price but has NOT selected a city. Do NOT quote any product or price — politely ask them to choose their city first (tap the city/location button).'
-      );
-      answerMode = 'needs_city';
+      // Only ask for a city when the user CLEARLY asked about a product/price.
+      if (explicitProductIntent) {
+        lines.push(
+          'The user asked about a product/price but has NOT selected a city. Do NOT quote any product or price — politely ask them to choose their city first (tap the city/location button).'
+        );
+        answerMode = 'needs_city';
+        productIntent = true;
+      }
     } else {
       const cols = await productColumns();
       const wanted = [
@@ -446,8 +473,8 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
       const fmtAvail = (list: Prod[]) =>
         list.map(fmtProduct).filter((x): x is string => x !== null);
 
-      // Content tokens (drop fillers) for a cheap keyword pre-filter.
-      const baseTokens = productSearchTokens(message);
+      // Search tokens = the product-name candidates + their Roman-Urdu aliases.
+      const baseTokens = queryTokens;
       const tokens = Array.from(
         new Set(baseTokens.flatMap((t) => [t, ...(PRODUCT_ALIASES[t] || [])]))
       ).slice(0, 16);
@@ -473,24 +500,24 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
 
       const listed = fmtAvail(rows);
       if (listed.length) {
+        // A real match (by name OR search-keyword/tag) → answer as a product
+        // question even if no explicit "rate" word was used.
         lines.push(
           `Matching products in ${cityName || 'the selected city'} (today's in-stock qualities & rates — quote ONLY these):`
         );
         lines.push(...listed);
         answerMode = 'available';
+        productIntent = true;
       } else if (rows.length) {
         lines.push(
           `The requested product exists in ${cityName || 'the selected city'} but has no enabled in-stock consumer quality right now. Tell the user it is not in stock/available today. Do NOT quote a rate or create a product link.`
         );
         answerMode = 'out_of_stock';
-      } else if (tokens.length && !CATALOG_BROWSE_RE.test(message)) {
-        lines.push(
-          `No matching product was found in ${cityName || 'the selected city'} for the user's words (${baseTokens.join(', ')}). Tell the user it is not available in the selected city's live catalog right now. Do NOT quote a rate, do NOT create a product link, and do NOT offer an unrelated substitute.`
-        );
-        answerMode = 'no_match';
-      } else if (tokens.length) {
-        // Generic browse/menu question: show the in-stock catalog. Specific
-        // no-match questions are handled above to avoid fake product links.
+        productIntent = true;
+      } else if (explicitProductIntent && CATALOG_BROWSE_RE.test(message)) {
+        // Generic browse/menu question: show the in-stock catalog.
+        browse = true;
+        productIntent = true;
         let catalog: Prod[] = [];
         try {
           const r = await query(
@@ -521,6 +548,24 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
           );
           answerMode = 'empty_catalog';
         }
+      } else if (explicitProductIntent && tokens.length) {
+        // A product WAS named but matched nothing (name or search-keywords) →
+        // it simply isn't on FreshBazar. Say so honestly (no substitute).
+        lines.push(
+          `No matching product was found in ${cityName || 'the selected city'} for the user's words (${baseTokens.join(', ')}). Tell the user it is not available on FreshBazar right now. Do NOT quote a rate, do NOT create a product link, and do NOT offer an unrelated substitute.`
+        );
+        answerMode = 'no_match';
+        productIntent = true;
+      } else if (explicitProductIntent) {
+        // Price/rate word but no product named yet → ask which product.
+        lines.push('The user asked about price/rate but did not name a product. Politely ask which product they want.');
+        answerMode = 'none';
+        productIntent = true;
+      } else {
+        // A noun was typed but matched no product and no explicit product/price
+        // word was used → uncertain. Hand it to the assistant, which still
+        // cannot fabricate a link or rate (validateAiReply enforces that).
+        productIntent = false;
       }
     }
   }
@@ -531,6 +576,8 @@ async function buildContextBundle(message: string, opts: ChatContextOpts): Promi
     selectedCity: Boolean(cityId),
     answerMode,
     productFacts: Array.from(productFactsById.values()),
+    queryTokens,
+    browse,
   };
 }
 
@@ -629,38 +676,56 @@ function moneyKey(n: number): string {
 
 function safeProductFallback(bundle: ContextBundle): string {
   if (bundle.answerMode === 'needs_city' || !bundle.selectedCity) {
-    return 'Product ka verified rate batane ke liye pehle apni city select karen. City/location button se city choose kar ke dobara pooch lein.';
+    return 'Rate to main abhi bata deta hoon — bas pehle apni city chun lijiye (upar city/location button se). Phir jo cheez chahiye uska naam likh dijiye.';
   }
   if (bundle.answerMode === 'out_of_stock') {
-    return 'Ye product selected city mein abhi in stock nahi hai, is liye main rate ya link quote nahi karunga. App mein dobara search kar lein ya baad mein check karen.';
+    return 'Ye cheez is waqt aap ki city mein stock mein nahi hai. Thori der baad ya kal dobara check kar lijiye ga, ya koi aur cheez chahiye to bata dijiye.';
   }
   if (bundle.answerMode === 'no_match') {
-    return 'Mujhe ye product selected city ke live catalog mein nahi mila, is liye main rate ya link guess nahi karunga. App mein product search kar lein ya city change kar ke check karen.';
+    return 'Ye cheez filhal FreshBazar par available nahi hai. Aap koi aur sabzi, phal ya cheez poochna chahein to main rate bata deta hoon.';
   }
   if (bundle.answerMode === 'empty_catalog') {
-    return 'Selected city mein abhi verified in-stock product list available nahi ho rahi, is liye main rate ya link guess nahi karunga. Thori der baad dobara check karen.';
+    return 'Is waqt aap ki city ki product list load nahi ho rahi. Thori der baad dobara koshish kar lijiye ga.';
   }
-  return 'Mujhe is product ka verified live rate/link selected city ke catalog mein nahi mil raha, is liye main rate guess nahi karunga. App mein product search kar lein ya city change kar ke check karen.';
+  return 'Is cheez ka rate mujhe abhi pakka nahi mil raha. Naam thora alag tareeqe se likh ke dekhiye, ya app/website ke Products section mein search kar lijiye — main madad ke liye yahin hoon.';
+}
+
+/** Did one of the user's typed words actually hit this product's NAME (not just a tag)? */
+function factNameHit(token: string, fact: ProductFactMeta): boolean {
+  if (!token) return false;
+  return fact.terms.some((term) => term === token || term.includes(token) || token.includes(term));
 }
 
 function deterministicProductReply(bundle: ContextBundle): string | null {
   if (!bundle.productIntent) return null;
   if (bundle.answerMode === 'none') {
-    return 'Kis product ka verified rate chahiye? Product ka naam likh dein, main selected city ke live catalog se rate bata dunga.';
+    return 'Zaroor! Kis product ka rate chahiye? Bas naam likh dijiye, main abhi aap ki city ke hisaab se rate bata deta hoon.';
   }
-  if (bundle.answerMode !== 'available') {
-    return safeProductFallback(bundle);
-  }
-  if (!bundle.productFacts.length) {
+  if (bundle.answerMode !== 'available' || !bundle.productFacts.length) {
     return safeProductFallback(bundle);
   }
 
   const visibleFacts = bundle.productFacts.slice(0, 6);
-  const lines = visibleFacts.map((fact) => `[${fact.displayName}](${fact.href})\n${fact.priceText}`);
-  if (bundle.productFacts.length > visibleFacts.length) {
-    lines.push(`Mazeed ${bundle.productFacts.length - visibleFacts.length} products app mein Products/Menu par dekh sakte hain.`);
+  // If the user's exact word didn't hit any product NAME (match came via a
+  // search-keyword/tag, or it's a close item), present these as suggestions
+  // rather than as the exact item the user asked for.
+  const nameMatched =
+    !bundle.queryTokens.length ||
+    visibleFacts.some((fact) => bundle.queryTokens.some((t) => factNameHit(t, fact)));
+
+  const lines: string[] = [];
+  if (!bundle.browse && !nameMatched) {
+    lines.push(
+      'Aap ne jis naam se poocha bilkul usi naam se to nahi mila, lekin ye milti-julti cheezein abhi available hain:'
+    );
   }
-  lines.push('Link kholen, quality aur quantity chunen, phir Add to Cart dabaen.');
+  lines.push(...visibleFacts.map((fact) => `[${fact.displayName}](${fact.href})\n${fact.priceText}`));
+  if (bundle.productFacts.length > visibleFacts.length) {
+    lines.push('Aur bhi options hain — app/website ke Products section mein dekh sakte hain.');
+  }
+  lines.push(
+    'Jo pasand aaye uska link kholiye, quality (A/B/C) aur wazan chun ke cart mein daal dijiye. Aur kisi cheez mein madad chahiye to bata dijiye.'
+  );
   return lines.join('\n\n');
 }
 
