@@ -63,16 +63,82 @@ function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } 
   return { rejectUnauthorized: false };
 }
 
+function parsePoolInt(value: string | undefined, fallback: number, min: number): number {
+  const parsed = Number.parseInt(value || '', 10);
+  return Number.isFinite(parsed) && parsed >= min ? parsed : fallback;
+}
+
+function isSupabasePooler(connectionString?: string): boolean {
+  if (!connectionString) return false;
+  try {
+    const url = new URL(connectionString);
+    return url.hostname.includes('pooler.supabase.com');
+  } catch {
+    return connectionString.includes('pooler.supabase.com');
+  }
+}
+
+/**
+ * Supabase Supavisor TRANSACTION mode = port 6543 (or pgbouncer=true). It
+ * multiplexes many client connections over the server pool, so the app may hold
+ * more connections. SESSION mode = port 5432 (one server connection per client).
+ */
+function isTransactionPooler(connectionString?: string): boolean {
+  if (!connectionString) return false;
+  try {
+    const url = new URL(connectionString);
+    return url.port === '6543' || url.searchParams.get('pgbouncer') === 'true';
+  } catch {
+    return connectionString.includes(':6543') || connectionString.includes('pgbouncer=true');
+  }
+}
+
+function buildPoolSizing(connectionString?: string) {
+  const usingSupabasePooler = isSupabasePooler(connectionString);
+  const transactionPooler = usingSupabasePooler && isTransactionPooler(connectionString);
+
+  // Pool sizing depends on the Supabase pooler MODE:
+  //  • SESSION mode (port 5432) dedicates one server connection per client and
+  //    rejects clients past the server-side pool_size (prod error was 15), so the
+  //    app pool MUST stay well under it → small, hard ceiling 5.
+  //  • TRANSACTION mode (port 6543 / pgbouncer=true) multiplexes many client
+  //    connections over that server pool, so the app can safely hold more → 15.
+  //  • Direct (non-pooler) connects straight to Postgres → tunable, no hard cap.
+  // pg queues extra queries inside Node, so we never overshoot the server limit.
+  const defaultMax = !usingSupabasePooler ? 10 : transactionPooler ? 10 : 5;
+  const ceiling = !usingSupabasePooler
+    ? Number.MAX_SAFE_INTEGER
+    : transactionPooler
+      ? 15
+      : 5;
+
+  const requestedMax = parsePoolInt(process.env.DB_POOL_MAX, defaultMax, 1);
+  const cap = Math.min(parsePoolInt(process.env.DB_POOL_MAX_CAP, ceiling, 1), ceiling);
+  const max = Math.max(1, Math.min(requestedMax, cap));
+  const min = Math.min(parsePoolInt(process.env.DB_POOL_MIN, 0, 0), max);
+
+  if (requestedMax > max) {
+    logger.warn('DB_POOL_MAX capped for Supabase pooler safety', {
+      requestedMax,
+      appliedMax: max,
+      mode: transactionPooler ? 'transaction' : usingSupabasePooler ? 'session' : 'direct',
+    });
+  }
+
+  return { min, max };
+}
+
 // Build connection config from environment
 function buildPoolConfig() {
   // If DATABASE_URL is provided, use it directly
   if (process.env.DATABASE_URL) {
     logger.info('Using DATABASE_URL for database connection');
+    const sizing = buildPoolSizing(process.env.DATABASE_URL);
     return {
       connectionString: process.env.DATABASE_URL,
       ssl: buildSslConfig(),
-      min: parseInt(process.env.DB_POOL_MIN || '2'),
-      max: parseInt(process.env.DB_POOL_MAX || '20'),
+      min: sizing.min,
+      max: sizing.max,
       connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
       allowExitOnIdle: false,
@@ -81,6 +147,7 @@ function buildPoolConfig() {
 
   // Otherwise use individual env vars
   logger.info('Using individual DB_* variables for connection');
+  const sizing = buildPoolSizing();
   return {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
@@ -88,8 +155,8 @@ function buildPoolConfig() {
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
     ssl: buildSslConfig(),
-    min: parseInt(process.env.DB_POOL_MIN || '2'),
-    max: parseInt(process.env.DB_POOL_MAX || '10'),
+    min: sizing.min,
+    max: sizing.max,
     connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 30000,
     allowExitOnIdle: false,

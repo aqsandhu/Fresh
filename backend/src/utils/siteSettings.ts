@@ -89,21 +89,14 @@ export async function fetchBannerSettings(
     return rowsToMap(result.rows);
   }
 
-  const [globalResult, cityResult] = await Promise.all([
-    query(
-      `SELECT key, value FROM site_settings
-       WHERE key LIKE 'banner_%' AND city_id IS NULL`
-    ),
-    query(
-      `SELECT key, value FROM site_settings
-       WHERE key LIKE 'banner_%' AND city_id = $1`,
-      [cityId]
-    ),
-  ]);
-
+  const result = await query(
+    `SELECT key, value, city_id FROM site_settings
+     WHERE key LIKE 'banner_%' AND (city_id IS NULL OR city_id = $1)`,
+    [cityId]
+  );
   return {
-    ...rowsToMap(globalResult.rows),
-    ...rowsToMap(cityResult.rows),
+    ...rowsToMap(result.rows.filter((r) => !r.city_id)),
+    ...rowsToMap(result.rows.filter((r) => r.city_id)),
   };
 }
 
@@ -162,22 +155,14 @@ async function fetchKeyedSettings(
     return rowsToMap(result.rows);
   }
 
-  const [globalResult, cityResult] = await Promise.all([
-    query(
-      `SELECT key, value FROM site_settings
-       WHERE (key = $1 OR key LIKE $2) AND city_id IS NULL`,
-      [exactKey, keyPrefix]
-    ),
-    query(
-      `SELECT key, value FROM site_settings
-       WHERE (key = $1 OR key LIKE $2) AND city_id = $3`,
-      [exactKey, keyPrefix, cityId]
-    ),
-  ]);
-
+  const result = await query(
+    `SELECT key, value, city_id FROM site_settings
+     WHERE (key = $1 OR key LIKE $2) AND (city_id IS NULL OR city_id = $3)`,
+    [exactKey, keyPrefix, cityId]
+  );
   return {
-    ...rowsToMap(globalResult.rows),
-    ...rowsToMap(cityResult.rows),
+    ...rowsToMap(result.rows.filter((r) => !r.city_id)),
+    ...rowsToMap(result.rows.filter((r) => r.city_id)),
   };
 }
 
@@ -521,20 +506,16 @@ export async function fetchHeroImageSettings(
     };
   }
 
-  const [globalResult, cityResult] = await Promise.all([
-    query(
-      `SELECT key, value FROM site_settings
-       WHERE key = ANY($1::text[]) AND city_id IS NULL`,
-      [keys]
-    ),
-    query(
-      `SELECT key, value FROM site_settings
-       WHERE key = ANY($1::text[]) AND city_id = $2`,
-      [keys, cityId]
-    ),
-  ]);
+  const result = await query(
+    `SELECT key, value, city_id FROM site_settings
+     WHERE key = ANY($1::text[]) AND (city_id IS NULL OR city_id = $2)`,
+    [keys, cityId]
+  );
 
-  const merged = { ...rowsToMap(globalResult.rows), ...rowsToMap(cityResult.rows) };
+  const merged = {
+    ...rowsToMap(result.rows.filter((r) => !r.city_id)),
+    ...rowsToMap(result.rows.filter((r) => r.city_id)),
+  };
   return {
     hero_image_url: merged[HERO_IMAGE_URL_KEY] || '',
     hero_image_storage_path: merged[HERO_IMAGE_STORAGE_PATH_KEY] || '',
