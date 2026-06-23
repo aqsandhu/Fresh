@@ -11,12 +11,16 @@ import { jest } from '@jest/globals';
 
 jest.mock('@/utils/siteSettings', () => ({
   fetchGlobalSettings: jest.fn<any>().mockResolvedValue({}),
+  fetchWhatsAppOrderSettings: jest.fn<any>().mockResolvedValue({}),
+  WHATSAPP_ORDER_URL_KEY: 'whatsapp_order_url',
 }));
 
 import { query } from '@/config/database';
+import { fetchWhatsAppOrderSettings } from '@/utils/siteSettings';
 import { buildContext, generateReply } from '@/services/aiChat.service';
 
 const mockQuery = query as jest.MockedFunction<typeof query>;
+const mockWhatsApp = fetchWhatsAppOrderSettings as jest.MockedFunction<any>;
 const rows = (r: any[]) => ({ rows: r, rowCount: r.length, command: 'SELECT', oid: 0, fields: [] }) as any;
 const originalFetch = global.fetch;
 
@@ -360,5 +364,22 @@ describe('aiChat buildContext', () => {
     expect(reply).toContain('Rs.120');
     expect(reply).not.toContain('/product/p-fake');
     expect((global as any).fetch).not.toHaveBeenCalled(); // deterministic, no LLM
+  });
+
+  it('puts the selected city WhatsApp order link in the facts for order questions', async () => {
+    installDb({ keyword: [], catalog: [ALMOND] });
+    mockWhatsApp.mockResolvedValueOnce({ whatsapp_order_url: 'https://wa.me/923001234567' });
+    const ctx = await buildContext('kya tum mera order le sakte ho', { cityId: 'city-lhr' });
+
+    expect(ctx).toContain('WHATSAPP ORDER');
+    expect(ctx).toContain('https://wa.me/923001234567');
+  });
+
+  it('normalises a bare WhatsApp phone number into a wa.me link', async () => {
+    installDb({ keyword: [], catalog: [ALMOND] });
+    mockWhatsApp.mockResolvedValueOnce({ whatsapp_order_url: '+92 300 1234567' });
+    const ctx = await buildContext('order note kar lo', { cityId: 'city-lhr' });
+
+    expect(ctx).toContain('https://wa.me/923001234567');
   });
 });
