@@ -82,12 +82,28 @@ describe('GET /api/products', () => {
 describe('GET /api/products/:id', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it('returns 404 for a non-UUID product id without touching Postgres', async () => {
+    const res = await request(app).get('/api/products/banana');
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it('returns 404 when the product does not exist', async () => {
     mockQuery.mockResolvedValueOnce(ok([])); // no row
 
-    const res = await request(app).get('/api/products/00000000-0000-0000-0000-000000000000');
+    const res = await request(app).get('/api/products/00000000-0000-4000-8000-000000000000');
     expect(res.status).toBe(404);
     expect(res.body.success).toBe(false);
+  });
+
+  it('returns 404 for related products when the id is not a UUID', async () => {
+    const res = await request(app).get('/api/products/banana/related');
+
+    expect(res.status).toBe(404);
+    expect(res.body.success).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });
 

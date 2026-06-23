@@ -210,6 +210,16 @@ class ProductService {
     }
   }
 
+  async getProductBySlug(slug: string): Promise<ApiResponse<StoreProduct>> {
+    try {
+      const response = await apiClient.get(`/products/slug/${slug}`, { params: withCityParams() });
+      const raw = response.data;
+      return { success: true, data: mapBackendProduct(raw.data || raw) };
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
   async getFeaturedProducts(limit = 500): Promise<ApiResponse<StoreProduct[]>> {
     if (!hasSelectedCity()) return { success: true, data: [] };
     try {
