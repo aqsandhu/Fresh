@@ -399,4 +399,28 @@ describe('aiChat buildContext', () => {
     expect(reply).not.toContain('available nahi'); // NOT the product not-found reply
     expect(reply).toContain('Fatteh');
   });
+
+  // The endpoint is stateless, so the agent name must be reused from the chat
+  // history — never flip from Azzam to Fatteh mid-conversation.
+  it('keeps the same agent name across a conversation', async () => {
+    installDb({ keyword: [], catalog: [ALMOND] });
+    process.env.AI_CHAT_API_KEY = 'test-key';
+    const fetchMock = jest
+      .fn<any>()
+      .mockResolvedValue({ ok: true, json: async () => ({ content: [{ text: 'Ji bilkul, bataiye.' }] }) });
+    (global as any).fetch = fetchMock;
+
+    await generateReply(
+      [
+        { role: 'user', content: 'tumhara naam kya hai' },
+        { role: 'assistant', content: 'Mera naam Azzam hai, FreshBazar customer-care se.' },
+        { role: 'user', content: 'acha dobara apna naam batayein' },
+      ],
+      { cityId: 'city-lhr' }
+    );
+
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as any).body);
+    expect(body.system).toContain('Your name is Azzam'); // reused from history
+    expect(body.system).not.toContain('Your name is Fatteh');
+  });
 });

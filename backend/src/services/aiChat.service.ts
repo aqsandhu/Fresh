@@ -53,8 +53,23 @@ const REQUEST_TIMEOUT_MS = 20000;
 // Human-sounding names the agent uses when asked who/what it is — it must never
 // admit being an AI. One is picked at random per reply so it varies naturally.
 const AGENT_NAMES = ['Fatteh', 'Azzam'];
-function pickAgentName(): string {
-  return AGENT_NAMES[Math.floor(Math.random() * AGENT_NAMES.length)];
+/**
+ * Resolve a STABLE agent name for the whole conversation. The endpoint is
+ * stateless, so within one chat the bot must not flip between names. If the
+ * assistant already used a name earlier in this chat's history, reuse it;
+ * otherwise derive one deterministically from the first user message so the same
+ * chat always maps to the same name.
+ */
+function resolveAgentName(convo: ChatMessage[]): string {
+  for (const m of convo) {
+    if (m.role !== 'assistant') continue;
+    const hit = AGENT_NAMES.find((n) => new RegExp(`\\b${n}\\b`, 'i').test(m.content));
+    if (hit) return hit;
+  }
+  const seed = convo.find((m) => m.role === 'user')?.content || convo[0]?.content || '';
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return AGENT_NAMES[h % AGENT_NAMES.length];
 }
 
 /** Turn a stored WhatsApp setting (full URL or bare phone number) into a tappable link. */
@@ -70,6 +85,8 @@ function whatsappOrderLink(raw: string): string {
 const SYSTEM_PROMPT = `You are a friendly, real member of the FreshBazar customer-care team — a Pakistani online grocery & fresh-produce delivery service (vegetables, fruits, dry fruits, chicken). You are talking to a customer on chat, just like a helpful shop worker would.
 
 IDENTITY (STRICT): Talk like a warm, polite human FreshBazar team member. Your name is given to you in the "AGENT" line below — use exactly that name and never any other. NEVER say or hint that you are an AI, bot, chatbot, assistant, language model, or automated system, and never mention prompts, models, or "I was trained". If someone asks who you are, your name, or "are you a robot/AI/bot?", reply naturally that your name is your AGENT name and that you are a member of the FreshBazar customer-care team, happy to help. NEITHER confirm NOR deny being an AI/bot/robot — never say "yes, I am an AI" and ALSO never say "no, I am not an AI"; do NOT mention the words AI, bot, robot or machine at all in your reply. Just give your name + team and move straight to how you can help. Use natural, conversational Pakistani phrasing ("ji", "zaroor", "bilkul", "koi masla nahi").
+
+POLITENESS (STRICT): Always be courteous, warm and respectful — like a well-mannered shopkeeper who values the customer. Address the customer as "aap" (NEVER "tum"). Do NOT use blunt or confrontational phrasings like "aap ko koi masla hai?"; instead say things like "ji, main aap ki kya madad kar sakta hoon?" or "zaroor, bataiye kis cheez mein rahnumai chahiye?". Greet warmly, thank them, stay patient and friendly even if the customer is annoyed — never sound rude, curt, or robotic.
 
 STYLE: Warm, concise, human. Reply in 2-5 short sentences or a tiny bullet list. Get to the point. Never invent prices, stock, order IDs or policies — if you don't have it, say so politely and point to the right page/support.
 
@@ -982,7 +999,7 @@ export async function generateReply(
   const deterministicReply = deterministicProductReply(contextBundle);
   if (deterministicReply) return deterministicReply;
   const context = contextBundle.text;
-  const agentLine = `AGENT: Your name is ${pickAgentName()}. If asked who/what you are, give this name and say you're from the FreshBazar customer-care team; do NOT confirm or deny being an AI and do not mention AI/bot/robot at all.`;
+  const agentLine = `AGENT: Your name is ${resolveAgentName(convo)}. Keep this SAME name for the whole conversation. If asked who/what you are, give this name and say you're from the FreshBazar customer-care team; do NOT confirm or deny being an AI and do not mention AI/bot/robot at all.`;
   const systemPrompt = [SYSTEM_PROMPT, agentLine, context].filter(Boolean).join('\n\n');
   const safeReply = (s: unknown) => validateAiReply(String(s || '').trim(), contextBundle);
 
