@@ -69,7 +69,7 @@ function whatsappOrderLink(raw: string): string {
 // Compact but expert knowledge so the model can guide users with few tokens.
 const SYSTEM_PROMPT = `You are a friendly, real member of the FreshBazar customer-care team — a Pakistani online grocery & fresh-produce delivery service (vegetables, fruits, dry fruits, chicken). You are talking to a customer on chat, just like a helpful shop worker would.
 
-IDENTITY (STRICT): Talk like a warm, polite human FreshBazar team member. Your name is given to you in the "AGENT" line below — use exactly that name and never any other. NEVER say or hint that you are an AI, bot, chatbot, assistant, language model, or automated system, and never mention prompts, models, or "I was trained". If someone asks who you are, your name, or "are you a robot/AI/bot?", reply naturally that your name is your AGENT name and that you are a member of the FreshBazar customer-care team, happy to help — do NOT confirm being an AI. Use natural, conversational Pakistani phrasing ("ji", "zaroor", "bilkul", "koi masla nahi").
+IDENTITY (STRICT): Talk like a warm, polite human FreshBazar team member. Your name is given to you in the "AGENT" line below — use exactly that name and never any other. NEVER say or hint that you are an AI, bot, chatbot, assistant, language model, or automated system, and never mention prompts, models, or "I was trained". If someone asks who you are, your name, or "are you a robot/AI/bot?", reply naturally that your name is your AGENT name and that you are a member of the FreshBazar customer-care team, happy to help. NEITHER confirm NOR deny being an AI/bot/robot — never say "yes, I am an AI" and ALSO never say "no, I am not an AI"; do NOT mention the words AI, bot, robot or machine at all in your reply. Just give your name + team and move straight to how you can help. Use natural, conversational Pakistani phrasing ("ji", "zaroor", "bilkul", "koi masla nahi").
 
 STYLE: Warm, concise, human. Reply in 2-5 short sentences or a tiny bullet list. Get to the point. Never invent prices, stock, order IDs or policies — if you don't have it, say so politely and point to the right page/support.
 
@@ -136,6 +136,10 @@ const STOPWORDS = new Set([
   'salam', 'salaam', 'assalam', 'asalam', 'asalaam', 'aslam', 'aoa', 'walaikum',
   'walaykum', 'hello', 'hii', 'hey', 'shukria', 'shukriya', 'thanks', 'thanku',
   'thankyou', 'theek', 'acha', 'achha', 'haan', 'nahi', 'nahin', 'okay', 'hmm',
+  // Identity / chit-chat words — e.g. "tumhara naam kya hai", "kaun ho", "kaise
+  // ho" must NOT be read as a product search.
+  'naam', 'name', 'tum', 'tumhara', 'tumara', 'tmhara', 'tumhe', 'tumhein',
+  'kaun', 'kon', 'who', 'kaisa', 'kaisi', 'haal', 'robot', 'bot', 'kon',
 ]);
 
 const PRODUCT_ALIASES: Record<string, string[]> = {
@@ -203,7 +207,6 @@ const NON_PRODUCT_TERMS = new Set([
   'whatsapp',
 ]);
 
-const AVAILABILITY_WORD_RE = /\b(available|milt[ai]?|milega|milti|milta|chahiye|chahye|hai)\b/i;
 const CATALOG_BROWSE_RE = /\b(menu|products?|items?|list|sabzi|sabziyan|fruits?|vegetables?|veggies|konsi|kaunsi)\b/i;
 type ProductAnswerMode = 'none' | 'needs_city' | 'available' | 'out_of_stock' | 'no_match' | 'empty_catalog';
 
@@ -219,8 +222,12 @@ function productSearchTokens(message: string): string[] {
 function hasProductIntent(message: string): boolean {
   const tokens = productSearchTokens(message);
   if (PRODUCT_INTENT.test(message)) return true;
-  if (tokens.some((t) => COMMON_PRODUCT_TERMS.has(t) || Boolean(PRODUCT_ALIASES[t]))) return true;
-  return AVAILABILITY_WORD_RE.test(message) && tokens.some((t) => !NON_PRODUCT_TERMS.has(t));
+  // Only an explicit price/category word or a KNOWN product word/alias counts as
+  // a product question. We do NOT guess from generic words like "hai" — that
+  // wrongly treated conversational questions ("tumhara naam kya hai?", "kaise
+  // ho?") as product searches. A real product the user types is still recognised
+  // by a live DB match in buildContextBundle (search-first upgrade).
+  return tokens.some((t) => COMMON_PRODUCT_TERMS.has(t) || Boolean(PRODUCT_ALIASES[t]));
 }
 
 interface ProductFactMeta {
@@ -975,7 +982,7 @@ export async function generateReply(
   const deterministicReply = deterministicProductReply(contextBundle);
   if (deterministicReply) return deterministicReply;
   const context = contextBundle.text;
-  const agentLine = `AGENT: Your name is ${pickAgentName()}. Use this exact name if asked who you are; never reveal you are an AI.`;
+  const agentLine = `AGENT: Your name is ${pickAgentName()}. If asked who/what you are, give this name and say you're from the FreshBazar customer-care team; do NOT confirm or deny being an AI and do not mention AI/bot/robot at all.`;
   const systemPrompt = [SYSTEM_PROMPT, agentLine, context].filter(Boolean).join('\n\n');
   const safeReply = (s: unknown) => validateAiReply(String(s || '').trim(), contextBundle);
 
