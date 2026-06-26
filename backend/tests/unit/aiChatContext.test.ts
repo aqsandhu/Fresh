@@ -382,4 +382,21 @@ describe('aiChat buildContext', () => {
 
     expect(ctx).toContain('https://wa.me/923001234567');
   });
+
+  // Regression: "tumhara naam kya hai" used to match product-intent via the
+  // generic "hai" word and wrongly answered "ye cheez available nahi". An
+  // identity/chit-chat question must go to the provider, not the catalog.
+  it('does not treat an identity/chit-chat question as a product search', async () => {
+    installDb({ keyword: [], catalog: [ALMOND] });
+    mockProviderReply('Mera naam Fatteh hai, FreshBazar customer-care se. Bataiye kaise madad karun?');
+
+    const reply = await generateReply(
+      [{ role: 'user', content: 'tumhara naam kya hai' }],
+      { cityId: 'city-lhr' }
+    );
+
+    expect((global as any).fetch).toHaveBeenCalledTimes(1); // provider, not deterministic
+    expect(reply).not.toContain('available nahi'); // NOT the product not-found reply
+    expect(reply).toContain('Fatteh');
+  });
 });
