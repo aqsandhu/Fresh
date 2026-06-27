@@ -16,6 +16,9 @@ import MarketingTracker from '@/components/marketing/MarketingTracker'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
+  // Base used to turn relative OG/Twitter image paths and canonical URLs into
+  // absolute ones. Without it Next falls back to localhost in production builds.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://freshbazar.pk'),
   title: {
     default: 'Fresh Bazar Pakistan - Fresh Groceries Delivered',
     template: '%s | Fresh Bazar',

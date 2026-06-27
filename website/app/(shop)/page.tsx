@@ -7,7 +7,10 @@ import AppDownloadSection from '@/components/sections/AppDownloadSection'
 import GuidanceTips from '@/components/guidance/GuidanceTips'
 
 export const metadata: Metadata = {
-  title: 'Fresh Groceries Delivered | Fresh Bazar',
+  // The root layout's title.template ("%s | Fresh Bazar") appends the brand
+  // automatically, so this string must NOT include "| Fresh Bazar" itself —
+  // otherwise the rendered <title> doubles up to "… | Fresh Bazar | Fresh Bazar".
+  title: 'Fresh Groceries Delivered',
   description: 'Get farm-fresh vegetables, fruits, dry fruits, and chicken delivered to your doorstep. Free delivery on Rs. 500+ vegetables/fruits.',
 }
 
