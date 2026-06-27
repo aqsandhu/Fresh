@@ -72,5 +72,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.6,
     }))
 
-  return [...staticEntries, ...categoryEntries, ...productEntries]
+  // The categories endpoint returns the same slug once per city, which would
+  // otherwise duplicate /category/<slug> URLs. De-duplicate by URL, keeping
+  // the first occurrence.
+  const all = [...staticEntries, ...categoryEntries, ...productEntries]
+  const seen = new Set<string>()
+  return all.filter((entry) => {
+    if (seen.has(entry.url)) return false
+    seen.add(entry.url)
+    return true
+  })
 }

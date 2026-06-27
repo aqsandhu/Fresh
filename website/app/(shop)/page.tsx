@@ -7,10 +7,11 @@ import AppDownloadSection from '@/components/sections/AppDownloadSection'
 import GuidanceTips from '@/components/guidance/GuidanceTips'
 
 export const metadata: Metadata = {
-  // The root layout's title.template ("%s | Fresh Bazar") appends the brand
-  // automatically, so this string must NOT include "| Fresh Bazar" itself —
-  // otherwise the rendered <title> doubles up to "… | Fresh Bazar | Fresh Bazar".
-  title: 'Fresh Groceries Delivered',
+  // `absolute` overrides the root layout's title.template entirely, so the
+  // homepage <title> is EXACTLY this string — the "%s | Fresh Bazar" template
+  // is NOT appended (which is why there's no double "Fresh Bazar"). Other
+  // pages still use the template normally.
+  title: { absolute: 'Fresh Bazar | Fresh Sabzi Fruit' },
   description: 'Get farm-fresh vegetables, fruits, dry fruits, and chicken delivered to your doorstep. Free delivery on Rs. 500+ vegetables/fruits.',
 }
 
