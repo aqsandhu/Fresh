@@ -34,7 +34,7 @@ interface CityContextValue {
   isLoading: boolean
   isReady: boolean
   setCity: (city: ServiceCity | StoredCity) => void
-  reloadCities: () => Promise<void>
+  reloadCities: () => Promise<ServiceCity[]>
 }
 
 const CityContext = createContext<CityContextValue | undefined>(undefined)
@@ -64,24 +64,42 @@ export function CityProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false)
   const [selectedCity, setSelectedCityState] = useState<StoredCity | null>(null)
 
-  const reloadCities = useCallback(async () => {
+  const reloadCities = useCallback(async (): Promise<ServiceCity[]> => {
     setIsLoading(true)
     try {
       const list = await fetchCities()
       setCities(list)
+      return list
     } catch {
       setCities([])
+      return []
     } finally {
       setIsLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    reloadCities().finally(() => {
+    reloadCities().then((list) => {
       const stored = getStoredCity()
-      setSelectedCityState(stored)
       if (stored?.id) {
+        setSelectedCityState(stored)
         switchCartCity(stored.id)
+      } else if (list.length > 0) {
+        // No city chosen yet — this is every first-time visitor and, crucially,
+        // every search-engine crawler (which never has one). Default to the
+        // first service city so the page renders real content immediately
+        // instead of redirecting to /select-city. That redirect was making the
+        // entire site un-indexable on Google ("Page with redirect"). Users can
+        // still switch cities any time via the city button.
+        const fallback = list[0]
+        const def: StoredCity = {
+          id: fallback.id,
+          name: fallback.name,
+          province: fallback.province,
+        }
+        persistCity(def)
+        setSelectedCityState(def)
+        switchCartCity(def.id)
       }
       setIsReady(true)
     })
