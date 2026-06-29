@@ -23,6 +23,8 @@ import { formatPriceShort } from '@/lib/utils'
 import { getDeliveryHint, getVegFruitSubtotal } from '@/lib/deliveryRules'
 import { resolveLineUnitPrice, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
 import ProductPrice from '@/components/ui/ProductPrice'
+import GuidanceTips from '@/components/guidance/GuidanceTips'
+import { CART_TIPS } from '@/lib/guidanceTipsContent'
 
 export default function CartPage() {
   const router = useRouter()
@@ -50,10 +52,13 @@ export default function CartPage() {
   const deliveryHint = getDeliveryHint(items, deliveryFreeThreshold)
 
   const handleCheckout = () => {
-    if (!isAuthenticated) {
-      router.push('/login?redirect=/checkout')
-      return
-    }
+    // Guests can now check out without logging in first — the checkout page
+    // shows an inline login / sign-up panel and only then the real checkout.
+    // ── OLD guard kept commented so the previous behaviour can be restored ──
+    // if (!isAuthenticated) {
+    //   router.push('/login?redirect=/checkout')
+    //   return
+    // }
     router.push('/checkout')
   }
 
@@ -78,6 +83,8 @@ export default function CartPage() {
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 sm:mb-8">
           Shopping Cart ({items.length} {items.length === 1 ? 'item' : 'items'})
         </h1>
+
+        <GuidanceTips tips={CART_TIPS} page="cart" />
 
         <div className="grid lg:grid-cols-3 gap-6 lg:gap-8">
           {/* Cart Items */}

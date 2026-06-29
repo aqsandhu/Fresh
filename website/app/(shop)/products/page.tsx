@@ -14,6 +14,8 @@ import ProductCard from '@/components/ui/ProductCard'
 import Button from '@/components/ui/Button'
 import { productsApi } from '@/lib/api'
 import { Product } from '@/types'
+import GuidanceTips from '@/components/guidance/GuidanceTips'
+import { SHOP_TIPS } from '@/lib/guidanceTipsContent'
 
 type SortOption = 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc'
 
@@ -51,6 +53,7 @@ export default function AllProductsPage() {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
+        <GuidanceTips tips={SHOP_TIPS} page="shop" />
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
