@@ -26,6 +26,18 @@ export const RECOMMENDED_TIPS: { page: string; text: string }[] = [
   { page: 'support', text: 'ہر شکایت کو ایک ٹکٹ نمبر ملتا ہے جس سے آپ اس کی پیش رفت دیکھ سکتے ہیں۔' },
   { page: 'complaint', text: 'مسئلے کی قسم منتخب کریں اور مختصر مگر واضح تفصیل لکھیں۔' },
   { page: 'reviews', text: 'آپ کے دیے گئے تمام ریویو اور درجہ بندیاں یہاں محفوظ رہتی ہیں۔' },
+  // Cart page.
+  { page: 'cart', text: 'پروڈکٹ کی تعداد بڑھانے یا کم کرنے کے لیے + اور − کے بٹن استعمال کریں۔' },
+  { page: 'cart', text: 'آرڈر مکمل کرنے کے لیے "Checkout" دبائیں — لاگ اِن وہیں صفحے پر ہو جائے گا۔' },
+  // Shop / all-products listing.
+  { page: 'shop', text: 'پروڈکٹ تلاش کرنے کے لیے سرچ یا کیٹیگری استعمال کریں۔' },
+  { page: 'shop', text: 'پروڈکٹ کو کارٹ میں ڈالنے کے لیے "Add" دبائیں، پھر کارٹ سے آرڈر مکمل کریں۔' },
+  // Inline login section (checkout page).
+  { page: 'login', text: 'پہلے اپنا موبائل نمبر درج کریں، پھر اپنا 4 ہندسوں کا PIN درج کریں۔' },
+  { page: 'login', text: 'PIN بھول گئے ہیں؟ "Forgot PIN? Sign in with OTP" پر دبائیں۔' },
+  // Inline sign-up section (checkout page).
+  { page: 'signup', text: 'آپ کے نمبر پر بھیجا گیا 6 ہندسوں کا کوڈ (OTP) درج کریں۔' },
+  { page: 'signup', text: 'تصدیق کے بعد اپنا نام اور 4 ہندسوں کا PIN ایک ہی بار میں سیٹ کریں — یہی اگلی بار کام آئے گا۔' },
 ];
 
 function getMigrationConnectionString(): string | null {

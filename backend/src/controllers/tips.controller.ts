@@ -23,6 +23,8 @@ const isUuid = (v: string) => UUID_RE.test(v);
 const VALID_PAGES = [
   'checkout', 'orders', 'order_detail', 'track', 'support',
   'complaint', 'reviews', 'product', 'home', 'cart',
+  // Inline checkout auth + shop listing tips.
+  'shop', 'login', 'signup',
 ];
 
 interface TipRow {

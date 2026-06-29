@@ -21,6 +21,9 @@ const PAGES: { value: string; label: string }[] = [
   { value: 'product', label: 'Product Page' },
   { value: 'home', label: 'Home' },
   { value: 'cart', label: 'Cart' },
+  { value: 'shop', label: 'Shop (All Products)' },
+  { value: 'login', label: 'Checkout — Login' },
+  { value: 'signup', label: 'Checkout — Sign Up' },
 ];
 
 const pageLabel = (v: string) => PAGES.find((p) => p.value === v)?.label || v;
