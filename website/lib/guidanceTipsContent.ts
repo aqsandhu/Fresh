@@ -46,6 +46,15 @@ export const LOGIN_TIPS: string[] = [
   'نیا نمبر ہونے کی صورت میں OTP کے بعد سائن اپ کا مرحلہ خود کھل جائے گا۔',
 ]
 
+// Standalone "Create Account" (/register) page — matches THIS page's flow:
+// number → OTP → name (email optional) → set & confirm a 4-digit PIN.
+export const CREATE_TIPS: string[] = [
+  'پہلے اپنا موبائل نمبر درج کریں اور "Send OTP" دبائیں۔',
+  'آپ کے نمبر پر آنے والا 6 ہندسوں کا کوڈ (OTP) درج کریں۔',
+  'اپنا نام لکھیں — ای میل دینا اختیاری ہے۔',
+  'آخر میں 4 ہندسوں کا PIN منتخب کر کے دوبارہ تصدیق کریں؛ یہی PIN اگلی بار سائن اِن کے لیے کام آئے گا۔',
+]
+
 // Shown inside the inline sign-up (OTP + Register) section on the checkout page.
 export const SIGNUP_TIPS: string[] = [
   'آپ کے نمبر پر بھیجا گیا 6 ہندسوں کا کوڈ (OTP) درج کریں۔',

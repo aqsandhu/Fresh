@@ -20,6 +20,8 @@ import BrandLogo from '@/components/ui/BrandLogo'
 import Input from '@/components/ui/Input'
 import PinInput from '@/components/auth/PinInput'
 import AutoHeight from '@/components/ui/AutoHeight'
+import GuidanceTips from '@/components/guidance/GuidanceTips'
+import { CREATE_TIPS } from '@/lib/guidanceTipsContent'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
@@ -325,7 +327,7 @@ export default function RegisterPage() {
     : steps.findIndex((s) => s.key === step)
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center py-12 px-4">
+    <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center py-12 px-4">
       {/* Invisible reCAPTCHA container required by Firebase */}
       <div id="recaptcha-container-register" />
       <motion.div
@@ -364,6 +366,11 @@ export default function RegisterPage() {
             ))}
           </div>
 
+          {/* Page-specific guidance for the Create Account flow (admin-managed,
+              with recommended Urdu fallbacks) — matches THIS page's steps:
+              number → OTP → name → set & confirm PIN. */}
+          <GuidanceTips tips={CREATE_TIPS} page="register" />
+
           <AutoHeight>
           <AnimatePresence mode="wait" initial={false}>
             {/* ── Step 1: Phone ──────────────────────────────────────── */}
@@ -398,7 +405,7 @@ export default function RegisterPage() {
                     )}
                   </p>
 
-                  <div className="flex justify-center gap-2.5">
+                  <div className="flex justify-center gap-1.5 sm:gap-2.5 max-w-full">
                     {otp.map((digit, index) => (
                       <input
                         key={index}
@@ -411,7 +418,7 @@ export default function RegisterPage() {
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
                         onFocus={(e) => e.target.select()}
                         autoFocus={index === 0}
-                        className="w-12 h-14 text-center text-xl font-bold border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white"
+                        className="flex-1 min-w-0 max-w-[3rem] w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white"
                       />
                     ))}
                   </div>

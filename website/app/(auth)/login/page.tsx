@@ -488,7 +488,7 @@ export default function LoginPage() {
   const isCompactStep = step === 'otp' || step === 'newPin'
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-start sm:items-center justify-center py-4 sm:py-8 px-3 sm:px-4 overflow-y-auto">
+    <div className="min-h-[100dvh] overflow-x-hidden bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-start sm:items-center justify-center py-4 sm:py-8 px-3 sm:px-4 overflow-y-auto">
       {/* Invisible reCAPTCHA container required by Firebase */}
       <div id="recaptcha-container" />
       <motion.div

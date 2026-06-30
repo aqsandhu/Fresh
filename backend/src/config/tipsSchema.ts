@@ -38,6 +38,9 @@ export const RECOMMENDED_TIPS: { page: string; text: string }[] = [
   // Inline sign-up section (checkout page).
   { page: 'signup', text: 'آپ کے نمبر پر بھیجا گیا 6 ہندسوں کا کوڈ (OTP) درج کریں۔' },
   { page: 'signup', text: 'تصدیق کے بعد اپنا نام اور 4 ہندسوں کا PIN ایک ہی بار میں سیٹ کریں — یہی اگلی بار کام آئے گا۔' },
+  // Standalone "Create Account" (/register) page.
+  { page: 'register', text: 'پہلے اپنا موبائل نمبر درج کریں اور OTP منگوائیں۔' },
+  { page: 'register', text: 'OTP کے بعد اپنا نام لکھیں اور 4 ہندسوں کا PIN سیٹ کر کے تصدیق کریں۔' },
 ];
 
 function getMigrationConnectionString(): string | null {
