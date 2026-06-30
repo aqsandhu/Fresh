@@ -32,6 +32,7 @@ import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'fi
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import PinInput from '@/components/auth/PinInput'
+import AutoHeight from '@/components/ui/AutoHeight'
 import GuidanceTips from '@/components/guidance/GuidanceTips'
 import { LOGIN_TIPS, SIGNUP_TIPS } from '@/lib/guidanceTipsContent'
 import { useAuthStore } from '@/store/cartStore'
@@ -398,14 +399,16 @@ export default function CheckoutAuthPanel() {
         page={isSignupSide ? 'signup' : 'login'}
       />
 
-      <AnimatePresence mode="wait">
+      <AutoHeight>
+      <AnimatePresence mode="wait" initial={false}>
         {/* ── Step 1: Phone ─────────────────────────────────────────────── */}
         {step === 'phone' && (
           <motion.form
             key="phone"
-            initial={{ opacity: 0, x: -16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -16 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
             onSubmit={handlePhoneSubmit}
             className="space-y-4"
           >
@@ -436,9 +439,10 @@ export default function CheckoutAuthPanel() {
         {step === 'pin' && (
           <motion.div
             key="pin"
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 16 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
             className="space-y-5"
           >
             <p className="text-center text-sm text-gray-600">
@@ -482,9 +486,10 @@ export default function CheckoutAuthPanel() {
         {step === 'otp' && (
           <motion.div
             key="otp"
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 16 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
             className="space-y-4"
           >
             {/* Clear, explicit instruction for the OTP step. */}
@@ -559,9 +564,10 @@ export default function CheckoutAuthPanel() {
         {step === 'register' && (
           <motion.form
             key="register"
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 16 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: 'easeInOut' }}
             onSubmit={handleRegister}
             className="space-y-4"
           >
@@ -612,6 +618,7 @@ export default function CheckoutAuthPanel() {
           </motion.form>
         )}
       </AnimatePresence>
+      </AutoHeight>
 
       {/* Reassurance footer */}
       <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400">

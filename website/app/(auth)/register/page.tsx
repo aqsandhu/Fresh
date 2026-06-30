@@ -19,6 +19,7 @@ import Button from '@/components/ui/Button'
 import BrandLogo from '@/components/ui/BrandLogo'
 import Input from '@/components/ui/Input'
 import PinInput from '@/components/auth/PinInput'
+import AutoHeight from '@/components/ui/AutoHeight'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
@@ -363,10 +364,11 @@ export default function RegisterPage() {
             ))}
           </div>
 
-          <AnimatePresence mode="wait">
+          <AutoHeight>
+          <AnimatePresence mode="wait" initial={false}>
             {/* ── Step 1: Phone ──────────────────────────────────────── */}
             {step === 'phone' && (
-              <motion.div key="phone" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <motion.div key="phone" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <form onSubmit={phoneForm.handleSubmit(onPhoneSubmit)} className="space-y-5">
                   <Input
                     label="Phone Number"
@@ -386,7 +388,7 @@ export default function RegisterPage() {
 
             {/* ── Step 2: OTP ────────────────────────────────────────── */}
             {step === 'otp' && (
-              <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
+              <motion.div key="otp" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <div className="space-y-6">
                   <p className="text-center text-sm text-gray-500">
                     {isOtpBypassEnabled() ? (
@@ -453,7 +455,7 @@ export default function RegisterPage() {
 
             {/* ── Step 3: Name ───────────────────────────────────────── */}
             {step === 'profile' && (
-              <motion.div key="profile" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
+              <motion.div key="profile" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <div className="mb-4 flex items-center gap-2 bg-green-50 text-green-700 text-sm px-4 py-2.5 rounded-xl">
                   <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                   <span>Phone verified! One more step before your PIN.</span>
@@ -487,9 +489,10 @@ export default function RegisterPage() {
             {step === 'pin' && (
               <motion.div
                 key="pin"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
               >
                 <div className="text-center mb-6">
                   <h2 className="text-xl font-semibold text-gray-900">
@@ -522,6 +525,7 @@ export default function RegisterPage() {
               </motion.div>
             )}
           </AnimatePresence>
+          </AutoHeight>
 
           {/* Divider */}
           <div className="relative my-6">

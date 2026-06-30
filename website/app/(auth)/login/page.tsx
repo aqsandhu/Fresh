@@ -24,6 +24,7 @@ import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, otpBypassHint } from '@/lib/otpBypass'
 import PinInput from '@/components/auth/PinInput'
 import BrandLogo from '@/components/ui/BrandLogo'
+import AutoHeight from '@/components/ui/AutoHeight'
 import {
   clearLastPhone,
   getLastPhone,
@@ -545,9 +546,10 @@ export default function LoginPage() {
             )}
           </div>
 
-          <AnimatePresence mode="wait">
+          <AutoHeight>
+          <AnimatePresence mode="wait" initial={false}>
             {step === 'phone' ? (
-              <motion.div key="phone" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <motion.div key="phone" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <form onSubmit={handleSubmit(onPhoneSubmit)} className="space-y-5">
                   <Input
                     label="Phone Number"
@@ -569,9 +571,10 @@ export default function LoginPage() {
             ) : step === 'pin' ? (
               <motion.div
                 key="pin"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
               >
                 <div className="space-y-6">
                   <PinInput value={pin} onChange={setPin} onComplete={verifyPinHandler} disabled={isLoading} />
@@ -604,9 +607,10 @@ export default function LoginPage() {
             ) : step === 'newPin' ? (
               <motion.div
                 key="newPin"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
               >
                 <div className="space-y-4 sm:space-y-5">
                   <div>
@@ -642,7 +646,7 @@ export default function LoginPage() {
                 </div>
               </motion.div>
             ) : (
-              <motion.div key="otp" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
+              <motion.div key="otp" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <div className="space-y-4 sm:space-y-5">
                   {/* OTP Inputs */}
                   <div className="flex justify-center gap-1.5 sm:gap-2.5 max-w-full">
@@ -715,6 +719,7 @@ export default function LoginPage() {
               </motion.div>
             )}
           </AnimatePresence>
+          </AutoHeight>
 
           {!isCompactStep && (
             <>
