@@ -505,7 +505,7 @@ export default function CheckoutAuthPanel() {
               )}
             </div>
 
-            <div className="flex justify-center gap-1.5 sm:gap-2.5">
+            <div className="flex justify-center gap-1.5 sm:gap-2.5 max-w-full">
               {otp.map((digit, index) => (
                 <input
                   key={index}
@@ -519,7 +519,7 @@ export default function CheckoutAuthPanel() {
                   onFocus={(e) => e.target.select()}
                   autoFocus={index === 0}
                   disabled={isLoading}
-                  className="w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white disabled:opacity-50"
+                  className="flex-1 min-w-0 max-w-[3rem] w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white disabled:opacity-50"
                 />
               ))}
             </div>
