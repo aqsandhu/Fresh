@@ -15,6 +15,7 @@ import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
+import { parsePagination } from '../utils/validators';
 import logger from '../utils/logger';
 
 /**
@@ -194,6 +195,7 @@ export const getAttaRequests = asyncHandler(async (req: Request, res: Response) 
   }
 
   const { page = 1, limit = 10, status } = req.query;
+  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit, { defaultLimit: 10 });
 
   let whereSql = `WHERE ar.user_id = $1`;
   const params: any[] = [req.user.id];
@@ -234,17 +236,17 @@ export const getAttaRequests = asyncHandler(async (req: Request, res: Response) 
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+  params.push(safeLimit, offset);
 
   const result = await query(requestsSql, params);
 
   successResponse(res, {
     requests: result.rows,
     pagination: {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+      page: safePage,
+      limit: safeLimit,
       total,
-      totalPages: Math.ceil(total / parseInt(limit as string)),
+      totalPages: Math.ceil(total / safeLimit),
     },
   }, 'Atta requests retrieved successfully');
 });

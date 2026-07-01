@@ -44,7 +44,7 @@ const CATALOG_V2_CONSUMER_COLS =
 import { hasOrderCouponColumns, hasUrgentDeliveryColumns } from '../config/orderSchema';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
 import logger from '../utils/logger';
-import { normalizePhoneNumber } from '../utils/validators';
+import { normalizePhoneNumber, parsePagination } from '../utils/validators';
 
 /**
  * Get user's orders
@@ -56,6 +56,7 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const { page = 1, limit = 10, status, city_id } = req.query;
+  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit, { defaultLimit: 10 });
 
   let whereSql = `WHERE o.user_id = $1 AND o.deleted_at IS NULL`;
   const params: any[] = [req.user.id];
@@ -103,7 +104,7 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+  params.push(safeLimit, offset);
 
   const result = await query(ordersSql, params);
 
@@ -144,10 +145,10 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   successResponse(res, {
     orders: ordersWithItems,
     pagination: {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+      page: safePage,
+      limit: safeLimit,
       total,
-      totalPages: Math.ceil(total / parseInt(limit as string)),
+      totalPages: Math.ceil(total / safeLimit),
     },
   }, 'Orders retrieved successfully');
 });

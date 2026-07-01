@@ -7,7 +7,7 @@ import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
-import { normalizePhoneNumber } from '../../utils/validators';
+import { normalizePhoneNumber, parsePagination } from '../../utils/validators';
 import logger from '../../utils/logger';
 import {
   resolveCityScope,
@@ -59,6 +59,7 @@ async function riderInScope(req: Request, id: string): Promise<boolean> {
 export const getRiders = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
   const { status, verification_status, page = 1, limit = 20 } = req.query;
+  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit);
 
   let sql = `
     FROM riders r
@@ -102,17 +103,17 @@ export const getRiders = asyncHandler(async (req: Request, res: Response) => {
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+  params.push(safeLimit, offset);
 
   const result = await query(ridersSql, params);
 
   successResponse(res, {
     riders: result.rows,
     pagination: {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+      page: safePage,
+      limit: safeLimit,
       total,
-      totalPages: Math.ceil(total / parseInt(limit as string)),
+      totalPages: Math.ceil(total / safeLimit),
     },
   }, 'Riders retrieved successfully');
 });
