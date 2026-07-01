@@ -6,7 +6,7 @@ import { Request, Response } from 'express';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse, paginatedResponse } from '../../utils/response';
-import { generateSlug } from '../../utils/validators';
+import { generateSlug, parsePagination } from '../../utils/validators';
 import { deleteFileFromStorage } from '../../config/storage';
 import logger from '../../utils/logger';
 import {
@@ -58,6 +58,7 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
     category, search, page = 1, limit = 20,
     sortBy = 'created_at', sortOrder = 'desc',
   } = req.query;
+  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit);
 
   let sql = `FROM products p JOIN categories c ON p.category_id = c.id WHERE 1=1`;
   const params: any[] = [];
@@ -106,10 +107,10 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
     : '';
   const listCatalogV2Cols = (await hasCatalogV2Columns()) ? CATALOG_V2_READ_COLS : '';
   const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, c.qualifies_for_free_delivery, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.half_kg_price, p.quarter_kg_price, p.half_dozen_price, ${listToggleCols} ${listQualityCols} ${listCatalogV2Cols} p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+  params.push(safeLimit, offset);
 
   const result = await query(productsSql, params);
-  paginatedResponse(res, result.rows, parseInt(page as string), parseInt(limit as string), total, 'Products retrieved successfully');
+  paginatedResponse(res, result.rows, safePage, safeLimit, total, 'Products retrieved successfully');
 });
 
 /**

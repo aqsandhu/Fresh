@@ -14,7 +14,7 @@ import {
   addressCityMatchSql,
   addressCityWhereClause,
 } from '../../utils/cityScope';
-import { normalizePhoneNumber } from '../../utils/validators';
+import { normalizePhoneNumber, parsePagination } from '../../utils/validators';
 
 // Marketing migration (46) may lag behind code — guard references so the
 // Customers tab never breaks if abandoned_carts hasn't been created yet.
@@ -72,9 +72,7 @@ export const getAdminAddresses = asyncHandler(async (req: Request, res: Response
   );
   const total = parseInt(countResult.rows[0].count);
 
-  const limitNum = parseInt(limit as string);
-  const pageNum = parseInt(page as string);
-  const offset = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, offset } = parsePagination(page, limit, { defaultLimit: 100 });
 
   const result = await query(
     `SELECT 
@@ -250,6 +248,7 @@ export const assignHouseNumber = asyncHandler(async (req: Request, res: Response
 export const getCustomers = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
   const { page = 1, limit = 20, search } = req.query;
+  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit);
 
   let whereSql = `WHERE u.role = 'customer' AND u.deleted_at IS NULL`;
   const params: any[] = [];
@@ -313,17 +312,17 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+  params.push(safeLimit, offset);
 
   const result = await query(customersSql, params);
 
   successResponse(res, {
     customers: result.rows,
     pagination: {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+      page: safePage,
+      limit: safeLimit,
       total,
-      totalPages: Math.ceil(total / parseInt(limit as string)),
+      totalPages: Math.ceil(total / safeLimit),
     },
   }, 'Customers retrieved successfully');
 });

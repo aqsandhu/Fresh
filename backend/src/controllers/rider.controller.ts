@@ -11,6 +11,7 @@ import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { deductOcpStockOnDelivery } from '../utils/ocpStock';
 import { commitOrderSaleOnDelivery } from '../utils/systemStock';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
+import { parsePagination } from '../utils/validators';
 import logger from '../utils/logger';
 
 let riderCashTablesReady: boolean | null = null;
@@ -106,6 +107,7 @@ export const getTasks = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const { status, page = 1, limit = 20 } = req.query;
+  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit);
 
   // Get rider ID
   const riderResult = await query(
@@ -176,17 +178,17 @@ export const getTasks = asyncHandler(async (req: Request, res: Response) => {
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+  params.push(safeLimit, offset);
 
   const result = await query(tasksSql, params);
 
   successResponse(res, {
     tasks: result.rows,
     pagination: {
-      page: parseInt(page as string),
-      limit: parseInt(limit as string),
+      page: safePage,
+      limit: safeLimit,
       total,
-      totalPages: Math.ceil(total / parseInt(limit as string)),
+      totalPages: Math.ceil(total / safeLimit),
     },
   }, 'Tasks retrieved successfully');
 });
