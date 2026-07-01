@@ -691,9 +691,18 @@ export const getBusinessHours = asyncHandler(async (req: Request, res: Response)
     return successResponse(res, defaults, 'Business hours retrieved');
   }
 
-  // Parse stored JSON
+  // Parse stored JSON. A malformed/legacy value must not 500 the endpoint —
+  // fall back to an empty list so the settings page still loads.
   const hoursRow = result.rows.find((r: any) => r.key === 'business_hours_data');
-  const hours = hoursRow ? JSON.parse(hoursRow.value) : [];
+  let hours: unknown = [];
+  if (hoursRow) {
+    try {
+      hours = JSON.parse(hoursRow.value);
+    } catch {
+      logger.warn('business_hours_data is not valid JSON — returning empty list');
+      hours = [];
+    }
+  }
   successResponse(res, hours, 'Business hours retrieved');
 });
 

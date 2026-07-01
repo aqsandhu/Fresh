@@ -320,7 +320,7 @@ export const Settings: React.FC = () => {
       startTime: timeSlot.startTime,
       endTime: timeSlot.endTime,
       maxOrders: timeSlot.maxOrders,
-      isActive: timeSlot.isActive,
+      isActive: timeSlot.isActive ?? true,
       isFreeDeliverySlot: timeSlot.isFreeDeliverySlot || false,
     });
     setFormErrors({});

@@ -94,7 +94,11 @@ export const getAccurateLocation = (
   maxAccuracy: number = MAX_ACCURACY_FOR_PIN,
   timeout: number = GPS_LOCK_TIMEOUT
 ): Promise<Location.LocationObject | null> => {
-  return new Promise(async (resolve) => {
+  return new Promise((resolve) => {
+    // Async work runs in an inner IIFE so the Promise executor itself stays
+    // synchronous — an async executor that threw before resolving would leave
+    // the promise hanging forever (its rejection is swallowed).
+    void (async () => {
     try {
       const { status } = await Location.getForegroundPermissionsAsync();
       if (status !== 'granted') {
@@ -142,6 +146,7 @@ export const getAccurateLocation = (
       console.error('Error getting accurate location:', error);
       resolve(null);
     }
+    })();
   });
 };
 

@@ -128,9 +128,9 @@ export const Riders: React.FC = () => {
   const filteredRiders = riders?.filter((rider) => {
     const matchesSearch =
       !searchQuery ||
-      rider.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      rider.phone.includes(searchQuery) ||
-      rider.vehicleNumber.toLowerCase().includes(searchQuery.toLowerCase());
+      !!rider.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      !!rider.phone?.includes(searchQuery) ||
+      !!rider.vehicleNumber?.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesVerification =
       !verificationFilter || rider.verificationStatus === verificationFilter;
@@ -228,13 +228,13 @@ export const Riders: React.FC = () => {
     setFormErrors({});
     setActiveTab(0);
     setFormData({
-      fullName: rider.fullName,
-      phone: rider.phone,
+      fullName: rider.fullName || '',
+      phone: rider.phone || '',
       email: rider.email || '',
       password: '',
       cnic: rider.cnic || '',
       vehicleType: (rider.vehicleType as CreateRiderData['vehicleType']) || 'bike',
-      vehicleNumber: rider.vehicleNumber,
+      vehicleNumber: rider.vehicleNumber || '',
       drivingLicenseNumber: rider.drivingLicenseNumber || '',
       emergencyContactName: rider.emergencyContactName || '',
       emergencyContactPhone: rider.emergencyContactPhone || '',

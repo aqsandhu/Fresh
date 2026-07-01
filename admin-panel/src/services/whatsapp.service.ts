@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type {
   WhatsAppOrderData,
   CustomerLookupResult,
@@ -19,7 +19,7 @@ export const whatsappService = {
   createOrder: async (data: WhatsAppOrderData): Promise<unknown> => {
     try {
       const response = await api.post<ApiResponse<unknown>>('/admin/whatsapp-orders', data);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error creating WhatsApp order:', error);
       throw new Error(error?.response?.data?.message || 'Failed to create WhatsApp order');
@@ -35,7 +35,7 @@ export const whatsappService = {
         orders: any[];
         pagination: any;
       }>>('/admin/whatsapp-orders', filters);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching WhatsApp orders:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch WhatsApp orders');
@@ -45,7 +45,7 @@ export const whatsappService = {
   getWhatsAppOrderById: async (id: string): Promise<any> => {
     try {
       const response = await api.get<ApiResponse<any>>(`/admin/whatsapp-orders/${id}`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching WhatsApp order:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch WhatsApp order');
@@ -58,7 +58,7 @@ export const whatsappService = {
         status,
         notes,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating WhatsApp order status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update status');
@@ -68,7 +68,7 @@ export const whatsappService = {
   convertToOrder: async (id: string): Promise<any> => {
     try {
       const response = await api.post<ApiResponse<any>>(`/admin/whatsapp-orders/${id}/convert`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error converting WhatsApp order:', error);
       throw new Error(error?.response?.data?.message || 'Failed to convert order');

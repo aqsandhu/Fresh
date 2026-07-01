@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { 
   AttaRequest, 
   AttaRequestStatus,
@@ -19,7 +19,7 @@ export const attaService = {
   getAttaRequests: async (filters: AttaRequestFilters = {}): Promise<PaginatedResponse<AttaRequest>> => {
     try {
       const response = await api.get<ApiResponse<PaginatedResponse<AttaRequest>>>('/admin/atta-requests', filters);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching atta requests:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch atta requests');
@@ -29,7 +29,7 @@ export const attaService = {
   getAttaRequestById: async (id: string): Promise<AttaRequest> => {
     try {
       const response = await api.get<ApiResponse<AttaRequest>>(`/admin/atta-requests/${id}`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching atta request:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch atta request');
@@ -42,7 +42,7 @@ export const attaService = {
         status,
         notes,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating atta request status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update status');
@@ -54,7 +54,7 @@ export const attaService = {
       const response = await api.put<ApiResponse<AttaRequest>>(`/admin/atta-requests/${id}/assign-rider`, {
         riderId,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error assigning rider to atta request:', error);
       throw new Error(error?.response?.data?.message || 'Failed to assign rider');
@@ -67,7 +67,7 @@ export const attaService = {
         millingCharge,
         deliveryCharge,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating atta request pricing:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update pricing');
@@ -89,7 +89,7 @@ export const attaService = {
         completedRequests: number;
         totalRevenue: number;
       }>>('/admin/atta-requests/stats', { period });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching atta stats:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch atta stats');
@@ -101,7 +101,7 @@ export const attaService = {
       const response = await api.put<ApiResponse<AttaRequest>>(`/admin/atta-requests/${id}/cancel`, {
         reason,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error cancelling atta request:', error);
       throw new Error(error?.response?.data?.message || 'Failed to cancel request');

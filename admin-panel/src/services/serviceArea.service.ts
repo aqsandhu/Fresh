@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { ApiResponse } from '@/types';
 
 /** A boundary point is [lng, lat] (GeoJSON order). */
@@ -27,7 +27,7 @@ export const serviceAreaService = {
       '/admin/service-areas',
       cityId ? { cityId } : undefined
     );
-    return res.data;
+    return unwrap(res);
   },
 
   create: async (payload: {
@@ -36,7 +36,7 @@ export const serviceAreaService = {
     polygon: LngLat[];
   }): Promise<ServiceArea> => {
     const res = await api.post<ApiResponse<ServiceArea>>('/admin/service-areas', payload);
-    return res.data;
+    return unwrap(res);
   },
 
   update: async (
@@ -44,7 +44,7 @@ export const serviceAreaService = {
     payload: Partial<{ name: string; polygon: LngLat[]; isActive: boolean }>
   ): Promise<ServiceArea> => {
     const res = await api.put<ApiResponse<ServiceArea>>(`/admin/service-areas/${id}`, payload);
-    return res.data;
+    return unwrap(res);
   },
 
   remove: async (id: string): Promise<void> => {
@@ -53,7 +53,7 @@ export const serviceAreaService = {
 
   getMessages: async (): Promise<ServiceAreaMessages> => {
     const res = await api.get<ApiResponse<ServiceAreaMessages>>('/admin/service-areas/messages');
-    return res.data;
+    return unwrap(res);
   },
 
   updateMessages: async (
@@ -63,6 +63,6 @@ export const serviceAreaService = {
       '/admin/service-areas/messages',
       payload
     );
-    return res.data;
+    return unwrap(res);
   },
 };

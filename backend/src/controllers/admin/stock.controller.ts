@@ -13,7 +13,7 @@
 import { Request, Response } from 'express';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
-import { successResponse, errorResponse, notFoundResponse } from '../../utils/response';
+import { successResponse, errorResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
 import { normalizeQuality, qualityStockColumn } from '../../utils/unitPricing';
 import { reservedColumn, recordStockMovement } from '../../utils/systemStock';

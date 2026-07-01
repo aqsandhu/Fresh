@@ -55,7 +55,7 @@ export const formatRelativeTime = (date: string | Date): string => {
   return `${Math.floor(diffInMinutes / 1440)} days ago`;
 };
 
-export const formatPhoneNumber = (phone: string): string => {
+export const formatPhoneNumber = (phone: string | null | undefined): string => {
   if (!phone) return '-';
   // Format Pakistani phone numbers
   if (phone.startsWith('92')) {

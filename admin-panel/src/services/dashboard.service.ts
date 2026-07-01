@@ -1,11 +1,11 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { DashboardData, ApiResponse } from '@/types';
 
 export const dashboardService = {
   getDashboardData: async (): Promise<DashboardData> => {
     try {
       const response = await api.get<ApiResponse<DashboardData>>('/admin/dashboard');
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching dashboard data:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch dashboard data');
@@ -15,7 +15,7 @@ export const dashboardService = {
   getSalesReport: async (startDate: string, endDate: string) => {
     try {
       const response = await api.get<ApiResponse<any>>('/admin/reports/sales', { startDate, endDate });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching sales report:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch sales report');
@@ -29,7 +29,7 @@ export const dashboardService = {
         endDate,
         groupBy,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching order report:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch order report');
@@ -43,7 +43,7 @@ export const dashboardService = {
         endDate,
         limit,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching product report:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch product report');
@@ -53,7 +53,7 @@ export const dashboardService = {
   getRiderReport: async (startDate: string, endDate: string) => {
     try {
       const response = await api.get<ApiResponse<any>>('/admin/reports/riders', { startDate, endDate });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching rider report:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch rider report');

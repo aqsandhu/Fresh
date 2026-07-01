@@ -459,7 +459,7 @@ export const Customers: React.FC = () => {
 
                     {/* Timestamp */}
                     <p className="text-xs text-gray-400">
-                      Added: {new Date(addr.createdAt).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      Added: {addr.createdAt ? new Date(addr.createdAt).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                     </p>
                   </div>
                 ))

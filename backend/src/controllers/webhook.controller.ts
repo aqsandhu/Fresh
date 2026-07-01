@@ -599,12 +599,29 @@ const verifyWebhookSignature = (
 export const registerWebhook = asyncHandler(async (req: Request, res: Response) => {
   const { url, events, secret } = req.body;
 
+  // Validate inputs — a bad url/events array would otherwise be persisted and
+  // later fail (or fan out requests to an attacker-controlled address). Only
+  // http(s) targets and a non-empty string[] of events are accepted.
+  if (typeof url !== 'string' || !/^https?:\/\/.+/i.test(url.trim())) {
+    return errorResponse(res, 'A valid http(s) webhook url is required', 400);
+  }
+  if (
+    !Array.isArray(events) ||
+    events.length === 0 ||
+    !events.every((e) => typeof e === 'string' && e.trim().length > 0)
+  ) {
+    return errorResponse(res, 'events must be a non-empty array of strings', 400);
+  }
+  if (secret !== undefined && typeof secret !== 'string') {
+    return errorResponse(res, 'secret must be a string', 400);
+  }
+
   // Store webhook configuration
   const result = await query(
     `INSERT INTO webhooks (url, events, secret, created_by)
      VALUES ($1, $2, $3, $4)
      RETURNING *`,
-    [url, events, secret, req.user?.id]
+    [url.trim(), events, secret ?? null, req.user?.id]
   );
 
   successResponse(res, result.rows[0], 'Webhook registered successfully', 201);

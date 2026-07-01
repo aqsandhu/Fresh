@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { ApiResponse } from '@/types';
 
 export interface Ocp {
@@ -45,11 +45,11 @@ export const ocpService = {
       name: data.name, phone: data.phone, pin: data.pin, city_id: data.cityId,
       owner_name: data.ownerName, address: data.address,
     });
-    return res.data;
+    return unwrap(res);
   },
   update: async (id: string, data: Record<string, any>): Promise<Ocp> => {
     const res = await api.put<ApiResponse<Ocp>>(`/admin/ocp/${id}`, data);
-    return res.data;
+    return unwrap(res);
   },
   remove: async (id: string): Promise<void> => {
     await api.delete(`/admin/ocp/${id}`);

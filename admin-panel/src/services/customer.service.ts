@@ -1,4 +1,4 @@
-import { api, apiClient } from './api';
+import { api, apiClient, unwrap } from './api';
 import type { Customer, Address, ApiResponse } from '@/types';
 
 interface CustomerFilters {
@@ -36,7 +36,7 @@ export const customerService = {
   getCustomerById: async (id: string): Promise<Customer> => {
     try {
       const response = await api.get<ApiResponse<Customer>>(`/admin/customers/${id}`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching customer:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch customer');
@@ -46,7 +46,7 @@ export const customerService = {
   getCustomerAddresses: async (customerId: string): Promise<Address[]> => {
     try {
       const response = await api.get<ApiResponse<Address[]>>(`/admin/customers/${customerId}/addresses`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching customer addresses:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch customer addresses');
@@ -62,7 +62,7 @@ export const customerService = {
         orders: any[];
         pagination: any;
       }>>(`/admin/customers/${customerId}/orders`, { page, limit });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching customer orders:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch customer orders');
@@ -74,7 +74,7 @@ export const customerService = {
       const response = await api.patch<ApiResponse<Customer>>(`/admin/customers/${id}/status`, {
         status,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating customer status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update customer status');
@@ -94,7 +94,7 @@ export const customerService = {
         averageOrderValue: number;
         lastOrderDate: string | null;
       }>>(`/admin/customers/${id}/stats`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching customer stats:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch customer stats');
@@ -107,7 +107,7 @@ export const customerService = {
         query,
         limit,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error searching customers:', error);
       throw new Error(error?.response?.data?.message || 'Failed to search customers');
@@ -125,7 +125,7 @@ export const customerService = {
         deleteOrders: options.deleteOrders ?? false,
         deleteAddresses: options.deleteAddresses ?? false,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error deleting customer:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete customer');

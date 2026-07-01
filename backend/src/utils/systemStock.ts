@@ -17,7 +17,6 @@
 import { PoolClient } from 'pg';
 import { qualityStockColumn, stockUnitsNeeded, normalizeQuality } from './unitPricing';
 
-type StockCol = 'stock_quantity' | 'stock_quantity_b' | 'stock_quantity_c';
 type ReservedCol = 'reserved_quantity' | 'reserved_quantity_b' | 'reserved_quantity_c';
 
 /** Whitelisted reserved-quantity column for a quality (safe to interpolate). */
