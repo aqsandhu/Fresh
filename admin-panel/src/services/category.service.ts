@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { 
   Category, 
   CreateCategoryData,
@@ -9,7 +9,7 @@ export const categoryService = {
   getCategories: async (): Promise<Category[]> => {
     try {
       const response = await api.get<ApiResponse<Category[]>>('/admin/categories');
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching categories:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch categories');
@@ -19,7 +19,7 @@ export const categoryService = {
   getCategoryTree: async (): Promise<Category[]> => {
     try {
       const response = await api.get<ApiResponse<Category[]>>('/categories/tree');
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching category tree:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch category tree');
@@ -29,7 +29,7 @@ export const categoryService = {
   createCategory: async (data: CreateCategoryData): Promise<Category> => {
     try {
       const response = await api.post<ApiResponse<Category>>('/admin/categories', data);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error creating category:', error);
       throw new Error(error?.response?.data?.message || 'Failed to create category');
@@ -39,7 +39,7 @@ export const categoryService = {
   createCategoryWithImage: async (formData: FormData): Promise<Category> => {
     try {
       const response = await api.postForm<ApiResponse<Category>>('/admin/categories', formData);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error creating category with image:', error);
       throw new Error(error?.response?.data?.message || 'Failed to create category');
@@ -49,7 +49,7 @@ export const categoryService = {
   updateCategory: async (id: string, data: Partial<CreateCategoryData>): Promise<Category> => {
     try {
       const response = await api.put<ApiResponse<Category>>(`/admin/categories/${id}`, data);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating category:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update category');
@@ -59,7 +59,7 @@ export const categoryService = {
   updateCategoryWithImage: async (id: string, formData: FormData): Promise<Category> => {
     try {
       const response = await api.putForm<ApiResponse<Category>>(`/admin/categories/${id}`, formData);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating category with image:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update category');
@@ -83,7 +83,7 @@ export const categoryService = {
       const response = await api.patch<ApiResponse<{ id: string; isActive: boolean }>>(
         `/admin/categories/${id}/toggle-active`
       );
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error toggling category status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update category status');
@@ -98,7 +98,7 @@ export const categoryService = {
         `/admin/categories/${id}/image`,
         formData
       );
-      return response.data.imageUrl;
+      return unwrap(response).imageUrl;
     } catch (error: any) {
       console.error('Error uploading category image:', error);
       throw new Error(error?.response?.data?.message || 'Failed to upload image');

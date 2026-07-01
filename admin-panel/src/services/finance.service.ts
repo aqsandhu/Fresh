@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { ApiResponse } from '@/types';
 
 export interface ExpenseRow {
@@ -40,18 +40,18 @@ export const financeService = {
   },
   addExpense: async (d: { category: string; amount: number; comment?: string; incurredAt?: string }) => {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/expenses', d);
-    return res.data;
+    return unwrap(res);
   },
   addStockPurchase: async (d: {
     productId: string; purchasedAt?: string; rawWeight?: number; purchasePrice: number;
     gradeA?: number; gradeB?: number; gradeC?: number; waste?: number; comment?: string;
   }) => {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/stock-purchase', d);
-    return res.data;
+    return unwrap(res);
   },
   addRiderPayment: async (d: { riderId: string; category: 'salary' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string; paidAt?: string }) => {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/rider-payment', d);
-    return res.data;
+    return unwrap(res);
   },
   products: async (): Promise<{ id: string; name: string; unitType: string; categoryName: string }[]> => {
     const res = await api.get<ApiResponse<any[]>>('/finance/products');
@@ -69,7 +69,7 @@ export const financeService = {
   },
   createWorker: async (d: { name: string; phone?: string; designation?: string; basicSalary?: number }) => {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/workers', d);
-    return res.data;
+    return unwrap(res);
   },
   getWorker: async (id: string): Promise<WorkerDetail> => {
     const res = await api.get<ApiResponse<WorkerDetail>>(`/finance/workers/${id}`);
@@ -77,7 +77,7 @@ export const financeService = {
   },
   updateWorker: async (id: string, d: { name?: string; phone?: string; designation?: string; status?: 'active' | 'inactive' }) => {
     const res = await api.put<ApiResponse<{ id: string }>>(`/finance/workers/${id}`, d);
-    return res.data;
+    return unwrap(res);
   },
   getAttendance: async (id: string, month: number, year: number): Promise<{ date: string; status: string; note: string | null }[]> => {
     const res = await api.get<ApiResponse<any[]>>(`/finance/workers/${id}/attendance`, { month, year });
@@ -85,15 +85,15 @@ export const financeService = {
   },
   markAttendance: async (id: string, d: { date: string; status: string; note?: string }) => {
     const res = await api.post<ApiResponse<any>>(`/finance/workers/${id}/attendance`, d);
-    return res.data;
+    return unwrap(res);
   },
   addIncrement: async (id: string, d: { effectiveFrom: string; newBasicSalary: number; note?: string }) => {
     const res = await api.post<ApiResponse<any>>(`/finance/workers/${id}/increment`, d);
-    return res.data;
+    return unwrap(res);
   },
   payWorker: async (id: string, d: { category: 'salary' | 'bonus' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string }) => {
     const res = await api.post<ApiResponse<{ id: string }>>(`/finance/workers/${id}/pay`, d);
-    return res.data;
+    return unwrap(res);
   },
 
   // ── Profit + sharing + shareholders ─────────────────────────────────────────
@@ -112,7 +112,7 @@ export const financeService = {
   },
   updateProfitSettings: async (d: { enabled: boolean; mode: string; perOrder: number; marginPercent: number; categoryShares: { categoryId: string; percent: number }[] }) => {
     const res = await api.put<ApiResponse<any>>('/finance/profit-settings', d);
-    return res.data;
+    return unwrap(res);
   },
   listShareholders: async (): Promise<ShareholdersData> => {
     const res = await api.get<ApiResponse<ShareholdersData>>('/finance/shareholders');
@@ -120,15 +120,15 @@ export const financeService = {
   },
   createShareholder: async (d: { name: string; email: string; password: string; sharePercent: number }) => {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/shareholders', d);
-    return res.data;
+    return unwrap(res);
   },
   updateShareholder: async (id: string, d: { name?: string; sharePercent?: number; password?: string; status?: 'active' | 'inactive' }) => {
     const res = await api.put<ApiResponse<{ id: string }>>(`/finance/shareholders/${id}`, d);
-    return res.data;
+    return unwrap(res);
   },
   payShareholder: async (id: string, d: { amount: number; note?: string }) => {
     const res = await api.post<ApiResponse<{ id: string }>>(`/finance/shareholders/${id}/pay`, d);
-    return res.data;
+    return unwrap(res);
   },
   shareholderPayouts: async (id: string): Promise<{ id: string; amount: number; status: string; note: string | null; createdAt: string; receivedAt: string | null }[]> => {
     const res = await api.get<ApiResponse<any[]>>(`/finance/shareholders/${id}/payouts`);

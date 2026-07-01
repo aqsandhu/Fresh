@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { 
   Product, 
   CreateProductData,
@@ -63,7 +63,7 @@ export const productService = {
   getProductById: async (id: string): Promise<Product> => {
     try {
       const response = await api.get<ApiResponse<Product>>(`/admin/products/${id}`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch product');
@@ -110,7 +110,7 @@ export const productService = {
       }
 
       const response = await api.postForm<ApiResponse<Product>>('/admin/products', formData);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error creating product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to create product');
@@ -159,7 +159,7 @@ export const productService = {
       }
 
       const response = await api.putForm<ApiResponse<Product>>(`/admin/products/${id}`, formData);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update product');
@@ -192,7 +192,7 @@ export const productService = {
         '/admin/products/move-category',
         { product_ids: productIds, category_id: categoryId }
       );
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error moving products:', error);
       throw new Error(error?.response?.data?.message || 'Failed to move products');
@@ -208,7 +208,7 @@ export const productService = {
       const response = await api.patch<ApiResponse<{ id: string; isActive: boolean }>>(
         `/admin/products/${id}/toggle-active`
       );
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error toggling product status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update status');
@@ -218,7 +218,7 @@ export const productService = {
   getLowStockProducts: async (): Promise<Product[]> => {
     try {
       const response = await api.get<ApiResponse<Product[]>>('/admin/products/low-stock');
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching low stock products:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch low stock products');
@@ -235,7 +235,7 @@ export const productService = {
         `/admin/products/${id}/images`,
         formData
       );
-      return response.data.imageUrls;
+      return unwrap(response).imageUrls;
     } catch (error: any) {
       console.error('Error uploading product images:', error);
       throw new Error(error?.response?.data?.message || 'Failed to upload images');

@@ -167,6 +167,38 @@ export const generateSlug = (text: string): string => {
     .replace(/^-+|-+$/g, '');
 };
 
+/**
+ * Clamp untrusted `page`/`limit` query params to safe integers.
+ *
+ * Raw query values were previously fed straight into `LIMIT $n OFFSET $n`:
+ *  - `?limit=999999999` let any caller request an unbounded result set
+ *    (memory/DB pressure — a cheap DoS on public list endpoints), and
+ *  - `?limit=abc` / `?page=abc` produced NaN, which Postgres rejected with a
+ *    500 instead of a clean response.
+ *
+ * This normalises both to bounded integers and derives the OFFSET, so every
+ * list endpoint can share one safe parse.
+ */
+export const parsePagination = (
+  pageInput: unknown,
+  limitInput: unknown,
+  opts: { defaultLimit?: number; maxLimit?: number } = {}
+): { page: number; limit: number; offset: number } => {
+  const defaultLimit = opts.defaultLimit ?? 20;
+  const maxLimit = opts.maxLimit ?? 100;
+
+  const rawPage = parseInt(String(pageInput ?? ''), 10);
+  const rawLimit = parseInt(String(limitInput ?? ''), 10);
+
+  const page = Number.isFinite(rawPage) && rawPage >= 1 ? rawPage : 1;
+  const limit =
+    Number.isFinite(rawLimit) && rawLimit >= 1
+      ? Math.min(rawLimit, maxLimit)
+      : defaultLimit;
+
+  return { page, limit, offset: (page - 1) * limit };
+};
+
 // Date validation
 export const isValidDate = (date: string): boolean => {
   const d = new Date(date);

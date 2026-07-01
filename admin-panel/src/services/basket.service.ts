@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { ApiResponse } from '@/types';
 
 export interface BasketItem {
@@ -41,17 +41,17 @@ export const basketService = {
       '/admin/baskets',
       cityId ? { cityId } : undefined
     );
-    return res.data;
+    return unwrap(res);
   },
 
   create: async (payload: BasketPayload): Promise<Basket> => {
     const res = await api.post<ApiResponse<Basket>>('/admin/baskets', payload);
-    return res.data;
+    return unwrap(res);
   },
 
   update: async (id: string, payload: Partial<BasketPayload>): Promise<Basket> => {
     const res = await api.put<ApiResponse<Basket>>(`/admin/baskets/${id}`, payload);
-    return res.data;
+    return unwrap(res);
   },
 
   remove: async (id: string): Promise<void> => {

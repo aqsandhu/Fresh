@@ -239,12 +239,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   // Upload delivery proof
   uploadDeliveryProof: async (taskId, imageUri) => {
-    try {
-      const url = await taskService.uploadDeliveryProof(taskId, imageUri);
-      return url;
-    } catch (error: any) {
-      throw error;
-    }
+    return await taskService.uploadDeliveryProof(taskId, imageUri);
   },
 
   // Upload door picture for address

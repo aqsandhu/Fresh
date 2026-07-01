@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { ApiResponse } from '@/types';
 
 export interface AbandonedCartItem {
@@ -37,21 +37,21 @@ export const marketingService = {
       '/admin/marketing/abandoned-carts',
       olderThanHours ? { olderThanHours } : undefined
     );
-    return res.data;
+    return unwrap(res);
   },
 
   runReminders: async (): Promise<{ sent: number }> => {
     const res = await api.post<ApiResponse<{ sent: number }>>('/admin/marketing/run-reminders');
-    return res.data;
+    return unwrap(res);
   },
 
   getSettings: async (): Promise<MarketingSettings> => {
     const res = await api.get<ApiResponse<MarketingSettings>>('/admin/marketing/settings');
-    return res.data;
+    return unwrap(res);
   },
 
   updateSettings: async (payload: Partial<MarketingSettings>): Promise<MarketingSettings> => {
     const res = await api.put<ApiResponse<MarketingSettings>>('/admin/marketing/settings', payload);
-    return res.data;
+    return unwrap(res);
   },
 };

@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { ApiResponse } from '@/types';
 
 export interface Restaurant {
@@ -67,7 +67,7 @@ export const restaurantService = {
     if (data.status !== undefined) body.status = data.status;
     if (data.riderId !== undefined) body.rider_id = data.riderId;
     const res = await api.put<ApiResponse<any>>(`/admin/restaurants/orders/${id}/status`, body);
-    return res.data;
+    return unwrap(res);
   },
 
   // Admin places a restaurant order on its behalf (WhatsApp restaurant portion).
@@ -81,7 +81,7 @@ export const restaurantService = {
       items: data.items,
       customerNotes: data.customerNotes,
     });
-    return res.data;
+    return unwrap(res);
   },
 
   // ── Dashboard + global delivery settings ───────────────────────────────
@@ -136,11 +136,11 @@ export const restaurantService = {
       is_free_delivery_slot: data.isFreeDeliverySlot === true,
       audience: 'restaurant',
     });
-    return res.data;
+    return unwrap(res);
   },
   updateTimeSlot: async (id: string, data: Record<string, any>): Promise<any> => {
     const res = await api.put<ApiResponse<any>>(`/admin/settings/time-slots/${id}`, data);
-    return res.data;
+    return unwrap(res);
   },
   deleteTimeSlot: async (id: string): Promise<void> => {
     await api.delete(`/admin/settings/time-slots/${id}`);

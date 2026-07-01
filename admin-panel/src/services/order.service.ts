@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { 
   Order, 
   OrderStatus,
@@ -21,7 +21,7 @@ export const orderService = {
   getOrders: async (filters: OrderFilters = {}): Promise<PaginatedResponse<Order>> => {
     try {
       const response = await api.get<ApiResponse<PaginatedResponse<Order>>>('/admin/orders', filters);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching orders:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch orders');
@@ -31,7 +31,7 @@ export const orderService = {
   getOrderById: async (id: string): Promise<Order> => {
     try {
       const response = await api.get<ApiResponse<Order>>(`/admin/orders/${id}`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching order:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch order');
@@ -44,7 +44,7 @@ export const orderService = {
         status,
         reason,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating order status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update order status');
@@ -56,7 +56,7 @@ export const orderService = {
       const response = await api.put<ApiResponse<Order>>(`/admin/orders/${orderId}/assign-rider`, {
         riderId,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error assigning rider:', error);
       throw new Error(error?.response?.data?.message || 'Failed to assign rider');
@@ -68,7 +68,7 @@ export const orderService = {
       `/admin/orders/${orderId}/assign-ocp`,
       { ocp_id: ocpId }
     );
-    return response.data;
+    return unwrap(response);
   },
 
   setOcpPhoneVisibility: async (orderId: string, visible: boolean): Promise<{ id: string; phoneVisibleToOcp: boolean }> => {
@@ -76,7 +76,7 @@ export const orderService = {
       `/admin/orders/${orderId}/ocp-phone`,
       { visible }
     );
-    return response.data;
+    return unwrap(response);
   },
 
   cancelOrder: async (id: string, reason: string): Promise<Order> => {
@@ -84,7 +84,7 @@ export const orderService = {
       const response = await api.put<ApiResponse<Order>>(`/admin/orders/${id}/cancel`, {
         reason,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error cancelling order:', error);
       throw new Error(error?.response?.data?.message || 'Failed to cancel order');
@@ -102,7 +102,7 @@ export const orderService = {
         timestamp: string;
         note?: string;
       }[]>>(`/admin/orders/${id}/timeline`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching order timeline:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch order timeline');
@@ -122,7 +122,7 @@ export const orderService = {
         averageOrderValue: number;
         cancelledOrders: number;
       }>>('/admin/orders/stats', { period });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching order stats:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch order stats');
@@ -135,7 +135,7 @@ export const orderService = {
         amount,
         reason,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error refunding order:', error);
       throw new Error(error?.response?.data?.message || 'Failed to refund order');
@@ -147,7 +147,7 @@ export const orderService = {
       const response = await api.put<ApiResponse<Order>>(`/admin/orders/${id}/notes`, {
         notes,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating order notes:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update order notes');
@@ -159,7 +159,7 @@ export const orderService = {
       const response = await api.put<ApiResponse<Order>>(`/admin/orders/${id}/toggle-phone`, {
         showCustomerPhone: show,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error toggling phone visibility:', error);
       throw new Error(error?.response?.data?.message || 'Failed to toggle phone visibility');
@@ -169,7 +169,7 @@ export const orderService = {
   markPaymentReceived: async (id: string): Promise<Order> => {
     try {
       const response = await api.put<ApiResponse<Order>>(`/admin/orders/${id}/payment-received`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error marking payment received:', error);
       throw new Error(error?.response?.data?.message || 'Failed to mark payment received');
@@ -184,7 +184,7 @@ export const orderService = {
         `/admin/orders/${orderId}/items/${itemId}/weight`,
         { weightKg }
       );
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating item weight:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update weight');
@@ -201,7 +201,7 @@ export const orderService = {
         '/admin/orders/bulk-status',
         { orderIds, status, reason }
       );
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error bulk updating order status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update orders');

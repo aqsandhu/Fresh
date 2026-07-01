@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 
 export interface Permission {
   id: string;
@@ -77,7 +77,7 @@ export const roleService = {
       '/admin/roles',
       data
     );
-    return res.data;
+    return unwrap(res);
   },
 
   updateRole: async (
@@ -88,7 +88,7 @@ export const roleService = {
       `/admin/roles/${id}`,
       data
     );
-    return res.data;
+    return unwrap(res);
   },
 
   deleteRole: async (id: string): Promise<void> => {
@@ -114,7 +114,7 @@ export const roleService = {
       '/admin/roles/users',
       data
     );
-    return res.data;
+    return unwrap(res);
   },
 
   updateAdminUser: async (id: string, data: UpdateAdminUserData): Promise<AdminUser> => {
@@ -122,7 +122,7 @@ export const roleService = {
       `/admin/roles/users/${id}`,
       data
     );
-    return res.data;
+    return unwrap(res);
   },
 
   deleteAdminUser: async (id: string): Promise<void> => {

@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import { clearCitySelection, setCitySelection } from '@/lib/cityStorage';
 import { refreshAdminAccessToken } from '@/lib/adminTokenRefresh';
 import { normalizeAdminUser } from '@/lib/adminUser';
@@ -179,7 +179,7 @@ export const authService = {
         }
       }
       
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Profile update error:', error);
       if (error.response?.data?.message) {

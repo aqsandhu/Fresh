@@ -8,7 +8,7 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, paginatedResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
 import { tagSearchSql } from '../utils/productTags';
-import { isValidUUID } from '../utils/validators';
+import { isValidUUID, parsePagination } from '../utils/validators';
 import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumns } from '../config/productSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasFeedbackTables } from '../config/feedbackSchema';
@@ -99,6 +99,10 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     featured,
     inStock,
   } = req.query;
+
+  // Clamp untrusted page/limit — this is a public endpoint, so an unbounded
+  // `?limit=` must never reach `LIMIT $n` and a non-numeric value must not 500.
+  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit);
 
   // Build base query
   let sql = `
@@ -213,15 +217,15 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+  params.push(safeLimit, offset);
 
   const result = await query(productsSql, params);
 
   paginatedResponse(
     res,
     result.rows,
-    parseInt(page as string),
-    parseInt(limit as string),
+    safePage,
+    safeLimit,
     total,
     'Products retrieved successfully'
   );
@@ -428,6 +432,7 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
     return notFoundResponse(res, 'Product not found');
   }
   const { limit = 8 } = req.query;
+  const { limit: safeLimit } = parsePagination(1, limit, { defaultLimit: 8, maxLimit: 50 });
   const publicCityId = await resolvePublicCityId(req);
 
   const productResult = await query(
@@ -466,7 +471,7 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
     params.push(publicCityId);
   }
   sql += ` ORDER BY p.order_count DESC, p.created_at DESC LIMIT $${params.length + 1}`;
-  params.push(limit);
+  params.push(safeLimit);
 
   const result = await query(sql, params);
 
@@ -479,6 +484,7 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
  */
 export const searchProducts = asyncHandler(async (req: Request, res: Response) => {
   const { q, page = 1, limit = 20 } = req.query;
+  const { limit: safeLimit, offset } = parsePagination(page, limit);
 
   if (!q || typeof q !== 'string' || q.trim().length === 0) {
     return successResponse(res, [], 'Search query is empty');
@@ -497,7 +503,7 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
     params.push(publicCityId);
   }
 
-  params.push(limit, (parseInt(page as string) - 1) * parseInt(limit as string));
+  params.push(safeLimit, offset);
 
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();

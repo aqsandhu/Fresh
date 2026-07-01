@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { 
   Address,
   ApiResponse 
@@ -29,7 +29,7 @@ export const addressService = {
   getAddressById: async (id: string): Promise<Address> => {
     try {
       const response = await api.get<ApiResponse<Address>>(`/admin/addresses/${id}`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching address:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch address');
@@ -41,7 +41,7 @@ export const addressService = {
       const response = await api.put<ApiResponse<Address>>(`/admin/addresses/${id}/house-number`, {
         houseNumber,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error assigning house number:', error);
       throw new Error(error?.response?.data?.message || 'Failed to assign house number');
@@ -51,7 +51,7 @@ export const addressService = {
   updateAddress: async (id: string, data: Partial<Address>): Promise<Address> => {
     try {
       const response = await api.put<ApiResponse<Address>>(`/admin/addresses/${id}`, data);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error updating address:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update address');
@@ -70,7 +70,7 @@ export const addressService = {
   clearDoorPicture: async (id: string): Promise<Address> => {
     try {
       const response = await api.delete<ApiResponse<Address>>(`/admin/addresses/${id}/door-picture`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error removing door picture:', error);
       throw new Error(error?.response?.data?.message || 'Failed to remove door picture');
@@ -80,7 +80,7 @@ export const addressService = {
   clearLocation: async (id: string): Promise<Address> => {
     try {
       const response = await api.delete<ApiResponse<Address>>(`/admin/addresses/${id}/location`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error removing location:', error);
       throw new Error(error?.response?.data?.message || 'Failed to remove location');
@@ -93,7 +93,7 @@ export const addressService = {
         query,
         limit,
       });
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error searching addresses:', error);
       throw new Error(error?.response?.data?.message || 'Failed to search addresses');
@@ -103,7 +103,7 @@ export const addressService = {
   getAddressesByArea: async (area: string): Promise<Address[]> => {
     try {
       const response = await api.get<ApiResponse<Address[]>>(`/admin/addresses/area/${area}`);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching addresses by area:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch addresses by area');
@@ -113,7 +113,7 @@ export const addressService = {
   getAreas: async (): Promise<string[]> => {
     try {
       const response = await api.get<ApiResponse<string[]>>('/admin/addresses/areas');
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching areas:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch areas');
@@ -123,7 +123,7 @@ export const addressService = {
   getCities: async (): Promise<string[]> => {
     try {
       const response = await api.get<ApiResponse<string[]>>('/admin/addresses/cities');
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching cities:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch cities');
@@ -145,7 +145,7 @@ export const addressService = {
         suggestions?: string[];
         coordinates?: { lat: number; lng: number };
       }>>('/admin/addresses/validate', addressData);
-      return response.data;
+      return unwrap(response);
     } catch (error: any) {
       console.error('Error validating address:', error);
       throw new Error(error?.response?.data?.message || 'Failed to validate address');

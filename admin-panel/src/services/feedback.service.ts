@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { ApiResponse } from '@/types';
 
 // ── Reviews ───────────────────────────────────────────────────────────────────
@@ -101,7 +101,7 @@ export const feedbackService = {
   // Record an admin refund against the complained order (admin account; OCP untouched).
   refundComplaint: async (id: string, data: { amount: number; source: 'admin' | 'ocp'; note?: string }) => {
     const res = await api.post<ApiResponse<{ id: string; amount: number; source: string }>>(`/admin/complaints/${id}/refund`, data);
-    return res.data;
+    return unwrap(res);
   },
 };
 

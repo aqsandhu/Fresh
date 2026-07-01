@@ -190,6 +190,21 @@ apiClient.interceptors.response.use(
   }
 );
 
+/**
+ * Extract the `data` payload from a standard { success, message, data } API
+ * envelope, throwing if it's missing. Services call this instead of returning
+ * `response.data` directly: under strictNullChecks `data` is `T | undefined`
+ * (it's optional on error envelopes), so this both satisfies the type and turns
+ * a malformed/empty success response into a clear thrown error rather than
+ * silently handing back `undefined`.
+ */
+export function unwrap<T>(response: { data?: T; message?: string }): T {
+  if (response.data === undefined || response.data === null) {
+    throw new Error(response.message || 'Empty API response');
+  }
+  return response.data;
+}
+
 // Generic API methods
 export const api = {
   get: <T>(url: string, params?: object) => 

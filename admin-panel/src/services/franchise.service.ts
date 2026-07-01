@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, unwrap } from './api';
 import type { ApiResponse } from '@/types';
 
 export interface FranchiseInquiry {
@@ -18,7 +18,7 @@ export const franchiseService = {
       '/admin/franchise-inquiries',
       status ? { status } : undefined
     );
-    return res.data;
+    return unwrap(res);
   },
   updateStatus: async (id: string, status: string): Promise<void> => {
     await api.put(`/admin/franchise-inquiries/${id}`, { status });
