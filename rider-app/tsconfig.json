@@ -6,7 +6,6 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "jsx": "react-native",
-    "baseUrl": ".",
     "paths": {
       "react": ["./node_modules/@types/react"]
     }
