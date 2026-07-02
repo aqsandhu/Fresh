@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import HeroSection from '@/components/sections/HeroSection'
-import CategoriesSection from '@/components/sections/CategoriesSection'
 import FeaturedProductsSection from '@/components/sections/FeaturedProductsSection'
 import DeliveryInfoSection from '@/components/sections/DeliveryInfoSection'
 import AppDownloadSection from '@/components/sections/AppDownloadSection'
@@ -21,8 +20,8 @@ export default function HomePage() {
       <div className="container mx-auto px-4 mt-4">
         <GuidanceTips tips={[]} page="home" />
       </div>
-      <CategoriesSection />
-      {/* Products lead the page; the hero brand band follows them. */}
+      {/* Categories live in the left swipe drawer (CategoriesDrawer);
+          products lead the page and the hero brand band follows them. */}
       <FeaturedProductsSection />
       <HeroSection />
       <DeliveryInfoSection />
