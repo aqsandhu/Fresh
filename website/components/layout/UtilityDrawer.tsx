@@ -20,6 +20,12 @@ import { hideDrawerOnPath } from './CategoriesDrawer'
 import { aiChatApi, bannerApi } from '@/lib/api'
 import { buildWhatsAppUrl, openWhatsAppOrder } from '@/lib/whatsapp'
 import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
+import {
+  HANDLE_APPEAR_DELAY,
+  RAIL_EASE,
+  RAIL_ITEM_DURATION,
+  railItemMotion,
+} from './railAnimation'
 
 const EDGE_ZONE_PX = 28
 const SWIPE_OPEN_PX = 48
@@ -31,31 +37,37 @@ function cityChangeHidden(pathname: string | null | undefined): boolean {
   return pathname === '/cart' || pathname === '/checkout'
 }
 
-interface RailItemProps {
+interface RailEntry {
+  key: string
   icon: React.ReactNode
   chipClass: string
   label: string
   sub?: string
-  delay: number
   onClick?: () => void
   href?: string
 }
 
 /** One transparent rail entry: gradient icon chip + tiny bold label below. */
-function RailItem({ icon, chipClass, label, sub, delay, onClick, href }: RailItemProps) {
+function RailItem({
+  entry,
+  motionProps,
+}: {
+  entry: RailEntry
+  motionProps: Record<string, unknown>
+}) {
   const inner = (
     <>
       <span
-        className={`flex h-12 w-12 items-center justify-center rounded-full shadow-lg ring-2 ring-white/70 ${chipClass}`}
+        className={`flex h-12 w-12 items-center justify-center rounded-full shadow-lg ring-2 ring-white/70 ${entry.chipClass}`}
       >
-        {icon}
+        {entry.icon}
       </span>
       <span className="max-w-[96px] text-center text-[11px] font-bold leading-tight text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-        {label}
+        {entry.label}
       </span>
-      {sub && (
+      {entry.sub && (
         <span className="max-w-[96px] truncate text-center text-[10px] font-medium leading-tight text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
-          {sub}
+          {entry.sub}
         </span>
       )}
     </>
@@ -63,17 +75,13 @@ function RailItem({ icon, chipClass, label, sub, delay, onClick, href }: RailIte
   const className = 'group flex flex-col items-center gap-1 active:scale-95 transition-transform'
 
   return (
-    <motion.li
-      initial={{ opacity: 0, x: 12 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay, duration: 0.25 }}
-    >
-      {href ? (
-        <Link href={href} onClick={onClick} className={className}>
+    <motion.li {...motionProps}>
+      {entry.href ? (
+        <Link href={entry.href} onClick={entry.onClick} className={className}>
           {inner}
         </Link>
       ) : (
-        <button type="button" onClick={onClick} className={className}>
+        <button type="button" onClick={entry.onClick} className={className}>
           {inner}
         </button>
       )}
@@ -168,6 +176,72 @@ export default function UtilityDrawer() {
   // Early return AFTER all hooks (rules-of-hooks).
   if (hideDrawerOnPath(pathname)) return null
 
+  // Build the visible entries first so each one knows its index/count for
+  // the shared converge-into-the-handle animation.
+  const entries: RailEntry[] = [
+    ...(chatStatus?.enabled
+      ? [
+          {
+            key: 'support',
+            icon: <Headphones className="h-5 w-5 text-white" />,
+            chipClass: 'bg-gradient-to-br from-primary-500 to-primary-700',
+            label: 'Support',
+            onClick: () => {
+              setOpen(false)
+              setChatOpen(true)
+            },
+          },
+        ]
+      : []),
+    {
+      key: 'instructions',
+      icon: <Lightbulb className="h-5 w-5 text-white" />,
+      chipClass: 'bg-gradient-to-br from-amber-400 to-amber-600',
+      label: 'Instructions',
+      onClick: () => {
+        setOpen(false)
+        setTipsOpen(true)
+      },
+    },
+    ...(!cityChangeHidden(pathname) && selectedCity
+      ? [
+          {
+            key: 'city',
+            icon: <MapPin className="h-5 w-5 text-white" />,
+            chipClass: 'bg-gradient-to-br from-sky-400 to-sky-600',
+            label: 'City',
+            sub: selectedCity.name,
+            onClick: () => {
+              setOpen(false)
+              setCityPickerOpen(true)
+            },
+          },
+        ]
+      : []),
+    {
+      key: 'shop',
+      icon: <ShoppingBag className="h-5 w-5 text-white" />,
+      chipClass: 'bg-gradient-to-br from-primary-600 to-primary-800',
+      label: 'Shop Now',
+      href: '/products',
+      onClick: () => setOpen(false),
+    },
+    ...(showWhatsapp
+      ? [
+          {
+            key: 'whatsapp',
+            icon: <WhatsAppIcon className="h-6 w-6 text-white" />,
+            chipClass: 'bg-gradient-to-br from-[#25D366] to-[#128C4A]',
+            label: 'To Order',
+            onClick: () => {
+              setOpen(false)
+              openWhatsAppOrder(whatsappTarget)
+            },
+          },
+        ]
+      : []),
+  ]
+
   return (
     <>
       {/* Edge handle — small puller on the right edge, visible when closed */}
@@ -177,7 +251,8 @@ export default function UtilityDrawer() {
             initial={{ x: 32, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 32, opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            // Waits for the icons to finish merging into this spot.
+            transition={{ duration: 0.25, delay: HANDLE_APPEAR_DELAY }}
             type="button"
             onClick={() => setOpen(true)}
             aria-label="Open quick help"
@@ -201,76 +276,27 @@ export default function UtilityDrawer() {
               className="fixed inset-0 z-[75] bg-black/45 backdrop-blur-[2px]"
             />
 
-            {/* Transparent icon rail */}
+            {/* Transparent icon rail — the icons themselves fly out of / back
+                into the handle spot, so the rail only fades. */}
             <motion.aside
-              initial={reduceMotion ? { opacity: 0 } : { x: '100%' }}
-              animate={reduceMotion ? { opacity: 1 } : { x: 0 }}
-              exit={reduceMotion ? { opacity: 0 } : { x: '100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 40 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: RAIL_ITEM_DURATION, ease: RAIL_EASE }}
               role="dialog"
               aria-label="Quick help"
               className="fixed right-0 top-0 bottom-0 z-[80] flex w-[104px] max-w-[30vw] flex-col overflow-y-auto overscroll-contain px-2 py-6"
             >
               <ul className="my-auto flex flex-col items-center gap-5">
-                {chatStatus?.enabled && (
+                {entries.map((entry, i) => (
                   <RailItem
-                    delay={0.05}
-                    icon={<Headphones className="h-5 w-5 text-white" />}
-                    chipClass="bg-gradient-to-br from-primary-500 to-primary-700"
-                    label="Support"
-                    onClick={() => {
-                      setOpen(false)
-                      setChatOpen(true)
-                    }}
+                    key={entry.key}
+                    entry={entry}
+                    motionProps={
+                      reduceMotion ? {} : railItemMotion(i, entries.length, 'right')
+                    }
                   />
-                )}
-
-                <RailItem
-                  delay={0.1}
-                  icon={<Lightbulb className="h-5 w-5 text-white" />}
-                  chipClass="bg-gradient-to-br from-amber-400 to-amber-600"
-                  label="Instructions"
-                  onClick={() => {
-                    setOpen(false)
-                    setTipsOpen(true)
-                  }}
-                />
-
-                {!cityChangeHidden(pathname) && selectedCity && (
-                  <RailItem
-                    delay={0.15}
-                    icon={<MapPin className="h-5 w-5 text-white" />}
-                    chipClass="bg-gradient-to-br from-sky-400 to-sky-600"
-                    label="City"
-                    sub={selectedCity.name}
-                    onClick={() => {
-                      setOpen(false)
-                      setCityPickerOpen(true)
-                    }}
-                  />
-                )}
-
-                <RailItem
-                  delay={0.2}
-                  icon={<ShoppingBag className="h-5 w-5 text-white" />}
-                  chipClass="bg-gradient-to-br from-primary-600 to-primary-800"
-                  label="Shop Now"
-                  href="/products"
-                  onClick={() => setOpen(false)}
-                />
-
-                {showWhatsapp && (
-                  <RailItem
-                    delay={0.25}
-                    icon={<WhatsAppIcon className="h-6 w-6 text-white" />}
-                    chipClass="bg-gradient-to-br from-[#25D366] to-[#128C4A]"
-                    label="To Order"
-                    onClick={() => {
-                      setOpen(false)
-                      openWhatsAppOrder(whatsappTarget)
-                    }}
-                  />
-                )}
+                ))}
               </ul>
             </motion.aside>
           </>
