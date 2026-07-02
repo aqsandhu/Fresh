@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageCircle, X, Send, Loader2, Headphones, ShoppingCart } from 'lucide-react'
+import { X, Send, Loader2, Headphones, ShoppingCart } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { aiChatApi, type AiChatMessage } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
+import { useRightDrawer } from '@/store/rightDrawer'
 
 /** Full name for a personal greeting — empty when not signed in. */
 function customerName(u: { full_name?: string; name?: string } | null | undefined): string {
@@ -44,7 +45,9 @@ function productPathFromUrl(url: string): string | null {
 }
 
 export default function AiChatWidget() {
-  const [open, setOpen] = useState(false)
+  // Opened from the right utility drawer (no floating launcher of its own).
+  const open = useRightDrawer((s) => s.chatOpen)
+  const setOpen = useRightDrawer((s) => s.setChatOpen)
   const [messages, setMessages] = useState<AiChatMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -166,15 +169,6 @@ export default function AiChatWidget() {
 
   return (
     <>
-      {/* Launcher — sits ABOVE the floating city button (no overlap) */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-label="Chat with FreshBazar Support"
-        className="fixed bottom-[8.5rem] right-4 z-[55] flex h-14 w-14 items-center justify-center rounded-full bg-primary-600 text-white shadow-lg transition-colors hover:bg-primary-700 lg:bottom-[5.25rem]"
-      >
-        {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
-      </button>
-
       <AnimatePresence>
         {open && (
           <motion.div

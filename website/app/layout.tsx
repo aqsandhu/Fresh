@@ -13,6 +13,7 @@ import TodaysBasketModal from '@/components/basket/TodaysBasketModal'
 import AiChatWidget from '@/components/ai/AiChatWidget'
 import MarketingTracker from '@/components/marketing/MarketingTracker'
 import CategoriesDrawer from '@/components/layout/CategoriesDrawer'
+import UtilityDrawer from '@/components/layout/UtilityDrawer'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -83,6 +84,7 @@ export default function RootLayout({
             <TodaysBasketModal />
             <AiChatWidget />
             <CategoriesDrawer />
+            <UtilityDrawer />
             <MarketingTracker />
             <Toaster
               position="top-center"
