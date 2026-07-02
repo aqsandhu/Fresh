@@ -15,13 +15,20 @@ import type { MutableRefObject } from 'react'
 
 /** Ease-out for entering (decelerates into place). */
 export const RAIL_EASE_OUT = [0.22, 0.61, 0.36, 1] as const
-/** Ease-in for leaving (accelerates INTO the handle). */
-export const RAIL_EASE_IN = [0.55, 0.06, 0.68, 0.19] as const
-const ENTER_DURATION = 0.4
-const ENTER_STAGGER = 0.05
-export const EXIT_DURATION = 0.55
+/**
+ * Exit also eases OUT: the icon launches toward the arrow and slows down as
+ * it arrives, so the eye can track the merge. (The old ease-IN parked the
+ * icons for most of the time and then snapped them away in ~0.15s —
+ * invisible.)
+ */
+export const RAIL_EASE_EXIT = [0.3, 0.05, 0.25, 1] as const
+const ENTER_DURATION = 0.35
+const ENTER_STAGGER = 0.035
+export const EXIT_DURATION = 0.7
+/** Small cascade so icons stream into the arrow one after another. */
+const EXIT_STAGGER = 0.05
 /** The arrow shows up early in the close so the icons visibly sink into it. */
-export const HANDLE_APPEAR_DELAY = 0.18
+export const HANDLE_APPEAR_DELAY = 0.15
 /** Horizontal centre of the arrow handle, measured from the screen edge. */
 const HANDLE_CENTER_X = 12
 
@@ -114,7 +121,7 @@ export function makeRailVariants(
       y: 0,
       scale: 1,
       transition: {
-        delay: 0.05 + i * ENTER_STAGGER,
+        delay: 0.02 + i * ENTER_STAGGER,
         duration: ENTER_DURATION,
         ease: RAIL_EASE_OUT,
       },
@@ -125,19 +132,25 @@ export function makeRailVariants(
       y: target(i).y,
       scale: 0.1,
       transition: {
+        delay: i * EXIT_STAGGER,
         duration: EXIT_DURATION,
-        ease: RAIL_EASE_IN,
-        opacity: { duration: EXIT_DURATION, times: [0, 0.8, 1] },
+        ease: RAIL_EASE_EXIT,
+        opacity: {
+          delay: i * EXIT_STAGGER,
+          duration: EXIT_DURATION,
+          times: [0, 0.85, 1],
+        },
       },
     }),
   }
 }
 
-/** The rail container holds steady while its icons fly — no fade of its own. */
+/** The rail container holds steady while its icons fly — no fade of its own.
+ *  The hold covers the longest staggered flight. */
 export const railAsideMotion = {
   initial: { opacity: 1 },
   animate: { opacity: 1 },
-  exit: { opacity: 1, transition: { duration: EXIT_DURATION } },
+  exit: { opacity: 1, transition: { duration: EXIT_DURATION + 0.35 } },
 }
 
 /**
@@ -148,7 +161,7 @@ export const railAsideMotion = {
 export const backdropMotion = {
   initial: { opacity: 0 },
   animate: { opacity: 1, transition: { duration: 0.25 } },
-  exit: { opacity: 0, transition: { duration: 0.3, delay: 0.3, ease: 'easeOut' } },
+  exit: { opacity: 0, transition: { duration: 0.35, delay: 0.55, ease: 'easeOut' } },
 }
 
 /**
