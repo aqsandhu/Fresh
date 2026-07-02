@@ -2,7 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
 import BrandLogo from '@/components/ui/BrandLogo'
+import { settingsApi, bannerApi } from '@/lib/api'
+import { useCityContext } from '@/context/CityContext'
+import { phoneToTelHref } from '@/lib/phoneStorage'
 import {
   Phone,
   Mail,
@@ -44,34 +48,55 @@ const footerLinks = {
   ],
 }
 
-const features = [
-  {
-    icon: Truck,
-    title: 'Free Delivery',
-    description: 'On Rs. 500+ vegetables/fruits',
-  },
-  {
-    icon: Clock,
-    title: 'Free Time Slots',
-    description: 'Pick a free-delivery slot',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Fresh Guarantee',
-    description: '100% fresh products',
-  },
-  {
-    icon: CreditCard,
-    title: 'Cash on Delivery',
-    description: 'Pay when you receive',
-  },
-]
-
 export default function Footer() {
   const pathname = usePathname()
+  const { selectedCityId } = useCityContext()
+
+  // Live data — same admin sources as the hero/delivery sections.
+  const { data: delivery } = useQuery({
+    queryKey: ['delivery-settings', selectedCityId],
+    queryFn: settingsApi.getDeliverySettings,
+    enabled: !!selectedCityId,
+    staleTime: 5 * 60 * 1000,
+  })
+  const { data: bannerSettings } = useQuery({
+    queryKey: ['banner-settings', selectedCityId],
+    queryFn: bannerApi.getSettings,
+    enabled: !!selectedCityId,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  // Early return must come AFTER every hook (rules-of-hooks).
   if (pathname?.startsWith('/select-city') || pathname === '/profile') {
     return null
   }
+
+  const threshold = delivery?.free_delivery_threshold || 500
+  const phone = bannerSettings?.banner_left_text || '0300-1234567'
+  const telHref = phoneToTelHref(phone) || `tel:${phone.replace(/\D/g, '')}`
+
+  const features = [
+    {
+      icon: Truck,
+      title: 'Free Delivery',
+      description: `On Rs. ${threshold}+ vegetables/fruits`,
+    },
+    {
+      icon: Clock,
+      title: 'Free Time Slots',
+      description: 'Pick a free-delivery slot',
+    },
+    {
+      icon: ShieldCheck,
+      title: 'Fresh Guarantee',
+      description: '100% fresh products',
+    },
+    {
+      icon: CreditCard,
+      title: 'Cash on Delivery',
+      description: 'Pay when you receive',
+    },
+  ]
   return (
     <footer className="bg-gray-900 text-white">
       {/* Features Bar */}
@@ -114,11 +139,11 @@ export default function Footer() {
             {/* Contact Info */}
             <div className="space-y-2">
               <a
-                href="tel:0300-1234567"
+                href={telHref}
                 className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
               >
                 <Phone className="w-4 h-4" />
-                <span className="text-sm">0300-1234567</span>
+                <span className="text-sm">{phone}</span>
               </a>
               <a
                 href="mailto:support@freshbazar.pk"
