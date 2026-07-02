@@ -55,7 +55,7 @@ export function guidanceForPath(pathname: string): { page: string; fallback: str
  */
 export default function InstructionsPopup() {
   const pathname = usePathname()
-  const { open, setOpen } = useInstructionsPopup()
+  const { open, setOpen, seenPages, markSeen, hasHydrated } = useInstructionsPopup()
   const { selectedCityId } = useCityContext()
   const reduceMotion = useReducedMotion()
   const iconRef = useRef<HTMLButtonElement>(null)
@@ -78,12 +78,28 @@ export default function InstructionsPopup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
-  if (hidePopupOnPath(pathname)) return null
+  const hidden = hidePopupOnPath(pathname)
+  const tipCount =
+    remote && remote.length > 0 ? remote.length : hidden ? 0 : fallback.length
+  const seen = !!seenPages[page]
+
+  // First visit to a page with tips: the popup shows by itself, once. On the
+  // home page it waits for the drawer welcome-peek to finish first.
+  useEffect(() => {
+    if (hidden || !hasHydrated || seen || tipCount === 0 || !selectedCityId) return
+    const delay = pathname === '/' ? 2400 : 1200
+    const timer = setTimeout(() => setOpen(true), delay)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hidden, hasHydrated, seen, tipCount, selectedCityId, page])
+
+  if (hidden) return null
 
   const tips = remote && remote.length > 0 ? remote.map((r) => r.text) : fallback
   if (tips.length === 0) return null
 
   const close = () => {
+    markSeen(page)
     // Measure the flight path from the card centre to the icon centre so the
     // popup visibly shrinks INTO its own icon.
     const icon = iconRef.current?.getBoundingClientRect()
@@ -107,7 +123,10 @@ export default function InstructionsPopup() {
         aria-label="Instructions"
         className="fixed bottom-20 right-3 md:bottom-6 md:right-5 z-[45] flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-lg ring-2 ring-white/70 transition hover:scale-105 active:scale-95"
       >
-        <Lightbulb className="h-5 w-5" />
+        {!seen && !open && (
+          <span className="absolute inset-0 animate-ping rounded-full bg-amber-400 opacity-40" />
+        )}
+        <Lightbulb className="relative h-5 w-5" />
       </button>
 
       <AnimatePresence>
