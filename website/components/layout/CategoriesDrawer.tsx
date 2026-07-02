@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, LayoutGrid, Loader2, X, ArrowRight } from 'lucide-react'
+import { ChevronRight, Loader2 } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
 import { categoriesApi } from '@/lib/api'
 import { useLeftDrawer } from '@/store/leftDrawer'
@@ -38,9 +38,10 @@ function CategoryFallback({ initial }: { initial: string }) {
 }
 
 /**
- * Left edge drawer with the shop categories. Overlays the page (never pushes
- * it), opens from the edge handle or a swipe from the left edge, closes with
- * X, backdrop tap, Escape, or a left swipe.
+ * Left edge rail with the shop categories: a slim TRANSPARENT strip of
+ * category icons with bold Urdu names beneath — nothing else. Overlays the
+ * page (never pushes it); opens from the edge handle or a swipe from the
+ * left edge, closes with backdrop tap, Escape, or a left swipe.
  */
 export default function CategoriesDrawer() {
   const pathname = usePathname()
@@ -127,17 +128,17 @@ export default function CategoriesDrawer() {
       <AnimatePresence>
         {open && (
           <>
-            {/* Backdrop — drawer overlays the page content, never pushes it */}
+            {/* Backdrop — the rail overlays the page content, never pushes it */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={() => setOpen(false)}
-              className="fixed inset-0 z-[75] bg-black/40 backdrop-blur-[2px]"
+              className="fixed inset-0 z-[75] bg-black/45 backdrop-blur-[2px]"
             />
 
-            {/* Panel */}
+            {/* Transparent icon rail */}
             <motion.aside
               initial={reduceMotion ? { opacity: 0 } : { x: '-100%' }}
               animate={reduceMotion ? { opacity: 1 } : { x: 0 }}
@@ -145,97 +146,47 @@ export default function CategoriesDrawer() {
               transition={{ type: 'spring', stiffness: 380, damping: 40 }}
               role="dialog"
               aria-label="Categories"
-              className="fixed left-0 top-0 bottom-0 z-[80] flex w-[300px] max-w-[85vw] flex-col overflow-hidden rounded-r-3xl bg-white shadow-2xl"
+              className="fixed left-0 top-0 bottom-0 z-[80] flex w-[104px] max-w-[30vw] flex-col overflow-y-auto overscroll-contain px-2 py-6"
             >
-              {/* Header */}
-              <div className="flex items-center justify-between bg-gradient-to-r from-primary-600 to-primary-700 px-5 py-4 text-white">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15">
-                    <LayoutGrid className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-[15px] font-bold leading-tight">Categories</p>
-                    <p className="font-urdu text-xs text-primary-100" dir="rtl">
-                      کیٹیگری منتخب کریں
-                    </p>
-                  </div>
+              {isLoading ? (
+                <div className="m-auto">
+                  <Loader2 className="h-6 w-6 animate-spin text-white" />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="Close categories"
-                  className="rounded-lg p-1.5 transition hover:bg-white/15"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Category list */}
-              <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3">
-                {isLoading ? (
-                  <div className="flex justify-center py-10">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary-600" />
-                  </div>
-                ) : !categories || categories.length === 0 ? (
-                  <p className="py-10 text-center text-sm text-gray-500">
-                    No categories available yet.
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {categories.map((category, i) => (
-                      <motion.li
-                        key={category.id}
-                        initial={{ opacity: 0, x: -12 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.05 + i * 0.03, duration: 0.25 }}
+              ) : !categories || categories.length === 0 ? null : (
+                <ul className="my-auto flex flex-col items-center gap-5">
+                  {categories.map((category, i) => (
+                    <motion.li
+                      key={category.id}
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.05 + i * 0.04, duration: 0.25 }}
+                    >
+                      <Link
+                        href={`/category/${category.slug}`}
+                        onClick={() => setOpen(false)}
+                        className="group flex flex-col items-center gap-1 active:scale-95 transition-transform"
                       >
-                        <Link
-                          href={`/category/${category.slug}`}
-                          onClick={() => setOpen(false)}
-                          className="group flex items-center gap-3 rounded-2xl px-2.5 py-2 transition-colors hover:bg-primary-50 active:bg-primary-100"
+                        <span className="relative h-14 w-14 overflow-hidden rounded-full bg-white shadow-lg ring-2 ring-white/80">
+                          <SmartImage
+                            src={category.image}
+                            alt={category.name}
+                            fill
+                            sizes="56px"
+                            className="object-cover transition-transform duration-300 group-hover:scale-110"
+                            fallback={<CategoryFallback initial={category.name.charAt(0)} />}
+                          />
+                        </span>
+                        <span
+                          dir="rtl"
+                          className="max-w-[96px] text-center font-urdu text-[13px] font-bold leading-6 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
                         >
-                          <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-gray-100">
-                            <SmartImage
-                              src={category.image}
-                              alt={category.name}
-                              fill
-                              sizes="44px"
-                              className="object-cover transition-transform duration-300 group-hover:scale-110"
-                              fallback={<CategoryFallback initial={category.name.charAt(0)} />}
-                            />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[14px] font-semibold text-gray-900 group-hover:text-primary-700">
-                              {category.name}
-                            </span>
-                            {category.nameUrdu && (
-                              <span
-                                className="block truncate font-urdu text-xs text-gray-500"
-                                dir="rtl"
-                              >
-                                {category.nameUrdu}
-                              </span>
-                            )}
-                          </span>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-primary-500" />
-                        </Link>
-                      </motion.li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="border-t border-gray-100 p-3">
-                <Link
-                  href="/products"
-                  onClick={() => setOpen(false)}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 px-4 py-3 text-sm font-bold text-white shadow-md transition hover:from-primary-700 hover:to-primary-800 active:scale-[0.98]"
-                >
-                  View All Products
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
+                          {category.nameUrdu || category.name}
+                        </span>
+                      </Link>
+                    </motion.li>
+                  ))}
+                </ul>
+              )}
             </motion.aside>
           </>
         )}
