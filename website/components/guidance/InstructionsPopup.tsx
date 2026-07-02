@@ -121,7 +121,10 @@ export default function InstructionsPopup() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Instructions"
-        className="fixed bottom-20 right-3 md:bottom-6 md:right-5 z-[45] flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-lg ring-2 ring-white/70 transition hover:scale-105 active:scale-95"
+        className={`fixed right-3 md:bottom-6 md:right-5 z-[45] flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-lg ring-2 ring-white/70 transition hover:scale-105 active:scale-95 ${
+          // The cart page has a sticky mobile checkout bar — float above it.
+          pathname === '/cart' ? 'bottom-40' : 'bottom-20'
+        }`}
       >
         {!seen && !open && (
           <span className="absolute inset-0 animate-ping rounded-full bg-amber-400 opacity-40" />
