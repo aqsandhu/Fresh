@@ -22,6 +22,7 @@ import { useInstructionsPopup } from '@/store/instructionsPopup'
 import { hideDrawerOnPath } from './CategoriesDrawer'
 import { aiChatApi, bannerApi } from '@/lib/api'
 import { buildWhatsAppUrl, openWhatsAppOrder } from '@/lib/whatsapp'
+import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 
 const EDGE_ZONE_PX = 28
 const SWIPE_OPEN_PX = 48
@@ -139,17 +140,17 @@ export default function UtilityDrawer() {
   }, [open, setOpen])
 
   // Escape closes; page scroll locks while the drawer overlays the content.
+  // Shared counter lock — see CategoriesDrawer (fixes frozen scroll after peek).
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
     document.addEventListener('keydown', onKey)
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    lockBodyScroll()
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prevOverflow
+      unlockBodyScroll()
     }
   }, [open, setOpen])
 
