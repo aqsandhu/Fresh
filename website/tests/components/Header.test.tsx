@@ -33,6 +33,7 @@ jest.mock('framer-motion', () => ({
     ),
   },
   AnimatePresence: ({ children }: React.PropsWithChildren) => <>{children}</>,
+  useReducedMotion: () => false,
 }));
 
 jest.mock('lucide-react', () => ({
@@ -55,6 +56,7 @@ jest.mock('lucide-react', () => ({
   ArrowRight: () => <span data-testid="arrow-icon">Arrow</span>,
   ShoppingBasket: () => <span data-testid="basket-icon">Basket</span>,
   Store: () => <span data-testid="store-icon">Store</span>,
+  Megaphone: () => <span data-testid="megaphone-icon">Megaphone</span>,
 }));
 
 jest.mock('@/store/cartStore', () => ({
@@ -103,7 +105,8 @@ describe('Header', () => {
 
   it('renders header with top bar phone number', () => {
     render(<Header />);
-    expect(screen.getByText('0300-1234567')).toBeInTheDocument();
+    // Phone shows twice: in the mobile news ticker AND the desktop static bar.
+    expect(screen.getAllByText('0300-1234567').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders brand logo', () => {
