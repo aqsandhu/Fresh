@@ -11,6 +11,8 @@ const googleMapsKey = (
 function buildImageRemotePatterns() {
   const patterns = [
     { protocol: 'https', hostname: '**.supabase.co' },
+    // Default home-hero image (used when a city has no admin-set hero).
+    { protocol: 'https', hostname: 'images.unsplash.com' },
     { protocol: 'http', hostname: 'localhost' },
     { protocol: 'https', hostname: 'localhost' },
   ];
