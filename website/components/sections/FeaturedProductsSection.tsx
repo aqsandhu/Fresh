@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { ArrowRight, Loader2 } from 'lucide-react'
+import { ArrowRight } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useCityContext } from '@/context/CityContext'
 import ProductCard from '@/components/ui/ProductCard'
@@ -17,7 +17,7 @@ const itemVariants = {
   },
 }
 
-/** Mirrors customer-app FeaturedProductsSection layout. */
+/** Product grid mirrors customer-app FeaturedProductsSection; header follows the home design system. */
 export default function FeaturedProductsSection() {
   const { selectedCityId } = useCityContext()
   const { data: featuredProducts, isLoading } = useQuery({
@@ -27,28 +27,40 @@ export default function FeaturedProductsSection() {
   })
 
   return (
-    <section className="py-10 md:py-12 bg-gray-50">
+    <section className="py-14 md:py-20 bg-gray-50">
       <div className="container mx-auto px-4">
-        <motion.h2
+        <motion.div
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="text-[26px] md:text-3xl font-bold text-gray-900 text-center"
+          className="mb-6 md:mb-8 flex flex-wrap items-end justify-between gap-4"
         >
-          Featured Products
-        </motion.h2>
-
-        <Link
-          href="/products"
-          className="mt-2 mb-6 flex items-center justify-center gap-1 text-sm font-semibold text-primary-600 hover:text-primary-700 transition-colors"
-        >
-          Click to View All Products
-          <ArrowRight className="w-4 h-4" />
-        </Link>
+          <div>
+            <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary-700">
+              <span className="h-px w-6 bg-primary-600" aria-hidden="true" />
+              Handpicked daily
+            </p>
+            <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight text-gray-900">
+              Featured products
+            </h2>
+          </div>
+          <Link
+            href="/products"
+            className="group inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-primary-600 hover:text-primary-700"
+          >
+            View all products
+            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </motion.div>
 
         {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-72 rounded-xl bg-gray-100 animate-pulse"
+              />
+            ))}
           </div>
         ) : !featuredProducts || featuredProducts.length === 0 ? (
           <p className="text-center text-gray-500 py-12">

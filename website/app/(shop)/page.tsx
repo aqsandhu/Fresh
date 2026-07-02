@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import HeroSection from '@/components/sections/HeroSection'
+import FreshTicker from '@/components/sections/FreshTicker'
 import CategoriesSection from '@/components/sections/CategoriesSection'
 import FeaturedProductsSection from '@/components/sections/FeaturedProductsSection'
 import DeliveryInfoSection from '@/components/sections/DeliveryInfoSection'
@@ -19,6 +20,7 @@ export default function HomePage() {
   return (
     <div className="animate-fade-in">
       <HeroSection />
+      <FreshTicker />
       <div className="container mx-auto px-4 mt-4">
         <GuidanceTips tips={[]} page="home" />
       </div>
