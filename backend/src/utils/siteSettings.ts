@@ -10,7 +10,33 @@ const BANNER_KEYS = [
   'banner_middle_text',
   'banner_right_text_en',
   'banner_right_text_ur',
+  // JSON string array — extra rotating ticker lines for the mobile top bar
+  // (website + customer app). Managed from the admin Banner tab.
+  'banner_ticker_items',
 ] as const;
+
+/** Normalize admin input (array or JSON string) to a canonical JSON string array. */
+export function normalizeTickerItems(input: unknown): string | undefined {
+  if (input === undefined || input === null) return undefined;
+  let items: unknown[] = [];
+  if (Array.isArray(input)) {
+    items = input;
+  } else if (typeof input === 'string') {
+    if (!input.trim()) return '[]';
+    try {
+      const parsed = JSON.parse(input);
+      items = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      // Plain text — treat newline-separated lines as items.
+      items = input.split('\n');
+    }
+  }
+  const clean = items
+    .map((i) => String(i ?? '').trim())
+    .filter((i) => i.length > 0)
+    .slice(0, 20);
+  return JSON.stringify(clean);
+}
 
 export const WHATSAPP_ORDER_URL_KEY = 'whatsapp_order_url';
 export const BRAND_LOGO_URL_KEY = 'brand_logo_url';

@@ -7,6 +7,20 @@ function hasSelectedCity(): boolean {
   return !!getCachedCityId();
 }
 
+/** Parse the admin-managed `banner_ticker_items` JSON string safely. */
+function parseTickerItems(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      /* malformed admin value — ignore */
+    }
+  }
+  return [];
+}
+
 // ============================================================================
 // DATA MAPPING: Backend snake_case → Customer App types
 // ============================================================================
@@ -296,6 +310,7 @@ class ProductService {
       middleText: string;
       rightTextEn: string;
       rightTextUr: string;
+      tickerItems: string[];
       whatsappOrderUrl?: string;
     }>
   > {
@@ -309,6 +324,7 @@ class ProductService {
           middleText: raw.banner_middle_text || raw.middleText || 'Free Delivery 10AM-2PM',
           rightTextEn: raw.banner_right_text_en || raw.rightTextEn || 'Fresh Sabzi at Your Doorstep',
           rightTextUr: raw.banner_right_text_ur || raw.rightTextUr || 'تازہ سبزیاں آپ کے دروازے پر',
+          tickerItems: parseTickerItems(raw.banner_ticker_items ?? raw.tickerItems),
           whatsappOrderUrl: String(raw.whatsapp_order_url || raw.whatsappOrderUrl || '').trim(),
         },
       };
@@ -320,6 +336,7 @@ class ProductService {
           middleText: 'Free Delivery 10AM-2PM',
           rightTextEn: 'Fresh Sabzi at Your Doorstep',
           rightTextUr: 'تازہ سبزیاں آپ کے دروازے پر',
+          tickerItems: [],
         },
       };
     }

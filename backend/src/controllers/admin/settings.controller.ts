@@ -31,6 +31,7 @@ import {
   deleteHeroImageFromStorage,
   clearHeroImageSettings,
   fetchGlobalSettings,
+  normalizeTickerItems,
   ATTA_CHAKKI_ENABLED_KEY,
 } from '../../utils/siteSettings';
 import { hasRestaurantDeliveryColumns } from '../../config/restaurantSchema';
@@ -314,6 +315,7 @@ export const updateBannerSettings = asyncHandler(async (req: Request, res: Respo
     banner_middle_text,
     banner_right_text_en,
     banner_right_text_ur,
+    banner_ticker_items,
   } = req.body;
 
   const banner = await upsertBannerSettings(
@@ -322,6 +324,7 @@ export const updateBannerSettings = asyncHandler(async (req: Request, res: Respo
       banner_middle_text,
       banner_right_text_en,
       banner_right_text_ur,
+      banner_ticker_items: normalizeTickerItems(banner_ticker_items),
     },
     scope.cityId,
     userId

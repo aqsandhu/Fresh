@@ -129,6 +129,7 @@ export const Settings: React.FC = () => {
     bannerMiddleText: '',
     bannerRightTextEn: '',
     bannerRightTextUr: '',
+    bannerTickerItems: [] as string[],
   });
   // Fetch Settings
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
@@ -185,6 +186,7 @@ export const Settings: React.FC = () => {
         bannerMiddleText: bannerSettings.bannerMiddleText || '',
         bannerRightTextEn: bannerSettings.bannerRightTextEn || '',
         bannerRightTextUr: bannerSettings.bannerRightTextUr || '',
+        bannerTickerItems: bannerSettings.bannerTickerItems || [],
       });
     }
   }, [bannerSettings]);
@@ -699,6 +701,11 @@ export const Settings: React.FC = () => {
               <span dir="rtl">{bannerForm.bannerRightTextUr || 'اردو متن'}</span>
             </div>
           </div>
+          <p className="mt-2 text-xs text-gray-400">
+            On mobile and in the customer app, the bar rotates like a news ticker:
+            each of the texts above (plus the extra ticker lines below) is shown one
+            at a time.
+          </p>
         </div>
       </Card>
 
@@ -770,6 +777,75 @@ export const Settings: React.FC = () => {
             </div>
           </div>
 
+          {/* Extra ticker lines — rotate after the four texts above on mobile/app */}
+          <div className="pt-4 border-t border-gray-200">
+            <div className="flex items-center justify-between mb-1">
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900">Extra Ticker Lines (Mobile / App)</h4>
+                <p className="text-xs text-gray-500">
+                  Add more announcements — offers, timings, notices. English and Urdu both work.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                leftIcon={<Plus className="w-4 h-4" />}
+                onClick={() =>
+                  setBannerForm(prev => ({
+                    ...prev,
+                    bannerTickerItems: [...prev.bannerTickerItems, ''],
+                  }))
+                }
+                disabled={bannerForm.bannerTickerItems.length >= 20}
+              >
+                Add Line
+              </Button>
+            </div>
+
+            {bannerForm.bannerTickerItems.length === 0 ? (
+              <p className="text-xs text-gray-400 py-3 text-center bg-gray-50 rounded-lg">
+                No extra lines yet — the ticker rotates through the four texts above.
+              </p>
+            ) : (
+              <div className="space-y-2 mt-2">
+                {bannerForm.bannerTickerItems.map((item, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <span className="w-6 text-xs text-gray-400 text-center shrink-0">{index + 1}.</span>
+                    <input
+                      type="text"
+                      value={item}
+                      dir="auto"
+                      onChange={(e) =>
+                        setBannerForm(prev => ({
+                          ...prev,
+                          bannerTickerItems: prev.bannerTickerItems.map((it, i) =>
+                            i === index ? e.target.value : it
+                          ),
+                        }))
+                      }
+                      placeholder="e.g. Eid Special: 10% off on all fruits"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setBannerForm(prev => ({
+                          ...prev,
+                          bannerTickerItems: prev.bannerTickerItems.filter((_, i) => i !== index),
+                        }))
+                      }
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      aria-label={`Remove line ${index + 1}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
             <Button
               type="button"
@@ -781,6 +857,7 @@ export const Settings: React.FC = () => {
                     bannerMiddleText: bannerSettings.bannerMiddleText || '',
                     bannerRightTextEn: bannerSettings.bannerRightTextEn || '',
                     bannerRightTextUr: bannerSettings.bannerRightTextUr || '',
+                    bannerTickerItems: bannerSettings.bannerTickerItems || [],
                   });
                 }
               }}

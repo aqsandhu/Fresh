@@ -6,14 +6,30 @@ export interface BannerSettings {
   bannerMiddleText: string;
   bannerRightTextEn: string;
   bannerRightTextUr: string;
+  /** Extra rotating lines for the mobile news-ticker top bar. */
+  bannerTickerItems: string[];
 }
 
-function mapBanner(raw: Record<string, string>): BannerSettings {
+function parseTickerItems(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {
+      /* ignore malformed value */
+    }
+  }
+  return [];
+}
+
+function mapBanner(raw: Record<string, unknown>): BannerSettings {
   return {
-    bannerLeftText: raw.bannerLeftText || raw.banner_left_text || '',
-    bannerMiddleText: raw.bannerMiddleText || raw.banner_middle_text || '',
-    bannerRightTextEn: raw.bannerRightTextEn || raw.banner_right_text_en || '',
-    bannerRightTextUr: raw.bannerRightTextUr || raw.banner_right_text_ur || '',
+    bannerLeftText: String(raw.bannerLeftText || raw.banner_left_text || ''),
+    bannerMiddleText: String(raw.bannerMiddleText || raw.banner_middle_text || ''),
+    bannerRightTextEn: String(raw.bannerRightTextEn || raw.banner_right_text_en || ''),
+    bannerRightTextUr: String(raw.bannerRightTextUr || raw.banner_right_text_ur || ''),
+    bannerTickerItems: parseTickerItems(raw.bannerTickerItems ?? raw.banner_ticker_items),
   };
 }
 
