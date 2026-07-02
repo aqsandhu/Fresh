@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import HeroSection from '@/components/sections/HeroSection'
+import CategoriesSection from '@/components/sections/CategoriesSection'
 import FeaturedProductsSection from '@/components/sections/FeaturedProductsSection'
 import DeliveryInfoSection from '@/components/sections/DeliveryInfoSection'
 import AppDownloadSection from '@/components/sections/AppDownloadSection'
@@ -17,9 +18,10 @@ export default function HomePage() {
   return (
     <div className="animate-fade-in">
       {/* Instructions show via the global InstructionsPopup (lightbulb icon).
-          Categories live in the left swipe drawer (CategoriesDrawer);
-          products lead the page and the hero brand band follows them. */}
+          Products lead the page; the category wall and hero band follow.
+          (Categories also live in the left swipe rail for quick access.) */}
       <FeaturedProductsSection />
+      <CategoriesSection />
       <HeroSection />
       <DeliveryInfoSection />
       <AppDownloadSection />
