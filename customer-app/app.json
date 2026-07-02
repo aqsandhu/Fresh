@@ -58,6 +58,24 @@
           "icon": "./assets/icon.png",
           "color": "#2E7D32"
         }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "FreshBazar",
+              "label": "Fresh Bazar",
+              "description": "Taza sabzi & fruits — offers on your home screen",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
       ]
     ],
     "extra": {

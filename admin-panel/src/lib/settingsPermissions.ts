@@ -13,7 +13,8 @@ export type SettingsTabId =
   | 'coupons'
   | 'brand'
   | 'favicon'
-  | 'whatsapp';
+  | 'whatsapp'
+  | 'appwidget';
 
 const TAB_VIEW: Record<SettingsTabId, string[]> = {
   delivery: ['settings.delivery.view', 'settings.view', 'settings.update'],
@@ -41,6 +42,8 @@ const TAB_VIEW: Record<SettingsTabId, string[]> = {
     'settings.banner.view',
     'settings.business_hours.view',
   ],
+  // App widget content is managed like the banner (global marketing copy).
+  appwidget: ['settings.banner.view', 'settings.view', 'settings.update'],
 };
 
 const TAB_UPDATE: Record<SettingsTabId, string[]> = {
@@ -53,6 +56,7 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   brand: ['settings.brand.update', 'settings.update'],
   favicon: ['settings.favicon.update', 'settings.update'],
   whatsapp: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
+  appwidget: ['settings.banner.update', 'settings.update'],
 };
 
 export function canViewSettingsTab(
@@ -97,7 +101,7 @@ export function canAccessSettingsPage(permissions: string[] | undefined): boolea
   return (
     hasPermission(permissions, ALL_SETTINGS_VIEW_CODES) ||
     (
-      ['delivery', 'timeslots', 'business', 'banner', 'hero', 'coupons', 'brand', 'favicon', 'whatsapp'] as SettingsTabId[]
+      ['delivery', 'timeslots', 'business', 'banner', 'hero', 'coupons', 'brand', 'favicon', 'whatsapp', 'appwidget'] as SettingsTabId[]
     ).some(
       (tab) => canViewSettingsTab(permissions, tab)
     )
@@ -108,7 +112,7 @@ export function visibleSettingsTabs(
   permissions: string[] | undefined,
   role?: string
 ): SettingsTabId[] {
-  const tabs = (['delivery', 'timeslots', 'business', 'banner', 'hero', 'coupons', 'whatsapp'] as SettingsTabId[]).filter(
+  const tabs = (['delivery', 'timeslots', 'business', 'banner', 'hero', 'coupons', 'whatsapp', 'appwidget'] as SettingsTabId[]).filter(
     (tab) => canViewSettingsTab(permissions, tab)
   );
   if (canViewBrandSettingsTab(permissions, role) && !tabs.includes('brand')) {

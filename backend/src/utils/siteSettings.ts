@@ -50,6 +50,45 @@ export const HERO_IMAGE_STORAGE_PATH_KEY = 'hero_image_storage_path';
 // website + app show a "coming soon" state (super-admin reversible, no code change).
 export const ATTA_CHAKKI_ENABLED_KEY = 'atta_chakki_enabled';
 
+// Android home-screen widget (customer app). Global — one widget content for
+// all cities; admin-managed from the App Widget settings panel.
+export const APP_WIDGET_KEYS = {
+  enabled: 'app_widget_enabled',
+  title: 'app_widget_title',
+  message: 'app_widget_message',
+  messageUr: 'app_widget_message_ur',
+} as const;
+
+export interface AppWidgetSettings {
+  enabled: boolean;
+  title: string;
+  message: string;
+  message_ur: string;
+}
+
+export const APP_WIDGET_DEFAULTS: AppWidgetSettings = {
+  enabled: true,
+  title: 'Fresh Bazar',
+  message: 'Taza sabzi & fruits — free delivery on Rs. 500+',
+  message_ur: 'تازہ سبزیاں اور پھل — آپ کے دروازے پر',
+};
+
+/** App widget content with defaults applied (enabled defaults to true). */
+export async function fetchAppWidgetSettings(): Promise<AppWidgetSettings> {
+  const map = await fetchGlobalSettings([
+    APP_WIDGET_KEYS.enabled,
+    APP_WIDGET_KEYS.title,
+    APP_WIDGET_KEYS.message,
+    APP_WIDGET_KEYS.messageUr,
+  ]);
+  return {
+    enabled: map[APP_WIDGET_KEYS.enabled] !== 'false',
+    title: map[APP_WIDGET_KEYS.title] || APP_WIDGET_DEFAULTS.title,
+    message: map[APP_WIDGET_KEYS.message] || APP_WIDGET_DEFAULTS.message,
+    message_ur: map[APP_WIDGET_KEYS.messageUr] || APP_WIDGET_DEFAULTS.message_ur,
+  };
+}
+
 // Out-of-area popup copy (global) for map-based service areas (migration 43).
 export const SERVICE_AREA_KEYS = {
   title: 'service_area_out_title',

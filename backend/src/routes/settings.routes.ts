@@ -10,6 +10,7 @@ import {
   fetchHeroImageSettings,
   fetchGlobalSettings,
   fetchServiceAreaMessages,
+  fetchAppWidgetSettings,
   ATTA_CHAKKI_ENABLED_KEY,
 } from '../utils/siteSettings';
 import { query } from '../config/database';
@@ -57,6 +58,12 @@ router.get('/whatsapp-order', asyncHandler(async (req, res) => {
   const cityId = await resolvePublicCityId(req);
   const settings = await fetchWhatsAppOrderSettings(cityId);
   successResponse(res, settings, 'WhatsApp order settings retrieved');
+}));
+
+// Public: Android home-screen widget content for the customer app (no auth).
+router.get('/app-widget', asyncHandler(async (_req, res) => {
+  const widget = await fetchAppWidgetSettings();
+  successResponse(res, widget, 'App widget settings retrieved');
 }));
 
 // Public: global feature flags / config for storefront + apps (no auth required).

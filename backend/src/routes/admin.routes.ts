@@ -400,6 +400,10 @@ router.delete('/site-settings/hero', adminController.deleteHeroSettings);
 // Site Settings - Banner
 router.get('/site-settings/banner', adminController.getBannerSettings);
 router.put('/site-settings/banner', adminController.updateBannerSettings);
+
+// Site Settings - Android home-screen widget (customer app, global)
+router.get('/site-settings/app-widget', adminController.getAppWidgetSettings);
+router.put('/site-settings/app-widget', adminController.updateAppWidgetSettings);
 router.get('/site-settings/whatsapp-order', adminController.getWhatsAppOrderSettings);
 router.put('/site-settings/whatsapp-order', adminController.updateWhatsAppOrderSettings);
 router.get('/site-settings/whatsapp-order/all', adminController.getWhatsAppOrderSettingsAll);

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -24,6 +25,7 @@ import { MobileHeader } from '@components/layout/MobileHeader';
 import { addressService } from '@services/address.service';
 import { authService } from '@services/auth.service';
 import { cartService, type MyCoupon } from '@services/cart.service';
+import { getCachedWidgetConfig, refreshWidgetConfig, requestAddWidget } from '@/lib/appWidget';
 
 interface MenuItem {
   icon: string;
@@ -96,6 +98,44 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  // Home-screen widget: option shows on Android when the admin has it enabled.
+  const [widgetEnabled, setWidgetEnabled] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    getCachedWidgetConfig().then((c) => setWidgetEnabled(c.enabled));
+    refreshWidgetConfig()
+      .then((c) => setWidgetEnabled(c.enabled))
+      .catch(() => {});
+  }, []);
+
+  const handleAddWidget = () => {
+    Alert.alert(
+      'Home Screen Widget',
+      'Fresh Bazar ka chhota widget aap ki home screen per lag jaye ga — taza offers aur aik tap mein app. Ijazat dein?',
+      [
+        { text: 'Nahi', style: 'cancel' },
+        {
+          text: 'Haan, lagayen',
+          onPress: async () => {
+            const result = await requestAddWidget();
+            if (result === 'pinned') return; // Android's own dialog takes over
+            if (result === 'manual') {
+              Alert.alert(
+                'Widget aise lagayen',
+                'Home screen per khali jagah ko der tak dabayen → "Widgets" chunen → "Fresh Bazar" dhoond kar home screen per rakh dein.'
+              );
+            } else {
+              Alert.alert(
+                'App update chahiye',
+                'Widget ke liye Play Store se Fresh Bazar ki nayi update install karen.'
+              );
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleDeleteAddress = (id: string) => {
     Alert.alert('Delete Address', 'Are you sure you want to delete this address?', [
       { text: 'Cancel', style: 'cancel' },
@@ -137,6 +177,17 @@ export const ProfileScreen: React.FC = () => {
       onPress: () => navigation.navigate('SelectCity'),
       showArrow: true,
     },
+    ...(Platform.OS === 'android' && widgetEnabled
+      ? [
+          {
+            icon: 'widgets',
+            title: 'Home Screen Widget',
+            subtitle: 'Offers seedha home screen per',
+            onPress: handleAddWidget,
+            showArrow: true,
+          },
+        ]
+      : []),
     ...(isAuthenticated
       ? [
           {

@@ -32,6 +32,8 @@ import {
   clearHeroImageSettings,
   fetchGlobalSettings,
   normalizeTickerItems,
+  fetchAppWidgetSettings,
+  APP_WIDGET_KEYS,
   ATTA_CHAKKI_ENABLED_KEY,
 } from '../../utils/siteSettings';
 import { hasRestaurantDeliveryColumns } from '../../config/restaurantSchema';
@@ -285,6 +287,42 @@ export const deleteHeroSettings = asyncHandler(async (req: Request, res: Respons
       ? 'Hero image removed from site and storage.'
       : 'Hero image cleared.'
   );
+});
+
+/**
+ * Get app widget settings (global)
+ * GET /api/admin/site-settings/app-widget
+ */
+
+export const getAppWidgetSettings = asyncHandler(async (_req: Request, res: Response) => {
+  const widget = await fetchAppWidgetSettings();
+  successResponse(res, widget, 'App widget settings retrieved');
+});
+
+/**
+ * Update app widget settings (global)
+ * PUT /api/admin/site-settings/app-widget
+ */
+
+export const updateAppWidgetSettings = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  const { enabled, title, message, message_ur } = req.body;
+
+  if (enabled !== undefined) {
+    await upsertGlobalSiteSetting(APP_WIDGET_KEYS.enabled, String(enabled === true || enabled === 'true'), userId);
+  }
+  if (title !== undefined) {
+    await upsertGlobalSiteSetting(APP_WIDGET_KEYS.title, String(title).trim().slice(0, 60), userId);
+  }
+  if (message !== undefined) {
+    await upsertGlobalSiteSetting(APP_WIDGET_KEYS.message, String(message).trim().slice(0, 140), userId);
+  }
+  if (message_ur !== undefined) {
+    await upsertGlobalSiteSetting(APP_WIDGET_KEYS.messageUr, String(message_ur).trim().slice(0, 140), userId);
+  }
+
+  logger.info('App widget settings updated', { updatedBy: userId });
+  successResponse(res, await fetchAppWidgetSettings(), 'App widget settings updated successfully');
 });
 
 /**

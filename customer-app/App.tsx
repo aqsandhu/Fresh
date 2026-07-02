@@ -9,6 +9,7 @@ import { useNetworkStatus } from '@hooks';
 import { COLORS, SPACING } from '@utils/constants';
 import { ErrorBoundary, AiChatWidget, MarketingCartTracker } from '@components/common';
 import { VariableWeightNoticeModal } from '@components/common/VariableWeightNoticeModal';
+import { refreshWidgetConfig } from '@/lib/appWidget';
 
 // Create React Query client
 const queryClient = new QueryClient({
@@ -64,6 +65,9 @@ export default function App() {
   useEffect(() => {
     // Initialize app
     console.log('Fresh Bazar Customer App Started');
+    // Pull the latest admin-managed widget content and redraw any
+    // home-screen widgets (no-op on iOS / builds without the module).
+    refreshWidgetConfig().catch(() => {});
   }, []);
 
   return (

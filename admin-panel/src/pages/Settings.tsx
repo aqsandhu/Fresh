@@ -24,6 +24,7 @@ import {
   ImagePlus,
   Sparkles,
   Ticket,
+  Smartphone,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -54,6 +55,7 @@ import { BrandLogoSettingsPanel } from '@/components/settings/BrandLogoSettingsP
 import { BrandFaviconSettingsPanel } from '@/components/settings/BrandFaviconSettingsPanel';
 import { HeroImageSettingsPanel } from '@/components/settings/HeroImageSettingsPanel';
 import { CouponsSettingsPanel } from '@/components/settings/CouponsSettingsPanel';
+import { AppWidgetSettingsPanel } from '@/components/settings/AppWidgetSettingsPanel';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -1015,6 +1017,19 @@ export const Settings: React.FC = () => {
           <span>WhatsApp</span>
         </button>
         )}
+        {canViewSettingsTab(permissions, 'appwidget') && (
+        <button
+          onClick={() => setActiveTab('appwidget')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+            activeTab === 'appwidget'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          <Smartphone className="w-4 h-4" />
+          <span>App Widget</span>
+        </button>
+        )}
       </div>
 
       {/* Tab Content */}
@@ -1035,6 +1050,9 @@ export const Settings: React.FC = () => {
         <BrandFaviconSettingsPanel canEdit={canEditFavicon} />
       )}
       {activeTab === 'whatsapp' && renderWhatsappTab()}
+      {activeTab === 'appwidget' && (
+        <AppWidgetSettingsPanel canEdit={canUpdate('appwidget')} />
+      )}
 
       {/* Time Slot Modal */}
       <Modal
