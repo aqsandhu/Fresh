@@ -4,8 +4,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Star, MessageSquareWarning, Plus, Loader2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import GuidanceTips from '@/components/guidance/GuidanceTips'
-import { SUPPORT_TIPS } from '@/lib/guidanceTipsContent'
 import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import StarRating from '@/components/feedback/StarRating'
@@ -77,7 +75,6 @@ export default function SupportPage() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-3xl mx-auto px-4 py-6">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">Reviews &amp; Complaints</h1>
-        <GuidanceTips tips={SUPPORT_TIPS} page="support" />
 
         {/* Tabs */}
         <div className="flex gap-2 mb-4">

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
 import { useRightDrawer } from '@/store/rightDrawer'
-import { useGuidanceTips } from '@/store/guidanceTips'
+import { useInstructionsPopup } from '@/store/instructionsPopup'
 import { hideDrawerOnPath } from './CategoriesDrawer'
 import { aiChatApi } from '@/lib/api'
 
@@ -73,7 +73,7 @@ function DrawerRow({ icon, iconWrapClass, title, subtitle, onClick, trailing, de
 export default function UtilityDrawer() {
   const pathname = usePathname()
   const { open, setOpen, setChatOpen, setCityPickerOpen } = useRightDrawer()
-  const { enabled: tipsEnabled, setEnabled: setTipsEnabled } = useGuidanceTips()
+  const setTipsOpen = useInstructionsPopup((s) => s.setOpen)
   const { selectedCity } = useCityContext()
   const reduceMotion = useReducedMotion()
   const touchRef = useRef<{ x: number; y: number; edge: boolean } | null>(null)
@@ -224,22 +224,11 @@ export default function UtilityDrawer() {
                   icon={<Lightbulb className="h-5 w-5 text-white" />}
                   iconWrapClass="bg-gradient-to-br from-amber-400 to-amber-600"
                   title="Instructions"
-                  subtitle={tipsEnabled ? 'Hidayat on hain' : 'Hidayat band hain'}
-                  onClick={() => setTipsEnabled(!tipsEnabled)}
-                  trailing={
-                    <span
-                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-                        tipsEnabled ? 'bg-primary-500' : 'bg-gray-200'
-                      }`}
-                      aria-hidden
-                    >
-                      <span
-                        className={`absolute h-4 w-4 rounded-full bg-white shadow transition-all ${
-                          tipsEnabled ? 'left-[18px]' : 'left-0.5'
-                        }`}
-                      />
-                    </span>
-                  }
+                  subtitle="Is page ki hidayat dekhein"
+                  onClick={() => {
+                    setOpen(false)
+                    setTipsOpen(true)
+                  }}
                 />
 
                 {!cityChangeHidden(pathname) && selectedCity && (
