@@ -45,6 +45,7 @@ const footerLinks = {
     { label: 'Track Order', href: '/orders' },
     { label: 'Returns', href: '/returns' },
     { label: 'Shipping Info', href: '/shipping' },
+    { label: 'Delete Account', href: '/delete-account' },
   ],
 }
 

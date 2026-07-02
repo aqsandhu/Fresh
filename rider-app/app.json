@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Rider App",
-    "slug": "rider-app",
+    "name": "Fresh Bazar Rider",
+    "slug": "freshbazar-rider",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,11 +15,16 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.freshbazar.rider",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "This app needs location access to track deliveries.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs background location access to track deliveries even when the app is closed.",
+        "NSLocationWhenInUseUsageDescription": "Fresh Bazar Rider uses your location while you are on duty so dispatch can assign nearby orders and monitor delivery progress.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Fresh Bazar Rider tracks your location while you are on duty — including in the background — so dispatch can monitor riders and customers can follow their order after it is assigned to you.",
+        "NSCameraUsageDescription": "The camera is used to take a photo of the delivered order as proof of delivery.",
+        "NSPhotoLibraryUsageDescription": "The photo library is used to attach an existing photo as proof of delivery.",
         "UIBackgroundModes": ["location", "fetch"]
       }
     },
@@ -30,10 +35,13 @@
       },
       "package": "com.freshbazar.rider",
       "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION",
-        "FOREGROUND_SERVICE"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -43,16 +51,29 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for delivery tracking.",
-          "locationAlwaysPermission": "Allow $(PRODUCT_NAME) to use your location for delivery tracking.",
-          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location for delivery tracking.",
+          "locationWhenInUsePermission": "Fresh Bazar Rider uses your location while you are on duty so dispatch can assign nearby orders and monitor delivery progress.",
+          "locationAlwaysAndWhenInUsePermission": "Fresh Bazar Rider tracks your location while you are on duty — including in the background — so dispatch can monitor riders and customers can follow their order after it is assigned to you.",
+          "locationAlwaysPermission": "Fresh Bazar Rider tracks your location while you are on duty — including in the background — so dispatch can monitor riders and customers can follow their order after it is assigned to you.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "The camera is used to take a photo of the delivered order as proof of delivery.",
+          "photosPermission": "The photo library is used to attach an existing photo as proof of delivery.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#10B981"
+        }
       ]
-    ]
-  }
-}
-    ]
+    ],
+    "extra": {}
   }
 }

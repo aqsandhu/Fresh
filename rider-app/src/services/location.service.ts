@@ -1,8 +1,11 @@
+import { Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import authService from './auth.service';
 
 const LOCATION_TASK_NAME = 'background-location-task';
+const DISCLOSURE_ACCEPTED_KEY = 'fb_rider_location_disclosure_v1';
 
 // Accuracy thresholds (meters)
 const MAX_ACCURACY_FOR_TRACKING = 20;   // reject tracking updates worse than 20m
@@ -35,7 +38,49 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
   }
 });
 
+/**
+ * Google Play "prominent disclosure": before the system permission dialogs
+ * we must show our OWN dialog explaining what location data is collected,
+ * why, and that it is also collected in the background. Shown once (until
+ * accepted); skipped when permission is already granted.
+ */
+const showLocationDisclosure = async (): Promise<boolean> => {
+  const { status } = await Location.getForegroundPermissionsAsync();
+  if (status === 'granted') return true;
+  try {
+    if ((await AsyncStorage.getItem(DISCLOSURE_ACCEPTED_KEY)) === 'yes') return true;
+  } catch {
+    /* storage unreadable — show the dialog again */
+  }
+
+  return new Promise((resolve) => {
+    Alert.alert(
+      'Location Data Notice',
+      'Fresh Bazar Rider collects location data while you are ON DUTY to enable order dispatch, rider monitoring by the Fresh Bazar admin team, and live order tracking for customers — even when the app is closed or not in use. Tracking stops when you go off duty or log out.',
+      [
+        { text: 'Decline', style: 'cancel', onPress: () => resolve(false) },
+        {
+          text: 'I Agree',
+          onPress: async () => {
+            try {
+              await AsyncStorage.setItem(DISCLOSURE_ACCEPTED_KEY, 'yes');
+            } catch {
+              /* non-fatal */
+            }
+            resolve(true);
+          },
+        },
+      ],
+      { cancelable: false }
+    );
+  });
+};
+
 export const requestLocationPermissions = async (): Promise<boolean> => {
+  // Prominent disclosure FIRST (Play policy), then the system dialogs.
+  const disclosed = await showLocationDisclosure();
+  if (!disclosed) return false;
+
   const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
   if (foregroundStatus !== 'granted') {
     return false;

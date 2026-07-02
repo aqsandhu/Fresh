@@ -17,10 +17,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.freshbazar.customer",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to capture door pictures for delivery.",
-        "NSLocationWhenInUseUsageDescription": "This app needs your location to show nearby stores and for delivery.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app needs your location to track deliveries."
+        "NSCameraUsageDescription": "The camera is used to take a photo of your door so the rider can find your address easily.",
+        "NSPhotoLibraryUsageDescription": "The photo library is used to attach a photo of your door so the rider can find your address easily.",
+        "NSLocationWhenInUseUsageDescription": "Your location is used to set your delivery address accurately on the map."
       }
     },
     "android": {
@@ -43,13 +46,23 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Fresh Bazar to access your camera to capture door pictures for delivery."
+          "cameraPermission": "The camera is used to take a photo of your door so the rider can find your address easily.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The photo library is used to attach a photo of your door so the rider can find your address easily.",
+          "cameraPermission": "The camera is used to take a photo of your door so the rider can find your address easily.",
+          "microphonePermission": false
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Allow Fresh Bazar to use your location for delivery tracking."
+          "locationWhenInUsePermission": "Your location is used to set your delivery address accurately on the map."
         }
       ],
       [

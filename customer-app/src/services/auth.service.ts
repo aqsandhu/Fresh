@@ -91,6 +91,16 @@ class AuthService {
     }
   }
 
+  /** Permanently delete the signed-in customer's account (store requirement). */
+  async deleteAccount(): Promise<ApiResponse<{ message: string }>> {
+    try {
+      const response = await apiClient.post('/auth/delete-account');
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
   // ─── 4-digit PIN flow ─────────────────────────────────────────────────
   // Mirrors the website's authApi PIN methods (commit fe406cc on web).
   // After the one-time OTP at registration the customer logs in with a PIN

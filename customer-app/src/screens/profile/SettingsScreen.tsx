@@ -6,14 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { useAuthStore } from '@store';
+import { authService } from '@services/auth.service';
 
 interface SettingItem {
   icon: string;
@@ -27,12 +30,58 @@ interface SettingItem {
 
 export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
-  const { user } = useAuthStore();
+  const { user, isAuthenticated, logout } = useAuthStore();
 
   const [notifications, setNotifications] = useState(true);
   const [promotions, setPromotions] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
   const [locationServices, setLocationServices] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+
+  // Self-service account deletion — required by Play Store & App Store.
+  // Two-step confirmation; anonymizes the account server-side and signs out.
+  const handleDeleteAccount = () => {
+    if (deleting) return;
+    Alert.alert(
+      'Delete Account',
+      'Aap ka account hamesha ke liye delete ho jaye ga — naam, phone number, addresses sab hata diye jayen ge. Ye wapas nahi ho sakta. Jari rakhein?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Aakhri tasdeeq',
+              'Kya aap bilkul yaqeeni hain? Account foran delete ho jaye ga.',
+              [
+                { text: 'Nahi', style: 'cancel' },
+                {
+                  text: 'Haan, delete karein',
+                  style: 'destructive',
+                  onPress: async () => {
+                    setDeleting(true);
+                    try {
+                      await authService.deleteAccount();
+                      Toast.show({ type: 'success', text1: 'Account deleted' });
+                      await logout();
+                    } catch (err: any) {
+                      Toast.show({
+                        type: 'error',
+                        text1: err?.message || 'Account delete nahi ho saka — dobara koshish karein',
+                      });
+                    } finally {
+                      setDeleting(false);
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
 
   const settings: SettingItem[] = [
     {
@@ -163,6 +212,34 @@ export const SettingsScreen: React.FC = () => {
             {settings.map((item, index) => renderSettingItem(item, index))}
           </View>
         </View>
+
+        {/* Danger zone — store-required self-service account deletion */}
+        {isAuthenticated && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Account</Text>
+            <View style={styles.settingsCard}>
+              <TouchableOpacity
+                style={[styles.settingItem, styles.settingItemLast]}
+                onPress={handleDeleteAccount}
+                activeOpacity={0.7}
+                disabled={deleting}
+              >
+                <View style={[styles.settingIcon, styles.dangerIcon]}>
+                  <MaterialIcons name="delete-forever" size={22} color={COLORS.error} />
+                </View>
+                <View style={styles.settingContent}>
+                  <Text style={[styles.settingTitle, styles.dangerText]}>
+                    {deleting ? 'Deleting…' : 'Delete Account'}
+                  </Text>
+                  <Text style={styles.settingSubtitle}>
+                    Account aur zaati maloomat hamesha ke liye delete karein
+                  </Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={22} color={COLORS.gray400} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
         <View style={styles.bottomPadding} />
       </ScrollView>
     </SafeAreaView>
@@ -232,6 +309,8 @@ const styles = StyleSheet.create({
   settingContent: { flex: 1, marginLeft: SPACING.md },
   settingTitle: { fontSize: 15, fontWeight: '500', color: COLORS.gray900 },
   settingSubtitle: { fontSize: 12, color: COLORS.gray500, marginTop: 2 },
+  dangerIcon: { backgroundColor: '#FEE2E2' },
+  dangerText: { color: COLORS.error },
   bottomPadding: { height: SPACING.xxl },
 });
 

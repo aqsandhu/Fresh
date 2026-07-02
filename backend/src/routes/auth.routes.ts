@@ -93,5 +93,7 @@ router.get('/me', authenticate, verifyUserActive, authController.getMe);
 router.get('/socket-token', authenticate, verifyUserActive, authController.getSocketToken);
 router.put('/profile', authenticate, verifyUserActive, authController.updateProfile);
 router.put('/change-password', authenticate, verifyUserActive, validate(authSchemas.changePassword), authController.changePassword);
+// Self-service account deletion (Play Store / App Store requirement).
+router.post('/delete-account', authenticate, verifyUserActive, authController.deleteAccount);
 
 export default router;

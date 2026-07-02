@@ -637,6 +637,58 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   successResponse(res, null, 'Password changed successfully');
 });
 
+/**
+ * DELETE ACCOUNT (self-service — Play Store / App Store requirement)
+ * POST /api/auth/delete-account
+ *
+ * Anonymizes the account rather than hard-deleting: PII (name, phone, email,
+ * avatar, credentials, push tokens, saved addresses) is removed immediately,
+ * while order/financial rows stay for legal record-keeping — they no longer
+ * point to any identifiable person. The freed phone number can register a
+ * brand-new account afterwards.
+ */
+export const deleteAccount = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) {
+    return unauthorizedResponse(res, 'Authentication required');
+  }
+  // Workforce accounts (riders/admins) are managed by the company, not
+  // self-deleted from an app.
+  if (req.user.role && req.user.role !== 'customer') {
+    return errorResponse(res, 'Only customer accounts can be deleted from the app', 403);
+  }
+
+  const userId = req.user.userId;
+
+  await withTransaction(async (client) => {
+    // Anonymized phone must stay unique and fit VARCHAR(20).
+    await client.query(
+      `UPDATE users SET
+         status = 'deleted',
+         deleted_at = NOW(),
+         deleted_by = id,
+         full_name = 'Deleted User',
+         email = NULL,
+         phone = 'del_' || SUBSTRING(REPLACE(id::text, '-', ''), 1, 12),
+         password_hash = NULL,
+         pin_hash = NULL,
+         avatar_url = NULL,
+         device_tokens = NULL,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [userId]
+    );
+    await client.query(`DELETE FROM addresses WHERE user_id = $1`, [userId]);
+  });
+
+  // Kill every session on every device.
+  await revokeAllUserRefreshTokens(userId);
+  clearAuthCookies(res);
+
+  logger.info('Account deleted (self-service)', { userId });
+
+  successResponse(res, null, 'Your account has been deleted');
+});
+
 // ============================================================================
 // 4-DIGIT PIN AUTH
 // ----------------------------------------------------------------------------

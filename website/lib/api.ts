@@ -294,6 +294,13 @@ export const authApi = {
     return response.data
   },
 
+  // Self-service account deletion (Play Store / App Store requirement) —
+  // anonymizes the account server-side and revokes every session.
+  deleteAccount: async () => {
+    const response = await api.post('/auth/delete-account')
+    return response.data
+  },
+
   // ─── 4-digit PIN flow ──────────────────────────────────────────────────
   // After the one-time OTP at registration, every subsequent login uses a
   // 4-digit PIN. Forgot PIN → reuses send-otp + reset-pin.
