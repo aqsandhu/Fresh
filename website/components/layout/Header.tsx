@@ -284,7 +284,8 @@ export default function Header() {
 
       {/* Main Header + search (click-outside closes idle search) */}
       <div ref={searchAreaRef} className="container mx-auto px-3 sm:px-4">
-        <div className="h-9 lg:h-[43px] flex items-center justify-between gap-2 sm:gap-3 w-full min-h-0 py-0">
+        {/* +20% navbar height (36→44, 43→52); icons scaled to match. */}
+        <div className="h-11 lg:h-[52px] flex items-center justify-between gap-2 sm:gap-3 w-full min-h-0 py-0">
           <Link
             href="/"
             className="shrink-0 flex items-center h-full leading-none p-0 m-0"
@@ -329,7 +330,7 @@ export default function Header() {
               }}
               className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              <Search className="w-5 h-5 text-gray-600" />
+              <Search className="w-6 h-6 text-gray-600" />
             </button>
 
             {/* Today's Basket — desktop icon with hover tooltip */}
@@ -339,7 +340,7 @@ export default function Header() {
               aria-label="Today's Basket"
               className="relative group hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              <ShoppingBasket className="w-5 h-5 text-gray-600" />
+              <ShoppingBasket className="w-6 h-6 text-gray-600" />
               <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
                 Today&apos;s Basket
               </span>
@@ -351,7 +352,7 @@ export default function Header() {
               aria-label="Work as Rider"
               className="relative group hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              <Bike className="w-5 h-5 text-gray-600" />
+              <Bike className="w-6 h-6 text-gray-600" />
               <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1 whitespace-nowrap rounded bg-gray-900 px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity z-50">
                 Work as Rider
               </span>
@@ -366,7 +367,7 @@ export default function Header() {
                 href="/orders"
                 className="hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                <Package className="w-5 h-5 text-gray-600" />
+                <Package className="w-6 h-6 text-gray-600" />
               </Link>
             )}
 
@@ -376,7 +377,7 @@ export default function Header() {
                 onClick={() => setIsCartOpen(!isCartOpen)}
                 className="relative p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
-                <ShoppingCart className="w-5 h-5 text-gray-600" />
+                <ShoppingCart className="w-6 h-6 text-gray-600" />
                 {cartItemCount > 0 && (
                   <motion.span
                     key={cartItemCount}
@@ -396,7 +397,7 @@ export default function Header() {
               href={hasMounted && isAuthenticated ? '/profile' : `/login?redirect=${pathname}`}
               className="hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
-              <User className="w-5 h-5 text-gray-600" />
+              <User className="w-6 h-6 text-gray-600" />
             </Link>
 
             {/* Mobile Menu Button */}
@@ -408,9 +409,9 @@ export default function Header() {
               aria-expanded={isMenuOpen}
             >
               {isMenuOpen ? (
-                <X className="w-5 h-5 text-gray-600" />
+                <X className="w-6 h-6 text-gray-600" />
               ) : (
-                <Menu className="w-5 h-5 text-gray-600" />
+                <Menu className="w-6 h-6 text-gray-600" />
               )}
             </button>
           </div>
