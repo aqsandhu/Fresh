@@ -12,6 +12,7 @@ import SentryInit from '@/components/providers/SentryInit'
 import TodaysBasketModal from '@/components/basket/TodaysBasketModal'
 import AiChatWidget from '@/components/ai/AiChatWidget'
 import MarketingTracker from '@/components/marketing/MarketingTracker'
+import CategoriesDrawer from '@/components/layout/CategoriesDrawer'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -81,6 +82,7 @@ export default function RootLayout({
             </div>
             <TodaysBasketModal />
             <AiChatWidget />
+            <CategoriesDrawer />
             <MarketingTracker />
             <Toaster
               position="top-center"
