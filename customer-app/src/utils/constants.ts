@@ -76,9 +76,11 @@ export const COLORS = {
   primary50: '#f0fdf4',
   primary100: '#dcfce7',
   primary200: '#bbf7d0',
+  primary300: '#86efac',
   primary500: '#22c55e',
   primary600: '#16a34a',
   primary700: '#15803d',
+  primary900: '#14532d',
 
   // Secondary (amber) — website secondary scale
   secondary: '#f59e0b',

@@ -122,21 +122,23 @@ export default function HeroSection() {
           transition={{ duration: 0.6, ease: [0.32, 0.72, 0.24, 1] }}
           className="relative overflow-hidden rounded-3xl shadow-xl"
         >
-          {/* Backdrop: admin-managed per-city hero image + green wash */}
+          {/* Backdrop: admin-managed per-city hero image + green wash.
+              Mobile: VERTICAL wash (content on top, image clearly visible in
+              the band below). Desktop: horizontal wash (image on the right). */}
           <div className="absolute inset-0">
             <Image
               src={heroImageUrl}
               alt=""
               fill
               sizes="100vw"
-              className="object-cover"
+              className="object-cover object-bottom sm:object-center"
               unoptimized={heroImageUrl !== HERO_IMAGE}
             />
-            <div className="absolute inset-0 bg-gradient-to-r from-primary-900/90 via-primary-900/75 to-primary-800/40" />
+            <div className="absolute inset-0 bg-gradient-to-b from-primary-900/95 via-primary-900/85 to-primary-900/10 sm:bg-gradient-to-r sm:from-primary-900/90 sm:via-primary-900/75 sm:to-primary-800/40" />
           </div>
 
           {/* Content */}
-          <div className="relative px-5 py-10 sm:px-10 sm:py-14 lg:px-14 lg:py-16 max-w-2xl">
+          <div className="relative px-5 pt-8 pb-3 sm:px-10 sm:py-14 lg:px-14 lg:py-16 max-w-2xl">
             <div className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-sm text-white px-4 py-1.5 rounded-full text-sm font-semibold">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-300 opacity-75" />
@@ -200,6 +202,9 @@ export default function HeroSection() {
               ) : null}
             </div>
           </div>
+
+          {/* Mobile-only window where the hero image shows through clearly */}
+          <div className="h-40 sm:hidden" aria-hidden />
 
           {/* Free-delivery ribbon */}
           <div className="relative sm:absolute sm:bottom-6 sm:right-6 mx-5 mb-5 sm:m-0 flex items-center justify-between gap-3 rounded-2xl bg-white/95 backdrop-blur-sm px-4 py-3 shadow-lg sm:w-auto">
