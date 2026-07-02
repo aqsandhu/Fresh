@@ -15,8 +15,8 @@ import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 import SmartImage from '@/components/ui/SmartImage'
 import {
   HANDLE_APPEAR_DELAY,
-  RAIL_EASE,
-  RAIL_ITEM_DURATION,
+  isEdgeTouch,
+  railAsideMotion,
   railItemMotion,
 } from './railAnimation'
 
@@ -32,8 +32,7 @@ export function hideDrawerOnPath(pathname: string | null | undefined): boolean {
   )
 }
 
-const EDGE_ZONE_PX = 28
-const SWIPE_OPEN_PX = 48
+const SWIPE_OPEN_PX = 36
 const SWIPE_CLOSE_PX = 48
 
 function CategoryFallback({ initial }: { initial: string }) {
@@ -69,7 +68,12 @@ export default function CategoriesDrawer() {
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0]
       if (!t) return
-      touchRef.current = { x: t.clientX, y: t.clientY, edge: t.clientX <= EDGE_ZONE_PX }
+      // Edge strip OR the wider zone around the mid-edge handle counts.
+      touchRef.current = {
+        x: t.clientX,
+        y: t.clientY,
+        edge: isEdgeTouch(t.clientX, t.clientY, 'left'),
+      }
     }
     const onTouchMove = (e: TouchEvent) => {
       const start = touchRef.current
@@ -148,12 +152,10 @@ export default function CategoriesDrawer() {
             />
 
             {/* Transparent icon rail — the icons themselves fly out of / back
-                into the handle spot, so the rail only fades. */}
+                into the handle spot; the rail fades late so the convergence
+                stays visible. */}
             <motion.aside
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: RAIL_ITEM_DURATION, ease: RAIL_EASE }}
+              {...railAsideMotion}
               role="dialog"
               aria-label="Categories"
               className="fixed left-0 top-0 bottom-0 z-[80] flex w-[104px] max-w-[30vw] flex-col overflow-y-auto overscroll-contain px-2 py-6"
@@ -176,19 +178,19 @@ export default function CategoriesDrawer() {
                         onClick={() => setOpen(false)}
                         className="group flex flex-col items-center gap-1 active:scale-95 transition-transform"
                       >
-                        <span className="relative h-14 w-14 overflow-hidden rounded-full bg-white shadow-lg ring-2 ring-white/80">
+                        <span className="relative h-12 w-12 overflow-hidden rounded-full bg-white shadow-lg ring-2 ring-white/70">
                           <SmartImage
                             src={category.image}
                             alt={category.name}
                             fill
-                            sizes="56px"
+                            sizes="48px"
                             className="object-cover transition-transform duration-300 group-hover:scale-110"
                             fallback={<CategoryFallback initial={category.name.charAt(0)} />}
                           />
                         </span>
                         <span
                           dir="rtl"
-                          className="max-w-[96px] text-center font-urdu text-[13px] font-bold leading-6 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
+                          className="max-w-[96px] text-center font-urdu text-[12px] font-bold leading-5 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
                         >
                           {category.nameUrdu || category.name}
                         </span>
@@ -211,12 +213,12 @@ export default function CategoriesDrawer() {
                       }}
                       className="group flex flex-col items-center gap-1 active:scale-95 transition-transform"
                     >
-                      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg ring-2 ring-white/80">
-                        <ShoppingBasket className="h-6 w-6 text-white" />
+                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg ring-2 ring-white/70">
+                        <ShoppingBasket className="h-5 w-5 text-white" />
                       </span>
                       <span
                         dir="rtl"
-                        className="max-w-[96px] text-center font-urdu text-[13px] font-bold leading-6 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
+                        className="max-w-[96px] text-center font-urdu text-[12px] font-bold leading-5 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
                       >
                         آج کی ٹوکری
                       </span>

@@ -22,13 +22,12 @@ import { buildWhatsAppUrl, openWhatsAppOrder } from '@/lib/whatsapp'
 import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 import {
   HANDLE_APPEAR_DELAY,
-  RAIL_EASE,
-  RAIL_ITEM_DURATION,
+  isEdgeTouch,
+  railAsideMotion,
   railItemMotion,
 } from './railAnimation'
 
-const EDGE_ZONE_PX = 28
-const SWIPE_OPEN_PX = 48
+const SWIPE_OPEN_PX = 36
 const SWIPE_CLOSE_PX = 48
 
 /** City switching stays unavailable where it would break the flow (cart/checkout). */
@@ -129,10 +128,11 @@ export default function UtilityDrawer() {
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0]
       if (!t) return
+      // Edge strip OR the wider zone around the mid-edge handle counts.
       touchRef.current = {
         x: t.clientX,
         y: t.clientY,
-        edge: t.clientX >= window.innerWidth - EDGE_ZONE_PX,
+        edge: isEdgeTouch(t.clientX, t.clientY, 'right'),
       }
     }
     const onTouchMove = (e: TouchEvent) => {
@@ -277,12 +277,10 @@ export default function UtilityDrawer() {
             />
 
             {/* Transparent icon rail — the icons themselves fly out of / back
-                into the handle spot, so the rail only fades. */}
+                into the handle spot; the rail fades late so the convergence
+                stays visible. */}
             <motion.aside
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: RAIL_ITEM_DURATION, ease: RAIL_EASE }}
+              {...railAsideMotion}
               role="dialog"
               aria-label="Quick help"
               className="fixed right-0 top-0 bottom-0 z-[80] flex w-[104px] max-w-[30vw] flex-col overflow-y-auto overscroll-contain px-2 py-6"
