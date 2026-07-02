@@ -96,6 +96,28 @@
   animation: fadeIn 0.5s ease-out;
 }
 
+/* Continuous news-ticker strip (two copies, shift by one copy = seamless loop) */
+.animate-ticker {
+  animation-name: tickerMarquee;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes tickerMarquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker {
+    animation: none;
+  }
+}
+
 .animate-slide-up {
   animation: slideUp 0.5s ease-out;
 }
