@@ -7,14 +7,11 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import {
   ChevronLeft,
-  ChevronRight,
   Headphones,
   Lightbulb,
   MapPin,
   MessageCircle,
   ShoppingBag,
-  Sparkles,
-  X,
 } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
 import { useRightDrawer } from '@/store/rightDrawer'
@@ -34,46 +31,60 @@ function cityChangeHidden(pathname: string | null | undefined): boolean {
   return pathname === '/cart' || pathname === '/checkout'
 }
 
-interface RowProps {
+interface RailItemProps {
   icon: React.ReactNode
-  iconWrapClass: string
-  title: string
-  subtitle: string
-  onClick: () => void
-  trailing?: React.ReactNode
+  chipClass: string
+  label: string
+  sub?: string
   delay: number
+  onClick?: () => void
+  href?: string
 }
 
-function DrawerRow({ icon, iconWrapClass, title, subtitle, onClick, trailing, delay }: RowProps) {
-  return (
-    <motion.button
-      initial={{ opacity: 0, x: 12 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay, duration: 0.25 }}
-      type="button"
-      onClick={onClick}
-      className="group flex w-full items-center gap-3 rounded-2xl border border-gray-100 bg-white px-3.5 py-3 text-left shadow-sm transition hover:border-primary-200 hover:shadow-md active:scale-[0.99]"
-    >
+/** One transparent rail entry: gradient icon chip + tiny bold label below. */
+function RailItem({ icon, chipClass, label, sub, delay, onClick, href }: RailItemProps) {
+  const inner = (
+    <>
       <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconWrapClass}`}
+        className={`flex h-12 w-12 items-center justify-center rounded-full shadow-lg ring-2 ring-white/70 ${chipClass}`}
       >
         {icon}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[14px] font-semibold text-gray-900">{title}</span>
-        <span className="block truncate text-xs text-gray-500">{subtitle}</span>
+      <span className="max-w-[96px] text-center text-[11px] font-bold leading-tight text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
+        {label}
       </span>
-      {trailing ?? (
-        <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 transition-all group-hover:translate-x-0.5 group-hover:text-primary-500" />
+      {sub && (
+        <span className="max-w-[96px] truncate text-center text-[10px] font-medium leading-tight text-white/90 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]">
+          {sub}
+        </span>
       )}
-    </motion.button>
+    </>
+  )
+  const className = 'group flex flex-col items-center gap-1 active:scale-95 transition-transform'
+
+  return (
+    <motion.li
+      initial={{ opacity: 0, x: 12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay, duration: 0.25 }}
+    >
+      {href ? (
+        <Link href={href} onClick={onClick} className={className}>
+          {inner}
+        </Link>
+      ) : (
+        <button type="button" onClick={onClick} className={className}>
+          {inner}
+        </button>
+      )}
+    </motion.li>
   )
 }
 
 /**
- * Right edge drawer with the everyday helpers: support chat, guidance
- * instructions, and city change. Overlays the page (never pushes it); opens
- * from the edge handle or a swipe from the right edge.
+ * Right edge rail with the everyday helpers: a slim TRANSPARENT strip of
+ * icon buttons — Support, Instructions, City, Shop Now, WhatsApp (To Order).
+ * Overlays the page; opens from the edge handle or a swipe from the right.
  */
 export default function UtilityDrawer() {
   const pathname = usePathname()
@@ -180,17 +191,17 @@ export default function UtilityDrawer() {
       <AnimatePresence>
         {open && (
           <>
-            {/* Backdrop — drawer overlays the page content, never pushes it */}
+            {/* Backdrop — the rail overlays the page content, never pushes it */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={() => setOpen(false)}
-              className="fixed inset-0 z-[75] bg-black/40 backdrop-blur-[2px]"
+              className="fixed inset-0 z-[75] bg-black/45 backdrop-blur-[2px]"
             />
 
-            {/* Panel */}
+            {/* Transparent icon rail */}
             <motion.aside
               initial={reduceMotion ? { opacity: 0 } : { x: '100%' }}
               animate={reduceMotion ? { opacity: 1 } : { x: 0 }}
@@ -198,40 +209,15 @@ export default function UtilityDrawer() {
               transition={{ type: 'spring', stiffness: 380, damping: 40 }}
               role="dialog"
               aria-label="Quick help"
-              className="fixed right-0 top-0 bottom-0 z-[80] flex w-[300px] max-w-[85vw] flex-col overflow-hidden rounded-l-3xl bg-white shadow-2xl"
+              className="fixed right-0 top-0 bottom-0 z-[80] flex w-[104px] max-w-[30vw] flex-col overflow-y-auto overscroll-contain px-2 py-6"
             >
-              {/* Header */}
-              <div className="flex items-center justify-between bg-gradient-to-r from-primary-700 to-primary-600 px-5 py-4 text-white">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15">
-                    <Sparkles className="h-5 w-5" />
-                  </span>
-                  <div>
-                    <p className="text-[15px] font-bold leading-tight">Quick Help</p>
-                    <p className="font-urdu text-xs text-primary-100" dir="rtl">
-                      فوری سہولتیں
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="Close quick help"
-                  className="rounded-lg p-1.5 transition hover:bg-white/15"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Rows */}
-              <div className="flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-3.5 py-4">
+              <ul className="my-auto flex flex-col items-center gap-5">
                 {chatStatus?.enabled && (
-                  <DrawerRow
+                  <RailItem
                     delay={0.05}
                     icon={<Headphones className="h-5 w-5 text-white" />}
-                    iconWrapClass="bg-gradient-to-br from-primary-500 to-primary-700"
-                    title="Support Chat"
-                    subtitle="Hamari team se baat karein"
+                    chipClass="bg-gradient-to-br from-primary-500 to-primary-700"
+                    label="Support"
                     onClick={() => {
                       setOpen(false)
                       setChatOpen(true)
@@ -239,12 +225,11 @@ export default function UtilityDrawer() {
                   />
                 )}
 
-                <DrawerRow
+                <RailItem
                   delay={0.1}
                   icon={<Lightbulb className="h-5 w-5 text-white" />}
-                  iconWrapClass="bg-gradient-to-br from-amber-400 to-amber-600"
-                  title="Instructions"
-                  subtitle="Is page ki hidayat dekhein"
+                  chipClass="bg-gradient-to-br from-amber-400 to-amber-600"
+                  label="Instructions"
                   onClick={() => {
                     setOpen(false)
                     setTipsOpen(true)
@@ -252,44 +237,41 @@ export default function UtilityDrawer() {
                 />
 
                 {!cityChangeHidden(pathname) && selectedCity && (
-                  <DrawerRow
+                  <RailItem
                     delay={0.15}
                     icon={<MapPin className="h-5 w-5 text-white" />}
-                    iconWrapClass="bg-gradient-to-br from-sky-400 to-sky-600"
-                    title="Change City"
-                    subtitle={`Abhi: ${selectedCity.name}`}
+                    chipClass="bg-gradient-to-br from-sky-400 to-sky-600"
+                    label="City"
+                    sub={selectedCity.name}
                     onClick={() => {
                       setOpen(false)
                       setCityPickerOpen(true)
                     }}
                   />
                 )}
-              </div>
 
-              {/* Pinned actions: shop + WhatsApp ordering */}
-              <div className="space-y-2 border-t border-gray-100 p-3">
-                <Link
+                <RailItem
+                  delay={0.2}
+                  icon={<ShoppingBag className="h-5 w-5 text-white" />}
+                  chipClass="bg-gradient-to-br from-primary-600 to-primary-800"
+                  label="Shop Now"
                   href="/products"
                   onClick={() => setOpen(false)}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 px-4 py-3 text-sm font-bold text-white shadow-md transition hover:from-primary-700 hover:to-primary-800 active:scale-[0.98]"
-                >
-                  <ShoppingBag className="h-4 w-4" />
-                  Shop Now
-                </Link>
+                />
+
                 {showWhatsapp && (
-                  <button
-                    type="button"
+                  <RailItem
+                    delay={0.25}
+                    icon={<MessageCircle className="h-5 w-5 text-white" />}
+                    chipClass="bg-gradient-to-br from-[#25D366] to-[#128C4A]"
+                    label="To Order"
                     onClick={() => {
                       setOpen(false)
                       openWhatsAppOrder(whatsappTarget)
                     }}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#25D366] to-[#1DA851] px-4 py-3 text-sm font-bold text-white shadow-md transition hover:from-[#1DA851] hover:to-[#128C4A] active:scale-[0.98]"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    WhatsApp to Order
-                  </button>
+                  />
                 )}
-              </div>
+              </ul>
             </motion.aside>
           </>
         )}
