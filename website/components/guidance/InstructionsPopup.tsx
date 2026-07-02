@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
@@ -53,10 +53,14 @@ export function guidanceForPath(pathname: string): { page: string; fallback: str
  * at the bottom-right of every page that has tips; the popup genie-closes
  * into that icon when dismissed.
  */
+/** No clicks/scroll/keys/touch for this long → offer help on the button. */
+const IDLE_MS = 8000
+
 export default function InstructionsPopup() {
   const pathname = usePathname()
-  const { open, setOpen, seenPages, markSeen, hasHydrated } = useInstructionsPopup()
+  const { open, setOpen } = useInstructionsPopup()
   const { selectedCityId } = useCityContext()
+  const [idleLabel, setIdleLabel] = useState(false)
   const reduceMotion = useReducedMotion()
   const iconRef = useRef<HTMLButtonElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -79,19 +83,29 @@ export default function InstructionsPopup() {
   }, [pathname])
 
   const hidden = hidePopupOnPath(pathname)
-  const tipCount =
-    remote && remote.length > 0 ? remote.length : hidden ? 0 : fallback.length
-  const seen = !!seenPages[page]
 
-  // First visit to a page with tips: the popup shows by itself, once. On the
-  // home page it waits for the drawer welcome-peek to finish first.
+  // The popup stays closed by default. If the user goes quiet (stuck, no
+  // activity), the lightbulb grows a small "get help" label; any activity
+  // hides it and restarts the idle clock.
   useEffect(() => {
-    if (hidden || !hasHydrated || seen || tipCount === 0 || !selectedCityId) return
-    const delay = pathname === '/' ? 2400 : 1200
-    const timer = setTimeout(() => setOpen(true), delay)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hidden, hasHydrated, seen, tipCount, selectedCityId, page])
+    if (hidden || open) {
+      setIdleLabel(false)
+      return
+    }
+    let timer: ReturnType<typeof setTimeout>
+    const restart = () => {
+      setIdleLabel(false)
+      clearTimeout(timer)
+      timer = setTimeout(() => setIdleLabel(true), IDLE_MS)
+    }
+    const events: (keyof DocumentEventMap)[] = ['scroll', 'click', 'keydown', 'touchstart']
+    events.forEach((e) => document.addEventListener(e, restart, { passive: true }))
+    restart()
+    return () => {
+      clearTimeout(timer)
+      events.forEach((e) => document.removeEventListener(e, restart))
+    }
+  }, [hidden, open, pathname])
 
   if (hidden) return null
 
@@ -99,7 +113,6 @@ export default function InstructionsPopup() {
   if (tips.length === 0) return null
 
   const close = () => {
-    markSeen(page)
     // Measure the flight path from the card centre to the icon centre so the
     // popup visibly shrinks INTO its own icon.
     const icon = iconRef.current?.getBoundingClientRect()
@@ -121,15 +134,28 @@ export default function InstructionsPopup() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Instructions"
-        className={`fixed right-3 md:bottom-6 md:right-5 z-[45] flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-lg ring-2 ring-white/70 transition hover:scale-105 active:scale-95 ${
+        className={`fixed right-3 md:bottom-6 md:right-5 z-[45] flex h-11 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-500 text-white shadow-lg ring-2 ring-white/70 transition-all hover:scale-105 active:scale-95 ${
+          idleLabel ? 'px-3' : 'w-11'
+        } ${
           // The cart page has a sticky mobile checkout bar — float above it.
           pathname === '/cart' ? 'bottom-40' : 'bottom-20'
         }`}
       >
-        {!seen && !open && (
-          <span className="absolute inset-0 animate-ping rounded-full bg-amber-400 opacity-40" />
-        )}
-        <Lightbulb className="relative h-5 w-5" />
+        <AnimatePresence initial={false}>
+          {idleLabel && (
+            <motion.span
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ duration: 0.3 }}
+              dir="rtl"
+              className="overflow-hidden whitespace-nowrap pl-1.5 font-urdu text-[11px] font-bold leading-[18px]"
+            >
+              راہنمائی حاصل کریں
+            </motion.span>
+          )}
+        </AnimatePresence>
+        <Lightbulb className="h-5 w-5 shrink-0" />
       </button>
 
       <AnimatePresence>
