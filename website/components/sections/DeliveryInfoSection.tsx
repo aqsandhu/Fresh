@@ -91,24 +91,31 @@ export default function DeliveryInfoSection() {
           </p>
         </motion.div>
 
-        {/* Compact fact tiles (live data) */}
+        {/* Compact fact tiles (live data) — centered column on mobile,
+            roomier icon-left cards on desktop. */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.15 }}
-          className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-4"
+          className="mx-auto grid max-w-5xl grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-4"
         >
           {tiles.map((tile) => (
             <div
               key={tile.title}
-              className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/10 p-3.5 md:p-5 text-center ring-1 ring-white/15 backdrop-blur-sm"
+              className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/10 p-3.5 text-center ring-1 ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/[0.14] lg:flex-row lg:items-center lg:gap-3.5 lg:p-5 lg:text-left"
             >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20">
-                <tile.icon className="h-5 w-5 text-white" />
+              <div className="flex h-10 w-10 lg:h-12 lg:w-12 shrink-0 items-center justify-center rounded-full bg-white/20">
+                <tile.icon className="h-5 w-5 lg:h-6 lg:w-6 text-white" />
               </div>
-              <p className="text-sm font-semibold text-white">{tile.title}</p>
-              <p className="text-xs leading-snug text-primary-100">{tile.desc}</p>
+              <div>
+                <p className="text-sm lg:text-[15px] font-semibold text-white">
+                  {tile.title}
+                </p>
+                <p className="text-xs lg:text-[13px] leading-snug text-primary-100 lg:mt-0.5">
+                  {tile.desc}
+                </p>
+              </div>
             </div>
           ))}
         </motion.div>
@@ -120,17 +127,17 @@ export default function DeliveryInfoSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.5, delay: 0.25 }}
-            className="mt-5 md:mt-6 rounded-2xl bg-white/10 p-4 md:p-5 ring-1 ring-white/15 backdrop-blur-sm"
+            className="mx-auto mt-5 md:mt-6 max-w-5xl rounded-2xl bg-white/10 p-4 md:p-6 ring-1 ring-white/15 backdrop-blur-sm"
           >
-            <p className="mb-3 text-center text-sm font-semibold text-white">
+            <p className="mb-3 lg:mb-4 text-center text-sm lg:text-base font-semibold text-white">
               <Clock className="mr-1.5 inline h-4 w-4 -mt-0.5" />
               Today&apos;s Delivery Time Slots
             </p>
-            <div className="flex flex-wrap justify-center gap-2">
+            <div className="flex flex-wrap justify-center gap-2 lg:gap-3">
               {slots.map((slot) => (
                 <span
                   key={slot.id}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-[13px] font-semibold text-white ring-1 ring-white/20"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 lg:px-5 lg:py-2 text-[13px] lg:text-sm font-semibold text-white ring-1 ring-white/20"
                 >
                   {formatSlotTime(slot.start_time)} – {formatSlotTime(slot.end_time)}
                   {slot.is_free_delivery_slot && (
