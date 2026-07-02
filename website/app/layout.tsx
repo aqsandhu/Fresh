@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter, Bricolage_Grotesque } from 'next/font/google'
+import { Inter } from 'next/font/google'
 import './globals.css'
 import ConditionalHeader from '@/components/layout/ConditionalHeader'
 import ConditionalFooter from '@/components/layout/ConditionalFooter'
@@ -14,13 +14,6 @@ import AiChatWidget from '@/components/ai/AiChatWidget'
 import MarketingTracker from '@/components/marketing/MarketingTracker'
 
 const inter = Inter({ subsets: ['latin'] })
-
-// Display face for headlines (exposed as --font-display / Tailwind `font-display`).
-// Body text stays Inter so the rest of the site is untouched.
-const bricolage = Bricolage_Grotesque({
-  subsets: ['latin'],
-  variable: '--font-display',
-})
 
 // The Google-search favicon is generated as a real, square, same-origin PNG by
 // app/icon.tsx (+ app/apple-icon.tsx); Next injects their <link rel="icon"> into
@@ -75,7 +68,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} ${bricolage.variable}`}>
+      <body className={inter.className}>
         <ErrorBoundary>
           <AppProviders>
             <SentryInit />
