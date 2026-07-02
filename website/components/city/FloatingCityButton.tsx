@@ -2,13 +2,21 @@
 
 import { useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { AnimatePresence, motion } from 'framer-motion'
 import { MapPin, Search, X } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
+import { useRightDrawer } from '@/store/rightDrawer'
 
+/**
+ * City picker modal. The old floating button moved into the right utility
+ * drawer ("Change City" row) — this component now only renders the modal,
+ * controlled through the shared drawer store.
+ */
 export default function FloatingCityButton() {
   const pathname = usePathname()
   const { cities, selectedCity, setCity, isLoading } = useCityContext()
-  const [open, setOpen] = useState(false)
+  const open = useRightDrawer((s) => s.cityPickerOpen)
+  const setOpen = useRightDrawer((s) => s.setCityPickerOpen)
   const [query, setQuery] = useState('')
 
   const filtered = useMemo(() => {
@@ -40,20 +48,25 @@ export default function FloatingCityButton() {
   }
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-20 md:bottom-6 right-4 z-50 flex items-center gap-2 rounded-full bg-primary-600 px-4 py-3 text-sm font-medium text-white shadow-lg hover:bg-primary-700 transition-colors"
-        aria-label="Change delivery city"
-      >
-        <MapPin className="h-4 w-4 shrink-0" />
-        <span className="max-w-[120px] truncate">{selectedCity.name}</span>
-      </button>
-
+    <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-xl overflow-hidden">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-[85] flex items-end sm:items-center justify-center bg-black/40 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setOpen(false)
+          }}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.98 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+            className="w-full max-w-md rounded-2xl bg-white shadow-xl overflow-hidden"
+          >
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Change city</h2>
@@ -104,18 +117,27 @@ export default function FloatingCityButton() {
                           : 'border-gray-200 hover:border-primary-300 hover:bg-gray-50'
                       }`}
                     >
-                      <p className="font-medium text-gray-900">{city.name}</p>
-                      {city.province && (
-                        <p className="text-sm text-gray-500">{city.province}</p>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <MapPin
+                          className={`h-4 w-4 shrink-0 ${
+                            active ? 'text-primary-600' : 'text-gray-400'
+                          }`}
+                        />
+                        <div>
+                          <p className="font-medium text-gray-900">{city.name}</p>
+                          {city.province && (
+                            <p className="text-sm text-gray-500">{city.province}</p>
+                          )}
+                        </div>
+                      </div>
                     </button>
                   )
                 })
               )}
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
-    </>
+    </AnimatePresence>
   )
 }
