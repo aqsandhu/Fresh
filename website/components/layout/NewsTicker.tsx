@@ -1,7 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { useMemo } from 'react'
 import { Phone, MapPin, Megaphone } from 'lucide-react'
 import { phoneToTelHref } from '@/lib/phoneStorage'
 
@@ -29,69 +28,69 @@ export function parseTickerItems(raw: unknown): string[] {
   return []
 }
 
-const ROTATE_MS = 3800
-
 /**
- * News-style rotating line for the green top bar (mobile + app parity).
- * Shows one item at a time, rolling vertically like a news ticker.
+ * Continuous news-strip for the green top bar: all lines flow one after
+ * another right-to-left in an endless loop (the sequence is rendered twice
+ * and shifted -50%, so the wrap-around is seamless). Belt height stays h-6.
  */
 export default function NewsTicker({ items }: { items: TickerItem[] }) {
-  const [index, setIndex] = useState(0)
-  const reduceMotion = useReducedMotion()
-
   const list = useMemo(() => items.filter((i) => i.text.trim().length > 0), [items])
-
-  useEffect(() => {
-    if (list.length <= 1) return
-    const timer = setInterval(() => {
-      setIndex((i) => (i + 1) % list.length)
-    }, ROTATE_MS)
-    return () => clearInterval(timer)
-  }, [list.length])
 
   if (list.length === 0) return null
 
-  const item = list[index % list.length]
-  const urdu = isUrduText(item.text)
-  const telHref = item.kind === 'phone' ? phoneToTelHref(item.text) : null
+  // Slower for longer strips so reading speed stays constant.
+  const durationSec = Math.max(18, list.length * 7)
 
-  const Icon =
-    item.kind === 'phone' ? Phone : item.kind === 'delivery' ? MapPin : Megaphone
-
-  const inner = (
-    <span
-      dir={urdu ? 'rtl' : 'ltr'}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[15.5px] ${
-        urdu ? 'font-urdu leading-6' : 'leading-6'
-      }`}
+  const strip = (copy: 'a' | 'b') => (
+    <div
+      key={copy}
+      aria-hidden={copy === 'b'}
+      className="flex shrink-0 items-center"
     >
-      <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
-      <span className="truncate max-w-[85vw]">{item.text}</span>
-    </span>
+      {list.map((item, i) => {
+        const urdu = isUrduText(item.text)
+        const telHref = item.kind === 'phone' ? phoneToTelHref(item.text) : null
+        const Icon =
+          item.kind === 'phone' ? Phone : item.kind === 'delivery' ? MapPin : Megaphone
+
+        const inner = (
+          <span
+            dir={urdu ? 'rtl' : 'ltr'}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[15.5px] leading-6 ${
+              urdu ? 'font-urdu' : ''
+            }`}
+          >
+            <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
+            <span>{item.text}</span>
+          </span>
+        )
+
+        return (
+          <span key={`${copy}-${i}`} className="flex items-center">
+            {telHref ? (
+              <a href={telHref} className="active:opacity-80">
+                {inner}
+              </a>
+            ) : (
+              inner
+            )}
+            {/* separator dot between lines */}
+            <span className="mx-5 h-1 w-1 shrink-0 rounded-full bg-white/50" />
+          </span>
+        )
+      })}
+    </div>
   )
 
   return (
-    // Fixed h-6 keeps the green belt the same height as before — only the
-    // text inside grew; lines now slide in from the right like a news strip.
-    <div className="relative h-6 overflow-hidden" aria-live="polite">
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={`${index}-${item.text}`}
-          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 48 }}
-          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, x: 0 }}
-          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -48 }}
-          transition={{ duration: 0.45, ease: [0.32, 0.72, 0.24, 1] }}
-          className="absolute inset-0 flex items-center justify-center"
-        >
-          {telHref ? (
-            <a href={telHref} className="active:opacity-80">
-              {inner}
-            </a>
-          ) : (
-            inner
-          )}
-        </motion.div>
-      </AnimatePresence>
+    <div className="relative h-6 overflow-hidden" aria-live="off">
+      <div
+        className="animate-ticker flex w-max items-center"
+        style={{ animationDuration: `${durationSec}s` }}
+      >
+        {strip('a')}
+        {strip('b')}
+      </div>
     </div>
   )
 }

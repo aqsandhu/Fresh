@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Platform,
   Animated,
+  Easing,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -41,9 +42,8 @@ const DEFAULT_BANNER: BannerSettings = {
   tickerItems: [],
 };
 
-const TICKER_ROTATE_MS = 3800;
-
-const isUrduText = (text: string) => /[؀-ۿ]/.test(text);
+/** ms per pixel — keeps the reading speed constant for any strip length. */
+const TICKER_MS_PER_PX = 22;
 
 interface MobileHeaderProps {
   onSearchPress?: () => void;
@@ -68,8 +68,8 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [banner, setBanner] = useState<BannerSettings>(DEFAULT_BANNER);
-  const [tickerIndex, setTickerIndex] = useState(0);
-  const tickerAnim = useRef(new Animated.Value(0)).current;
+  const [tickerWidth, setTickerWidth] = useState(0);
+  const tickerX = useRef(new Animated.Value(0)).current;
   const [categories, setCategories] = useState<Category[]>([]);
   const [attaEnabled, setAttaEnabled] = useState(false);
   const { selectedCityId } = useCityContext();
@@ -96,38 +96,34 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
     }
   }, [isAuthenticated, loadNotifications]);
 
-  // News-ticker items: the four admin texts + any extra admin lines, one at a time.
-  const tickerItems = useMemo(() => {
+  // Continuous news strip: the four admin texts + any extra admin lines,
+  // joined into one line that flows right-to-left in an endless loop.
+  const tickerText = useMemo(() => {
     const items = [
-      { text: banner.leftText, phone: true },
-      { text: banner.middleText, phone: false },
-      { text: banner.rightTextEn, phone: false },
-      { text: banner.rightTextUr, phone: false },
-      ...(banner.tickerItems || []).map((text) => ({ text, phone: false })),
-    ];
-    return items.filter((i) => i.text && i.text.trim().length > 0);
+      banner.leftText,
+      banner.middleText,
+      banner.rightTextEn,
+      banner.rightTextUr,
+      ...(banner.tickerItems || []),
+    ].filter((t) => t && t.trim().length > 0);
+    return items.join('    •    ');
   }, [banner]);
 
-  // Slide the current line out left and the next one in from the right.
+  // Two copies of the strip; shifting by one copy's width loops seamlessly.
   useEffect(() => {
-    if (tickerItems.length <= 1) return;
-    const interval = setInterval(() => {
-      Animated.timing(tickerAnim, {
-        toValue: -1,
-        duration: 220,
+    if (tickerWidth <= 0) return;
+    tickerX.setValue(0);
+    const anim = Animated.loop(
+      Animated.timing(tickerX, {
+        toValue: -tickerWidth,
+        duration: tickerWidth * TICKER_MS_PER_PX,
+        easing: Easing.linear,
         useNativeDriver: true,
-      }).start(() => {
-        setTickerIndex((i) => (i + 1) % tickerItems.length);
-        tickerAnim.setValue(1);
-        Animated.timing(tickerAnim, {
-          toValue: 0,
-          duration: 220,
-          useNativeDriver: true,
-        }).start();
-      });
-    }, TICKER_ROTATE_MS);
-    return () => clearInterval(interval);
-  }, [tickerItems.length, tickerAnim]);
+      })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [tickerWidth, tickerText, tickerX]);
 
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
@@ -232,50 +228,44 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   return (
     <>
       <View ref={headerWrapRef} onLayout={reportHeaderBottom}>
-        {showTopBar && tickerItems.length > 0 && (() => {
-          const current = tickerItems[tickerIndex % tickerItems.length];
-          const urdu = isUrduText(current.text);
-          const translateX = tickerAnim.interpolate({
-            inputRange: [-1, 0, 1],
-            outputRange: [-48, 0, 48],
-          });
-          const opacity = tickerAnim.interpolate({
-            inputRange: [-1, 0, 1],
-            outputRange: [0, 1, 0],
-          });
-          return (
-            <View style={styles.topBar}>
-              <Animated.View
-                style={[styles.tickerRow, { transform: [{ translateX }], opacity }]}
+        {showTopBar && tickerText.length > 0 && (
+          <Pressable
+            style={styles.topBar}
+            onPress={() => Linking.openURL(`tel:${banner.leftText.replace(/\D/g, '')}`)}
+            android_ripple={{ color: 'rgba(255,255,255,0.15)' }}
+          >
+            <Animated.View
+              style={[styles.tickerStrip, { transform: [{ translateX: tickerX }] }]}
+            >
+              <View
+                style={styles.tickerCopy}
+                onLayout={(e) => {
+                  const w = Math.ceil(e.nativeEvent.layout.width);
+                  if (w > 0 && w !== tickerWidth) setTickerWidth(w);
+                }}
               >
-                <Pressable
-                  style={styles.tickerInner}
-                  disabled={!current.phone}
-                  onPress={() =>
-                    Linking.openURL(`tel:${current.text.replace(/\D/g, '')}`)
-                  }
-                  android_ripple={
-                    current.phone ? { color: 'rgba(255,255,255,0.15)' } : undefined
-                  }
+                <Text
+                  style={styles.tickerText}
+                  allowFontScaling={false}
+                  numberOfLines={1}
+                  {...(Platform.OS === 'android' ? { includeFontPadding: false } : {})}
                 >
-                  <MaterialIcons
-                    name={current.phone ? 'phone' : 'campaign'}
-                    size={13}
-                    color={COLORS.white}
-                  />
-                  <Text
-                    style={[styles.tickerText, urdu && styles.tickerUrdu]}
-                    allowFontScaling={false}
-                    numberOfLines={1}
-                    {...(Platform.OS === 'android' ? { includeFontPadding: false } : {})}
-                  >
-                    {current.text}
-                  </Text>
-                </Pressable>
-              </Animated.View>
-            </View>
-          );
-        })()}
+                  {tickerText}
+                </Text>
+              </View>
+              <View style={styles.tickerCopy}>
+                <Text
+                  style={styles.tickerText}
+                  allowFontScaling={false}
+                  numberOfLines={1}
+                  {...(Platform.OS === 'android' ? { includeFontPadding: false } : {})}
+                >
+                  {tickerText}
+                </Text>
+              </View>
+            </Animated.View>
+          </Pressable>
+        )}
 
       <View style={styles.mainHeader}>
         <Pressable
@@ -449,18 +439,15 @@ const styles = StyleSheet.create({
     height: 30,
     justifyContent: 'center',
     overflow: 'hidden',
-    paddingHorizontal: 12,
   },
-  tickerRow: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tickerInner: {
+  tickerStrip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    maxWidth: '100%',
+  },
+  // Each copy of the strip sits side by side; the gap is the wrap spacing.
+  tickerCopy: {
+    flexShrink: 0,
+    paddingRight: 48,
   },
   // Font grew ~30% (11 → 14) while the belt height stays fixed at 30.
   tickerText: {
@@ -468,11 +455,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.2,
-    flexShrink: 1,
-  },
-  tickerUrdu: {
-    fontWeight: '400',
-    fontSize: 14,
     lineHeight: 20,
   },
   mainHeader: {
