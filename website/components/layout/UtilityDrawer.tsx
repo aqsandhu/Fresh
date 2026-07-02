@@ -270,9 +270,9 @@ export default function UtilityDrawer() {
             type="button"
             onClick={() => setOpen(true)}
             aria-label="Open quick help"
-            className="fixed right-0 top-1/2 z-40 flex h-16 w-6 items-center justify-center rounded-l-2xl bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-[-2px_0_10px_rgba(0,0,0,0.18)] transition-[width] hover:w-7 active:w-7"
+            className="fixed right-0 top-1/2 z-40 flex h-[84px] w-6 items-center justify-center rounded-l-2xl bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-[-2px_0_10px_rgba(0,0,0,0.18)] transition-[width] hover:w-7 active:w-7"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-6 w-6" />
           </motion.button>
         )}
       </AnimatePresence>
