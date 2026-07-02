@@ -27,7 +27,8 @@ export default function FeaturedProductsSection() {
   })
 
   return (
-    <section className="py-10 md:py-14 bg-gradient-to-b from-white to-gray-50">
+    // Halved top padding — this is the first section under the navbar.
+    <section className="pt-5 pb-10 md:pt-7 md:pb-14 bg-gradient-to-b from-white to-gray-50">
       <div className="container mx-auto px-4">
         <motion.h2
           initial={{ opacity: 0, y: 12 }}
