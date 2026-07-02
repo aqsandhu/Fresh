@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Image,
   ActivityIndicator,
   Platform,
+  Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -29,6 +30,7 @@ interface BannerSettings {
   middleText: string;
   rightTextEn: string;
   rightTextUr: string;
+  tickerItems: string[];
 }
 
 const DEFAULT_BANNER: BannerSettings = {
@@ -36,7 +38,12 @@ const DEFAULT_BANNER: BannerSettings = {
   middleText: 'Free Delivery 10AM-2PM',
   rightTextEn: 'Fresh Sabzi at Your Doorstep',
   rightTextUr: 'تازہ سبزیاں آپ کے دروازے پر',
+  tickerItems: [],
 };
+
+const TICKER_ROTATE_MS = 3800;
+
+const isUrduText = (text: string) => /[؀-ۿ]/.test(text);
 
 interface MobileHeaderProps {
   onSearchPress?: () => void;
@@ -61,6 +68,8 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [banner, setBanner] = useState<BannerSettings>(DEFAULT_BANNER);
+  const [tickerIndex, setTickerIndex] = useState(0);
+  const tickerAnim = useRef(new Animated.Value(0)).current;
   const [categories, setCategories] = useState<Category[]>([]);
   const [attaEnabled, setAttaEnabled] = useState(false);
   const { selectedCityId } = useCityContext();
@@ -86,6 +95,39 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       loadNotifications();
     }
   }, [isAuthenticated, loadNotifications]);
+
+  // News-ticker items: the four admin texts + any extra admin lines, one at a time.
+  const tickerItems = useMemo(() => {
+    const items = [
+      { text: banner.leftText, phone: true },
+      { text: banner.middleText, phone: false },
+      { text: banner.rightTextEn, phone: false },
+      { text: banner.rightTextUr, phone: false },
+      ...(banner.tickerItems || []).map((text) => ({ text, phone: false })),
+    ];
+    return items.filter((i) => i.text && i.text.trim().length > 0);
+  }, [banner]);
+
+  // Roll the current line up and the next one in from below.
+  useEffect(() => {
+    if (tickerItems.length <= 1) return;
+    const interval = setInterval(() => {
+      Animated.timing(tickerAnim, {
+        toValue: -1,
+        duration: 220,
+        useNativeDriver: true,
+      }).start(() => {
+        setTickerIndex((i) => (i + 1) % tickerItems.length);
+        tickerAnim.setValue(1);
+        Animated.timing(tickerAnim, {
+          toValue: 0,
+          duration: 220,
+          useNativeDriver: true,
+        }).start();
+      });
+    }, TICKER_ROTATE_MS);
+    return () => clearInterval(interval);
+  }, [tickerItems.length, tickerAnim]);
 
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
@@ -190,34 +232,50 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   return (
     <>
       <View ref={headerWrapRef} onLayout={reportHeaderBottom}>
-        {showTopBar && (
-          <View style={styles.topBar}>
-          <Pressable
-            style={styles.topBarPhoneRow}
-            onPress={() => Linking.openURL(`tel:${banner.leftText.replace(/\D/g, '')}`)}
-            android_ripple={{ color: 'rgba(255,255,255,0.15)' }}
-          >
-            <MaterialIcons name="phone" size={12} color={COLORS.white} />
-            <Text
-              style={styles.topBarPhoneText}
-              allowFontScaling={false}
-              {...(Platform.OS === 'android' ? { includeFontPadding: false } : {})}
-            >
-              {banner.leftText}
-            </Text>
-          </Pressable>
-          {banner.rightTextUr ? (
-            <Text
-              style={styles.topBarUrdu}
-              allowFontScaling={false}
-              numberOfLines={2}
-              {...(Platform.OS === 'android' ? { includeFontPadding: false } : {})}
-            >
-              {banner.rightTextUr}
-            </Text>
-          ) : null}
-        </View>
-      )}
+        {showTopBar && tickerItems.length > 0 && (() => {
+          const current = tickerItems[tickerIndex % tickerItems.length];
+          const urdu = isUrduText(current.text);
+          const translateY = tickerAnim.interpolate({
+            inputRange: [-1, 0, 1],
+            outputRange: [-14, 0, 14],
+          });
+          const opacity = tickerAnim.interpolate({
+            inputRange: [-1, 0, 1],
+            outputRange: [0, 1, 0],
+          });
+          return (
+            <View style={styles.topBar}>
+              <Animated.View
+                style={[styles.tickerRow, { transform: [{ translateY }], opacity }]}
+              >
+                <Pressable
+                  style={styles.tickerInner}
+                  disabled={!current.phone}
+                  onPress={() =>
+                    Linking.openURL(`tel:${current.text.replace(/\D/g, '')}`)
+                  }
+                  android_ripple={
+                    current.phone ? { color: 'rgba(255,255,255,0.15)' } : undefined
+                  }
+                >
+                  <MaterialIcons
+                    name={current.phone ? 'phone' : 'campaign'}
+                    size={13}
+                    color={COLORS.white}
+                  />
+                  <Text
+                    style={[styles.tickerText, urdu && styles.tickerUrdu]}
+                    allowFontScaling={false}
+                    numberOfLines={1}
+                    {...(Platform.OS === 'android' ? { includeFontPadding: false } : {})}
+                  >
+                    {current.text}
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            </View>
+          );
+        })()}
 
       <View style={styles.mainHeader}>
         <Pressable
@@ -388,34 +446,33 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
 const styles = StyleSheet.create({
   topBar: {
     backgroundColor: COLORS.primary700,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    height: 30,
+    justifyContent: 'center',
+    overflow: 'hidden',
     paddingHorizontal: 12,
-    paddingVertical: 7,
-    gap: 8,
   },
-  topBarPhoneRow: {
+  tickerRow: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tickerInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexShrink: 0,
-    gap: 4,
+    justifyContent: 'center',
+    gap: 5,
+    maxWidth: '100%',
   },
-  topBarPhoneText: {
+  tickerText: {
     color: COLORS.white,
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 0.2,
-    flexShrink: 0,
-  },
-  topBarUrdu: {
-    color: COLORS.white,
-    fontSize: 10,
-    lineHeight: 14,
-    textAlign: 'right',
-    flex: 1,
     flexShrink: 1,
-    minWidth: 0,
+  },
+  tickerUrdu: {
+    fontWeight: '400',
+    fontSize: 11,
+    lineHeight: 16,
   },
   mainHeader: {
     flexDirection: 'row',

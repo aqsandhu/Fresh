@@ -37,6 +37,7 @@ import { Product, Category } from '@/types'
 import { phoneToTelHref } from '@/lib/phoneStorage'
 import NotificationBell from '@/components/notifications/NotificationBell'
 import BrandLogo from '@/components/ui/BrandLogo'
+import NewsTicker, { parseTickerItems, type TickerItem } from './NewsTicker'
 
 export default function Header() {
   const pathname = usePathname()
@@ -81,6 +82,7 @@ export default function Header() {
     middleText: 'Free Delivery 10AM-2PM',
     rightTextEn: 'Fresh Sabzi at Your Doorstep',
     rightTextUr: 'تازہ سبزیاں آپ کے دروازے پر',
+    tickerItems: [] as string[],
   })
 
   useEffect(() => {
@@ -91,11 +93,21 @@ export default function Header() {
         middleText: data.banner_middle_text || 'Free Delivery 10AM-2PM',
         rightTextEn: data.banner_right_text_en || 'Fresh Sabzi at Your Doorstep',
         rightTextUr: data.banner_right_text_ur || 'تازہ سبزیاں آپ کے دروازے پر',
+        tickerItems: parseTickerItems(data.banner_ticker_items),
       })
     }).catch(() => {
       // Keep default values on error
     })
   }, [selectedCityId])
+
+  // Ticker rotation: the four admin texts + any extra admin lines, one at a time.
+  const tickerItems: TickerItem[] = [
+    { text: banner.leftText, kind: 'phone' },
+    { text: banner.middleText, kind: 'delivery' },
+    { text: banner.rightTextEn, kind: 'plain' },
+    { text: banner.rightTextUr, kind: 'plain' },
+    ...banner.tickerItems.map((text) => ({ text, kind: 'plain' as const })),
+  ]
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const searchAreaRef = useRef<HTMLDivElement>(null)
@@ -235,9 +247,15 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
-      {/* Top Bar */}
-      <div className="bg-primary-700 text-white text-xs py-2">
-        <div className="container mx-auto px-4 flex items-center justify-between">
+      {/* Top Bar — rotating news ticker on mobile, static spread on desktop */}
+      <div className="bg-gradient-to-r from-primary-800 via-primary-700 to-primary-800 text-white text-xs py-1.5 sm:py-2">
+        {/* Mobile: one line at a time, rolling like a news ticker */}
+        <div className="sm:hidden px-4">
+          <NewsTicker items={tickerItems} />
+        </div>
+
+        {/* Desktop: original static layout */}
+        <div className="hidden sm:flex container mx-auto px-4 items-center justify-between">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-1">
               <Phone className="w-3 h-3" />
@@ -252,13 +270,13 @@ export default function Header() {
                 )
               })()}
             </span>
-            <span className="hidden sm:flex items-center gap-1">
+            <span className="flex items-center gap-1">
               <MapPin className="w-3 h-3" />
               {banner.middleText}
             </span>
           </div>
           <div className="flex items-center gap-4">
-            <span className="hidden sm:inline">{banner.rightTextEn}</span>
+            <span>{banner.rightTextEn}</span>
             <span className="font-urdu" dir="rtl">{banner.rightTextUr}</span>
           </div>
         </div>
