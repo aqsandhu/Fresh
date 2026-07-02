@@ -23,8 +23,9 @@ import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 import {
   HANDLE_APPEAR_DELAY,
   isEdgeTouch,
+  makeRailVariants,
   railAsideMotion,
-  railItemMotion,
+  useRailDeltas,
 } from './railAnimation'
 
 const SWIPE_OPEN_PX = 36
@@ -50,9 +51,11 @@ interface RailEntry {
 function RailItem({
   entry,
   motionProps,
+  itemRef,
 }: {
   entry: RailEntry
   motionProps: Record<string, unknown>
+  itemRef: (el: HTMLElement | null) => void
 }) {
   const inner = (
     <>
@@ -74,7 +77,7 @@ function RailItem({
   const className = 'group flex flex-col items-center gap-1 active:scale-95 transition-transform'
 
   return (
-    <motion.li {...motionProps}>
+    <motion.li ref={itemRef} {...motionProps}>
       {entry.href ? (
         <Link href={entry.href} onClick={entry.onClick} className={className}>
           {inner}
@@ -173,9 +176,6 @@ export default function UtilityDrawer() {
     }
   }, [open, setOpen])
 
-  // Early return AFTER all hooks (rules-of-hooks).
-  if (hideDrawerOnPath(pathname)) return null
-
   // Build the visible entries first so each one knows its index/count for
   // the shared converge-into-the-handle animation.
   const entries: RailEntry[] = [
@@ -242,6 +242,13 @@ export default function UtilityDrawer() {
       : []),
   ]
 
+  // Measured so each icon flies exactly from/into the arrow handle's centre.
+  const { railRef, setItemRef, deltas } = useRailDeltas(open, 'right', entries.length)
+  const railVariants = makeRailVariants(entries.length, 'right', deltas)
+
+  // Early return AFTER all hooks (rules-of-hooks).
+  if (hideDrawerOnPath(pathname)) return null
+
   return (
     <>
       {/* Edge handle — small puller on the right edge, visible when closed */}
@@ -280,6 +287,7 @@ export default function UtilityDrawer() {
                 into the handle spot; the rail fades late so the convergence
                 stays visible. */}
             <motion.aside
+              ref={railRef}
               {...railAsideMotion}
               role="dialog"
               aria-label="Quick help"
@@ -290,8 +298,17 @@ export default function UtilityDrawer() {
                   <RailItem
                     key={entry.key}
                     entry={entry}
+                    itemRef={setItemRef(i)}
                     motionProps={
-                      reduceMotion ? {} : railItemMotion(i, entries.length, 'right')
+                      reduceMotion
+                        ? {}
+                        : {
+                            custom: i,
+                            variants: railVariants,
+                            initial: 'from',
+                            animate: 'shown',
+                            exit: 'gone',
+                          }
                     }
                   />
                 ))}

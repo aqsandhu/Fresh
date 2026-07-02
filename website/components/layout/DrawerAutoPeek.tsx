@@ -8,7 +8,7 @@ import { useRightDrawer } from '@/store/rightDrawer'
 import { hideDrawerOnPath } from './CategoriesDrawer'
 
 const PEEK_DELAY_MS = 600
-const PEEK_DURATION_MS = 1000
+const PEEK_DURATION_MS = 1800
 
 /**
  * Welcome peek: when the home page opens, both edge drawers slide open for

@@ -16,8 +16,9 @@ import SmartImage from '@/components/ui/SmartImage'
 import {
   HANDLE_APPEAR_DELAY,
   isEdgeTouch,
+  makeRailVariants,
   railAsideMotion,
-  railItemMotion,
+  useRailDeltas,
 } from './railAnimation'
 
 /** Paths where the drawers make no sense (portals, gates, PIN screens). */
@@ -62,6 +63,12 @@ export default function CategoriesDrawer() {
     queryFn: () => categoriesApi.getAll(),
     enabled: !!selectedCityId,
   })
+
+  // Categories + the Today's Basket chip; measured so each icon flies
+  // exactly from/into the arrow handle's centre.
+  const itemCount = (categories?.length ?? 0) + 1
+  const { railRef, setItemRef, deltas } = useRailDeltas(open, 'left', itemCount)
+  const railVariants = makeRailVariants(itemCount, 'left', deltas)
 
   // Swipe from the left edge opens; swipe left (anywhere) closes while open.
   useEffect(() => {
@@ -155,6 +162,7 @@ export default function CategoriesDrawer() {
                 into the handle spot; the rail fades late so the convergence
                 stays visible. */}
             <motion.aside
+              ref={railRef}
               {...railAsideMotion}
               role="dialog"
               aria-label="Categories"
@@ -169,9 +177,16 @@ export default function CategoriesDrawer() {
                   {categories.map((category, i) => (
                     <motion.li
                       key={category.id}
+                      ref={setItemRef(i)}
                       {...(reduceMotion
                         ? {}
-                        : railItemMotion(i, categories.length + 1, 'left'))}
+                        : {
+                            custom: i,
+                            variants: railVariants,
+                            initial: 'from',
+                            animate: 'shown',
+                            exit: 'gone',
+                          })}
                     >
                       <Link
                         href={`/category/${category.slug}`}
@@ -201,9 +216,16 @@ export default function CategoriesDrawer() {
                   {/* Today's Basket — sits after the categories */}
                   <motion.li
                     key="todays-basket"
+                    ref={setItemRef(categories.length)}
                     {...(reduceMotion
                       ? {}
-                      : railItemMotion(categories.length, categories.length + 1, 'left'))}
+                      : {
+                          custom: categories.length,
+                          variants: railVariants,
+                          initial: 'from',
+                          animate: 'shown',
+                          exit: 'gone',
+                        })}
                   >
                     <button
                       type="button"
