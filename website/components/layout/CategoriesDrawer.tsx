@@ -14,7 +14,8 @@ import { hideConsumerChrome } from '@/lib/restaurantChrome'
 import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 import SmartImage from '@/components/ui/SmartImage'
 import {
-  HANDLE_APPEAR_DELAY,
+  backdropMotion,
+  handleMotion,
   isEdgeTouch,
   makeRailVariants,
   railAsideMotion,
@@ -130,15 +131,13 @@ export default function CategoriesDrawer() {
       <AnimatePresence>
         {!open && (
           <motion.button
-            initial={{ x: -32, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: -32, opacity: 0 }}
-            // Waits for the icons to finish merging into this spot.
-            transition={{ duration: 0.25, delay: HANDLE_APPEAR_DELAY }}
+            // Appears early during the close so the icons land on a visible
+            // arrow (y:'-50%' keeps it centred — framer overrides Tailwind).
+            {...handleMotion('left')}
             type="button"
             onClick={() => setOpen(true)}
             aria-label="Open categories"
-            className="fixed left-0 top-1/2 z-40 -translate-y-1/2 flex h-16 w-6 items-center justify-center rounded-r-2xl bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-[2px_0_10px_rgba(0,0,0,0.18)] transition-all hover:w-7 active:w-7"
+            className="fixed left-0 top-1/2 z-40 flex h-16 w-6 items-center justify-center rounded-r-2xl bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-[2px_0_10px_rgba(0,0,0,0.18)] transition-[width] hover:w-7 active:w-7"
           >
             <ChevronRight className="h-4 w-4" />
           </motion.button>
@@ -148,12 +147,9 @@ export default function CategoriesDrawer() {
       <AnimatePresence>
         {open && (
           <>
-            {/* Backdrop — the rail overlays the page content, never pushes it */}
+            {/* Backdrop — holds its dim on close until the icons merge */}
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              {...backdropMotion}
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-[75] bg-black/45 backdrop-blur-[2px]"
             />
