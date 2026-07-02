@@ -18,12 +18,13 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <div className="animate-fade-in">
-      <HeroSection />
       <div className="container mx-auto px-4 mt-4">
         <GuidanceTips tips={[]} page="home" />
       </div>
       <CategoriesSection />
+      {/* Products lead the page; the hero brand band follows them. */}
       <FeaturedProductsSection />
+      <HeroSection />
       <DeliveryInfoSection />
       <AppDownloadSection />
     </div>

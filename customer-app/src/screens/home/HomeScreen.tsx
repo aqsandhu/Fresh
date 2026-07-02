@@ -109,12 +109,6 @@ export const HomeScreen: React.FC = () => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
-        <HeroSection
-          onShopNow={() => goToShop('ProductsMain')}
-          onAttaChakki={() =>
-            (navigation.getParent() as { navigate: (name: string, params?: object) => void } | undefined)?.navigate('Profile', { screen: 'AttaChakkiMain' })
-          }
-        />
         <CategoriesSection
           categories={categories}
           loading={loading}
@@ -125,6 +119,7 @@ export const HomeScreen: React.FC = () => {
             })
           }
         />
+        {/* Products lead the screen; the hero brand band follows them (website parity). */}
         <FeaturedProductsSection
           products={featuredProducts}
           loading={loading}
@@ -132,6 +127,12 @@ export const HomeScreen: React.FC = () => {
             navigation.navigate('ProductDetail', { productId: product.id })
           }
           onViewAll={() => goToShop('ProductsMain')}
+        />
+        <HeroSection
+          onShopNow={() => goToShop('ProductsMain')}
+          onAttaChakki={() =>
+            (navigation.getParent() as { navigate: (name: string, params?: object) => void } | undefined)?.navigate('Profile', { screen: 'AttaChakkiMain' })
+          }
         />
         <DeliveryInfoSection />
         <View style={{ height: tabBarInset }} />
