@@ -20,8 +20,6 @@ import BrandLogo from '@/components/ui/BrandLogo'
 import Input from '@/components/ui/Input'
 import PinInput from '@/components/auth/PinInput'
 import AutoHeight from '@/components/ui/AutoHeight'
-import GuidanceTips from '@/components/guidance/GuidanceTips'
-import { CREATE_TIPS } from '@/lib/guidanceTipsContent'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
@@ -366,11 +364,8 @@ export default function RegisterPage() {
             ))}
           </div>
 
-          {/* Page-specific guidance for the Create Account flow (admin-managed,
-              with recommended Urdu fallbacks) — matches THIS page's steps:
-              number → OTP → name → set & confirm PIN. */}
-          <GuidanceTips tips={CREATE_TIPS} page="register" />
-
+          {/* Create Account guidance now shows via the global InstructionsPopup
+              (lightbulb icon) — page key "register", CREATE_TIPS fallback. */}
           <AutoHeight>
           <AnimatePresence mode="wait" initial={false}>
             {/* ── Step 1: Phone ──────────────────────────────────────── */}

@@ -3,7 +3,6 @@ import HeroSection from '@/components/sections/HeroSection'
 import FeaturedProductsSection from '@/components/sections/FeaturedProductsSection'
 import DeliveryInfoSection from '@/components/sections/DeliveryInfoSection'
 import AppDownloadSection from '@/components/sections/AppDownloadSection'
-import GuidanceTips from '@/components/guidance/GuidanceTips'
 
 export const metadata: Metadata = {
   // `absolute` overrides the root layout's title.template entirely, so the
@@ -17,10 +16,8 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <div className="animate-fade-in">
-      <div className="container mx-auto px-4 mt-4">
-        <GuidanceTips tips={[]} page="home" />
-      </div>
-      {/* Categories live in the left swipe drawer (CategoriesDrawer);
+      {/* Instructions show via the global InstructionsPopup (lightbulb icon).
+          Categories live in the left swipe drawer (CategoriesDrawer);
           products lead the page and the hero brand band follows them. */}
       <FeaturedProductsSection />
       <HeroSection />
