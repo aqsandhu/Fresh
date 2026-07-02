@@ -5,10 +5,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronRight, Loader2, ShoppingBasket } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
 import { categoriesApi } from '@/lib/api'
 import { useLeftDrawer } from '@/store/leftDrawer'
+import { useBasketUi } from '@/store/basketUi'
 import { hideConsumerChrome } from '@/lib/restaurantChrome'
 import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 import SmartImage from '@/components/ui/SmartImage'
@@ -52,6 +53,7 @@ function CategoryFallback({ initial }: { initial: string }) {
 export default function CategoriesDrawer() {
   const pathname = usePathname()
   const { open, setOpen } = useLeftDrawer()
+  const openBasket = useBasketUi((s) => s.open)
   const { selectedCityId } = useCityContext()
   const reduceMotion = useReducedMotion()
   const touchRef = useRef<{ x: number; y: number; edge: boolean } | null>(null)
@@ -167,7 +169,7 @@ export default function CategoriesDrawer() {
                       key={category.id}
                       {...(reduceMotion
                         ? {}
-                        : railItemMotion(i, categories.length, 'left'))}
+                        : railItemMotion(i, categories.length + 1, 'left'))}
                     >
                       <Link
                         href={`/category/${category.slug}`}
@@ -193,6 +195,33 @@ export default function CategoriesDrawer() {
                       </Link>
                     </motion.li>
                   ))}
+
+                  {/* Today's Basket — sits after the categories */}
+                  <motion.li
+                    key="todays-basket"
+                    {...(reduceMotion
+                      ? {}
+                      : railItemMotion(categories.length, categories.length + 1, 'left'))}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOpen(false)
+                        openBasket()
+                      }}
+                      className="group flex flex-col items-center gap-1 active:scale-95 transition-transform"
+                    >
+                      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shadow-lg ring-2 ring-white/80">
+                        <ShoppingBasket className="h-6 w-6 text-white" />
+                      </span>
+                      <span
+                        dir="rtl"
+                        className="max-w-[96px] text-center font-urdu text-[13px] font-bold leading-6 text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)]"
+                      >
+                        آج کی ٹوکری
+                      </span>
+                    </button>
+                  </motion.li>
                 </ul>
               )}
             </motion.aside>
