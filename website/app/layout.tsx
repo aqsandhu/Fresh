@@ -14,6 +14,7 @@ import AiChatWidget from '@/components/ai/AiChatWidget'
 import MarketingTracker from '@/components/marketing/MarketingTracker'
 import CategoriesDrawer from '@/components/layout/CategoriesDrawer'
 import UtilityDrawer from '@/components/layout/UtilityDrawer'
+import DrawerAutoPeek from '@/components/layout/DrawerAutoPeek'
 import InstructionsPopup from '@/components/guidance/InstructionsPopup'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -86,6 +87,7 @@ export default function RootLayout({
             <AiChatWidget />
             <CategoriesDrawer />
             <UtilityDrawer />
+            <DrawerAutoPeek />
             <InstructionsPopup />
             <MarketingTracker />
             <Toaster
