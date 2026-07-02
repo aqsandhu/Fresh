@@ -10,9 +10,9 @@ import {
   Headphones,
   Lightbulb,
   MapPin,
-  MessageCircle,
   ShoppingBag,
 } from 'lucide-react'
+import WhatsAppIcon from '@/components/ui/WhatsAppIcon'
 import { useCityContext } from '@/context/CityContext'
 import { useRightDrawer } from '@/store/rightDrawer'
 import { useInstructionsPopup } from '@/store/instructionsPopup'
@@ -262,7 +262,7 @@ export default function UtilityDrawer() {
                 {showWhatsapp && (
                   <RailItem
                     delay={0.25}
-                    icon={<MessageCircle className="h-5 w-5 text-white" />}
+                    icon={<WhatsAppIcon className="h-6 w-6 text-white" />}
                     chipClass="bg-gradient-to-br from-[#25D366] to-[#128C4A]"
                     label="To Order"
                     onClick={() => {
