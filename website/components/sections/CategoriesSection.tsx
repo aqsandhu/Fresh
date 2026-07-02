@@ -1,9 +1,8 @@
 'use client'
 
-import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
 import CategoryCard from '@/components/ui/CategoryCard'
 import { categoriesApi } from '@/lib/api'
@@ -38,7 +37,7 @@ export default function CategoriesSection() {
   })
 
   return (
-    <section className="py-14 md:py-20 bg-white">
+    <section className="py-16 bg-white">
       <div className="container mx-auto px-4">
         {/* Section Header */}
         <motion.div
@@ -46,58 +45,37 @@ export default function CategoriesSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="mb-8 md:mb-10 flex flex-wrap items-end justify-between gap-4"
+          className="text-center mb-12"
         >
-          <div>
-            <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary-700">
-              <span className="h-px w-6 bg-primary-600" aria-hidden="true" />
-              Categories
-            </p>
-            <h2 className="font-display text-3xl md:text-4xl font-bold tracking-tight text-gray-900">
-              Shop by category
-            </h2>
-            <p
-              className="mt-2 text-base md:text-lg font-semibold text-gray-500 font-urdu leading-loose text-left"
-              dir="rtl"
-            >
-              کیٹیگری کے مطابق خریداری کریں
-            </p>
-          </div>
-          <Link
-            href="/products"
-            className="group inline-flex items-center gap-1.5 rounded-full border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-700 transition-colors hover:border-primary-600 hover:text-primary-700"
-          >
-            All products
-            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-          </Link>
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-3">
+            Shop by Category
+          </h2>
+          <p className="text-xl font-bold text-gray-700 font-urdu" dir="rtl">
+            کیٹیگری کے مطابق خریداری کریں
+          </p>
         </motion.div>
 
         {/* Loading State */}
         {isLoading ? (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-48 md:h-64 rounded-2xl bg-gray-100 animate-pulse"
-              />
-            ))}
+          <div className="flex justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
           </div>
         ) : !categories || categories.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500">No categories available at the moment.</p>
           </div>
         ) : (
-          /* Categories Grid — large image tiles */
+          /* Categories Grid */
           <motion.div
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
-            className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6"
           >
             {categories.map((category) => (
               <motion.div key={category.id} variants={itemVariants}>
-                <CategoryCard category={category} variant="large" />
+                <CategoryCard category={category} />
               </motion.div>
             ))}
           </motion.div>

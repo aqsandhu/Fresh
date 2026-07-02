@@ -49,23 +49,6 @@
   .text-balance {
     text-wrap: balance;
   }
-  /* Soft dot grid used behind the home hero. */
-  .bg-fresh-dots {
-    background-image: radial-gradient(
-      circle,
-      rgb(34 197 94 / 0.16) 1.5px,
-      transparent 1.5px
-    );
-    background-size: 22px 22px;
-  }
-  .pause-on-hover:hover {
-    animation-play-state: paused;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .animate-marquee {
-      animation: none;
-    }
-  }
   .line-clamp-1 {
     display: -webkit-box;
     -webkit-line-clamp: 1;
