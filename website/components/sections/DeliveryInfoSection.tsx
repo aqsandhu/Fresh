@@ -32,15 +32,19 @@ const deliveryInfo = [
 
 export default function DeliveryInfoSection() {
   return (
-    <section className="py-16 bg-primary-600">
-      <div className="container mx-auto px-4">
+    <section className="relative overflow-hidden py-12 md:py-16 bg-gradient-to-br from-primary-600 via-primary-600 to-primary-800">
+      {/* Soft decorative glow */}
+      <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-primary-400/20 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-primary-900/30 blur-3xl" />
+
+      <div className="container relative mx-auto px-4">
         {/* Section Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="text-center mb-12"
+          className="text-center mb-10 md:mb-12"
         >
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">
             Delivery Information
@@ -56,12 +60,12 @@ export default function DeliveryInfoSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6"
         >
           {deliveryInfo.map((info, index) => (
             <div
               key={index}
-              className="bg-white/10 backdrop-blur-sm rounded-xl p-6 text-center hover:bg-white/20 transition-colors"
+              className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center ring-1 ring-white/15 hover:bg-white/[0.16] transition-colors"
             >
               <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
                 <info.icon className="w-7 h-7 text-white" />
@@ -85,7 +89,7 @@ export default function DeliveryInfoSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5, delay: 0.4 }}
-          className="mt-12 bg-white/10 backdrop-blur-sm rounded-xl p-6 md:p-8"
+          className="mt-10 md:mt-12 bg-white/10 backdrop-blur-sm rounded-2xl p-6 md:p-8 ring-1 ring-white/15"
         >
           <h3 className="text-xl font-semibold text-white text-center mb-6">
             Available Delivery Time Slots
