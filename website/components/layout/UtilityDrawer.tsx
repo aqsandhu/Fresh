@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
@@ -10,6 +11,8 @@ import {
   Headphones,
   Lightbulb,
   MapPin,
+  MessageCircle,
+  ShoppingBag,
   Sparkles,
   X,
 } from 'lucide-react'
@@ -17,7 +20,8 @@ import { useCityContext } from '@/context/CityContext'
 import { useRightDrawer } from '@/store/rightDrawer'
 import { useInstructionsPopup } from '@/store/instructionsPopup'
 import { hideDrawerOnPath } from './CategoriesDrawer'
-import { aiChatApi } from '@/lib/api'
+import { aiChatApi, bannerApi } from '@/lib/api'
+import { buildWhatsAppUrl, openWhatsAppOrder } from '@/lib/whatsapp'
 
 const EDGE_ZONE_PX = 28
 const SWIPE_OPEN_PX = 48
@@ -84,6 +88,21 @@ export default function UtilityDrawer() {
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   })
+
+  // WhatsApp order target: per-city URL when set, else the banner phone number.
+  const { data: bannerSettings } = useQuery({
+    queryKey: ['banner-settings', selectedCity?.id],
+    queryFn: bannerApi.getSettings,
+    enabled: !!selectedCity?.id,
+    staleTime: 5 * 60 * 1000,
+  })
+  const whatsappTarget = String(
+    bannerSettings?.whatsapp_order_url ||
+      bannerSettings?.whatsappOrderUrl ||
+      bannerSettings?.banner_left_text ||
+      ''
+  ).trim()
+  const showWhatsapp = Boolean(buildWhatsAppUrl(whatsappTarget))
 
   // Swipe in from the right edge opens; swipe right closes while open.
   useEffect(() => {
@@ -243,6 +262,31 @@ export default function UtilityDrawer() {
                       setCityPickerOpen(true)
                     }}
                   />
+                )}
+              </div>
+
+              {/* Pinned actions: shop + WhatsApp ordering */}
+              <div className="space-y-2 border-t border-gray-100 p-3">
+                <Link
+                  href="/products"
+                  onClick={() => setOpen(false)}
+                  className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 px-4 py-3 text-sm font-bold text-white shadow-md transition hover:from-primary-700 hover:to-primary-800 active:scale-[0.98]"
+                >
+                  <ShoppingBag className="h-4 w-4" />
+                  Shop Now
+                </Link>
+                {showWhatsapp && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false)
+                      openWhatsAppOrder(whatsappTarget)
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#25D366] to-[#1DA851] px-4 py-3 text-sm font-bold text-white shadow-md transition hover:from-[#1DA851] hover:to-[#128C4A] active:scale-[0.98]"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    WhatsApp to Order
+                  </button>
                 )}
               </div>
             </motion.aside>
