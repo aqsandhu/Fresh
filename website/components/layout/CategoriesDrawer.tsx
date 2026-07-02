@@ -12,6 +12,12 @@ import { useLeftDrawer } from '@/store/leftDrawer'
 import { hideConsumerChrome } from '@/lib/restaurantChrome'
 import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 import SmartImage from '@/components/ui/SmartImage'
+import {
+  HANDLE_APPEAR_DELAY,
+  RAIL_EASE,
+  RAIL_ITEM_DURATION,
+  railItemMotion,
+} from './railAnimation'
 
 /** Paths where the drawers make no sense (portals, gates, PIN screens). */
 export function hideDrawerOnPath(pathname: string | null | undefined): boolean {
@@ -114,7 +120,8 @@ export default function CategoriesDrawer() {
             initial={{ x: -32, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: -32, opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            // Waits for the icons to finish merging into this spot.
+            transition={{ duration: 0.25, delay: HANDLE_APPEAR_DELAY }}
             type="button"
             onClick={() => setOpen(true)}
             aria-label="Open categories"
@@ -138,12 +145,13 @@ export default function CategoriesDrawer() {
               className="fixed inset-0 z-[75] bg-black/45 backdrop-blur-[2px]"
             />
 
-            {/* Transparent icon rail */}
+            {/* Transparent icon rail — the icons themselves fly out of / back
+                into the handle spot, so the rail only fades. */}
             <motion.aside
-              initial={reduceMotion ? { opacity: 0 } : { x: '-100%' }}
-              animate={reduceMotion ? { opacity: 1 } : { x: 0 }}
-              exit={reduceMotion ? { opacity: 0 } : { x: '-100%' }}
-              transition={{ type: 'spring', stiffness: 380, damping: 40 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: RAIL_ITEM_DURATION, ease: RAIL_EASE }}
               role="dialog"
               aria-label="Categories"
               className="fixed left-0 top-0 bottom-0 z-[80] flex w-[104px] max-w-[30vw] flex-col overflow-y-auto overscroll-contain px-2 py-6"
@@ -157,9 +165,9 @@ export default function CategoriesDrawer() {
                   {categories.map((category, i) => (
                     <motion.li
                       key={category.id}
-                      initial={{ opacity: 0, x: -12 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.05 + i * 0.04, duration: 0.25 }}
+                      {...(reduceMotion
+                        ? {}
+                        : railItemMotion(i, categories.length, 'left'))}
                     >
                       <Link
                         href={`/category/${category.slug}`}
