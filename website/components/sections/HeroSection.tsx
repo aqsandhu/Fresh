@@ -10,8 +10,8 @@ import {
   Clock,
   ShieldCheck,
   Phone,
-  MessageCircle,
 } from 'lucide-react'
+import WhatsAppIcon from '@/components/ui/WhatsAppIcon'
 import { useCityContext } from '@/context/CityContext'
 import api, { bannerApi } from '@/lib/api'
 import { phoneToTelHref } from '@/lib/phoneStorage'
@@ -178,11 +178,12 @@ export default function HeroSection() {
               })}
             </div>
 
-            {/* CTAs */}
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 max-w-md">
+            {/* CTAs — stacked full-width on mobile; roomy pill pair on desktop
+                (auto width, solid WhatsApp green, gentle lift on hover). */}
+            <div className="mt-8 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 max-w-md sm:max-w-none">
               <Link
                 href="/products"
-                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-white px-6 py-3.5 text-base font-bold text-primary-700 shadow-lg transition hover:bg-primary-50 active:scale-[0.98]"
+                className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl sm:rounded-full bg-white px-6 sm:px-9 py-3.5 text-base font-bold text-primary-700 shadow-lg transition-all hover:bg-primary-50 active:scale-[0.98] sm:hover:-translate-y-0.5 sm:hover:shadow-xl"
               >
                 Shop Now
                 <ArrowRight className="w-5 h-5" />
@@ -191,9 +192,9 @@ export default function HeroSection() {
                 <button
                   type="button"
                   onClick={() => openWhatsAppOrder(whatsappTarget)}
-                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-white/70 bg-white/10 backdrop-blur-sm px-6 py-3.5 text-base font-semibold text-white transition hover:bg-white/20 active:scale-[0.98]"
+                  className="inline-flex flex-1 sm:flex-none items-center justify-center gap-2 rounded-xl sm:rounded-full border-2 border-white/70 sm:border-0 bg-white/10 sm:bg-[#25D366] backdrop-blur-sm px-6 sm:px-9 py-3.5 text-base font-semibold text-white shadow-lg transition-all hover:bg-white/20 sm:hover:bg-[#1DA851] active:scale-[0.98] sm:hover:-translate-y-0.5 sm:hover:shadow-xl"
                 >
-                  <MessageCircle className="w-5 h-5" />
+                  <WhatsAppIcon className="w-5 h-5" />
                   WhatsApp to Order
                 </button>
               ) : null}
