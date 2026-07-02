@@ -125,7 +125,14 @@ export default function UtilityDrawer() {
       bannerSettings?.banner_left_text ||
       ''
   ).trim()
-  const showWhatsapp = Boolean(buildWhatsAppUrl(whatsappTarget))
+  // While these queries are still in flight (fresh page load — the welcome
+  // peek opens BEFORE the network answers), render the chips optimistically:
+  // otherwise Support/WhatsApp pop in late, out of step with the others.
+  // Practically both are configured; if one turns out disabled it just
+  // disappears once the answer lands.
+  const showSupport = chatStatus === undefined ? true : !!chatStatus.enabled
+  const showWhatsapp =
+    bannerSettings === undefined ? true : Boolean(buildWhatsAppUrl(whatsappTarget))
 
   // Swipe in from the right edge opens; swipe right closes while open.
   useEffect(() => {
@@ -180,7 +187,7 @@ export default function UtilityDrawer() {
   // Build the visible entries first so each one knows its index/count for
   // the shared converge-into-the-handle animation.
   const entries: RailEntry[] = [
-    ...(chatStatus?.enabled
+    ...(showSupport
       ? [
           {
             key: 'support',
@@ -236,7 +243,8 @@ export default function UtilityDrawer() {
             label: 'To Order',
             onClick: () => {
               setOpen(false)
-              openWhatsAppOrder(whatsappTarget)
+              // Guard: target may still be loading on a very fresh page.
+              if (whatsappTarget) openWhatsAppOrder(whatsappTarget)
             },
           },
         ]
