@@ -109,6 +109,15 @@ export const HomeScreen: React.FC = () => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
+        {/* Website-parity order: products → category wall → hero → delivery. */}
+        <FeaturedProductsSection
+          products={featuredProducts}
+          loading={loading}
+          onProductPress={(product) =>
+            navigation.navigate('ProductDetail', { productId: product.id })
+          }
+          onViewAll={() => goToShop('ProductsMain')}
+        />
         <CategoriesSection
           categories={categories}
           loading={loading}
@@ -118,15 +127,6 @@ export const HomeScreen: React.FC = () => {
               categoryName: category.name,
             })
           }
-        />
-        {/* Products lead the screen; the hero brand band follows them (website parity). */}
-        <FeaturedProductsSection
-          products={featuredProducts}
-          loading={loading}
-          onProductPress={(product) =>
-            navigation.navigate('ProductDetail', { productId: product.id })
-          }
-          onViewAll={() => goToShop('ProductsMain')}
         />
         <HeroSection
           onShopNow={() => goToShop('ProductsMain')}
