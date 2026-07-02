@@ -108,7 +108,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
     return items.filter((i) => i.text && i.text.trim().length > 0);
   }, [banner]);
 
-  // Roll the current line up and the next one in from below.
+  // Slide the current line out left and the next one in from the right.
   useEffect(() => {
     if (tickerItems.length <= 1) return;
     const interval = setInterval(() => {
@@ -235,9 +235,9 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         {showTopBar && tickerItems.length > 0 && (() => {
           const current = tickerItems[tickerIndex % tickerItems.length];
           const urdu = isUrduText(current.text);
-          const translateY = tickerAnim.interpolate({
+          const translateX = tickerAnim.interpolate({
             inputRange: [-1, 0, 1],
-            outputRange: [-14, 0, 14],
+            outputRange: [-48, 0, 48],
           });
           const opacity = tickerAnim.interpolate({
             inputRange: [-1, 0, 1],
@@ -246,7 +246,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           return (
             <View style={styles.topBar}>
               <Animated.View
-                style={[styles.tickerRow, { transform: [{ translateY }], opacity }]}
+                style={[styles.tickerRow, { transform: [{ translateX }], opacity }]}
               >
                 <Pressable
                   style={styles.tickerInner}
@@ -462,17 +462,18 @@ const styles = StyleSheet.create({
     gap: 5,
     maxWidth: '100%',
   },
+  // Font grew ~30% (11 → 14) while the belt height stays fixed at 30.
   tickerText: {
     color: COLORS.white,
-    fontSize: 11,
+    fontSize: 14,
     fontWeight: '600',
     letterSpacing: 0.2,
     flexShrink: 1,
   },
   tickerUrdu: {
     fontWeight: '400',
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 14,
+    lineHeight: 20,
   },
   mainHeader: {
     flexDirection: 'row',

@@ -61,23 +61,25 @@ export default function NewsTicker({ items }: { items: TickerItem[] }) {
   const inner = (
     <span
       dir={urdu ? 'rtl' : 'ltr'}
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap ${
-        urdu ? 'font-urdu leading-6' : ''
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[15.5px] ${
+        urdu ? 'font-urdu leading-6' : 'leading-6'
       }`}
     >
-      <Icon className="w-3 h-3 shrink-0 opacity-80" />
+      <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
       <span className="truncate max-w-[85vw]">{item.text}</span>
     </span>
   )
 
   return (
+    // Fixed h-6 keeps the green belt the same height as before — only the
+    // text inside grew; lines now slide in from the right like a news strip.
     <div className="relative h-6 overflow-hidden" aria-live="polite">
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={`${index}-${item.text}`}
-          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 }}
-          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -16 }}
+          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: 48 }}
+          animate={reduceMotion ? { opacity: 1 } : { opacity: 1, x: 0 }}
+          exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -48 }}
           transition={{ duration: 0.45, ease: [0.32, 0.72, 0.24, 1] }}
           className="absolute inset-0 flex items-center justify-center"
         >
