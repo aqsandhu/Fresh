@@ -149,11 +149,12 @@ describe('Header', () => {
 
   it('renders banner middle text', () => {
     render(<Header />);
-    expect(screen.getByText('Free Delivery 10AM-2PM')).toBeInTheDocument();
+    // Appears in both marquee copies AND the desktop static bar.
+    expect(screen.getAllByText('Free Delivery 10AM-2PM').length).toBeGreaterThanOrEqual(1);
   });
 
   it('renders banner right text', () => {
     render(<Header />);
-    expect(screen.getByText('Fresh Sabzi at Your Doorstep')).toBeInTheDocument();
+    expect(screen.getAllByText('Fresh Sabzi at Your Doorstep').length).toBeGreaterThanOrEqual(1);
   });
 });
