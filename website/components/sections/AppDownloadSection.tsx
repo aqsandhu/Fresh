@@ -13,9 +13,10 @@ const features = [
 
 export default function AppDownloadSection() {
   return (
-    <section className="py-16 bg-gray-50">
+    <section className="py-12 md:py-16 bg-gray-50">
       <div className="container mx-auto px-4">
-        <div className="bg-gradient-to-br from-primary-600 to-primary-800 rounded-3xl overflow-hidden">
+        <div className="relative bg-gradient-to-br from-primary-600 to-primary-800 rounded-3xl overflow-hidden shadow-xl">
+          <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
           <div className="grid lg:grid-cols-2 gap-8 items-center">
             {/* Content */}
             <motion.div

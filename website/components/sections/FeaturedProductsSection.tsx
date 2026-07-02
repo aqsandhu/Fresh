@@ -27,16 +27,25 @@ export default function FeaturedProductsSection() {
   })
 
   return (
-    <section className="py-10 md:py-12 bg-gray-50">
+    <section className="py-10 md:py-14 bg-gradient-to-b from-white to-gray-50">
       <div className="container mx-auto px-4">
-        <motion.h2
+        <motion.div
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="text-[26px] md:text-3xl font-bold text-gray-900 text-center"
+          className="text-center"
         >
-          Featured Products
-        </motion.h2>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-primary-700 ring-1 ring-primary-100">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />
+            Fresh Today
+          </span>
+          <h2 className="mt-3 text-[26px] md:text-3xl font-bold text-gray-900">
+            Featured Products
+          </h2>
+          <p className="mt-1 text-base font-bold text-gray-500 font-urdu" dir="rtl">
+            آج کی تازہ پروڈکٹس
+          </p>
+        </motion.div>
 
         <Link
           href="/products"
