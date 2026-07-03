@@ -18,6 +18,14 @@ const typingRateLimiter = new SocketEventRateLimiter(20, 10_000);
 
 let io: Server;
 
+export type RiderLocationPayload = {
+  riderId: string;
+  latitude: number;
+  longitude: number;
+  accuracy?: number | null;
+  updatedAt: string;
+};
+
 type ChatSenderType = 'customer' | 'rider' | 'admin';
 
 function mapChatSenderType(role?: string): ChatSenderType | null {
@@ -218,7 +226,7 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
 
     socket.on(
       'rider:location',
-      async (data: { riderId: string; latitude: number; longitude: number }) => {
+      async (data: { riderId: string; latitude: number; longitude: number; accuracy?: number | null }) => {
         try {
           if (!locationRateLimiter.allow(socket.id, 'rider:location')) {
             return;
@@ -242,27 +250,20 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
           await query(
             `UPDATE riders 
              SET current_location = ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                 location_accuracy = $4,
                  location_updated_at = NOW(),
                  updated_at = NOW()
              WHERE id = $3`,
-            [data.longitude, data.latitude, data.riderId]
+            [data.longitude, data.latitude, data.riderId, data.accuracy ?? null]
           );
           const payload = {
             riderId: data.riderId,
             latitude: data.latitude,
             longitude: data.longitude,
+            accuracy: data.accuracy ?? null,
             updatedAt: new Date().toISOString(),
           };
-          const activeOrders = await query(
-            `SELECT id FROM orders
-             WHERE rider_id = $1
-               AND status IN ('confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery')
-               AND deleted_at IS NULL`,
-            [data.riderId]
-          );
-          for (const row of activeOrders.rows) {
-            io.to(`order:${row.id}`).emit('rider:location', payload);
-          }
+          await emitRiderLocationUpdate(payload);
         } catch (err: any) {
           logger.error('Error updating rider location:', err);
         }
@@ -315,6 +316,24 @@ export const emitToAdmins = (event: string, data: any) => {
     getIO().to('admins').emit(event, data);
   } catch (err) {
     logger.error('emitToAdmins error:', err);
+  }
+};
+
+export const emitRiderLocationUpdate = async (payload: RiderLocationPayload) => {
+  try {
+    const activeOrders = await query(
+      `SELECT id FROM orders
+       WHERE rider_id = $1
+         AND status IN ('confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery')
+         AND deleted_at IS NULL`,
+      [payload.riderId]
+    );
+    for (const row of activeOrders.rows) {
+      getIO().to(`order:${row.id}`).emit('rider:location', payload);
+    }
+    emitToAdmins('rider:location', payload);
+  } catch (err) {
+    logger.error('emitRiderLocationUpdate error:', err);
   }
 };
 

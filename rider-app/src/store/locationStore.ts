@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { LocationCoords } from '../types';
 import { locationService } from '../services/location.service';
+import socketService from '../services/socket.service';
 
 interface LocationState {
   // State
@@ -50,11 +51,18 @@ export const useLocationStore = create<LocationState>((set, get) => ({
   startTracking: async (riderId) => {
     set({ error: null });
     try {
+      socketService.connect();
       const success = await locationService.startTracking(riderId, (location) => {
         set({
           currentLocation: location,
           lastUpdated: Date.now(),
         });
+        socketService.emitLocation(
+          riderId,
+          location.latitude,
+          location.longitude,
+          location.accuracy
+        );
       });
 
       if (success) {

@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { fetchGoogleMapsApiKey, loadGoogleMapsJs } from '@/lib/loadGoogleMaps'
-import GoogleEmbedMapPicker from './GoogleEmbedMapPicker'
 
 const MAP_ZOOM = 16
 
@@ -16,12 +15,10 @@ interface DraggableMapPickerProps {
   onChange: (lat: number, lng: number) => void
 }
 
-type Engine = 'loading' | 'js' | 'embed'
+type Engine = 'loading' | 'js' | 'unavailable'
 
 /**
- * Checkout map — mirrors customer-app CheckoutMapPicker (Expo Go MapView):
- * - Default: Google Maps embed + draggable red pin (no API key required)
- * - Optional: Maps JavaScript API when a key exists (env or Render backend)
+ * Checkout map - mirrors customer-app CheckoutMapPicker with Google Maps JS.
  */
 export default function DraggableMapPicker(props: DraggableMapPickerProps) {
   const [engine, setEngine] = useState<Engine>('loading')
@@ -33,15 +30,16 @@ export default function DraggableMapPicker(props: DraggableMapPickerProps) {
       const key = await fetchGoogleMapsApiKey()
       if (cancelled) return
 
-      if (key) {
-        try {
-          const maps = await loadGoogleMapsJs()
-          if (!cancelled) setEngine(maps ? 'js' : 'embed')
-        } catch {
-          if (!cancelled) setEngine('embed')
-        }
-      } else {
-        setEngine('embed')
+      if (!key) {
+        setEngine('unavailable')
+        return
+      }
+
+      try {
+        const maps = await loadGoogleMapsJs()
+        if (!cancelled) setEngine(maps ? 'js' : 'unavailable')
+      } catch {
+        if (!cancelled) setEngine('unavailable')
       }
     }
 
@@ -64,8 +62,17 @@ export default function DraggableMapPicker(props: DraggableMapPickerProps) {
     )
   }
 
-  if (engine === 'embed') {
-    return <GoogleEmbedMapPicker {...props} zoom={props.zoom ?? MAP_ZOOM} />
+  if (engine === 'unavailable') {
+    const boxHeight =
+      typeof props.height === 'number' ? `${props.height}px` : props.height || '280px'
+    return (
+      <div
+        className="relative flex w-full items-center justify-center bg-[#e5e7eb] px-4 text-center text-sm text-gray-600"
+        style={{ height: boxHeight }}
+      >
+        Google Maps could not load. Add a valid Maps JavaScript API key.
+      </div>
+    )
   }
 
   return <GoogleJsDraggableMap {...props} zoom={props.zoom ?? MAP_ZOOM} />
@@ -154,9 +161,7 @@ function GoogleJsDraggableMap({
           resizeObserver = new ResizeObserver(() => invalidate())
           resizeObserver.observe(containerRef.current)
         }
-      } catch {
-        /* fall back handled by parent on next render if needed */
-      }
+      } catch {}
     }
 
     void init()

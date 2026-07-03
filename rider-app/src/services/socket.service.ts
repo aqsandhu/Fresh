@@ -121,8 +121,8 @@ class SocketService {
   }
 
   // Rider location sharing
-  emitLocation(riderId: string, latitude: number, longitude: number) {
-    this.socket?.emit('rider:location', { riderId, latitude, longitude });
+  emitLocation(riderId: string, latitude: number, longitude: number, accuracy?: number) {
+    this.socket?.emit('rider:location', { riderId, latitude, longitude, accuracy });
   }
 
   // Notifications

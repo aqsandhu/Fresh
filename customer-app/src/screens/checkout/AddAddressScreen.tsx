@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import MapView, { Marker, Circle } from 'react-native-maps';
+import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { CartStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ERROR_MESSAGES, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
@@ -352,6 +352,7 @@ export const AddAddressScreen: React.FC = () => {
         <View style={styles.mapContainer}>
           <MapView
             ref={mapRef}
+            provider={PROVIDER_GOOGLE}
             style={styles.map}
             initialRegion={region}
             onPress={handleLocationSelect}

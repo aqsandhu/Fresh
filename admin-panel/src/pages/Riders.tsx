@@ -31,8 +31,9 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
-import { LeafletMap } from '@/components/ui/LeafletMap';
+import { GoogleMarkerMap } from '@/components/ui/GoogleMarkerMap';
 import { riderService } from '@/services/rider.service';
+import { offSocketEvent, onSocketEvent } from '@/services/socket';
 import { settingsService } from '@/services/settings.service';
 import { financeService } from '@/services/finance.service';
 import { useAuthContext } from '@/context/AuthContext';
@@ -91,7 +92,7 @@ export const Riders: React.FC = () => {
 
   // Rider location tracking state
   const [trackingRider, setTrackingRider] = useState<Rider | null>(null);
-  const [riderLocation, setRiderLocation] = useState<{ latitude: number | null; longitude: number | null; accuracy?: number | null; locationUpdatedAt: string | null; status?: string | null } | null>(null);
+  const [riderLocation, setRiderLocation] = useState<{ id?: string; fullName?: string; phone?: string; latitude: number | null; longitude: number | null; accuracy?: number | null; locationUpdatedAt: string | null; status?: string | null } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [refreshingLocation, setRefreshingLocation] = useState(false);
 
@@ -333,7 +334,7 @@ export const Riders: React.FC = () => {
     }
   };
 
-  // Auto-refresh rider location every 15 seconds
+  // Auto-refresh rider location every 5 seconds as a fallback to socket pushes.
   React.useEffect(() => {
     if (!trackingRider) return;
     const interval = setInterval(async () => {
@@ -341,8 +342,32 @@ export const Riders: React.FC = () => {
         const loc = await riderService.getRiderLocation(trackingRider.id);
         setRiderLocation(loc);
       } catch { /* silent */ }
-    }, 15000);
+    }, 5000);
     return () => clearInterval(interval);
+  }, [trackingRider]);
+
+  React.useEffect(() => {
+    if (!trackingRider) return;
+    const handleRiderLocation = (payload: any) => {
+      if (payload?.riderId !== trackingRider.id) return;
+      const latitude = Number(payload.latitude);
+      const longitude = Number(payload.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+      setRiderLocation((prev) => ({
+        ...(prev || {
+          id: trackingRider.id,
+          fullName: trackingRider.fullName,
+          phone: trackingRider.phone,
+          status: trackingRider.status,
+        }),
+        latitude,
+        longitude,
+        accuracy: payload.accuracy ?? null,
+        locationUpdatedAt: payload.updatedAt || new Date().toISOString(),
+      }));
+    };
+    onSocketEvent('rider:location', handleRiderLocation);
+    return () => offSocketEvent('rider:location', handleRiderLocation);
   }, [trackingRider]);
 
   // Image handling
@@ -1072,7 +1097,7 @@ export const Riders: React.FC = () => {
         ) : riderLocation?.latitude && riderLocation?.longitude ? (
           <div className="space-y-4">
             <div className="rounded-lg overflow-hidden border" style={{ height: 400 }}>
-              <LeafletMap
+              <GoogleMarkerMap
                 latitude={riderLocation.latitude}
                 longitude={riderLocation.longitude}
                 accuracy={riderLocation.accuracy ?? null}
@@ -1100,7 +1125,7 @@ export const Riders: React.FC = () => {
                       : 'N/A'}
                   </span>
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">Auto-refreshes every 15 seconds</p>
+                <p className="text-xs text-gray-400 mt-0.5">Live updates via socket; refresh fallback every 5 seconds</p>
               </div>
               <a
                 href={`https://www.google.com/maps?q=${riderLocation.latitude},${riderLocation.longitude}`}

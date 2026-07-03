@@ -8,18 +8,38 @@ const fs = require('fs');
  
 const path = require('path');
 
-/** Same key as website (Maps JavaScript API + Maps SDK for Android/iOS). */
-function resolveGoogleMapsApiKey(): string {
-  return (
-    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
-    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ||
-    ''
+function firstEnv(...names: string[]): string {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return value;
+  }
+  return '';
+}
+
+/** Platform-specific keys allow proper Android/iOS API key restrictions. */
+function resolveGoogleMapsApiKey(platform: 'android' | 'ios'): string {
+  const shared = firstEnv(
+    'EXPO_PUBLIC_GOOGLE_MAPS_API_KEY',
+    'GOOGLE_MAPS_API_KEY',
+    'NEXT_PUBLIC_GOOGLE_MAPS_API_KEY'
   );
+
+  if (platform === 'android') {
+    return firstEnv(
+      'EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_API_KEY',
+      'GOOGLE_MAPS_ANDROID_API_KEY'
+    ) || shared;
+  }
+
+  return firstEnv(
+    'EXPO_PUBLIC_GOOGLE_MAPS_IOS_API_KEY',
+    'GOOGLE_MAPS_IOS_API_KEY'
+  ) || shared;
 }
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  const googleMapsKey = resolveGoogleMapsApiKey();
+  const androidGoogleMapsKey = resolveGoogleMapsApiKey('android');
+  const iosGoogleMapsKey = resolveGoogleMapsApiKey('ios');
   // Firebase config for push notifications — referenced only when the file
   // exists so builds keep working before Firebase is set up.
   const hasGoogleServices = fs.existsSync(path.join(__dirname, 'google-services.json'));
@@ -30,7 +50,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: config.slug ?? 'freshbazar',
     extra: {
       ...config.extra,
-      googleMapsApiKey: googleMapsKey,
+      googleMapsApiKey: androidGoogleMapsKey || iosGoogleMapsKey,
+      googleMapsAndroidApiKey: androidGoogleMapsKey,
+      googleMapsIosApiKey: iosGoogleMapsKey,
     },
     // react-native-maps@1.20.x has no Expo config plugin (needs 1.22+).
     // API keys are injected via android/ios config below (works on prebuild/EAS).
@@ -41,7 +63,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       config: {
         ...(config.android?.config ?? {}),
         googleMaps: {
-          apiKey: googleMapsKey,
+          apiKey: androidGoogleMapsKey,
         },
       },
     },
@@ -49,7 +71,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...config.ios,
       config: {
         ...(config.ios?.config ?? {}),
-        googleMapsApiKey: googleMapsKey,
+        googleMapsApiKey: iosGoogleMapsKey,
       },
     },
   };

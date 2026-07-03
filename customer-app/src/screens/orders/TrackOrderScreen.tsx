@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { OrdersStackParamList, OrderStatus } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatDateTime, getStatusColor } from '@utils/helpers';
@@ -68,6 +68,7 @@ export const TrackOrderScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
+  const mapRef = useRef<MapView>(null);
 
   const loadOrder = useCallback(async () => {
     try {
@@ -88,6 +89,7 @@ export const TrackOrderScreen: React.FC = () => {
   // Setup socket for real-time order updates
   useEffect(() => {
     loadOrder();
+    let handleRiderLocation: ((data: any) => void) | undefined;
 
     const setupSocket = async () => {
       await socketService.connect();
@@ -98,6 +100,24 @@ export const TrackOrderScreen: React.FC = () => {
         // Refresh order data on any update
         loadOrder();
       });
+
+      handleRiderLocation = (data: any) => {
+        setTrackingData((prev) => {
+          if (!prev?.rider) return prev;
+          if (data?.riderId && prev.rider.id && data.riderId !== prev.rider.id) return prev;
+          const latitude = Number(data?.latitude);
+          const longitude = Number(data?.longitude);
+          if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return prev;
+          return {
+            ...prev,
+            rider: {
+              ...prev.rider,
+              location: { latitude, longitude },
+            },
+          };
+        });
+      };
+      socketService.on('rider:location', handleRiderLocation);
 
       // Listen for rider assignment
       socketService.on('order:rider_assigned', (data: any) => {
@@ -137,6 +157,7 @@ export const TrackOrderScreen: React.FC = () => {
       socketService.off('order:rider_assigned');
       socketService.off('order:status_changed');
       socketService.off('order:delivered');
+      if (handleRiderLocation) socketService.off('rider:location', handleRiderLocation);
       clearInterval(connectionInterval);
       clearInterval(pollInterval);
     };
@@ -159,6 +180,19 @@ export const TrackOrderScreen: React.FC = () => {
     latitude: 32.5742,
     longitude: 74.0789,
   };
+
+  useEffect(() => {
+    if (!trackingData?.rider?.location) return;
+    mapRef.current?.animateToRegion(
+      {
+        latitude: riderLocation.latitude,
+        longitude: riderLocation.longitude,
+        latitudeDelta: 0.02,
+        longitudeDelta: 0.02,
+      },
+      500
+    );
+  }, [riderLocation.latitude, riderLocation.longitude, trackingData?.rider?.location]);
 
   if (error && !loading) {
     return (
@@ -201,6 +235,8 @@ export const TrackOrderScreen: React.FC = () => {
         {/* Map */}
         <View style={styles.mapContainer}>
           <MapView
+            ref={mapRef}
+            provider={PROVIDER_GOOGLE}
             style={styles.map}
             initialRegion={{
               latitude: (riderLocation.latitude + deliveryLocation.latitude) / 2,

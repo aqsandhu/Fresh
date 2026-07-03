@@ -10,7 +10,7 @@ import { isValidOrderTransition } from '../utils/orderStatus';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { deductOcpStockOnDelivery } from '../utils/ocpStock';
 import { commitOrderSaleOnDelivery } from '../utils/systemStock';
-import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
+import { emitOrderUpdate, emitToUser, emitToAdmins, emitRiderLocationUpdate } from '../config/socket';
 import { parsePagination } from '../utils/validators';
 import logger from '../utils/logger';
 
@@ -866,13 +866,21 @@ export const updateLocation = asyncHandler(async (req: Request, res: Response) =
          location_updated_at = NOW(),
          updated_at = NOW()
      WHERE user_id = $3
-     RETURNING id`,
+     RETURNING id, location_updated_at`,
     [longitude, latitude, req.user.id, accuracy ?? null]
   );
 
   if (result.rows.length === 0) {
     return notFoundResponse(res, 'Rider not found');
   }
+
+  await emitRiderLocationUpdate({
+    riderId: result.rows[0].id,
+    latitude,
+    longitude,
+    accuracy: accuracy ?? null,
+    updatedAt: result.rows[0].location_updated_at?.toISOString?.() || new Date().toISOString(),
+  });
 
   successResponse(res, null, 'Location updated successfully');
 });

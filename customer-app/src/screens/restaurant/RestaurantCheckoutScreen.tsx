@@ -8,9 +8,11 @@ import Toast from 'react-native-toast-message';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button } from '@components';
+import { CheckoutMapPicker } from '@components/checkout/CheckoutMapPicker';
 import { getRestaurantInfo, restaurantApi, money, round2, type RestaurantInfo } from '@services/restaurant.service';
 import { useRestaurantCart } from '@store/restaurantCartStore';
 import { getAccuratePosition } from '@/lib/geolocation';
+import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
 import { pickDoorPhotoFromLibrary } from '@/lib/pickDoorPhoto';
 import { getSlotAvailability } from '@/lib/timeSlots';
 
@@ -47,6 +49,8 @@ export const RestaurantCheckoutScreen: React.FC = () => {
   const [address, setAddress] = useState('');
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [pinning, setPinning] = useState(false);
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [frontImageUrl, setFrontImageUrl] = useState<string | null>(null);
   const [uploadingImg, setUploadingImg] = useState(false);
 
@@ -103,10 +107,15 @@ export const RestaurantCheckoutScreen: React.FC = () => {
 
   const pinLocation = async () => {
     setPinning(true);
+    setShowMapPicker(true);
+    setLocationAccuracy(null);
     try {
-      const pos = await getAccuratePosition();
+      const pos = await getAccuratePosition((accuracy) => {
+        setLocationAccuracy(Math.round(accuracy));
+      });
       if (!pos) { Toast.show({ type: 'error', text1: 'Location permission denied' }); return; }
       setCoords({ lat: pos.lat, lng: pos.lng });
+      setLocationAccuracy(Math.round(pos.accuracy));
       Toast.show({ type: 'success', text1: 'Location pinned' });
     } finally {
       setPinning(false);
@@ -173,13 +182,60 @@ export const RestaurantCheckoutScreen: React.FC = () => {
           <Text style={styles.addrMeta}>{info?.city}{info?.phone ? ` · ${info.phone}` : ''}</Text>
           <TextInput value={address} onChangeText={setAddress} multiline placeholder="Full delivery address"
             style={styles.addrInput} />
-          <View style={styles.pinRow}>
-            <TouchableOpacity style={styles.pinBtn} onPress={pinLocation} disabled={pinning}>
-              {pinning ? <ActivityIndicator size="small" color={COLORS.primary} /> : <MaterialIcons name="my-location" size={16} color={COLORS.primary} />}
-              <Text style={styles.pinBtnText}>{coords ? 'Update pin' : 'Pin location'}</Text>
-            </TouchableOpacity>
-            {coords && <Text style={styles.coordsText}>📍 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</Text>}
-          </View>
+          {!showMapPicker && !coords && (
+            <View style={styles.pinRow}>
+              <TouchableOpacity style={styles.pinBtn} onPress={() => setShowMapPicker(true)}>
+                <MaterialIcons name="location-on" size={16} color={COLORS.primary} />
+                <Text style={styles.pinBtnText}>Add Google Map Location</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.gpsBtn} onPress={pinLocation} disabled={pinning}>
+                {pinning ? <ActivityIndicator size="small" color={COLORS.white} /> : <MaterialIcons name="my-location" size={16} color={COLORS.white} />}
+                <Text style={styles.gpsBtnText}>{pinning ? 'Getting location...' : 'Get My Location'}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {coords && !showMapPicker && (
+            <View style={styles.pinnedRow}>
+              <MaterialIcons name="check-circle" size={18} color={COLORS.success} />
+              <Text style={styles.coordsText}>
+                Location pinned ({coords.lat.toFixed(5)}, {coords.lng.toFixed(5)})
+                {locationAccuracy != null ? ` +/-${Math.round(locationAccuracy)}m` : ''}
+              </Text>
+              <TouchableOpacity onPress={() => setShowMapPicker(true)}>
+                <Text style={styles.pinActionText}>Change</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setCoords(null);
+                  setLocationAccuracy(null);
+                }}
+              >
+                <Text style={styles.clearPinText}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {showMapPicker && (
+            <CheckoutMapPicker
+              lat={coords?.lat ?? DEFAULT_MAP_LAT}
+              lng={coords?.lng ?? DEFAULT_MAP_LNG}
+              accuracy={locationAccuracy}
+              isLocating={pinning}
+              hasLocation={coords != null}
+              onLatLngChange={(lat, lng) => {
+                setCoords({ lat, lng });
+                setLocationAccuracy(null);
+              }}
+              onGetLocation={pinLocation}
+              onDone={() => setShowMapPicker(false)}
+              onCancel={() => {
+                setCoords(null);
+                setLocationAccuracy(null);
+                setShowMapPicker(false);
+              }}
+            />
+          )}
 
           <Text style={styles.photoLabel}>Storefront photo (helps the rider find you)</Text>
           {frontImageUrl ? (
@@ -326,7 +382,12 @@ const styles = StyleSheet.create({
   pinRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: SPACING.sm, flexWrap: 'wrap' },
   pinBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: COLORS.primary, borderRadius: BORDER_RADIUS.sm, paddingVertical: 6, paddingHorizontal: 10 },
   pinBtnText: { color: COLORS.primary, fontSize: 13, fontWeight: '600' },
-  coordsText: { fontSize: 12, color: COLORS.gray500 },
+  gpsBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.primary, borderRadius: BORDER_RADIUS.sm, paddingVertical: 7, paddingHorizontal: 10 },
+  gpsBtnText: { color: COLORS.white, fontSize: 13, fontWeight: '600' },
+  pinnedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: SPACING.sm, padding: SPACING.sm, borderWidth: 1, borderColor: '#BBF7D0', backgroundColor: '#F0FDF4', borderRadius: BORDER_RADIUS.sm, flexWrap: 'wrap' },
+  coordsText: { flex: 1, minWidth: 160, fontSize: 12, color: COLORS.gray600 },
+  pinActionText: { fontSize: 12, color: COLORS.primary, fontWeight: '700' },
+  clearPinText: { fontSize: 12, color: COLORS.error, fontWeight: '700' },
   photoLabel: { fontSize: 13, fontWeight: '600', color: COLORS.gray700, marginTop: SPACING.md, marginBottom: 6 },
   photo: { width: 110, height: 110, borderRadius: BORDER_RADIUS.sm, backgroundColor: COLORS.gray100 },
   photoChange: { color: COLORS.primary, fontSize: 13, fontWeight: '600', marginTop: 6 },

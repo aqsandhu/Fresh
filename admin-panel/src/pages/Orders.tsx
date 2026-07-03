@@ -34,8 +34,10 @@ import { Select } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Table } from '@/components/ui/Table';
+import { GoogleMarkerMap } from '@/components/ui/GoogleMarkerMap';
 import { orderService } from '@/services/order.service';
 import { riderService } from '@/services/rider.service';
+import { offSocketEvent, onSocketEvent } from '@/services/socket';
 import { ocpService } from '@/services/ocp.service';
 import { addressService } from '@/services/address.service';
 import { useNotifications } from '@/context/NotificationContext';
@@ -261,7 +263,7 @@ export const Orders: React.FC = () => {
   // Rider location tracking state
   const [trackingRiderId, setTrackingRiderId] = useState<string | null>(null);
   const [trackingRiderName, setTrackingRiderName] = useState('');
-  const [riderLocation, setRiderLocation] = useState<{ latitude: number | null; longitude: number | null; locationUpdatedAt: string | null } | null>(null);
+  const [riderLocation, setRiderLocation] = useState<{ latitude: number | null; longitude: number | null; accuracy?: number | null; locationUpdatedAt: string | null } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
 
   // Track order ids for list diff (reserved for future row highlights)
@@ -419,7 +421,7 @@ export const Orders: React.FC = () => {
     }
   };
 
-  // Auto-refresh rider location every 15 seconds
+  // Auto-refresh rider location every 5 seconds as a fallback to socket pushes.
   React.useEffect(() => {
     if (!trackingRiderId) return;
     const interval = setInterval(async () => {
@@ -427,8 +429,26 @@ export const Orders: React.FC = () => {
         const loc = await riderService.getRiderLocation(trackingRiderId);
         setRiderLocation(loc);
       } catch { /* silent */ }
-    }, 15000);
+    }, 5000);
     return () => clearInterval(interval);
+  }, [trackingRiderId]);
+
+  React.useEffect(() => {
+    if (!trackingRiderId) return;
+    const handleRiderLocation = (payload: any) => {
+      if (payload?.riderId !== trackingRiderId) return;
+      const latitude = Number(payload.latitude);
+      const longitude = Number(payload.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+      setRiderLocation({
+        latitude,
+        longitude,
+        accuracy: payload.accuracy ?? null,
+        locationUpdatedAt: payload.updatedAt || new Date().toISOString(),
+      });
+    };
+    onSocketEvent('rider:location', handleRiderLocation);
+    return () => offSocketEvent('rider:location', handleRiderLocation);
   }, [trackingRiderId]);
 
   const handleViewDetails = async (order: Order) => {
@@ -1543,14 +1563,12 @@ export const Orders: React.FC = () => {
         ) : riderLocation?.latitude && riderLocation?.longitude ? (
           <div className="space-y-4">
             <div className="rounded-lg overflow-hidden border" style={{ height: 400 }}>
-              <iframe
-                title="Rider Location"
-                width="100%"
-                height="100%"
-                frameBorder="0"
-                style={{ border: 0 }}
-                src={`https://www.openstreetmap.org/export/embed.html?bbox=${riderLocation.longitude - 0.005}%2C${riderLocation.latitude - 0.005}%2C${riderLocation.longitude + 0.005}%2C${riderLocation.latitude + 0.005}&layer=mapnik&marker=${riderLocation.latitude}%2C${riderLocation.longitude}`}
-                allowFullScreen
+              <GoogleMarkerMap
+                latitude={riderLocation.latitude}
+                longitude={riderLocation.longitude}
+                accuracy={riderLocation.accuracy ?? null}
+                popupHtml={`<b>${trackingRiderName || 'Rider'}</b><br/>${riderLocation.accuracy != null ? `Accuracy: +/-${riderLocation.accuracy.toFixed(1)} m` : ''}`}
+                height={400}
               />
             </div>
             <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
@@ -1558,6 +1576,9 @@ export const Orders: React.FC = () => {
                 <p className="font-medium">{trackingRiderName}</p>
                 <p className="text-gray-500">
                   Last updated: {riderLocation.locationUpdatedAt ? new Date(riderLocation.locationUpdatedAt).toLocaleTimeString() : 'N/A'}
+                  {riderLocation.accuracy != null && (
+                    <span> - Accuracy: +/-{riderLocation.accuracy.toFixed(1)} m</span>
+                  )}
                 </p>
               </div>
               <a

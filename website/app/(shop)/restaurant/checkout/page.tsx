@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { MapPin, CreditCard, Receipt, Loader2, ShoppingCart, UtensilsCrossed, Clock, Zap, Camera, X } from 'lucide-react'
+import { MapPin, CreditCard, Receipt, Loader2, ShoppingCart, UtensilsCrossed, Clock, Zap, Camera, X, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { formatPriceShort } from '@/lib/utils'
@@ -11,6 +11,13 @@ import { getRestaurantInfo, type RestaurantInfo } from '@/lib/restaurantSession'
 import { restaurantShopApi } from '@/lib/restaurantApi'
 import { useRestaurantCartStore } from '@/store/restaurantCartStore'
 import { getSlotAvailability } from '@/lib/timeSlots'
+import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
+import {
+  FALLBACK_LOCATION_ACCURACY_M,
+  REQUIRED_LOCATION_ACCURACY_M,
+  getAccuratePosition,
+} from '@/lib/geolocation'
+import GoogleMapPicker from '@/components/checkout/GoogleMapPicker'
 
 function localDateStr(day: 'today' | 'tomorrow'): string {
   const d = new Date()
@@ -52,6 +59,10 @@ export default function RestaurantCheckoutPage() {
   // Editable profile.
   const [address, setAddress] = useState('')
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null)
+  const [showMapPicker, setShowMapPicker] = useState(false)
+  const [isLocating, setIsLocating] = useState(false)
+  const [gpsStatus, setGpsStatus] = useState<string | null>(null)
   const [frontImageUrl, setFrontImageUrl] = useState<string | null>(null)
   const [uploadingImg, setUploadingImg] = useState(false)
 
@@ -109,19 +120,49 @@ export default function RestaurantCheckoutPage() {
 
   const total = Math.round((subtotal + deliveryCharge + Number.EPSILON) * 100) / 100
 
-  const pinLocation = () => {
+  const pinLocation = async () => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGpsStatus('GPS is not supported on this device')
       toast.error('Location not supported on this device')
       return
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        toast.success('Location pinned')
-      },
-      () => toast.error('Could not get your location'),
-      { enableHighAccuracy: true, timeout: 10000 }
-    )
+
+    setShowMapPicker(true)
+    setIsLocating(true)
+    setGpsStatus('Finding location...')
+    toast.loading(`Locking GPS (+/-${REQUIRED_LOCATION_ACCURACY_M}m)...`, { id: 'restaurant-gps' })
+
+    try {
+      const pos = await getAccuratePosition()
+      toast.dismiss('restaurant-gps')
+
+      if (pos) {
+        setCoords({ lat: pos.lat, lng: pos.lng })
+        setLocationAccuracy(pos.accuracy)
+        if (pos.tier === 'tight') {
+          setGpsStatus(`Location locked (+/-${Math.round(pos.accuracy)}m)`)
+          toast.success(`Location detected (+/-${Math.round(pos.accuracy)}m)`)
+        } else if (pos.tier === 'fallback') {
+          setGpsStatus(`Located +/-${Math.round(pos.accuracy)}m - adjust on map if needed`)
+          toast.success(`Located +/-${Math.round(pos.accuracy)}m`, { duration: 5000 })
+        } else {
+          setGpsStatus(`Approximate +/-${Math.round(pos.accuracy)}m - fine-tune on map`)
+          toast.success('Approximate location - adjust pin on map', { duration: 6000 })
+        }
+      } else {
+        setGpsStatus('GPS unavailable - pin manually on the map')
+        toast.error(
+          `Could not get GPS within ${FALLBACK_LOCATION_ACCURACY_M}m. Allow location permission or pin manually.`,
+          { duration: 6000 }
+        )
+      }
+    } catch {
+      toast.dismiss('restaurant-gps')
+      setGpsStatus('GPS failed - pin manually on the map')
+      toast.error('GPS failed. Try again or pin manually.')
+    } finally {
+      setIsLocating(false)
+    }
   }
 
   const onPickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -206,13 +247,92 @@ export default function RestaurantCheckoutPage() {
                 placeholder="Full delivery address"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
               />
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <Button type="button" variant="outline" size="sm" onClick={pinLocation}>
-                  <MapPin className="w-4 h-4 mr-1.5 inline" />
-                  {coords ? 'Update pin' : 'Pin location'}
-                </Button>
-                {coords && (
-                  <span className="text-xs text-gray-500">📍 {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</span>
+              <div className="mt-3">
+                {!showMapPicker && !coords && (
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowMapPicker(true)}
+                      className="flex-1"
+                    >
+                      <MapPin className="w-4 h-4 mr-1.5 inline" />
+                      Add Google Map Location
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={pinLocation}
+                      disabled={isLocating}
+                      className="flex-1"
+                    >
+                      {isLocating ? (
+                        <Loader2 className="w-4 h-4 mr-1.5 inline animate-spin" />
+                      ) : (
+                        <MapPin className="w-4 h-4 mr-1.5 inline" />
+                      )}
+                      {isLocating ? 'Getting location...' : 'Get My Location'}
+                    </Button>
+                  </div>
+                )}
+
+                {gpsStatus && (
+                  <p className={`mt-2 text-xs ${isLocating ? 'text-primary-600' : 'text-gray-600'}`}>
+                    {gpsStatus}
+                  </p>
+                )}
+
+                {coords && !showMapPicker && (
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+                    <Check className="h-5 w-5 shrink-0 text-green-600" />
+                    <span className="min-w-0 flex-1 text-sm text-green-700">
+                      Location pinned ({coords.lat.toFixed(5)}, {coords.lng.toFixed(5)})
+                      {locationAccuracy != null && (
+                        <span className="text-green-600"> +/-{Math.round(locationAccuracy)}m</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowMapPicker(true)}
+                      className="text-sm font-medium text-primary-600 hover:underline"
+                    >
+                      Change
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoords(null)
+                        setLocationAccuracy(null)
+                        setGpsStatus(null)
+                      }}
+                      className="text-sm font-medium text-red-500 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+
+                {showMapPicker && (
+                  <GoogleMapPicker
+                    lat={coords?.lat ?? DEFAULT_MAP_LAT}
+                    lng={coords?.lng ?? DEFAULT_MAP_LNG}
+                    accuracy={locationAccuracy}
+                    isLocating={isLocating}
+                    hasLocation={coords != null}
+                    onLatLngChange={(lat, lng) => {
+                      setCoords({ lat, lng })
+                      setLocationAccuracy(null)
+                    }}
+                    onGetLocation={pinLocation}
+                    onDone={() => setShowMapPicker(false)}
+                    onCancel={() => {
+                      setCoords(null)
+                      setLocationAccuracy(null)
+                      setGpsStatus(null)
+                      setShowMapPicker(false)
+                    }}
+                  />
                 )}
               </div>
 

@@ -142,7 +142,7 @@ export const adminRateLimiter: RateLimitRequestHandler = rateLimit({
 
 export const riderLocationRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 10 * 1000,
-  max: isDev ? 100 : 1,
+  max: isDev ? 100 : 4,
   skip: skipInDev,
   store: riderLocationRedisStore,
   message: {
