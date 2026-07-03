@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -20,6 +20,7 @@ export const RestaurantRegisterScreen: React.FC = () => {
   const [city, setCity] = useState<{ id: string; name: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     getStoredCity().then((c) => c && setCity({ id: c.id, name: c.name }));
@@ -53,6 +54,32 @@ export const RestaurantRegisterScreen: React.FC = () => {
     }
   };
 
+  const deleteSubmittedRequest = () => {
+    if (deleting) return;
+    Alert.alert(
+      'Delete restaurant request',
+      'This will permanently delete the restaurant request you just submitted and remove its contact details and PIN.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await restaurantApi.deleteAccountByPin(form.phone.trim(), form.pin);
+              Toast.show({ type: 'success', text1: 'Restaurant request deleted' });
+              navigation.replace('RestaurantLogin');
+            } catch (e: any) {
+              Toast.show({ type: 'error', text1: e?.message || 'Could not delete restaurant request' });
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   if (done) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -65,6 +92,16 @@ export const RestaurantRegisterScreen: React.FC = () => {
             24 گھنٹوں میں ہماری ٹیم آپ کی ریسٹورنٹ ریکوئسٹ کو ریویو کرے گی، اور آپ کو اُس ریویو کے متعلق واٹس ایپ یا کال کے ذریعے آگاہ کر دیا جائے گا۔
           </Text>
           <Button title="Back to Login" onPress={() => navigation.replace('RestaurantLogin')} style={{ marginTop: SPACING.lg }} />
+          <TouchableOpacity
+            style={[styles.deleteRequestBtn, deleting && styles.actionDisabled]}
+            onPress={deleteSubmittedRequest}
+            disabled={deleting}
+          >
+            <MaterialIcons name="delete-forever" size={18} color={COLORS.error} />
+            <Text style={styles.deleteRequestText}>
+              {deleting ? 'Deleting...' : 'Cancel and delete this request'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -137,6 +174,12 @@ const styles = StyleSheet.create({
   successIcon: { marginBottom: SPACING.md },
   successTitle: { fontSize: 20, fontWeight: '700', color: COLORS.gray900, marginBottom: SPACING.md },
   urduNote: { textAlign: 'right', writingDirection: 'rtl', lineHeight: 28, fontSize: 15, color: COLORS.gray700 },
+  deleteRequestBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginTop: SPACING.md, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md,
+  },
+  deleteRequestText: { color: COLORS.error, fontWeight: '700', fontSize: 14 },
+  actionDisabled: { opacity: 0.6 },
 });
 
 export default RestaurantRegisterScreen;

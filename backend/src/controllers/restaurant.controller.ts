@@ -4,7 +4,7 @@
 
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query } from '../config/database';
+import { query, withTransaction } from '../config/database';
 import { asyncHandler } from '../middleware';
 import {
   successResponse,
@@ -20,6 +20,83 @@ import { hasRestaurantsTable } from '../config/restaurantSchema';
 import logger from '../utils/logger';
 
 const PIN_BCRYPT_ROUNDS = 10;
+
+const DELETED_RESTAURANT_SNAPSHOT = {
+  business_name: 'Deleted Restaurant',
+  owner_name: null,
+  phone: null,
+  written_address: '',
+  city: '',
+  location: { latitude: null, longitude: null },
+  front_image_url: null,
+  is_restaurant: true,
+  deleted_account: true,
+};
+
+async function anonymizeRestaurantAccount(restaurantId: string): Promise<boolean> {
+  return withTransaction(async (client) => {
+    const frontImageCol = await client.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'restaurants'
+          AND column_name = 'front_image_url'
+        LIMIT 1`
+    );
+    const restaurantOrderCol = await client.query(
+      `SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'orders'
+          AND column_name = 'restaurant_id'
+        LIMIT 1`
+    );
+
+    const sets = [
+      `business_name = 'Deleted Restaurant'`,
+      `owner_name = NULL`,
+      `phone = 'del_' || SUBSTRING(REPLACE(id::text, '-', ''), 1, 12)`,
+      `pin_hash = 'deleted'`,
+      `email = NULL`,
+      `address = NULL`,
+      `city = NULL`,
+      `city_id = NULL`,
+      `location = NULL`,
+      `status = 'disabled'`,
+      `free_delivery_threshold = NULL`,
+      `delivery_base_charge = NULL`,
+      `admin_notes = NULL`,
+      `approved_by = NULL`,
+      `approved_at = NULL`,
+      `last_login_at = NULL`,
+      `deleted_at = NOW()`,
+      `updated_at = NOW()`,
+    ];
+
+    if ((frontImageCol.rowCount ?? 0) > 0) {
+      sets.push(`front_image_url = NULL`);
+    }
+
+    const result = await client.query(
+      `UPDATE restaurants
+          SET ${sets.join(', ')}
+        WHERE id = $1 AND deleted_at IS NULL
+        RETURNING id`,
+      [restaurantId]
+    );
+
+    if ((result.rowCount ?? 0) === 0) return false;
+
+    if ((restaurantOrderCol.rowCount ?? 0) > 0) {
+      await client.query(
+        `UPDATE orders
+            SET delivery_address_snapshot = $2::jsonb
+          WHERE restaurant_id = $1`,
+        [restaurantId, JSON.stringify(DELETED_RESTAURANT_SNAPSHOT)]
+      );
+    }
+
+    return true;
+  });
+}
 
 function publicRestaurant(r: any) {
   return {
@@ -220,4 +297,57 @@ export const getRestaurantMe = asyncHandler(async (req: Request, res: Response) 
   );
   if (!result.rows[0]) return unauthorizedResponse(res, 'Restaurant account not found');
   return successResponse(res, publicRestaurant(result.rows[0]), 'Restaurant profile');
+});
+
+/**
+ * POST /api/restaurant/delete-account
+ * Self-service deletion for an approved restaurant session. PII is removed from
+ * the account row and restaurant order snapshots are anonymized, while order
+ * financial records remain for bookkeeping.
+ */
+export const deleteRestaurantAccount = asyncHandler(async (req: Request, res: Response) => {
+  const deleted = await anonymizeRestaurantAccount(req.restaurant!.id);
+  if (!deleted) return unauthorizedResponse(res, 'Restaurant account not found');
+
+  logger.info('Restaurant account deleted (self-service)', { restaurantId: req.restaurant!.id });
+  return successResponse(res, null, 'Restaurant account has been deleted');
+});
+
+/**
+ * POST /api/restaurant/delete-account-by-pin
+ * Lets a pending restaurant request be deleted before it can log in. Also works
+ * for approved accounts when the owner prefers phone + PIN re-confirmation.
+ */
+export const deleteRestaurantAccountByPin = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await hasRestaurantsTable())) {
+    return errorResponse(res, 'Restaurant accounts are being set up. Please try again shortly.', 503);
+  }
+
+  const { pin } = req.body;
+  let normPhone: string;
+  try {
+    normPhone = normalizePhoneNumber(String(req.body.phone || ''));
+  } catch {
+    return errorResponse(res, 'Enter a valid phone number.', 400);
+  }
+
+  const result = await query(
+    `SELECT id, pin_hash FROM restaurants WHERE phone = $1 AND deleted_at IS NULL LIMIT 1`,
+    [normPhone]
+  );
+  const restaurant = result.rows[0];
+  if (!restaurant) {
+    return unauthorizedResponse(res, 'Invalid phone or PIN');
+  }
+
+  const valid = await bcrypt.compare(String(pin), restaurant.pin_hash);
+  if (!valid) {
+    return unauthorizedResponse(res, 'Invalid phone or PIN');
+  }
+
+  const deleted = await anonymizeRestaurantAccount(restaurant.id);
+  if (!deleted) return unauthorizedResponse(res, 'Restaurant account not found');
+
+  logger.info('Restaurant account deleted by phone/PIN', { restaurantId: restaurant.id });
+  return successResponse(res, null, 'Restaurant account/request has been deleted');
 });

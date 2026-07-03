@@ -519,6 +519,14 @@ export const restaurantSchemas = {
     }),
   }),
 
+  deleteAccountByPin: Joi.object({
+    phone: commonSchemas.phone.required(),
+    pin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+      'string.length': 'PIN must be exactly 4 digits',
+      'string.pattern.base': 'PIN must contain only digits (0-9)',
+    }),
+  }),
+
   placeOrder: Joi.object({
     items: Joi.array().items(
       Joi.object({

@@ -81,7 +81,7 @@ export const STATIC_PAGES: Record<StaticPageId, StaticPageContent> = {
       {
         title: 'Account Deletion',
         body:
-          'You can delete your account in Profile > Settings > Delete Account, or on the web at freshbazar.pk/delete-account. Name, phone, email, saved addresses, login credentials, and notification tokens are removed immediately.',
+          'Customers can delete their account in Profile > Settings > Delete Account, or on the web at freshbazar.pk/delete-account. Restaurants can delete an approved account from Restaurant Profile > Delete Restaurant Account, or delete a pending request from the restaurant login screen using phone + PIN. Name/business details, phone, email, saved addresses, login credentials, and notification tokens are removed immediately.',
       },
       {
         title: 'Data Retention',

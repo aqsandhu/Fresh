@@ -100,7 +100,15 @@ export const restaurantApi = {
   login: (phone: string, pin: string): Promise<{ token: string; restaurant: RestaurantInfo }> =>
     rfetch('/restaurant/login', { method: 'POST', body: JSON.stringify({ phone, pin }) }),
 
+  deleteAccountByPin: (phone: string, pin: string): Promise<void> =>
+    rfetch('/restaurant/delete-account-by-pin', {
+      method: 'POST',
+      body: JSON.stringify({ phone, pin }),
+    }),
+
   getMe: (): Promise<RestaurantInfo> => rfetch('/restaurant/me'),
+  deleteAccount: (): Promise<void> =>
+    rfetch('/restaurant/delete-account', { method: 'POST' }),
   getCategories: (): Promise<any[]> => rfetch('/restaurant/categories'),
   getProducts: (categoryId?: string): Promise<any[]> =>
     rfetch(`/restaurant/products${categoryId ? `?category=${encodeURIComponent(categoryId)}` : ''}`),

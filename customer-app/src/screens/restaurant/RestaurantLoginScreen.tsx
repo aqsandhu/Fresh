@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform,
+  KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -18,12 +18,22 @@ export const RestaurantLoginScreen: React.FC = () => {
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const validateCredentials = () => {
+    if (!/^(\+92|0)[0-9]{10}$/.test(phone.replace(/[^\d+]/g, ''))) {
+      Toast.show({ type: 'error', text1: 'Enter a valid phone number' });
+      return false;
+    }
+    if (!/^\d{4}$/.test(pin)) {
+      Toast.show({ type: 'error', text1: 'PIN must be 4 digits' });
+      return false;
+    }
+    return true;
+  };
 
   const submit = async () => {
-    if (!/^(\+92|0)[0-9]{10}$/.test(phone.replace(/[^\d+]/g, ''))) {
-      return Toast.show({ type: 'error', text1: 'Enter a valid phone number' });
-    }
-    if (!/^\d{4}$/.test(pin)) return Toast.show({ type: 'error', text1: 'PIN must be 4 digits' });
+    if (!validateCredentials()) return;
     setLoading(true);
     try {
       const { token, restaurant } = await restaurantApi.login(phone.trim(), pin);
@@ -35,6 +45,34 @@ export const RestaurantLoginScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteAccount = () => {
+    if (!validateCredentials() || deleting) return;
+    Alert.alert(
+      'Delete restaurant account',
+      'This will permanently delete this restaurant account or pending request. Business details, contact info, address, and PIN will be removed. Order records may be kept for bookkeeping but will no longer identify the restaurant.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await restaurantApi.deleteAccountByPin(phone.trim(), pin);
+              Toast.show({ type: 'success', text1: 'Restaurant account/request deleted' });
+              setPhone('');
+              setPin('');
+            } catch (e: any) {
+              Toast.show({ type: 'error', text1: e?.message || 'Could not delete restaurant account' });
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -84,6 +122,17 @@ export const RestaurantLoginScreen: React.FC = () => {
             <MaterialIcons name="store" size={20} color={COLORS.primary} />
             <Text style={styles.registerText}>Register as Restaurant</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.deleteBtn, (loading || deleting) && styles.actionDisabled]}
+            onPress={handleDeleteAccount}
+            disabled={loading || deleting}
+          >
+            <MaterialIcons name="delete-forever" size={20} color={COLORS.error} />
+            <Text style={styles.deleteText}>
+              {deleting ? 'Deleting...' : 'Delete restaurant account/request'}
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -121,6 +170,13 @@ const styles = StyleSheet.create({
     borderWidth: 2, borderColor: COLORS.primary, backgroundColor: COLORS.primaryLight || '#E8F5E9',
   },
   registerText: { fontSize: 16, fontWeight: '700', color: COLORS.primary },
+  deleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginTop: SPACING.md, paddingVertical: SPACING.md, borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1, borderColor: '#FECACA', backgroundColor: '#FEF2F2',
+  },
+  deleteText: { fontSize: 14, fontWeight: '700', color: COLORS.error },
+  actionDisabled: { opacity: 0.6 },
 });
 
 export default RestaurantLoginScreen;

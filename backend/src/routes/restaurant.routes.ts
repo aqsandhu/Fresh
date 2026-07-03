@@ -9,6 +9,8 @@ import { createRateLimiter } from '../middleware/rateLimiter';
 import { authenticateRestaurant } from '../middleware/restaurantAuth';
 import { uploadSingle } from '../middleware/upload';
 import {
+  deleteRestaurantAccount,
+  deleteRestaurantAccountByPin,
   registerRestaurant,
   loginRestaurant,
   getRestaurantMe,
@@ -39,9 +41,16 @@ const loginLimiter = createRateLimiter(
 
 router.post('/register', registerLimiter, validate(restaurantSchemas.register), registerRestaurant);
 router.post('/login', loginLimiter, validate(restaurantSchemas.login), loginRestaurant);
+router.post(
+  '/delete-account-by-pin',
+  loginLimiter,
+  validate(restaurantSchemas.deleteAccountByPin),
+  deleteRestaurantAccountByPin
+);
 
 // Restaurant-authed storefront + orders.
 router.get('/me', authenticateRestaurant, getRestaurantMe);
+router.post('/delete-account', authenticateRestaurant, deleteRestaurantAccount);
 router.get('/categories', authenticateRestaurant, getRestaurantCategories);
 router.get('/products', authenticateRestaurant, getRestaurantProducts);
 router.get('/delivery', authenticateRestaurant, getRestaurantDeliverySettings);

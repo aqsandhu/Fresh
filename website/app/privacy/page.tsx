@@ -82,6 +82,8 @@ const sections = [
     content: [
       'You can delete your account any time — in the app (Profile → Settings → Delete Account) or on the web at freshbazar.pk/delete-account',
       'Deletion immediately removes your name, phone number, email, saved addresses, login credentials, and notification tokens',
+      'Restaurant users can delete an approved restaurant account from Restaurant Profile > Delete Restaurant Account, or delete a pending restaurant request from the restaurant login screen using phone + PIN',
+      'Restaurant deletion removes business/contact details, address, storefront photo, and PIN; historical order records are retained only after the restaurant details are anonymized',
       'Order and payment records are retained for legal book-keeping but are fully anonymized — they no longer identify you',
       'You can also email privacy@freshbazar.pk to request deletion; requests are completed within 7 days',
     ],

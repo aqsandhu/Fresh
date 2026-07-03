@@ -52,6 +52,7 @@ export default function DeleteAccountPage() {
             <li>Your name, phone number, and email</li>
             <li>All saved delivery addresses</li>
             <li>Your login (PIN) and notification tokens</li>
+            <li>For restaurant accounts: business/contact details, address, storefront photo, and PIN</li>
           </ul>
           <p className="mt-3 text-sm text-gray-500">
             Order and payment records are kept for legal book-keeping, but they are
@@ -108,6 +109,11 @@ export default function DeleteAccountPage() {
               <li>
                 Or in the Fresh Bazar app: <span className="font-medium text-gray-800">
                 Profile → Settings → Delete Account</span>.
+              </li>
+              <li>
+                Restaurant users can delete an approved restaurant account in the Fresh Bazar app:
+                <span className="font-medium text-gray-800"> Profile &gt; Order as Restaurant &gt; Restaurant Profile &gt; Delete Restaurant Account</span>.
+                Pending restaurant requests can be deleted from the restaurant login screen using phone + PIN.
               </li>
               <li>
                 Or email us at{' '}

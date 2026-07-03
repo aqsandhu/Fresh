@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { Alert, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { getRestaurantInfo, clearRestaurantSession, type RestaurantInfo } from '@services/restaurant.service';
+import { getRestaurantInfo, clearRestaurantSession, restaurantApi, type RestaurantInfo } from '@services/restaurant.service';
 import { RestaurantTabBar } from './RestaurantTabBar';
+import Toast from 'react-native-toast-message';
 
 export const RestaurantProfileScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const [info, setInfo] = useState<RestaurantInfo | null>(null);
   const [ready, setReady] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     getRestaurantInfo().then((i) => {
@@ -28,6 +30,33 @@ export const RestaurantProfileScreen: React.FC = () => {
   const logout = async () => {
     await clearRestaurantSession();
     navigation.replace('RestaurantLogin');
+  };
+
+  const handleDeleteAccount = () => {
+    if (deleting) return;
+    Alert.alert(
+      'Delete restaurant account',
+      'This will permanently delete this restaurant account. Business details, contact info, address, storefront photo, and PIN will be removed. Order records may be kept for bookkeeping but will no longer identify the restaurant.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await restaurantApi.deleteAccount();
+              await clearRestaurantSession();
+              Toast.show({ type: 'success', text1: 'Restaurant account deleted' });
+              navigation.replace('RestaurantLogin');
+            } catch (e: any) {
+              Toast.show({ type: 'error', text1: e?.message || 'Could not delete restaurant account' });
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (!ready) return null;
@@ -61,6 +90,13 @@ export const RestaurantProfileScreen: React.FC = () => {
         <MenuItem icon="storefront" label="Browse catalog" onPress={() => navigation.navigate('RestaurantShop')} />
         <MenuItem icon="receipt-long" label="My orders" onPress={() => navigation.navigate('RestaurantOrders')} />
         <MenuItem icon="logout" label="Logout" danger onPress={logout} />
+        <MenuItem
+          icon="delete-forever"
+          label={deleting ? 'Deleting restaurant account...' : 'Delete Restaurant Account'}
+          danger
+          onPress={handleDeleteAccount}
+          disabled={deleting}
+        />
       </ScrollView>
 
       <RestaurantTabBar active="profile" />
@@ -77,9 +113,9 @@ function Line({ icon, text }: { icon: keyof typeof MaterialIcons.glyphMap; text:
   );
 }
 
-function MenuItem({ icon, label, onPress, danger }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; onPress: () => void; danger?: boolean }) {
+function MenuItem({ icon, label, onPress, danger, disabled }: { icon: keyof typeof MaterialIcons.glyphMap; label: string; onPress: () => void; danger?: boolean; disabled?: boolean }) {
   return (
-    <TouchableOpacity style={styles.menuItem} onPress={onPress}>
+    <TouchableOpacity style={[styles.menuItem, disabled && styles.menuItemDisabled]} onPress={onPress} disabled={disabled}>
       <MaterialIcons name={icon} size={20} color={danger ? COLORS.error : COLORS.primary} />
       <Text style={[styles.menuLabel, danger && { color: COLORS.error }]}>{label}</Text>
       <MaterialIcons name="chevron-right" size={20} color={COLORS.gray300} style={{ marginLeft: 'auto' }} />
@@ -106,6 +142,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.gray100, marginBottom: SPACING.sm,
   },
   menuLabel: { fontSize: 15, fontWeight: '600', color: COLORS.gray800 },
+  menuItemDisabled: { opacity: 0.6 },
 });
 
 export default RestaurantProfileScreen;
