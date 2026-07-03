@@ -3,9 +3,9 @@ import type { ExpoConfig, ConfigContext } from 'expo/config';
 // app.config.ts runs under Node (Expo CLI); Node globals/modules aren't in
 // the React Native tsconfig, so pull them in untyped.
 declare const __dirname: string;
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const fs = require('fs');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+ 
 const path = require('path');
 
 /** Same key as website (Maps JavaScript API + Maps SDK for Android/iOS). */

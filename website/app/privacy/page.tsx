@@ -1,7 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Shield, Lock, Eye, Database, Share2, Cookie } from 'lucide-react'
+import { Shield, Lock, Eye, Database, Share2, Cookie, MapPin, Camera, Trash2 } from 'lucide-react'
 
 const sections = [
   {
@@ -11,8 +12,27 @@ const sections = [
       'Personal information (name, phone number, email address)',
       'Delivery addresses and location data',
       'Order history and preferences',
-      'Payment information (processed securely through our payment partners)',
-      'Device information and browsing data',
+      'Payment information (orders are Cash on Delivery; no card details are stored)',
+      'Device information, push-notification tokens, and browsing data',
+    ],
+  },
+  {
+    icon: MapPin,
+    title: 'Location Data',
+    content: [
+      'Customer app / website: your location is used only while you are using the app, to place your delivery address accurately on the map — it is never collected in the background',
+      'Rider app (delivery staff only): while a rider is ON DUTY, their location is collected continuously — including in the background — so our dispatch team can monitor deliveries and customers can track their assigned order live',
+      'Rider tracking stops when the rider goes off duty or logs out',
+      'Location history is used for delivery operations only and is not sold or used for advertising',
+    ],
+  },
+  {
+    icon: Camera,
+    title: 'Camera & Photos',
+    content: [
+      'Customers may attach a photo of their door/gate so the rider can find the address — this is optional',
+      'Riders take a photo of the delivered order as proof of delivery',
+      'Photos are used only for the delivery they belong to and are stored securely',
     ],
   },
   {
@@ -56,6 +76,16 @@ const sections = [
       'Third-party analytics tools may use cookies',
     ],
   },
+  {
+    icon: Trash2,
+    title: 'Data Retention & Account Deletion',
+    content: [
+      'You can delete your account any time — in the app (Profile → Settings → Delete Account) or on the web at freshbazar.pk/delete-account',
+      'Deletion immediately removes your name, phone number, email, saved addresses, login credentials, and notification tokens',
+      'Order and payment records are retained for legal book-keeping but are fully anonymized — they no longer identify you',
+      'You can also email privacy@freshbazar.pk to request deletion; requests are completed within 7 days',
+    ],
+  },
 ]
 
 export default function PrivacyPage() {
@@ -77,7 +107,8 @@ export default function PrivacyPage() {
               Your privacy is important to us. Learn how we collect, use, and protect your personal information.
             </p>
             <p className="text-sm text-primary-200 mt-4">
-              Last Updated: January 2025
+              Last Updated: July 2026 · Applies to the Fresh Bazar website, the
+              Fresh Bazar customer app, and the Fresh Bazar Rider app
             </p>
           </motion.div>
         </div>
@@ -137,6 +168,12 @@ export default function PrivacyPage() {
                 <a href="tel:0300-1234567" className="text-primary-600 hover:underline">
                   0300-1234567
                 </a>
+              </p>
+              <p className="text-gray-600">
+                <span className="font-medium">Delete your account:</span>{' '}
+                <Link href="/delete-account" className="text-primary-600 hover:underline">
+                  freshbazar.pk/delete-account
+                </Link>
               </p>
             </div>
           </motion.div>

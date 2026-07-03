@@ -260,10 +260,24 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
             color={COLORS.info}
           />
 
+          {/* In-app privacy policy — store requirement for apps collecting
+              location/photos. */}
+          <ActionItem
+            icon="shield-lock-outline"
+            title={language === 'ur' ? 'پرائیویسی پالیسی' : 'Privacy Policy'}
+            subtitle={
+              language === 'ur'
+                ? 'ڈیٹا اور لوکیشن کا استعمال'
+                : 'How we use your data & location'
+            }
+            onPress={() => Linking.openURL('https://freshbazar.pk/privacy')}
+            color={COLORS.success}
+          />
+
           <ActionItem
             icon="information"
             title={language === 'ur' ? 'ایپ کے بارے میں' : 'About App'}
-            subtitle="Rider App v1.0.0"
+            subtitle="Fresh Bazar Rider v1.0.0"
             onPress={() => {}}
             color={COLORS.gray500}
           />

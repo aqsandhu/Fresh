@@ -12,8 +12,9 @@ let cached: WidgetPinNativeModule | null | undefined;
 function getModule(): WidgetPinNativeModule | null {
   if (cached !== undefined) return cached;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { requireNativeModule } = require('expo-modules-core');
+    // Via the `expo` package (re-export) — expo-doctor forbids depending on
+    // expo-modules-core directly.
+    const { requireNativeModule } = require('expo');
     cached = requireNativeModule('WidgetPin') as WidgetPinNativeModule;
   } catch {
     cached = null;

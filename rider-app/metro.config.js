@@ -1,33 +1,27 @@
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
-const config = getDefaultConfig(__dirname);
+const projectRoot = __dirname;
+const monorepoRoot = path.resolve(projectRoot, '..');
 
-// Fix module resolution
-config.resolver.sourceExts = ['jsx', 'js', 'ts', 'tsx', 'json', 'cjs', 'mjs'];
-config.resolver.assetExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ttf', 'otf'];
+const config = getDefaultConfig(projectRoot);
 
-// ============================================================================
-// Monorepo / Workspace support
-// ============================================================================
-// Metro does not follow symlinks in monorepos by default.
-// We add the shared packages to the watch folders and nodeModulesPaths.
+// Monorepo: ADD workspace folders to Expo's default watchFolders (replacing
+// them wholesale fails expo-doctor's Metro check) and resolve from app +
+// root node_modules. Expo's default sourceExts/assetExts already cover
+// everything this app uses (ts/tsx/cjs/mjs, svg/ttf/otf, ...); symlink
+// support is on by default in this Metro version.
+config.watchFolders = [
+  ...(config.watchFolders ?? []),
+  monorepoRoot,
+  path.resolve(monorepoRoot, 'packages'),
+];
 
 config.resolver.nodeModulesPaths = [
-  path.resolve(__dirname, 'node_modules'),
-  path.resolve(__dirname, '../node_modules'),
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(monorepoRoot, 'node_modules'),
 ];
 
-// Watch the shared packages for changes during development
-config.watchFolders = [
-  path.resolve(__dirname, '..'),
-  path.resolve(__dirname, '../packages'),
-];
-
-config.resolver.unstable_enableSymlinks = true;
 config.resolver.unstable_enablePackageExports = true;
-
-// Ensure symlinks are resolved properly
-config.resolver.disableHierarchicalLookup = false;
 
 module.exports = config;

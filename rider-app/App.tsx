@@ -2,7 +2,6 @@ import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AppNavigator from './src/navigation/AppNavigator';
-import { requestLocationPermissions } from './src/services/location.service';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { useAuthStore } from './src/store/authStore';
 
@@ -10,8 +9,10 @@ export default function App() {
   useEffect(() => {
     // Load the access token from SecureStore into memory on app start
     useAuthStore.getState().hydrateAuth();
-    // Request location permissions on app start
-    requestLocationPermissions();
+    // NOTE: location permission is deliberately NOT requested here. Play
+    // policy wants it in context — it's requested (after the prominent
+    // disclosure) when the rider goes ON DUTY (see AppNavigator/isOnline)
+    // or pins a delivery location.
   }, []);
 
   return (

@@ -13,7 +13,7 @@ import LoginScreen from '../screens/auth/LoginScreen';
 import DashboardScreen from '../screens/home/DashboardScreen';
 import TasksListScreen from '../screens/tasks/TasksListScreen';
 import TaskDetailScreen from '../screens/tasks/TaskDetailScreen';
-import ProfileScreen from '../screens/profile/ProfileScreen';
+import ProfileNavigator from './ProfileNavigator';
 
 // Types
 export type RootStackParamList = {
@@ -71,7 +71,9 @@ const MainTabNavigator = () => (
     />
     <Tab.Screen
       name="Profile"
-      component={ProfileScreen}
+      // Nested stack so Earnings/Settings actually resolve (the menu
+      // navigates to them; a bare ProfileScreen left those routes dead).
+      component={ProfileNavigator}
       options={{
         tabBarLabel: () => null,
         tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon name="P" focused={focused} />,

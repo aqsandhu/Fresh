@@ -65,11 +65,11 @@ export async function refreshWidgetConfig(): Promise<AppWidgetConfig> {
 async function redrawHomeScreenWidgets(config: AppWidgetConfig): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const { requestWidgetUpdate } = require('react-native-android-widget');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const React = require('react');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const { FreshBazarWidget } = require('../widgets/FreshBazarWidget');
     await requestWidgetUpdate({
       widgetName: WIDGET_NAME,
@@ -93,7 +93,7 @@ export async function requestAddWidget(): Promise<AddWidgetResult> {
   if (Platform.OS !== 'android') return 'unsupported';
   try {
     // Ensure the widget module exists in this build before offering the pin.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     require('react-native-android-widget');
   } catch {
     return 'unsupported';
