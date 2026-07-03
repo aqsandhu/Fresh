@@ -16,6 +16,7 @@
     ],
     "ios": {
       "supportsTablet": true,
+      "icon": "./assets/ios-icon.png",
       "bundleIdentifier": "com.freshbazar.customer",
       "config": {
         "usesNonExemptEncryption": false
@@ -43,7 +44,16 @@
       "infoPlist": {
         "NSCameraUsageDescription": "The camera is used to take a photo of your door so the rider can find your address easily.",
         "NSPhotoLibraryUsageDescription": "The photo library is used to attach a photo of your door so the rider can find your address easily.",
-        "NSLocationWhenInUseUsageDescription": "Your location is used to set your delivery address accurately on the map."
+        "NSLocationWhenInUseUsageDescription": "Your location is used to set your delivery address accurately on the map.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        }
       }
     },
     "android": {
@@ -52,6 +62,9 @@
         "backgroundColor": "#2E7D32"
       },
       "package": "com.freshbazar.customer",
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",

@@ -1,4 +1,5 @@
 import type { ExpoConfig, ConfigContext } from 'expo/config';
+import { ConfigPlugin, withInfoPlist } from 'expo/config-plugins';
 
 // app.config.ts runs under Node (Expo CLI); Node globals/modules aren't in
 // the React Native tsconfig, so pull them in untyped.
@@ -7,6 +8,15 @@ declare const __dirname: string;
 const fs = require('fs');
  
 const path = require('path');
+
+const withLocationOnlyBackgroundMode: ConfigPlugin = (config) =>
+  withInfoPlist(config, (plistConfig) => {
+    const modes = plistConfig.modResults.UIBackgroundModes;
+    if (Array.isArray(modes)) {
+      plistConfig.modResults.UIBackgroundModes = modes.filter((mode) => mode !== 'fetch');
+    }
+    return plistConfig;
+  });
 
 /** Same key family as the website/customer app (Maps SDK for Android/iOS). */
 function resolveGoogleMapsApiKey(): string {
@@ -25,7 +35,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const googleServicesFile = path.join(__dirname, 'google-services.json');
   const hasGoogleServices = fs.existsSync(googleServicesFile);
 
-  return {
+  return withLocationOnlyBackgroundMode({
     ...config,
     name: config.name ?? 'Fresh Bazar Rider',
     slug: config.slug ?? 'freshbazar-rider',
@@ -46,5 +56,5 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         googleMapsApiKey: googleMapsKey,
       },
     },
-  };
+  });
 };

@@ -51,22 +51,42 @@ export const STATIC_PAGES: Record<StaticPageId, StaticPageContent> = {
   },
   privacy: {
     title: 'Privacy Policy',
-    subtitle: 'How we handle your data',
+    subtitle: 'Last updated: July 2026',
     sections: [
       {
         title: 'Information We Collect',
         body:
-          'We collect your phone number, name, delivery addresses, order history, and optional email to provide grocery delivery services.',
+          'We collect your phone number, name, optional email, delivery addresses, order history, device information, and push-notification tokens to provide Fresh Bazar services.',
+      },
+      {
+        title: 'Location Data',
+        body:
+          'Your location is used only while you are using the app to place your delivery address accurately on the map. The customer app does not collect your location in the background.',
+      },
+      {
+        title: 'Camera & Photos',
+        body:
+          'You may optionally attach a door or gate photo so the rider can find your address. Photos are used only for the delivery they belong to.',
       },
       {
         title: 'How We Use Information',
         body:
-          'Your data is used to process orders, send delivery updates, improve our service, and communicate promotions if you opt in.',
+          'Your data is used to process orders, send delivery updates, improve our service, prevent fraud, and communicate promotions if you opt in.',
       },
       {
         title: 'Data Sharing',
         body:
           'We share delivery details with assigned riders only. We do not sell your personal information to third parties.',
+      },
+      {
+        title: 'Account Deletion',
+        body:
+          'You can delete your account in Profile > Settings > Delete Account, or on the web at freshbazar.pk/delete-account. Name, phone, email, saved addresses, login credentials, and notification tokens are removed immediately.',
+      },
+      {
+        title: 'Data Retention',
+        body:
+          'Order and payment records may be retained for legal book-keeping, but deleted accounts are anonymized so those records no longer identify you.',
       },
       {
         title: 'Security',
