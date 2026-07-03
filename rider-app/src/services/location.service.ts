@@ -9,8 +9,8 @@ const DISCLOSURE_ACCEPTED_KEY = 'fb_rider_location_disclosure_v1';
 
 // Accuracy thresholds (meters)
 const MAX_ACCURACY_FOR_TRACKING = 20;   // reject tracking updates worse than 20m
-const MAX_ACCURACY_FOR_PIN = 5;         // reject pin-locations worse than 5m
-const GPS_LOCK_TIMEOUT = 15000;         // max ms to wait for a good GPS fix
+export const MAX_ACCURACY_FOR_PIN = 8;  // reject pin-locations worse than 8m
+const GPS_LOCK_TIMEOUT = 60000;         // max ms to wait for a good GPS fix
 
 // Define background task — filters out low-accuracy readings
 TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
@@ -133,7 +133,7 @@ export const stopLocationTracking = async (): Promise<void> => {
 
 /**
  * Get a high-accuracy location by watching GPS until accuracy is good enough.
- * Falls back to the best reading obtained within the timeout period.
+ * Returns null if no reading meets the required accuracy within the timeout.
  */
 export const getAccurateLocation = (
   maxAccuracy: number = MAX_ACCURACY_FOR_PIN,
@@ -152,18 +152,22 @@ export const getAccurateLocation = (
       }
 
       let bestLocation: Location.LocationObject | null = null;
+      let sub: Location.LocationSubscription | null = null;
       let settled = false;
 
       const timer = setTimeout(() => {
         if (!settled) {
           settled = true;
           sub?.remove();
-          // Return best we got, even if not ideal
-          resolve(bestLocation);
+          resolve(
+            bestLocation && (bestLocation.coords.accuracy ?? 9999) <= maxAccuracy
+              ? bestLocation
+              : null
+          );
         }
       }, timeout);
 
-      const sub = await Location.watchPositionAsync(
+      const createdSub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.BestForNavigation,
           timeInterval: 1000,
@@ -182,11 +186,16 @@ export const getAccurateLocation = (
           if (acc <= maxAccuracy && !settled) {
             settled = true;
             clearTimeout(timer);
-            sub.remove();
+            sub?.remove();
             resolve(loc);
           }
         }
       );
+      if (settled) {
+        createdSub.remove();
+      } else {
+        sub = createdSub;
+      }
     } catch (error) {
       console.error('Error getting accurate location:', error);
       resolve(null);

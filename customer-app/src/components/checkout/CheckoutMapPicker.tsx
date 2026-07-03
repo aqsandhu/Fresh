@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MaterialIcons } from '@expo/vector-icons';
-import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
+import { COLORS, SPACING, BORDER_RADIUS, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
 
 const MAP_HEIGHT = 280;
@@ -47,6 +47,8 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
   const displayLng = safeCoord(lng, DEFAULT_MAP_LNG);
   const circleRadius =
     accuracy != null && accuracy > 0 ? Math.min(accuracy, 80) : null;
+  const accuracyOk =
+    typeof accuracy === 'number' && accuracy > 0 && accuracy <= REQUIRED_LOCATION_ACCURACY_M;
 
   useEffect(() => {
     mapRef.current?.animateToRegion(
@@ -117,10 +119,14 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
           Drag the red pin, tap the map, or use Get My Location. Fine-tune with lat/lng if needed.
         </Text>
         {isLocating && (
-          <Text style={styles.locatingText}>Getting GPS… up to ~12s for under 10m accuracy.</Text>
+          <Text style={styles.locatingText}>
+            Getting GPS... waiting for +/-{REQUIRED_LOCATION_ACCURACY_M}m accuracy.
+          </Text>
         )}
         {!isLocating && accuracy != null && accuracy > 0 && (
-          <Text style={styles.accuracyOk}>GPS accuracy: ±{Math.round(accuracy)}m</Text>
+          <Text style={accuracyOk ? styles.accuracyOk : styles.accuracyWarn}>
+            GPS accuracy: +/-{Math.round(accuracy)}m
+          </Text>
         )}
 
         <View style={styles.coordRow}>
@@ -166,7 +172,7 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
               <MaterialIcons name="my-location" size={16} color={COLORS.white} />
             )}
             <Text style={styles.gpsBtnText}>
-              {isLocating ? 'Getting location…' : 'Get My Location'}
+              {isLocating ? 'Getting location...' : 'Get My Location'}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.outlineBtn} onPress={onDone}>
@@ -209,6 +215,7 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: COLORS.gray500, lineHeight: 17 },
   locatingText: { fontSize: 12, color: COLORS.primary600 },
   accuracyOk: { fontSize: 12, color: '#15803d', fontWeight: '500' },
+  accuracyWarn: { fontSize: 12, color: '#b45309', fontWeight: '500' },
   coordRow: { flexDirection: 'row', gap: SPACING.md },
   coordField: { flex: 1 },
   coordLabel: { fontSize: 12, color: COLORS.gray500, marginBottom: 4 },

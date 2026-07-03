@@ -127,12 +127,14 @@ export const AddAddressScreen: React.FC = () => {
           );
         }
       } else {
+        setLocationAccuracy(null);
         Alert.alert(
-          'Location unavailable',
-          'Could not get GPS. Tap the map to set your pin or try again outdoors.'
+          'Location not accurate enough',
+          `Could not lock GPS within +/-${REQUIRED_LOCATION_ACCURACY_M}m. Move near a window/outdoors, try again, or adjust the pin manually.`
         );
       }
     } catch {
+      setLocationAccuracy(null);
       Alert.alert('Error', 'Failed to get location. Tap the map to set your pin.');
     } finally {
       setIsLocating(false);

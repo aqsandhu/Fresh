@@ -6,7 +6,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { ProfileStackParamList } from '@app-types';
-import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
+import { COLORS, SPACING, BORDER_RADIUS, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
 import { Button } from '@components';
 import { CheckoutMapPicker } from '@components/checkout/CheckoutMapPicker';
 import { getRestaurantInfo, restaurantApi, money, round2, type RestaurantInfo } from '@services/restaurant.service';
@@ -113,7 +113,15 @@ export const RestaurantCheckoutScreen: React.FC = () => {
       const pos = await getAccuratePosition((accuracy) => {
         setLocationAccuracy(Math.round(accuracy));
       });
-      if (!pos) { Toast.show({ type: 'error', text1: 'Location permission denied' }); return; }
+      if (!pos) {
+        setLocationAccuracy(null);
+        Toast.show({
+          type: 'error',
+          text1: 'Location not accurate enough',
+          text2: `Need GPS within +/-${REQUIRED_LOCATION_ACCURACY_M}m`,
+        });
+        return;
+      }
       setCoords({ lat: pos.lat, lng: pos.lng });
       setLocationAccuracy(Math.round(pos.accuracy));
       Toast.show({ type: 'success', text1: 'Location pinned' });

@@ -13,7 +13,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
-import { getAccurateLocation } from '../../services/location.service';
+import { getAccurateLocation, MAX_ACCURACY_FOR_PIN } from '../../services/location.service';
 import { useTaskStore } from '../../store/taskStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useAuthStore } from '../../store/authStore';
@@ -133,15 +133,15 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
         return;
       }
 
-      // Wait for GPS lock with ≤5m accuracy (up to 15s)
-      const location = await getAccurateLocation(5, 15000);
+      // Wait for GPS lock with required customer-pin accuracy.
+      const location = await getAccurateLocation(MAX_ACCURACY_FOR_PIN);
 
       if (!location) {
         Alert.alert(
           language === 'ur' ? 'GPS سگنل نہیں ملا' : 'No GPS Signal',
           language === 'ur'
             ? 'GPS سگنل نہیں مل سکا۔ کھلی جگہ میں جا کر دوبارہ کوشش کریں۔'
-            : 'Could not get GPS signal. Move to an open area and try again.'
+            : `Could not lock GPS within ${MAX_ACCURACY_FOR_PIN}m. Move to an open area and try again.`
         );
         setIsPinningLocation(false);
         return;

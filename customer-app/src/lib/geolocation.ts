@@ -10,7 +10,7 @@ export interface AccuratePositionWithTier {
   tier: LocationTier;
 }
 
-const REFINE_MS = 12_000;
+const REFINE_MS = 60_000;
 
 function toResult(loc: Location.LocationObject, tier: LocationTier): AccuratePositionWithTier {
   return {
@@ -21,15 +21,20 @@ function toResult(loc: Location.LocationObject, tier: LocationTier): AccuratePos
   };
 }
 
+function isAccurateEnough(loc: Location.LocationObject): boolean {
+  return (loc.coords.accuracy ?? 9999) <= REQUIRED_LOCATION_ACCURACY_M;
+}
+
 export type GetAccuratePositionOptions = {
   onProgress?: (accuracy: number) => void;
-  /** First fix for map — called once so the map updates immediately in Expo Go. */
+  /** Called when the best fix changes so the map can follow the GPS search. */
   onFix?: (fix: AccuratePositionWithTier) => void;
 };
 
 /**
- * Expo Go friendly: quick GPS first (map moves at once), then up to 12s refine for &lt;10m.
- * Always returns the best fix we got — never leaves the user with nothing.
+ * Keep refining GPS until the fix is accurate enough for a delivery pin.
+ * Approximate fixes update the map/progress only; they are not returned as
+ * locked locations.
  */
 export async function getAccuratePosition(
   onProgressOrOptions?: ((accuracy: number) => void) | GetAccuratePositionOptions
@@ -46,9 +51,17 @@ export async function getAccuratePosition(
 
   let best: Location.LocationObject | null = null;
 
+  const reportBest = (loc: Location.LocationObject) => {
+    const tier: LocationTier = isAccurateEnough(loc) ? 'tight' : 'approximate';
+    const result = toResult(loc, tier);
+    onProgress?.(result.accuracy);
+    onFix?.(result);
+    return result;
+  };
+
   try {
     best = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.High,
+      accuracy: Location.Accuracy.BestForNavigation,
       mayShowUserSettingsDialog: true,
     });
   } catch {
@@ -56,12 +69,8 @@ export async function getAccuratePosition(
   }
 
   if (best) {
-    const quick = toResult(best, 'approximate');
-    onProgress?.(quick.accuracy);
-    onFix?.(quick);
-    if (quick.accuracy < REQUIRED_LOCATION_ACCURACY_M) {
-      return { ...quick, tier: 'tight' };
-    }
+    const quick = reportBest(best);
+    if (quick.tier === 'tight') return quick;
   }
 
   const refined = await new Promise<AccuratePositionWithTier | null>((resolve) => {
@@ -69,58 +78,49 @@ export async function getAccuratePosition(
     let sub: Location.LocationSubscription | null = null;
     let done = false;
 
+    const cleanup = () => {
+      sub?.remove();
+      clearTimeout(timer);
+    };
+
     const finish = (hit: Location.LocationObject | null) => {
       if (done) return;
       done = true;
-      sub?.remove();
-      clearTimeout(timer);
-
-      const pick = hit ?? watchBest;
-      if (!pick) {
-        resolve(null);
-        return;
-      }
-
-      const acc = pick.coords.accuracy ?? 9999;
-      const tier: LocationTier = acc < REQUIRED_LOCATION_ACCURACY_M ? 'tight' : 'approximate';
-      resolve(toResult(pick, tier));
+      cleanup();
+      resolve(hit ? toResult(hit, 'tight') : null);
     };
 
-    const timer = setTimeout(() => finish(watchBest), REFINE_MS);
+    const timer = setTimeout(() => finish(null), REFINE_MS);
 
     Location.watchPositionAsync(
       {
-        accuracy: Location.Accuracy.High,
+        accuracy: Location.Accuracy.BestForNavigation,
         timeInterval: 1000,
-        distanceInterval: 1,
+        distanceInterval: 0,
       },
       (loc) => {
         const acc = loc.coords.accuracy ?? 9999;
-        if (!watchBest || acc < (watchBest.coords.accuracy ?? 9999)) {
+        const bestAcc = watchBest?.coords.accuracy ?? 9999;
+
+        if (acc < bestAcc) {
           watchBest = loc;
-          onProgress?.(acc);
+          reportBest(loc);
         }
-        if (acc < REQUIRED_LOCATION_ACCURACY_M) {
-          const result = toResult(loc, 'tight');
-          onFix?.(result);
+
+        if (acc <= REQUIRED_LOCATION_ACCURACY_M) {
           finish(loc);
         }
       }
     )
       .then((s) => {
-        sub = s;
+        if (done) {
+          s.remove();
+        } else {
+          sub = s;
+        }
       })
-      .catch(() => finish(watchBest));
+      .catch(() => finish(null));
   });
 
-  if (refined) {
-    onFix?.(refined);
-    return refined;
-  }
-
-  if (best) {
-    return toResult(best, 'approximate');
-  }
-
-  return null;
+  return refined;
 }
