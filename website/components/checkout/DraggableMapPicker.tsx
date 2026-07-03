@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { fetchGoogleMapsApiKey, loadGoogleMapsJs } from '@/lib/loadGoogleMaps'
+import GoogleEmbedMapPicker from './GoogleEmbedMapPicker'
 
 const MAP_ZOOM = 16
 
@@ -50,29 +51,19 @@ export default function DraggableMapPicker(props: DraggableMapPickerProps) {
   }, [])
 
   if (engine === 'loading') {
-    const boxHeight =
-      typeof props.height === 'number' ? `${props.height}px` : props.height || '280px'
     return (
-      <div
-        className="relative flex w-full items-center justify-center bg-[#e5e7eb]"
-        style={{ height: boxHeight }}
-      >
-        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      <div className="relative">
+        <GoogleEmbedMapPicker {...props} height={props.height ?? 280} />
+        <div className="pointer-events-none absolute right-3 top-3 z-20 flex items-center gap-2 rounded-full bg-white/95 px-3 py-1.5 text-xs font-medium text-gray-600 shadow-sm">
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary-600" />
+          Loading map
+        </div>
       </div>
     )
   }
 
   if (engine === 'unavailable') {
-    const boxHeight =
-      typeof props.height === 'number' ? `${props.height}px` : props.height || '280px'
-    return (
-      <div
-        className="relative flex w-full items-center justify-center bg-[#e5e7eb] px-4 text-center text-sm text-gray-600"
-        style={{ height: boxHeight }}
-      >
-        Google Maps could not load. Add a valid Maps JavaScript API key.
-      </div>
-    )
+    return <GoogleEmbedMapPicker {...props} height={props.height ?? 280} />
   }
 
   return <GoogleJsDraggableMap {...props} zoom={props.zoom ?? MAP_ZOOM} />
@@ -95,12 +86,23 @@ function GoogleJsDraggableMap({
   onChangeRef.current = onChange
 
   const [ready, setReady] = useState(false)
+  const [failed, setFailed] = useState(false)
 
   useEffect(() => {
     if (!containerRef.current) return
 
     let cancelled = false
     let resizeObserver: ResizeObserver | null = null
+    let initTimer: number | null = window.setTimeout(() => {
+      if (!cancelled) setFailed(true)
+    }, 12000)
+
+    const clearInitTimer = () => {
+      if (initTimer != null) {
+        clearTimeout(initTimer)
+        initTimer = null
+      }
+    }
 
     const reportChange = (nextLat: number, nextLng: number) => {
       lastReportedRef.current = { lat: nextLat, lng: nextLng }
@@ -111,6 +113,9 @@ function GoogleJsDraggableMap({
       try {
         const maps = await loadGoogleMapsJs()
         if (cancelled || !maps || !containerRef.current) return
+        if (typeof maps.Map !== 'function' || typeof maps.Marker !== 'function') {
+          throw new Error('Google Maps library is incomplete')
+        }
 
         const center = { lat, lng }
         const map = new maps.Map(containerRef.current, {
@@ -146,6 +151,7 @@ function GoogleJsDraggableMap({
 
         mapRef.current = map
         markerRef.current = marker
+        clearInitTimer()
         setReady(true)
 
         const invalidate = () => {
@@ -161,13 +167,17 @@ function GoogleJsDraggableMap({
           resizeObserver = new ResizeObserver(() => invalidate())
           resizeObserver.observe(containerRef.current)
         }
-      } catch {}
+      } catch {
+        clearInitTimer()
+        if (!cancelled) setFailed(true)
+      }
     }
 
     void init()
 
     return () => {
       cancelled = true
+      clearInitTimer()
       resizeObserver?.disconnect()
       circleRef.current?.setMap(null)
       circleRef.current = null
@@ -226,6 +236,19 @@ function GoogleJsDraggableMap({
   }, [accuracy, lat, lng])
 
   const boxHeight = typeof height === 'number' ? `${height}px` : height
+
+  if (failed) {
+    return (
+      <GoogleEmbedMapPicker
+        lat={lat}
+        lng={lng}
+        accuracy={accuracy}
+        height={height}
+        zoom={zoom}
+        onChange={onChange}
+      />
+    )
+  }
 
   return (
     <div className="relative w-full bg-[#e5e7eb]" style={{ height: boxHeight }}>

@@ -129,11 +129,19 @@ export default function RestaurantCheckoutPage() {
 
     setShowMapPicker(true)
     setIsLocating(true)
+    setLocationAccuracy(null)
     setGpsStatus('Finding location...')
     toast.loading(`Locking GPS (+/-${REQUIRED_LOCATION_ACCURACY_M}m)...`, { id: 'restaurant-gps' })
 
     try {
-      const pos = await getAccuratePosition()
+      const pos = await getAccuratePosition({
+        onProgress: (best) => {
+          setCoords({ lat: best.lat, lng: best.lng })
+          setGpsStatus(
+            `Searching... best +/-${Math.round(best.accuracy)}m, need +/-${REQUIRED_LOCATION_ACCURACY_M}m`
+          )
+        },
+      })
       toast.dismiss('restaurant-gps')
 
       if (pos) {
@@ -150,6 +158,7 @@ export default function RestaurantCheckoutPage() {
           toast.success('Approximate location - adjust pin on map', { duration: 6000 })
         }
       } else {
+        setLocationAccuracy(null)
         setGpsStatus('GPS unavailable - pin manually on the map')
         toast.error(
           `Could not get GPS within ${FALLBACK_LOCATION_ACCURACY_M}m. Allow location permission or pin manually.`,

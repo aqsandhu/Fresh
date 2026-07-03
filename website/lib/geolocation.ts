@@ -1,7 +1,8 @@
-/** Tighter target — we try this first. */
-export const REQUIRED_LOCATION_ACCURACY_M = 5
-/** Looser fallback — accepted after the tighter target fails. */
-export const FALLBACK_LOCATION_ACCURACY_M = 8
+/** Delivery pins should only auto-lock when the browser reports this accuracy or better. */
+export const REQUIRED_LOCATION_ACCURACY_M = 20
+/** Kept for existing UI messages; same cap as the required delivery accuracy. */
+export const FALLBACK_LOCATION_ACCURACY_M = REQUIRED_LOCATION_ACCURACY_M
+export const LOCATION_SEARCH_TIMEOUT_MS = 60000
 
 export interface AccuratePosition {
   lat: number
@@ -15,9 +16,15 @@ export interface AccuratePositionWithTier extends AccuratePosition {
   tier: LocationTier
 }
 
+interface AccuratePositionOptions {
+  timeoutMs?: number
+  onProgress?: (best: AccuratePosition) => void
+}
+
 function watchForAccuratePosition(
   maxAccuracyM: number,
-  timeoutMs: number
+  timeoutMs: number,
+  onProgress?: (best: AccuratePosition) => void
 ): Promise<AccuratePosition | null> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
     return Promise.resolve(null)
@@ -63,6 +70,11 @@ function watchForAccuratePosition(
         const acc = pos.coords.accuracy ?? 9999
         if (!best || acc < (best.coords.accuracy ?? 9999)) {
           best = pos
+          onProgress?.({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: acc,
+          })
         }
         if (acc <= maxAccuracyM) {
           finish(pos)
@@ -74,43 +86,24 @@ function watchForAccuratePosition(
   })
 }
 
-/** One quick read — used to return an approximate pin when strict watches fail. */
-function getCurrentPositionOnce(timeoutMs: number): Promise<GeolocationPosition | null> {
-  return new Promise((resolve) => {
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      resolve(null)
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => resolve(pos),
-      () => resolve(null),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: timeoutMs }
-    )
-  })
-}
-
 /**
- * Try ±5m (12s), then ±8m (8s). If both fail, return the best approximate fix
- * so the user can drag/adjust on the map — no live map updates during watch.
+ * Keep the GPS watch open until the browser reports a delivery-grade fix.
+ * Positions worse than the required accuracy are surfaced only as progress,
+ * never as a locked location.
  */
-export async function getAccuratePosition(): Promise<AccuratePositionWithTier | null> {
+export async function getAccuratePosition(
+  options: AccuratePositionOptions = {}
+): Promise<AccuratePositionWithTier | null> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
     return null
   }
 
-  const tight = await watchForAccuratePosition(REQUIRED_LOCATION_ACCURACY_M, 12000)
-  if (tight) return { ...tight, tier: 'tight' }
+  const locked = await watchForAccuratePosition(
+    REQUIRED_LOCATION_ACCURACY_M,
+    options.timeoutMs ?? LOCATION_SEARCH_TIMEOUT_MS,
+    options.onProgress
+  )
+  if (!locked) return null
 
-  const fallback = await watchForAccuratePosition(FALLBACK_LOCATION_ACCURACY_M, 8000)
-  if (fallback) return { ...fallback, tier: 'fallback' }
-
-  const approx = await getCurrentPositionOnce(6000)
-  if (!approx) return null
-
-  return {
-    lat: approx.coords.latitude,
-    lng: approx.coords.longitude,
-    accuracy: approx.coords.accuracy ?? 9999,
-    tier: 'approximate',
-  }
+  return { ...locked, tier: 'tight' }
 }

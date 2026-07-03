@@ -151,11 +151,19 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 
     setShowMapPicker(true)
     setIsLocating(true)
-    setGpsStatus('Finding location…')
-    toast.loading(`Locking GPS (±${REQUIRED_LOCATION_ACCURACY_M}m)…`, { id: 'gps' })
+    setMapAccuracy(null)
+    setGpsStatus(`Finding accurate location (need +/-${REQUIRED_LOCATION_ACCURACY_M}m)...`)
+    toast.loading(`Locking GPS (need +/-${REQUIRED_LOCATION_ACCURACY_M}m)...`, { id: 'gps' })
 
     try {
-      const pos = await getAccuratePosition()
+      const pos = await getAccuratePosition({
+        onProgress: (best) => {
+          setMapLocation({ lat: best.lat, lng: best.lng })
+          setGpsStatus(
+            `Searching... best +/-${Math.round(best.accuracy)}m, need +/-${REQUIRED_LOCATION_ACCURACY_M}m`
+          )
+        },
+      })
       toast.dismiss('gps')
 
       if (pos) {
@@ -172,15 +180,19 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
           toast.success(`Approximate location — adjust pin on map`, { duration: 6000 })
         }
       } else {
-        setGpsStatus('GPS unavailable — enter coordinates or try again outdoors')
+        setMapAccuracy(null)
+        setGpsStatus(
+          `GPS is not accurate enough yet. Need +/-${REQUIRED_LOCATION_ACCURACY_M}m - try near a window/outdoors or pin manually.`
+        )
         toast.error(
-          `Could not get GPS within ${FALLBACK_LOCATION_ACCURACY_M}m. Allow location permission or pin manually.`,
+          `Could not lock GPS within +/-${FALLBACK_LOCATION_ACCURACY_M}m. Try again or pin manually.`,
           { duration: 6000 }
         )
       }
     } catch {
       toast.dismiss('gps')
-      setGpsStatus('GPS failed — enter coordinates manually')
+      setMapAccuracy(null)
+      setGpsStatus('GPS failed - pin manually on the map')
       toast.error('GPS failed. Enter lat/lng or try again.')
     } finally {
       setIsLocating(false)

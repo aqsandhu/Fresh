@@ -1,6 +1,7 @@
 'use client'
 
 import { Loader2, MapPin } from 'lucide-react'
+import { REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
 import DraggableMapPicker from './DraggableMapPicker'
 
@@ -19,7 +20,7 @@ interface GoogleMapPickerProps {
 }
 
 /**
- * Checkout map picker — layout and copy match customer-app CheckoutMapPicker.
+ * Checkout map picker - layout and copy match customer-app CheckoutMapPicker.
  */
 export default function GoogleMapPicker({
   lat,
@@ -32,6 +33,9 @@ export default function GoogleMapPicker({
   onCancel,
   hasLocation,
 }: GoogleMapPickerProps) {
+  const accuracyOk =
+    typeof accuracy === 'number' && accuracy > 0 && accuracy <= REQUIRED_LOCATION_ACCURACY_M
+
   return (
     <div className="mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white">
       <DraggableMapPicker
@@ -49,13 +53,13 @@ export default function GoogleMapPicker({
 
         {isLocating && (
           <p className="text-xs text-primary-600">
-            Getting GPS… up to ~12s for under 10m accuracy.
+            Getting GPS... waiting for +/-{REQUIRED_LOCATION_ACCURACY_M}m accuracy.
           </p>
         )}
 
         {!isLocating && accuracy != null && accuracy > 0 && (
-          <p className="text-xs font-medium text-green-700">
-            GPS accuracy: ±{Math.round(accuracy)}m
+          <p className={`text-xs font-medium ${accuracyOk ? 'text-green-700' : 'text-amber-700'}`}>
+            GPS accuracy: +/-{Math.round(accuracy)}m
           </p>
         )}
 
@@ -102,7 +106,7 @@ export default function GoogleMapPicker({
             ) : (
               <MapPin className="h-4 w-4" />
             )}
-            {isLocating ? 'Getting location…' : 'Get My Location'}
+            {isLocating ? 'Getting location...' : 'Get My Location'}
           </button>
 
           <button
