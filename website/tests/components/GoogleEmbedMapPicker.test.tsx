@@ -28,9 +28,10 @@ function getOverlay(container: HTMLElement): HTMLElement {
 }
 
 describe('GoogleEmbedMapPicker (keyless fallback)', () => {
-  it('renders the map and zoom controls', () => {
+  it('renders a double-buffered map and zoom controls', () => {
     render(<GoogleEmbedMapPicker lat={32.5742} lng={74.0789} onChange={jest.fn()} />)
-    expect(screen.getByTitle('Google Maps')).toBeInTheDocument()
+    // Two iframes = the buffer that lets the settle cross-fade without a flash.
+    expect(screen.getAllByTitle('Google Maps')).toHaveLength(2)
     expect(screen.getByLabelText('Zoom in')).toBeInTheDocument()
     expect(screen.getByLabelText('Zoom out')).toBeInTheDocument()
   })
