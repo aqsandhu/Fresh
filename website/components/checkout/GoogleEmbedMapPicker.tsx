@@ -19,9 +19,6 @@ const EPS = 1e-6
 const OVERSCALE = 2.4
 /** Reload to re-centre once a drag uses this fraction of the available margin. */
 const MARGIN_USE_BEFORE_RELOAD = 0.82
-/** Instant visual feedback while the new zoom level's tiles load. */
-const ZOOM_IN_HINT = 1.18
-const ZOOM_OUT_HINT = 0.84
 
 interface View {
   lat: number
@@ -44,10 +41,12 @@ interface GoogleEmbedMapPickerProps {
  * zoomed programmatically without reloading, which is why a naive "reload on
  * every drag" picker stutters. This makes it feel like a real slippy map:
  *
- *  - The pin is fixed at the centre and IS the selected location (Uber-style).
- *  - Dragging pans an over-sized iframe via CSS transform — no reload mid-drag,
- *    and small pin adjustments never reload at all.
- *  - Zoom buttons give an instant scale hint, then settle onto real tiles.
+ *  - The pin is fixed at the centre and IS the selected location (Uber-style);
+ *    the embed URL drops no marker of its own, so there is only one pin.
+ *  - Dragging pans an over-sized iframe via CSS transform — no reload mid-drag.
+ *  - Two-finger pinch scales the iframe live, then settles on the nearest real
+ *    zoom level; the +/- buttons do the same in one step.
+ *  - Tiles are hybrid satellite (imagery + labels), set in `googleMapsEmbedUrl`.
  */
 export default function GoogleEmbedMapPicker({
   lat,
@@ -59,10 +58,11 @@ export default function GoogleEmbedMapPicker({
 }: GoogleEmbedMapPickerProps) {
   // `view` is the centre/zoom the iframe currently renders; `pan` is how far it
   // is dragged away from that centre. The pin (container centre) therefore points
-  // to `view` shifted by -pan.
+  // to `view` shifted by -pan. `zoomHint` is a live scale during pinch/button zoom.
   const [view, setView] = useState<View>({ lat, lng, zoom })
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [zoomHint, setZoomHint] = useState(1)
+  const [interacting, setInteracting] = useState(false)
   const [size, setSize] = useState({ w: 320, h: typeof height === 'number' ? height : 280 })
 
   const viewRef = useRef(view)
@@ -75,6 +75,8 @@ export default function GoogleEmbedMapPicker({
   const wrapRef = useRef<HTMLDivElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef({ startX: 0, startY: 0, baseX: 0, baseY: 0, active: false })
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  const pinchRef = useRef({ startDist: 0, lastRatio: 1, active: false })
   const zoomResetRef = useRef(false)
 
   // Track the real container size so the drag margin is accurate.
@@ -101,19 +103,38 @@ export default function GoogleEmbedMapPicker({
     y: ((OVERSCALE - 1) / 2) * sizeRef.current.h * MARGIN_USE_BEFORE_RELOAD,
   })
 
+  const twoPointerDist = (): number => {
+    const pts = Array.from(pointersRef.current.values())
+    if (pts.length < 2) return 0
+    return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
+  }
+
+  const commitZoom = (nextZoom: number) => {
+    const v = viewRef.current
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom))
+    if (clamped === v.zoom) {
+      setZoomHint(1)
+      return
+    }
+    const pin = pinLocation()
+    zoomResetRef.current = true
+    setView({ lat: pin.lat, lng: pin.lng, zoom: clamped })
+    setPan({ x: 0, y: 0 })
+  }
+
   // Follow external location changes (Get My Location, manual lat/lng). If the
   // new point is within the drag margin we just slide via transform (smooth);
   // otherwise we re-centre the iframe on it.
   useEffect(() => {
-    if (dragRef.current.active) return
+    if (dragRef.current.active || pinchRef.current.active) return
     const pin = pinLocation()
     if (Math.abs(pin.lat - lat) < EPS && Math.abs(pin.lng - lng) < EPS) return
 
     const v = viewRef.current
     const scale = 256 * Math.pow(2, v.zoom)
     const latRad = (v.lat * Math.PI) / 180
-    const dxPx = ((lng - v.lng) / (360 / scale / Math.cos(latRad)))
-    const dyPx = (-(lat - v.lat) / (360 / scale))
+    const dxPx = (lng - v.lng) / (360 / scale / Math.cos(latRad))
+    const dyPx = -(lat - v.lat) / (360 / scale)
     const m = margin()
 
     if (Math.abs(dxPx) <= m.x && Math.abs(dyPx) <= m.y) {
@@ -127,6 +148,15 @@ export default function GoogleEmbedMapPicker({
 
   const onPointerDown = (e: React.PointerEvent) => {
     overlayRef.current?.setPointerCapture(e.pointerId)
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    setInteracting(true)
+
+    if (pointersRef.current.size >= 2) {
+      // Second finger down → pinch; stop panning.
+      dragRef.current.active = false
+      pinchRef.current = { startDist: twoPointerDist() || 1, lastRatio: 1, active: true }
+      return
+    }
     dragRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -137,18 +167,46 @@ export default function GoogleEmbedMapPicker({
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
-    const d = dragRef.current
-    if (!d.active) return
-    setPan({ x: d.baseX + (e.clientX - d.startX), y: d.baseY + (e.clientY - d.startY) })
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    }
+
+    if (pinchRef.current.active && pointersRef.current.size >= 2) {
+      const d = twoPointerDist()
+      if (d > 0) {
+        const ratio = Math.min(2.6, Math.max(0.38, d / pinchRef.current.startDist))
+        pinchRef.current.lastRatio = ratio
+        setZoomHint(ratio) // live scale; settles onto a real zoom level on release
+      }
+      return
+    }
+
+    const dd = dragRef.current
+    if (!dd.active) return
+    setPan({ x: dd.baseX + (e.clientX - dd.startX), y: dd.baseY + (e.clientY - dd.startY) })
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
-    const d = dragRef.current
     overlayRef.current?.releasePointerCapture(e.pointerId)
+    pointersRef.current.delete(e.pointerId)
+    if (pointersRef.current.size === 0) setInteracting(false)
+
+    if (pinchRef.current.active) {
+      if (pointersRef.current.size < 2) {
+        const ratio = pinchRef.current.lastRatio
+        pinchRef.current = { startDist: 0, lastRatio: 1, active: false }
+        dragRef.current.active = false
+        commitZoom(viewRef.current.zoom + Math.round(Math.log2(ratio)))
+      }
+      return
+    }
+
+    const d = dragRef.current
     if (!d.active) return
     d.active = false
 
-    const moved = Math.abs(panRef.current.x - d.baseX) >= 1 || Math.abs(panRef.current.y - d.baseY) >= 1
+    const moved =
+      Math.abs(panRef.current.x - d.baseX) >= 1 || Math.abs(panRef.current.y - d.baseY) >= 1
     if (!moved) return
 
     const pin = pinLocation()
@@ -162,19 +220,6 @@ export default function GoogleEmbedMapPicker({
       setView({ lat: pin.lat, lng: pin.lng, zoom: viewRef.current.zoom })
       setPan({ x: 0, y: 0 })
     }
-  }
-
-  const changeZoom = (delta: number) => {
-    const v = viewRef.current
-    const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.zoom + delta))
-    if (nextZoom === v.zoom) return
-    const pin = pinLocation()
-    // Instant scale hint, then load the real tiles for the new zoom centred on
-    // the pin; onLoad clears the hint.
-    setZoomHint(delta > 0 ? ZOOM_IN_HINT : ZOOM_OUT_HINT)
-    zoomResetRef.current = true
-    setView({ lat: pin.lat, lng: pin.lng, zoom: nextZoom })
-    setPan({ x: 0, y: 0 })
   }
 
   const handleLoaded = () => {
@@ -211,7 +256,8 @@ export default function GoogleEmbedMapPicker({
           left: inset,
           top: inset,
           transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoomHint})`,
-          transition: zoomHint === 1 ? 'transform 120ms ease-out' : 'transform 90ms ease-out',
+          // No easing while fingers are down (1:1 tracking); ease only when settling.
+          transition: interacting ? 'none' : 'transform 140ms ease-out',
           willChange: 'transform',
         }}
       />
@@ -227,7 +273,7 @@ export default function GoogleEmbedMapPicker({
 
       {accuracyDiameterPx > 4 && (
         <div
-          className="pointer-events-none absolute left-1/2 top-1/2 z-[11] -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-500/85 bg-emerald-500/15"
+          className="pointer-events-none absolute left-1/2 top-1/2 z-[11] -translate-x-1/2 -translate-y-1/2 rounded-full border border-emerald-400/90 bg-emerald-400/20"
           style={{
             width: accuracyDiameterPx,
             height: accuracyDiameterPx,
@@ -235,7 +281,7 @@ export default function GoogleEmbedMapPicker({
         />
       )}
 
-      {/* Red pin — fixed at centre; represents the selected location */}
+      {/* Red pin — the only marker; fixed at centre = the selected location */}
       <div className="pointer-events-none absolute left-1/2 top-1/2 z-[12] -translate-x-1/2 -translate-y-full">
         <svg width="28" height="36" viewBox="0 0 28 36" aria-hidden>
           <path
@@ -248,12 +294,12 @@ export default function GoogleEmbedMapPicker({
         </svg>
       </div>
 
-      {/* Zoom controls — the keyless embed can't pinch-zoom, so drive it with buttons */}
+      {/* Zoom controls — pinch works too; buttons are the discrete equivalent */}
       <div className="absolute right-3 top-3 z-20 flex flex-col overflow-hidden rounded-lg border border-gray-300 bg-white shadow-sm">
         <button
           type="button"
           aria-label="Zoom in"
-          onClick={() => changeZoom(1)}
+          onClick={() => commitZoom(viewRef.current.zoom + 1)}
           className="flex h-9 w-9 items-center justify-center text-gray-700 transition-colors hover:bg-gray-100 active:bg-gray-200"
         >
           <Plus className="h-4 w-4" />
@@ -262,7 +308,7 @@ export default function GoogleEmbedMapPicker({
         <button
           type="button"
           aria-label="Zoom out"
-          onClick={() => changeZoom(-1)}
+          onClick={() => commitZoom(viewRef.current.zoom - 1)}
           className="flex h-9 w-9 items-center justify-center text-gray-700 transition-colors hover:bg-gray-100 active:bg-gray-200"
         >
           <Minus className="h-4 w-4" />

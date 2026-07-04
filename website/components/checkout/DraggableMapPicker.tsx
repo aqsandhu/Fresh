@@ -137,7 +137,9 @@ function GoogleJsDraggableMap({
         const map = new maps.Map(containerRef.current, {
           center,
           zoom,
-          mapTypeId: 'roadmap',
+          // Hybrid = satellite imagery with street/place labels; `greedy`
+          // gesture handling gives native one-finger pan and smooth pinch-zoom.
+          mapTypeId: 'hybrid',
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,

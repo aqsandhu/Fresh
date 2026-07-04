@@ -87,6 +87,7 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
+          mapType="hybrid"
           style={styles.map}
           initialRegion={{
             latitude: displayLat,

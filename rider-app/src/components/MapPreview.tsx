@@ -44,6 +44,7 @@ const MapPreview: React.FC<MapPreviewProps> = ({
     >
       <MapView
         provider={PROVIDER_GOOGLE}
+        mapType="hybrid"
         style={styles.map}
         initialRegion={initialRegion}
         scrollEnabled={interactive}

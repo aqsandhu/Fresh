@@ -22,6 +22,8 @@ export function metersPerPixel(lat: number, zoom: number): number {
 }
 
 export function googleMapsEmbedUrl(lat: number, lng: number, zoom: number): string {
-  const q = `${lat},${lng}`
-  return `https://maps.google.com/maps?q=${encodeURIComponent(q)}&ll=${encodeURIComponent(q)}&z=${zoom}&output=embed`
+  const ll = `${lat},${lng}`
+  // `ll` (not `q`) centres the map WITHOUT dropping Google's own marker, so only
+  // our single centre pin shows. `t=h` = hybrid (satellite imagery + labels).
+  return `https://maps.google.com/maps?ll=${encodeURIComponent(ll)}&z=${zoom}&t=h&output=embed`
 }

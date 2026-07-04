@@ -237,6 +237,7 @@ export const TrackOrderScreen: React.FC = () => {
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
+            mapType="hybrid"
             style={styles.map}
             initialRegion={{
               latitude: (riderLocation.latitude + deliveryLocation.latitude) / 2,

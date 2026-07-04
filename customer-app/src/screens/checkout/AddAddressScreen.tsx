@@ -355,6 +355,7 @@ export const AddAddressScreen: React.FC = () => {
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
+            mapType="hybrid"
             style={styles.map}
             initialRegion={region}
             onPress={handleLocationSelect}
