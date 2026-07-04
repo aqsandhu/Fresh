@@ -16,7 +16,7 @@ const EPS = 1e-6
  * completely smooth. We only reload the iframe when the drag would run past the
  * margin, or on zoom / an external jump (Get My Location).
  */
-const OVERSCALE = 2.4
+const OVERSCALE = 1.8
 /** Reload to re-centre once a drag uses this fraction of the available margin. */
 const MARGIN_USE_BEFORE_RELOAD = 0.82
 
