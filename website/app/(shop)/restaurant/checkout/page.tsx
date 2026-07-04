@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MapPin, CreditCard, Receipt, Loader2, ShoppingCart, UtensilsCrossed, Clock, Zap, Camera, X, Check } from 'lucide-react'
@@ -12,11 +12,7 @@ import { restaurantShopApi } from '@/lib/restaurantApi'
 import { useRestaurantCartStore } from '@/store/restaurantCartStore'
 import { getSlotAvailability } from '@/lib/timeSlots'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
-import {
-  FALLBACK_LOCATION_ACCURACY_M,
-  REQUIRED_LOCATION_ACCURACY_M,
-  getAccuratePosition,
-} from '@/lib/geolocation'
+import { REQUIRED_LOCATION_ACCURACY_M, getAccuratePosition } from '@/lib/geolocation'
 import GoogleMapPicker from '@/components/checkout/GoogleMapPicker'
 
 function localDateStr(day: 'today' | 'tomorrow'): string {
@@ -63,8 +59,12 @@ export default function RestaurantCheckoutPage() {
   const [showMapPicker, setShowMapPicker] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [gpsStatus, setGpsStatus] = useState<string | null>(null)
+  const gpsAbortRef = useRef<AbortController | null>(null)
   const [frontImageUrl, setFrontImageUrl] = useState<string | null>(null)
   const [uploadingImg, setUploadingImg] = useState(false)
+
+  // Stop an in-flight GPS search when the page unmounts.
+  useEffect(() => () => gpsAbortRef.current?.abort(), [])
 
   const { items, getSubtotal, clearCart } = useRestaurantCartStore()
   const subtotal = getSubtotal()
@@ -121,11 +121,20 @@ export default function RestaurantCheckoutPage() {
   const total = Math.round((subtotal + deliveryCharge + Number.EPSILON) * 100) / 100
 
   const pinLocation = async () => {
+    // Second tap while searching = stop the search.
+    if (isLocating) {
+      gpsAbortRef.current?.abort()
+      return
+    }
+
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGpsStatus('GPS is not supported on this device')
       toast.error('Location not supported on this device')
       return
     }
+
+    const controller = new AbortController()
+    gpsAbortRef.current = controller
 
     setShowMapPicker(true)
     setIsLocating(true)
@@ -133,44 +142,45 @@ export default function RestaurantCheckoutPage() {
     setGpsStatus('Finding location...')
     toast.loading(`Locking GPS (+/-${REQUIRED_LOCATION_ACCURACY_M}m)...`, { id: 'restaurant-gps' })
 
-    try {
-      const pos = await getAccuratePosition({
-        onProgress: (best) => {
-          setCoords({ lat: best.lat, lng: best.lng })
-          setGpsStatus(
-            `Searching... best +/-${Math.round(best.accuracy)}m, need +/-${REQUIRED_LOCATION_ACCURACY_M}m`
-          )
-        },
-      })
-      toast.dismiss('restaurant-gps')
-
-      if (pos) {
-        setCoords({ lat: pos.lat, lng: pos.lng })
-        setLocationAccuracy(pos.accuracy)
-        if (pos.tier === 'tight') {
-          setGpsStatus(`Location locked (+/-${Math.round(pos.accuracy)}m)`)
-          toast.success(`Location detected (+/-${Math.round(pos.accuracy)}m)`)
-        } else if (pos.tier === 'fallback') {
-          setGpsStatus(`Located +/-${Math.round(pos.accuracy)}m - adjust on map if needed`)
-          toast.success(`Located +/-${Math.round(pos.accuracy)}m`, { duration: 5000 })
-        } else {
-          setGpsStatus(`Approximate +/-${Math.round(pos.accuracy)}m - fine-tune on map`)
-          toast.success('Approximate location - adjust pin on map', { duration: 6000 })
-        }
-      } else {
-        setLocationAccuracy(null)
-        setGpsStatus('GPS unavailable - pin manually on the map')
-        toast.error(
-          `Could not get GPS within ${FALLBACK_LOCATION_ACCURACY_M}m. Allow location permission or pin manually.`,
-          { duration: 6000 }
+    const result = await getAccuratePosition({
+      signal: controller.signal,
+      onProgress: (best) => {
+        setCoords({ lat: best.lat, lng: best.lng })
+        setGpsStatus(
+          `Searching... best +/-${Math.round(best.accuracy)}m, need +/-${REQUIRED_LOCATION_ACCURACY_M}m — still trying`
         )
+      },
+    })
+
+    toast.dismiss('restaurant-gps')
+    setIsLocating(false)
+    gpsAbortRef.current = null
+
+    if (result.status === 'locked') {
+      setCoords({ lat: result.position.lat, lng: result.position.lng })
+      setLocationAccuracy(result.position.accuracy)
+      setGpsStatus(`Location locked (+/-${Math.round(result.position.accuracy)}m)`)
+      toast.success(`Location detected (+/-${Math.round(result.position.accuracy)}m)`)
+    } else if (result.status === 'cancelled') {
+      if (result.best) {
+        setCoords({ lat: result.best.lat, lng: result.best.lng })
+        setLocationAccuracy(result.best.accuracy)
+        setGpsStatus(
+          `Search stopped at +/-${Math.round(result.best.accuracy)}m — drag the pin to fine-tune or try again.`
+        )
+      } else {
+        setGpsStatus('GPS search stopped — pin manually or try again.')
       }
-    } catch {
-      toast.dismiss('restaurant-gps')
-      setGpsStatus('GPS failed - pin manually on the map')
-      toast.error('GPS failed. Try again or pin manually.')
-    } finally {
-      setIsLocating(false)
+    } else if (result.status === 'denied') {
+      setLocationAccuracy(null)
+      setGpsStatus(
+        'Location permission is blocked. Allow location for this site in your browser settings, or pin manually.'
+      )
+      toast.error('Location permission blocked — allow it in browser settings.', { duration: 6000 })
+    } else {
+      setLocationAccuracy(null)
+      setGpsStatus('GPS is not supported on this device — pin manually on the map')
+      toast.error('Location not supported on this device')
     }
   }
 
@@ -334,8 +344,12 @@ export default function RestaurantCheckoutPage() {
                       setLocationAccuracy(null)
                     }}
                     onGetLocation={pinLocation}
-                    onDone={() => setShowMapPicker(false)}
+                    onDone={() => {
+                      gpsAbortRef.current?.abort()
+                      setShowMapPicker(false)
+                    }}
                     onCancel={() => {
+                      gpsAbortRef.current?.abort()
                       setCoords(null)
                       setLocationAccuracy(null)
                       setGpsStatus(null)

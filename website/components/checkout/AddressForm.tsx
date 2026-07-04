@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useRef,
   useState,
 } from 'react'
 import Link from 'next/link'
@@ -15,11 +16,7 @@ import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import { addressesApi } from '@/lib/api'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
-import {
-  getAccuratePosition,
-  FALLBACK_LOCATION_ACCURACY_M,
-  REQUIRED_LOCATION_ACCURACY_M,
-} from '@/lib/geolocation'
+import { getAccuratePosition, REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
 import GoogleMapPicker from './GoogleMapPicker'
 import DoorPhotoField from './DoorPhotoField'
 import ServiceAreaPopup from '@/components/city/ServiceAreaPopup'
@@ -135,6 +132,10 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
   const [showMapPicker, setShowMapPicker] = useState(false)
   const [isLocating, setIsLocating] = useState(false)
   const [gpsStatus, setGpsStatus] = useState<string | null>(null)
+  const gpsAbortRef = useRef<AbortController | null>(null)
+
+  // Stop an in-flight GPS search when the form unmounts.
+  useEffect(() => () => gpsAbortRef.current?.abort(), [])
 
   const [saving, setSaving] = useState(false)
 
@@ -143,11 +144,20 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
   const [outOfAreaOpen, setOutOfAreaOpen] = useState(false)
 
   const handleGetGps = async () => {
+    // Second tap while searching = stop the search.
+    if (isLocating) {
+      gpsAbortRef.current?.abort()
+      return
+    }
+
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGpsStatus('GPS is not supported on this device')
       toast.error('GPS is not supported on this device')
       return
     }
+
+    const controller = new AbortController()
+    gpsAbortRef.current = controller
 
     setShowMapPicker(true)
     setIsLocating(true)
@@ -155,47 +165,45 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
     setGpsStatus(`Finding accurate location (need +/-${REQUIRED_LOCATION_ACCURACY_M}m)...`)
     toast.loading(`Locking GPS (need +/-${REQUIRED_LOCATION_ACCURACY_M}m)...`, { id: 'gps' })
 
-    try {
-      const pos = await getAccuratePosition({
-        onProgress: (best) => {
-          setMapLocation({ lat: best.lat, lng: best.lng })
-          setGpsStatus(
-            `Searching... best +/-${Math.round(best.accuracy)}m, need +/-${REQUIRED_LOCATION_ACCURACY_M}m`
-          )
-        },
-      })
-      toast.dismiss('gps')
-
-      if (pos) {
-        setMapLocation({ lat: pos.lat, lng: pos.lng })
-        setMapAccuracy(pos.accuracy)
-        if (pos.tier === 'tight') {
-          setGpsStatus(`Location locked (±${Math.round(pos.accuracy)}m)`)
-          toast.success(`Location detected (±${Math.round(pos.accuracy)}m)`)
-        } else if (pos.tier === 'fallback') {
-          setGpsStatus(`Located ±${Math.round(pos.accuracy)}m — adjust on map if needed`)
-          toast.success(`Located ±${Math.round(pos.accuracy)}m`, { duration: 5000 })
-        } else {
-          setGpsStatus(`Approximate ±${Math.round(pos.accuracy)}m — fine-tune on map`)
-          toast.success(`Approximate location — adjust pin on map`, { duration: 6000 })
-        }
-      } else {
-        setMapAccuracy(null)
+    const result = await getAccuratePosition({
+      signal: controller.signal,
+      onProgress: (best) => {
+        setMapLocation({ lat: best.lat, lng: best.lng })
         setGpsStatus(
-          `GPS is not accurate enough yet. Need +/-${REQUIRED_LOCATION_ACCURACY_M}m - try near a window/outdoors or pin manually.`
+          `Searching... best +/-${Math.round(best.accuracy)}m, need +/-${REQUIRED_LOCATION_ACCURACY_M}m — still trying`
         )
-        toast.error(
-          `Could not lock GPS within +/-${FALLBACK_LOCATION_ACCURACY_M}m. Try again or pin manually.`,
-          { duration: 6000 }
+      },
+    })
+
+    toast.dismiss('gps')
+    setIsLocating(false)
+    gpsAbortRef.current = null
+
+    if (result.status === 'locked') {
+      setMapLocation({ lat: result.position.lat, lng: result.position.lng })
+      setMapAccuracy(result.position.accuracy)
+      setGpsStatus(`Location locked (±${Math.round(result.position.accuracy)}m)`)
+      toast.success(`Location detected (±${Math.round(result.position.accuracy)}m)`)
+    } else if (result.status === 'cancelled') {
+      if (result.best) {
+        setMapLocation({ lat: result.best.lat, lng: result.best.lng })
+        setMapAccuracy(result.best.accuracy)
+        setGpsStatus(
+          `Search stopped at ±${Math.round(result.best.accuracy)}m — drag the pin to fine-tune or try again.`
         )
+      } else {
+        setGpsStatus('GPS search stopped — pin manually or try again.')
       }
-    } catch {
-      toast.dismiss('gps')
+    } else if (result.status === 'denied') {
       setMapAccuracy(null)
-      setGpsStatus('GPS failed - pin manually on the map')
-      toast.error('GPS failed. Enter lat/lng or try again.')
-    } finally {
-      setIsLocating(false)
+      setGpsStatus(
+        'Location permission is blocked. Allow location for this site in your browser settings, or pin manually.'
+      )
+      toast.error('Location permission blocked — allow it in browser settings.', { duration: 6000 })
+    } else {
+      setMapAccuracy(null)
+      setGpsStatus('GPS is not supported on this device — pin manually on the map')
+      toast.error('GPS is not supported on this device')
     }
   }
 
@@ -475,8 +483,12 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
               setMapAccuracy(null)
             }}
             onGetLocation={handleGetGps}
-            onDone={() => setShowMapPicker(false)}
+            onDone={() => {
+              gpsAbortRef.current?.abort()
+              setShowMapPicker(false)
+            }}
             onCancel={() => {
+              gpsAbortRef.current?.abort()
               setMapLocation(null)
               setMapAccuracy(null)
               setGpsStatus(null)

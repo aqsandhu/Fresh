@@ -7,6 +7,49 @@ const API_BASE = getApiBaseUrl()
 const GOOGLE_MAPS_CALLBACK = '__freshBazarGoogleMapsReady'
 const GOOGLE_MAPS_LOAD_TIMEOUT_MS = 12000
 
+// Google reports key problems (invalid key, referrer blocked, Maps JavaScript
+// API not enabled, billing off) AFTER the script loads, by calling the global
+// gm_authFailure hook and blanking the map. Track it so map components can
+// fall back to the keyless embed instead of showing Google's error tile.
+let mapsAuthFailed = false
+const authFailureListeners = new Set<() => void>()
+
+function installAuthFailureHook(): void {
+  if (typeof window === 'undefined') return
+  const w = window as Window & {
+    gm_authFailure?: () => void
+    __freshBazarGmAuthHooked?: boolean
+  }
+  if (w.__freshBazarGmAuthHooked) return
+  w.__freshBazarGmAuthHooked = true
+
+  const previous = w.gm_authFailure
+  w.gm_authFailure = () => {
+    mapsAuthFailed = true
+    googleMapsLoader = null
+    authFailureListeners.forEach((listener) => {
+      try {
+        listener()
+      } catch {
+        /* listener errors must not break the auth hook */
+      }
+    })
+    previous?.()
+  }
+}
+
+export function hasGoogleMapsAuthFailed(): boolean {
+  return mapsAuthFailed
+}
+
+/** Subscribe to Maps key auth failures; returns an unsubscribe function. */
+export function onGoogleMapsAuthFailure(listener: () => void): () => void {
+  authFailureListeners.add(listener)
+  return () => {
+    authFailureListeners.delete(listener)
+  }
+}
+
 /** Optional server-side key (Render env) — browser Maps keys are public anyway. */
 export async function fetchGoogleMapsApiKey(): Promise<string> {
   const existing = resolveGoogleMapsApiKey()
@@ -27,9 +70,10 @@ export async function fetchGoogleMapsApiKey(): Promise<string> {
 /** Load Google Maps JavaScript API when a key exists (optional smoother maps). */
 export function loadGoogleMapsJs(): Promise<any | null> {
   const key = resolveGoogleMapsApiKey()
-  if (!key || typeof window === 'undefined') {
+  if (!key || typeof window === 'undefined' || mapsAuthFailed) {
     return Promise.resolve(null)
   }
+  installAuthFailureHook()
 
   const w = window as Window & {
     google?: { maps?: any }

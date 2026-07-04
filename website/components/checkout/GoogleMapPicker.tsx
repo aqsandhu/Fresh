@@ -53,7 +53,8 @@ export default function GoogleMapPicker({
 
         {isLocating && (
           <p className="text-xs text-primary-600">
-            Getting GPS... waiting for +/-{REQUIRED_LOCATION_ACCURACY_M}m accuracy.
+            Getting GPS... searching until +/-{REQUIRED_LOCATION_ACCURACY_M}m accuracy is reached.
+            Tap Stop to pin manually.
           </p>
         )}
 
@@ -97,16 +98,19 @@ export default function GoogleMapPicker({
         <div className="mt-1 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={isLocating}
             onClick={onGetLocation}
-            className="flex min-w-[140px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-3 py-2.5 text-[13px] font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+            className={`flex min-w-[140px] flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-white ${
+              isLocating
+                ? 'bg-amber-600 hover:bg-amber-700'
+                : 'bg-primary-600 hover:bg-primary-700'
+            }`}
           >
             {isLocating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <MapPin className="h-4 w-4" />
             )}
-            {isLocating ? 'Getting location...' : 'Get My Location'}
+            {isLocating ? 'Stop GPS search' : 'Get My Location'}
           </button>
 
           <button

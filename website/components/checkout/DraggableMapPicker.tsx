@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
-import { fetchGoogleMapsApiKey, loadGoogleMapsJs } from '@/lib/loadGoogleMaps'
+import {
+  fetchGoogleMapsApiKey,
+  hasGoogleMapsAuthFailed,
+  loadGoogleMapsJs,
+  onGoogleMapsAuthFailure,
+} from '@/lib/loadGoogleMaps'
 import GoogleEmbedMapPicker from './GoogleEmbedMapPicker'
 
 const MAP_ZOOM = 16
@@ -31,7 +36,7 @@ export default function DraggableMapPicker(props: DraggableMapPickerProps) {
       const key = await fetchGoogleMapsApiKey()
       if (cancelled) return
 
-      if (!key) {
+      if (!key || hasGoogleMapsAuthFailed()) {
         setEngine('unavailable')
         return
       }
@@ -87,6 +92,17 @@ function GoogleJsDraggableMap({
 
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
+
+  // Key auth errors (referrer blocked, JS API not enabled, billing off) arrive
+  // after the map renders — swap to the keyless embed instead of Google's
+  // grey error tile.
+  useEffect(() => {
+    if (hasGoogleMapsAuthFailed()) {
+      setFailed(true)
+      return
+    }
+    return onGoogleMapsAuthFailure(() => setFailed(true))
+  }, [])
 
   useEffect(() => {
     if (!containerRef.current) return
