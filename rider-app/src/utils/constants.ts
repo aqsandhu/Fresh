@@ -16,6 +16,11 @@ const getDevHost = (): string | null => {
 };
 
 const getApiBaseUrl = (): string => {
+  const envUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+  if (envUrl) {
+    return envUrl.replace(/\/$/, '');
+  }
+
   if (!isDevelopment) {
     return 'https://api.freshbazar.pk/api';
   }
