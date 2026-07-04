@@ -22,6 +22,15 @@ config.resolver.nodeModulesPaths = [
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
+config.resolver.blockList = [
+  ...(Array.isArray(config.resolver.blockList)
+    ? config.resolver.blockList
+    : config.resolver.blockList
+      ? [config.resolver.blockList]
+      : []),
+  /[/\\]node_modules[/\\]@types[/\\]/,
+];
+
 config.resolver.unstable_enablePackageExports = true;
 
 module.exports = config;
