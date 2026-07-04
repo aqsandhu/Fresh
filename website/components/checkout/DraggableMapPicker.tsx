@@ -1,14 +1,13 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
 import {
   fetchGoogleMapsApiKey,
   hasGoogleMapsAuthFailed,
   loadGoogleMapsJs,
   onGoogleMapsAuthFailure,
 } from '@/lib/loadGoogleMaps'
-import GoogleEmbedMapPicker from './GoogleEmbedMapPicker'
 
 const MAP_ZOOM = 16
 
@@ -21,65 +20,14 @@ interface DraggableMapPickerProps {
   onChange: (lat: number, lng: number) => void
 }
 
-type Engine = 'loading' | 'js' | 'unavailable'
-
 /**
- * Checkout map - mirrors customer-app CheckoutMapPicker with Google Maps JS.
+ * Checkout map — native Google Maps JavaScript API only (same as the customer
+ * app). Marker drag, tap-to-move, pinch/scroll zoom and panning are all handled
+ * natively by Google, so there is nothing to reload and no fallback iframe. If
+ * the key can't load we show a small placeholder — the lat/lng inputs and
+ * "Get My Location" in the parent still work.
  */
-export default function DraggableMapPicker(props: DraggableMapPickerProps) {
-  const [engine, setEngine] = useState<Engine>('loading')
-
-  useEffect(() => {
-    let cancelled = false
-
-    const pickEngine = async () => {
-      const key = await fetchGoogleMapsApiKey()
-      if (cancelled) return
-
-      if (!key || hasGoogleMapsAuthFailed()) {
-        setEngine('unavailable')
-        return
-      }
-
-      try {
-        const maps = await loadGoogleMapsJs()
-        if (!cancelled) setEngine(maps ? 'js' : 'unavailable')
-      } catch {
-        if (!cancelled) setEngine('unavailable')
-      }
-    }
-
-    void pickEngine()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  if (engine === 'loading') {
-    // Light placeholder while we resolve the engine — never the heavy embed, so
-    // the smooth native map isn't preceded by a janky over-sized satellite iframe.
-    const h = props.height ?? 280
-    return (
-      <div
-        className="relative w-full overflow-hidden bg-[#1d2b3a]"
-        style={{ height: typeof h === 'number' ? `${h}px` : h }}
-      >
-        <div className="absolute inset-0 flex items-center justify-center gap-2 text-sm text-white/85">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          Loading map…
-        </div>
-      </div>
-    )
-  }
-
-  if (engine === 'unavailable') {
-    return <GoogleEmbedMapPicker {...props} height={props.height ?? 280} />
-  }
-
-  return <GoogleJsDraggableMap {...props} zoom={props.zoom ?? MAP_ZOOM} />
-}
-
-function GoogleJsDraggableMap({
+export default function DraggableMapPicker({
   lat,
   lng,
   accuracy,
@@ -98,9 +46,8 @@ function GoogleJsDraggableMap({
   const [ready, setReady] = useState(false)
   const [failed, setFailed] = useState(false)
 
-  // Key auth errors (referrer blocked, JS API not enabled, billing off) arrive
-  // after the map renders — swap to the keyless embed instead of Google's
-  // grey error tile.
+  // A key auth error can arrive after the map renders (gm_authFailure) — show
+  // our own placeholder rather than Google's grey error tiles.
   useEffect(() => {
     if (hasGoogleMapsAuthFailed()) {
       setFailed(true)
@@ -114,16 +61,6 @@ function GoogleJsDraggableMap({
 
     let cancelled = false
     let resizeObserver: ResizeObserver | null = null
-    let initTimer: number | null = window.setTimeout(() => {
-      if (!cancelled) setFailed(true)
-    }, 12000)
-
-    const clearInitTimer = () => {
-      if (initTimer != null) {
-        clearTimeout(initTimer)
-        initTimer = null
-      }
-    }
 
     const reportChange = (nextLat: number, nextLng: number) => {
       lastReportedRef.current = { lat: nextLat, lng: nextLng }
@@ -132,10 +69,18 @@ function GoogleJsDraggableMap({
 
     const init = async () => {
       try {
+        // Populate the runtime key (served by the backend) before loading the SDK.
+        await fetchGoogleMapsApiKey()
         const maps = await loadGoogleMapsJs()
-        if (cancelled || !maps || !containerRef.current) return
-        if (typeof maps.Map !== 'function' || typeof maps.Marker !== 'function') {
-          throw new Error('Google Maps library is incomplete')
+        if (cancelled) return
+        if (
+          !maps ||
+          typeof maps.Map !== 'function' ||
+          typeof maps.Marker !== 'function' ||
+          !containerRef.current
+        ) {
+          setFailed(true)
+          return
         }
 
         const center = { lat, lng }
@@ -174,7 +119,6 @@ function GoogleJsDraggableMap({
 
         mapRef.current = map
         markerRef.current = marker
-        clearInitTimer()
         setReady(true)
 
         const invalidate = () => {
@@ -191,7 +135,6 @@ function GoogleJsDraggableMap({
           resizeObserver.observe(containerRef.current)
         }
       } catch {
-        clearInitTimer()
         if (!cancelled) setFailed(true)
       }
     }
@@ -200,7 +143,6 @@ function GoogleJsDraggableMap({
 
     return () => {
       cancelled = true
-      clearInitTimer()
       resizeObserver?.disconnect()
       circleRef.current?.setMap(null)
       circleRef.current = null
@@ -211,6 +153,8 @@ function GoogleJsDraggableMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Move the marker/camera only for EXTERNAL location changes (Get My Location,
+  // lat/lng inputs); the guard skips changes the user made on the map itself.
   useEffect(() => {
     const marker = markerRef.current
     const map = mapRef.current
@@ -262,22 +206,23 @@ function GoogleJsDraggableMap({
 
   if (failed) {
     return (
-      <GoogleEmbedMapPicker
-        lat={lat}
-        lng={lng}
-        accuracy={accuracy}
-        height={height}
-        zoom={zoom}
-        onChange={onChange}
-      />
+      <div
+        className="relative w-full overflow-hidden rounded-xl bg-[#1d2b3a]"
+        style={{ height: boxHeight }}
+      >
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center text-sm text-white/85">
+          <AlertCircle className="h-6 w-6" />
+          <span>Map could not load. Use “Get My Location” or type the latitude / longitude below.</span>
+        </div>
+      </div>
     )
   }
 
   return (
-    <div className="relative w-full bg-[#e5e7eb]" style={{ height: boxHeight }}>
+    <div className="relative w-full bg-[#1d2b3a]" style={{ height: boxHeight }}>
       {!ready && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#e5e7eb]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-white/80" />
         </div>
       )}
       <div ref={containerRef} className="h-full w-full" />
