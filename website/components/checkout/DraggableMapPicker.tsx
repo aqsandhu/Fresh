@@ -9,7 +9,17 @@ import {
   onGoogleMapsAuthFailure,
 } from '@/lib/loadGoogleMaps'
 
-const MAP_ZOOM = 16
+const MAP_ZOOM = 18
+const MIN_AUTO_ZOOM = 16
+const MAX_AUTO_ZOOM = 19
+
+function zoomForAccuracy(accuracy?: number | null): number {
+  if (typeof accuracy !== 'number' || accuracy <= 0) return MAP_ZOOM
+  if (accuracy <= 8) return MAX_AUTO_ZOOM
+  if (accuracy <= 20) return 18
+  if (accuracy <= 50) return 17
+  return MIN_AUTO_ZOOM
+}
 
 interface DraggableMapPickerProps {
   lat: number
@@ -87,15 +97,18 @@ export default function DraggableMapPicker({
         const map = new maps.Map(containerRef.current, {
           center,
           zoom,
-          // Hybrid = satellite imagery with street/place labels; `greedy`
-          // gesture handling gives native one-finger pan and smooth pinch-zoom.
-          mapTypeId: 'hybrid',
+          // Roadmap is clearer for delivery pins than satellite/hybrid tiles,
+          // especially on dense mobile screens.
+          mapTypeId: 'roadmap',
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
           zoomControl: true,
+          scaleControl: true,
           gestureHandling: 'greedy',
           clickableIcons: false,
+          maxZoom: 20,
+          minZoom: 12,
         })
 
         const marker = new maps.Marker({
@@ -125,6 +138,7 @@ export default function DraggableMapPicker({
           if (map && !cancelled) {
             maps.event.trigger(map, 'resize')
             map.setCenter(marker.getPosition() || center)
+            map.setZoom(Math.max(zoom, zoomForAccuracy(accuracy)))
           }
         }
         setTimeout(invalidate, 100)
@@ -199,6 +213,12 @@ export default function DraggableMapPicker({
     } else if (circleRef.current) {
       circleRef.current.setMap(null)
       circleRef.current = null
+    }
+
+    const targetZoom = zoomForAccuracy(accuracy)
+    const currentZoom = typeof map.getZoom === 'function' ? map.getZoom() : null
+    if (typeof currentZoom !== 'number' || currentZoom < targetZoom) {
+      map.setZoom(targetZoom)
     }
   }, [accuracy, lat, lng])
 
