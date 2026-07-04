@@ -48,7 +48,8 @@ export default function GoogleMapPicker({
 
       <div className="space-y-2 bg-gray-50 p-4">
         <p className="text-xs leading-relaxed text-gray-500">
-          Drag the red pin, tap the map, or use Get My Location. Fine-tune with lat/lng if needed.
+          Drag the map to position the pin, zoom with +/-, or use Get My Location. Fine-tune with
+          lat/lng if needed.
         </p>
 
         {isLocating && (
