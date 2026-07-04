@@ -30,6 +30,16 @@ import { isWithinServiceArea, type ServiceAreaData } from '@/lib/serviceArea';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '@utils/constants';
 
+const DEFAULT_MAP_DELTA = 0.0025;
+
+function regionDeltaForAccuracy(accuracy?: number | null): number {
+  if (typeof accuracy !== 'number' || accuracy <= 0) return DEFAULT_MAP_DELTA;
+  if (accuracy <= 8) return 0.0018;
+  if (accuracy <= 20) return 0.0025;
+  if (accuracy <= 50) return 0.005;
+  return 0.008;
+}
+
 export const AddAddressScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<CartStackParamList>>();
   const route = useRoute<RouteProp<CartStackParamList, 'AddAddress'>>();
@@ -46,8 +56,8 @@ export const AddAddressScreen: React.FC = () => {
   const [region, setRegion] = useState({
     latitude: 31.5204,
     longitude: 74.3587,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
+    latitudeDelta: DEFAULT_MAP_DELTA,
+    longitudeDelta: DEFAULT_MAP_DELTA,
   });
   const [doorImage, setDoorImage] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
@@ -89,6 +99,7 @@ export const AddAddressScreen: React.FC = () => {
 
   const handleLocationSelect = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
+    setLocationAccuracy(null);
     setRegion((prev) => ({
       ...prev,
       latitude,
@@ -97,11 +108,12 @@ export const AddAddressScreen: React.FC = () => {
   };
 
   const applyRegion = (lat: number, lng: number, accuracy?: number) => {
+    const delta = regionDeltaForAccuracy(accuracy);
     const next = {
       latitude: lat,
       longitude: lng,
-      latitudeDelta: 0.002,
-      longitudeDelta: 0.002,
+      latitudeDelta: delta,
+      longitudeDelta: delta,
     };
     setRegion(next);
     mapRef.current?.animateToRegion(next, 400);
@@ -355,8 +367,16 @@ export const AddAddressScreen: React.FC = () => {
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
-            mapType="hybrid"
+            mapType="standard"
             style={styles.map}
+            showsScale
+            showsCompass
+            loadingEnabled
+            rotateEnabled={false}
+            pitchEnabled={false}
+            toolbarEnabled={false}
+            minZoomLevel={12}
+            maxZoomLevel={20}
             initialRegion={region}
             onPress={handleLocationSelect}
             onMapReady={() => mapRef.current?.animateToRegion(region, 0)}
@@ -382,6 +402,7 @@ export const AddAddressScreen: React.FC = () => {
               pinColor="red"
               onDragEnd={(e) => {
                 const { latitude, longitude } = e.nativeEvent.coordinate;
+                setLocationAccuracy(null);
                 setRegion((prev) => ({ ...prev, latitude, longitude }));
               }}
             />

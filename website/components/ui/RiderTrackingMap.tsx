@@ -16,22 +16,54 @@ export default function RiderTrackingMap({ orderId, riderName }: RiderMapProps) 
   const mapsRef = useRef<any>(null)
   const mapInstanceRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
+  const deliveryMarkerRef = useRef<any>(null)
+  const routeLineRef = useRef<any>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const deliveryLocationRef = useRef<{ lat: number; lng: number } | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const applyRiderPosition = useCallback((lat: number, lng: number) => {
+  const fitTrackingView = useCallback((riderPosition: any) => {
     const maps = mapsRef.current
     const map = mapInstanceRef.current
+    if (!maps || !map) return
+
+    const delivery = deliveryLocationRef.current
+    if (delivery) {
+      const bounds = new maps.LatLngBounds()
+      bounds.extend(riderPosition)
+      bounds.extend(new maps.LatLng(delivery.lat, delivery.lng))
+      map.fitBounds(bounds, 64)
+      window.setTimeout(() => {
+        const zoom = map.getZoom?.()
+        if (typeof zoom === 'number' && zoom > 18) map.setZoom(18)
+      }, 0)
+      return
+    }
+
+    map.panTo(riderPosition)
+    const zoom = map.getZoom?.()
+    if (typeof zoom !== 'number' || zoom < 17) map.setZoom(17)
+  }, [])
+
+  const applyRiderPosition = useCallback((lat: number, lng: number) => {
+    const maps = mapsRef.current
     const marker = markerRef.current
-    if (!maps || !map || !marker) return
+    if (!maps || !marker) return
 
     const position = new maps.LatLng(lat, lng)
     marker.setPosition(position)
-    map.panTo(position)
+    fitTrackingView(position)
+
+    if (routeLineRef.current && deliveryLocationRef.current) {
+      routeLineRef.current.setPath([
+        position,
+        new maps.LatLng(deliveryLocationRef.current.lat, deliveryLocationRef.current.lng),
+      ])
+    }
     setError(null)
-  }, [])
+  }, [fitTrackingView])
 
   const updateRiderPosition = useCallback(async () => {
     try {
@@ -82,6 +114,12 @@ export default function RiderTrackingMap({ orderId, riderName }: RiderMapProps) 
           } else {
             setError('Waiting for rider location...')
           }
+          const delivery = data?.order?.delivery_location
+          const deliveryLat = Number(delivery?.latitude)
+          const deliveryLng = Number(delivery?.longitude)
+          if (Number.isFinite(deliveryLat) && Number.isFinite(deliveryLng)) {
+            deliveryLocationRef.current = { lat: deliveryLat, lng: deliveryLng }
+          }
         } catch {
           setError('Could not fetch rider location')
         }
@@ -91,11 +129,16 @@ export default function RiderTrackingMap({ orderId, riderName }: RiderMapProps) 
         const center = { lat: initialLat, lng: initialLng }
         const map = new maps.Map(mapRef.current, {
           center,
-          zoom: 15,
+          zoom: 17,
+          mapTypeId: 'roadmap',
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
+          zoomControl: true,
+          scaleControl: true,
           clickableIcons: false,
+          maxZoom: 20,
+          minZoom: 12,
         })
         mapInstanceRef.current = map
 
@@ -112,6 +155,26 @@ export default function RiderTrackingMap({ orderId, riderName }: RiderMapProps) 
             strokeWeight: 2,
           },
         })
+
+        if (deliveryLocationRef.current) {
+          const deliveryPosition = new maps.LatLng(
+            deliveryLocationRef.current.lat,
+            deliveryLocationRef.current.lng
+          )
+          deliveryMarkerRef.current = new maps.Marker({
+            position: deliveryPosition,
+            map,
+            title: 'Delivery address',
+          })
+          routeLineRef.current = new maps.Polyline({
+            path: [center, deliveryPosition],
+            map,
+            strokeColor: '#16a34a',
+            strokeOpacity: 0.85,
+            strokeWeight: 4,
+          })
+          fitTrackingView(new maps.LatLng(initialLat, initialLng))
+        }
 
         setLoading(false)
 
@@ -147,11 +210,16 @@ export default function RiderTrackingMap({ orderId, riderName }: RiderMapProps) 
       socket?.emit('order:unsubscribe', orderId)
       if (handleSocketLocation) socket?.off('rider:location', handleSocketLocation)
       markerRef.current?.setMap?.(null)
+      deliveryMarkerRef.current?.setMap?.(null)
+      routeLineRef.current?.setMap?.(null)
       markerRef.current = null
+      deliveryMarkerRef.current = null
+      routeLineRef.current = null
       mapInstanceRef.current = null
       mapsRef.current = null
+      deliveryLocationRef.current = null
     }
-  }, [applyRiderPosition, orderId, riderName, updateRiderPosition])
+  }, [applyRiderPosition, fitTrackingView, orderId, riderName, updateRiderPosition])
 
   return (
     <div className="overflow-hidden rounded-xl bg-white shadow-sm">

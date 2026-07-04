@@ -213,6 +213,22 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
 });
 
 function buildTrackingPayload(order: Record<string, unknown>) {
+  let snapshot: any = {};
+  try {
+    snapshot =
+      typeof order.delivery_address_snapshot === 'string'
+        ? JSON.parse(order.delivery_address_snapshot || '{}')
+        : (order.delivery_address_snapshot || {});
+  } catch {
+    snapshot = {};
+  }
+  const deliveryLat = Number((snapshot as any)?.location?.latitude);
+  const deliveryLng = Number((snapshot as any)?.location?.longitude);
+  const deliveryLocation =
+    Number.isFinite(deliveryLat) && Number.isFinite(deliveryLng)
+      ? { latitude: deliveryLat, longitude: deliveryLng }
+      : null;
+
   const timeline = [
     { status: 'pending', label: 'Order Placed', time: order.placed_at, completed: true },
     { status: 'confirmed', label: 'Order Confirmed', time: order.confirmed_at, completed: !!order.confirmed_at },
@@ -228,6 +244,7 @@ function buildTrackingPayload(order: Record<string, unknown>) {
       order_number: order.order_number,
       status: order.status,
       delivery_address: order.delivery_address,
+      delivery_location: deliveryLocation,
     },
     timeline,
     rider: order.rider_id && order.status === 'out_for_delivery' ? {
@@ -255,6 +272,7 @@ export const trackOrder = asyncHandler(async (req: Request, res: Response) => {
       o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
       o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
       o.delivery_address_snapshot->>'written_address' as delivery_address,
+      o.delivery_address_snapshot,
       o.user_id,
       r.id as rider_id, ru.full_name as rider_name,
       ST_X(r.current_location::geometry) as rider_longitude,
@@ -309,6 +327,7 @@ export const trackOrderPublic = asyncHandler(async (req: Request, res: Response)
       o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
       o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
       o.delivery_address_snapshot->>'written_address' as delivery_address,
+      o.delivery_address_snapshot,
       o.user_id,
       r.id as rider_id, ru.full_name as rider_name,
       ST_X(r.current_location::geometry) as rider_longitude,

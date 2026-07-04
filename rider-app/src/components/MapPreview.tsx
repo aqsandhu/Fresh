@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES, MAP_CONFIG } from '../utils/constants';
+import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../utils/constants';
 
 interface MapPreviewProps {
   latitude: number;
@@ -17,6 +17,7 @@ interface MapPreviewProps {
 }
 
 const { width: screenWidth } = Dimensions.get('window');
+const MAP_DELTA = 0.0025;
 
 const MapPreview: React.FC<MapPreviewProps> = ({
   latitude,
@@ -29,12 +30,25 @@ const MapPreview: React.FC<MapPreviewProps> = ({
   draggable = false,
   onMarkerDragEnd,
 }) => {
+  const mapRef = useRef<MapView>(null);
   const initialRegion = {
     latitude,
     longitude,
-    latitudeDelta: 0.01,
-    longitudeDelta: 0.01,
+    latitudeDelta: MAP_DELTA,
+    longitudeDelta: MAP_DELTA,
   };
+
+  useEffect(() => {
+    mapRef.current?.animateToRegion(
+      {
+        latitude,
+        longitude,
+        latitudeDelta: MAP_DELTA,
+        longitudeDelta: MAP_DELTA,
+      },
+      400
+    );
+  }, [latitude, longitude]);
 
   return (
     <View
@@ -43,9 +57,16 @@ const MapPreview: React.FC<MapPreviewProps> = ({
       onMoveShouldSetResponder={() => interactive}
     >
       <MapView
+        ref={mapRef}
         provider={PROVIDER_GOOGLE}
-        mapType="hybrid"
+        mapType="standard"
         style={styles.map}
+        showsScale
+        showsCompass
+        loadingEnabled
+        toolbarEnabled={false}
+        minZoomLevel={12}
+        maxZoomLevel={20}
         initialRegion={initialRegion}
         scrollEnabled={interactive}
         zoomEnabled={interactive}

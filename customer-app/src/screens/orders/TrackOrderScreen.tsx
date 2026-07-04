@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +14,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { OrdersStackParamList, OrderStatus } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
-import { formatDateTime, getStatusColor } from '@utils/helpers';
+import { getStatusColor } from '@utils/helpers';
 import { ErrorView, LoadingOverlay } from '@components';
 import { GuidanceTips } from '@components/common/GuidanceTips';
 import { TRACK_TIPS } from '@/content/guidanceTips';
@@ -25,7 +24,8 @@ import OrderChat from '@components/OrderChat';
 
 type TrackOrderRouteProp = RouteProp<OrdersStackParamList, 'TrackOrder'>;
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const DEFAULT_TRACK_LOCATION = { latitude: 32.5742, longitude: 74.0789 };
+const SINGLE_POINT_DELTA = 0.004;
 
 const statusOrder: OrderStatus[] = [
   'pending',
@@ -42,6 +42,10 @@ interface TrackingData {
     order_number: string;
     status: OrderStatus;
     delivery_address?: string;
+    delivery_location?: {
+      latitude: number;
+      longitude: number;
+    } | null;
   };
   timeline: Array<{
     status: string;
@@ -171,28 +175,45 @@ export const TrackOrderScreen: React.FC = () => {
     Alert.alert('Info', 'Rider contact not available from tracking');
   };
 
-  const riderLocation = trackingData?.rider?.location || {
-    latitude: 32.5742,
-    longitude: 74.0789,
-  };
-
-  const deliveryLocation = {
-    latitude: 32.5742,
-    longitude: 74.0789,
-  };
+  const riderLocation = trackingData?.rider?.location || null;
+  const deliveryLocation = trackingData?.order?.delivery_location || null;
+  const mapFocus = riderLocation || deliveryLocation || DEFAULT_TRACK_LOCATION;
+  const riderLat = riderLocation?.latitude ?? null;
+  const riderLng = riderLocation?.longitude ?? null;
+  const deliveryLat = deliveryLocation?.latitude ?? null;
+  const deliveryLng = deliveryLocation?.longitude ?? null;
 
   useEffect(() => {
-    if (!trackingData?.rider?.location) return;
-    mapRef.current?.animateToRegion(
+    if (!mapRef.current) return;
+
+    if (riderLat != null && riderLng != null && deliveryLat != null && deliveryLng != null) {
+      mapRef.current.fitToCoordinates([
+        { latitude: riderLat, longitude: riderLng },
+        { latitude: deliveryLat, longitude: deliveryLng },
+      ], {
+        edgePadding: { top: 64, right: 40, bottom: 116, left: 40 },
+        animated: true,
+      });
+      return;
+    }
+
+    mapRef.current.animateToRegion(
       {
-        latitude: riderLocation.latitude,
-        longitude: riderLocation.longitude,
-        latitudeDelta: 0.02,
-        longitudeDelta: 0.02,
+        latitude: mapFocus.latitude,
+        longitude: mapFocus.longitude,
+        latitudeDelta: SINGLE_POINT_DELTA,
+        longitudeDelta: SINGLE_POINT_DELTA,
       },
       500
     );
-  }, [riderLocation.latitude, riderLocation.longitude, trackingData?.rider?.location]);
+  }, [
+    deliveryLat,
+    deliveryLng,
+    mapFocus.latitude,
+    mapFocus.longitude,
+    riderLat,
+    riderLng,
+  ]);
 
   if (error && !loading) {
     return (
@@ -237,35 +258,49 @@ export const TrackOrderScreen: React.FC = () => {
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
-            mapType="hybrid"
+            mapType="standard"
             style={styles.map}
+            showsScale
+            showsCompass
+            loadingEnabled
+            rotateEnabled={false}
+            pitchEnabled={false}
+            toolbarEnabled={false}
+            minZoomLevel={12}
+            maxZoomLevel={20}
             initialRegion={{
-              latitude: (riderLocation.latitude + deliveryLocation.latitude) / 2,
-              longitude: (riderLocation.longitude + deliveryLocation.longitude) / 2,
-              latitudeDelta: 0.02,
-              longitudeDelta: 0.02,
+              latitude: mapFocus.latitude,
+              longitude: mapFocus.longitude,
+              latitudeDelta: SINGLE_POINT_DELTA,
+              longitudeDelta: SINGLE_POINT_DELTA,
             }}
           >
             {/* Rider Marker */}
-            <Marker coordinate={riderLocation}>
-              <View style={styles.riderMarker}>
-                <MaterialIcons name="delivery-dining" size={24} color={COLORS.white} />
-              </View>
-            </Marker>
+            {riderLocation && (
+              <Marker coordinate={riderLocation}>
+                <View style={styles.riderMarker}>
+                  <MaterialIcons name="delivery-dining" size={24} color={COLORS.white} />
+                </View>
+              </Marker>
+            )}
 
             {/* Delivery Location Marker */}
-            <Marker coordinate={deliveryLocation}>
-              <View style={styles.deliveryMarker}>
-                <MaterialIcons name="home" size={20} color={COLORS.white} />
-              </View>
-            </Marker>
+            {deliveryLocation && (
+              <Marker coordinate={deliveryLocation}>
+                <View style={styles.deliveryMarker}>
+                  <MaterialIcons name="home" size={20} color={COLORS.white} />
+                </View>
+              </Marker>
+            )}
 
             {/* Route Line */}
-            <Polyline
-              coordinates={[riderLocation, deliveryLocation]}
-              strokeColor={COLORS.primary}
-              strokeWidth={3}
-            />
+            {riderLocation && deliveryLocation && (
+              <Polyline
+                coordinates={[riderLocation, deliveryLocation]}
+                strokeColor={COLORS.primary}
+                strokeWidth={3}
+              />
+            )}
           </MapView>
 
           {/* Rider Info Card */}

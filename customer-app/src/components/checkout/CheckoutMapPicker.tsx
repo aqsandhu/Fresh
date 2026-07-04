@@ -13,7 +13,15 @@ import { COLORS, SPACING, BORDER_RADIUS, REQUIRED_LOCATION_ACCURACY_M } from '@u
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
 
 const MAP_HEIGHT = 280;
-const MAP_DELTA = 0.008;
+const DEFAULT_MAP_DELTA = 0.0025;
+
+function regionDeltaForAccuracy(accuracy?: number | null): number {
+  if (typeof accuracy !== 'number' || accuracy <= 0) return DEFAULT_MAP_DELTA;
+  if (accuracy <= 8) return 0.0018;
+  if (accuracy <= 20) return 0.0025;
+  if (accuracy <= 50) return 0.005;
+  return 0.008;
+}
 
 function safeCoord(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
@@ -52,6 +60,7 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
     accuracy != null && accuracy > 0 ? Math.min(accuracy, 80) : null;
   const accuracyOk =
     typeof accuracy === 'number' && accuracy > 0 && accuracy <= REQUIRED_LOCATION_ACCURACY_M;
+  const mapDelta = regionDeltaForAccuracy(accuracy);
 
   useEffect(() => {
     // Skip the camera animation when the new position is the one the user just
@@ -69,12 +78,12 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
       {
         latitude: displayLat,
         longitude: displayLng,
-        latitudeDelta: MAP_DELTA,
-        longitudeDelta: MAP_DELTA,
+        latitudeDelta: mapDelta,
+        longitudeDelta: mapDelta,
       },
       400
     );
-  }, [displayLat, displayLng]);
+  }, [displayLat, displayLng, mapDelta]);
 
   const syncPin = (latitude: number, longitude: number) => {
     selfMoveRef.current = { lat: latitude, lng: longitude };
@@ -87,13 +96,21 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
-          mapType="hybrid"
+          mapType="standard"
           style={styles.map}
+          showsScale
+          showsCompass
+          loadingEnabled
+          rotateEnabled={false}
+          pitchEnabled={false}
+          toolbarEnabled={false}
+          minZoomLevel={12}
+          maxZoomLevel={20}
           initialRegion={{
             latitude: displayLat,
             longitude: displayLng,
-            latitudeDelta: MAP_DELTA,
-            longitudeDelta: MAP_DELTA,
+            latitudeDelta: mapDelta,
+            longitudeDelta: mapDelta,
           }}
           onPress={(e) =>
             syncPin(e.nativeEvent.coordinate.latitude, e.nativeEvent.coordinate.longitude)
@@ -103,8 +120,8 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
               {
                 latitude: displayLat,
                 longitude: displayLng,
-                latitudeDelta: MAP_DELTA,
-                longitudeDelta: MAP_DELTA,
+                latitudeDelta: mapDelta,
+                longitudeDelta: mapDelta,
               },
               0
             )
