@@ -43,6 +43,9 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
   onCancel,
 }) => {
   const mapRef = useRef<MapView>(null);
+  // Coords that came from the user's own drag/tap — the camera must NOT re-animate
+  // for these, or every pin move would recenter and snap the zoom back to MAP_DELTA.
+  const selfMoveRef = useRef<{ lat: number; lng: number } | null>(null);
   const displayLat = safeCoord(lat, DEFAULT_MAP_LAT);
   const displayLng = safeCoord(lng, DEFAULT_MAP_LNG);
   const circleRadius =
@@ -51,6 +54,17 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
     typeof accuracy === 'number' && accuracy > 0 && accuracy <= REQUIRED_LOCATION_ACCURACY_M;
 
   useEffect(() => {
+    // Skip the camera animation when the new position is the one the user just
+    // dragged/tapped to — animating it fights the gesture and resets the zoom.
+    const self = selfMoveRef.current;
+    if (
+      self &&
+      Math.abs(self.lat - displayLat) < 1e-6 &&
+      Math.abs(self.lng - displayLng) < 1e-6
+    ) {
+      return;
+    }
+    // External change (Get My Location / lat-lng inputs): recenter smoothly.
     mapRef.current?.animateToRegion(
       {
         latitude: displayLat,
@@ -63,6 +77,7 @@ export const CheckoutMapPicker: React.FC<CheckoutMapPickerProps> = ({
   }, [displayLat, displayLng]);
 
   const syncPin = (latitude: number, longitude: number) => {
+    selfMoveRef.current = { lat: latitude, lng: longitude };
     onLatLngChange(latitude, longitude);
   };
 
