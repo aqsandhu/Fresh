@@ -35,13 +35,14 @@ import {
   CheckoutAddressFormHandle,
 } from '@components/checkout/CheckoutAddressForm';
 import { CheckoutAddressActions } from '@components/checkout/CheckoutAddressActions';
+import { CheckoutAuthPanel } from '@components/checkout/CheckoutAuthPanel';
 import { addressService } from '@services/address.service';
 import { orderService } from '@services/order.service';
 import { cartService, type MyCoupon } from '@services/cart.service';
 import { GuidanceTips } from '@components/common/GuidanceTips';
 import { CHECKOUT_TIPS } from '@/content/guidanceTips';
 import apiClient from '@services/api';
-import { useCartStore } from '@store';
+import { useCartStore, useAuthStore } from '@store';
 import { getSlotAvailability } from '@/lib/timeSlots';
 import { formatAddressLine, addressTypeLabel } from '@/lib/addressDisplay';
 
@@ -73,6 +74,7 @@ export const CheckoutScreen: React.FC = () => {
 
   const { items, subtotal, getDeliveryCharge, loadDeliverySettings, clearCart, hasHydrated, deliverySlotCutoffPercent, syncWithBackend } =
     useCartStore();
+  const { isAuthenticated } = useAuthStore();
 
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
@@ -428,6 +430,23 @@ export const CheckoutScreen: React.FC = () => {
         <View style={styles.hydrateLoader}>
           <ActivityIndicator size="large" color={COLORS.primary600} />
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Website parity: guests are NOT bounced to a login screen. They stay on
+  // checkout and sign in via the inline panel; the real checkout appears the
+  // moment they authenticate.
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={8}>
+            <MaterialIcons name="arrow-back" size={24} color={COLORS.gray700} />
+          </TouchableOpacity>
+          <Text style={styles.pageTitle}>Checkout</Text>
+          <CheckoutAuthPanel />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -923,7 +942,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: SPACING.md, paddingTop: SPACING.xl, paddingBottom: SPACING.xl },
   section: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.xl,
+    borderRadius: BORDER_RADIUS.lg, // website: rounded-xl (12px)
     padding: SPACING.lg,
     marginBottom: SPACING.lg,
     shadowColor: '#000',

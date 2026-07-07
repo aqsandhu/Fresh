@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { useCityContext } from '@/context/CityContext';
@@ -61,6 +62,13 @@ export const DeliveryInfoSection: React.FC = () => {
 
   return (
     <View style={styles.wrap}>
+      {/* Green diagonal wash — matches website bg-gradient-to-br primary-600 → primary-800. */}
+      <LinearGradient
+        colors={['#16a34a', '#16a34a', '#166534']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
       <Text style={styles.title}>Delivery Information</Text>
       <Text style={styles.urdu}>ترسیل کی معلومات</Text>
 
@@ -106,9 +114,9 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: '700', color: COLORS.white, textAlign: 'center', paddingHorizontal: SPACING.lg },
   urdu: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
-    color: COLORS.white,
+    color: COLORS.primary50,
     textAlign: 'center',
     marginTop: 4,
     marginBottom: SPACING.md,
@@ -123,8 +131,8 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '48.5%',
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: BORDER_RADIUS.xl,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
     padding: SPACING.md,
@@ -140,7 +148,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   cardTitle: { fontSize: 14, fontWeight: '600', color: COLORS.white, textAlign: 'center' },
-  cardDesc: { fontSize: 11, color: COLORS.primary100, textAlign: 'center', marginTop: 3, lineHeight: 15 },
+  cardDesc: { fontSize: 12, color: COLORS.primary100, textAlign: 'center', marginTop: 3, lineHeight: 16 },
   slotsWrap: {
     marginTop: SPACING.md,
     marginHorizontal: SPACING.lg,

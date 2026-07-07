@@ -92,10 +92,8 @@ export const CartScreen: React.FC = () => {
   };
 
   const handleCheckout = () => {
-    if (!isAuthenticated) {
-      rootNavigation.navigate('Auth', { screen: 'Login', params: { redirect: 'CartFlow' } });
-      return;
-    }
+    // Website parity: guests are NOT sent to a separate login screen — they go
+    // straight to checkout and sign in via the inline panel there.
     rootNavigation.navigate('CartFlow', { screen: 'Checkout' });
   };
 

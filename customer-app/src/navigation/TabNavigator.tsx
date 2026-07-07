@@ -14,9 +14,19 @@ import { useTabBarMetrics } from '@/lib/tabBarMetrics';
 
 import { useCartStore } from '@store';
 
-import { FloatingCityButton } from '@components/city/FloatingCityButton';
-
 import { CartMiniSheet } from '@components/cart/CartMiniSheet';
+
+import { AiChatWidget } from '@components/common/AiChatWidget';
+
+import { CategoriesDrawer } from '@components/layout/CategoriesDrawer';
+
+import { UtilityDrawer } from '@components/layout/UtilityDrawer';
+
+import { InstructionsPopup } from '@components/guidance/InstructionsPopup';
+
+import { DrawerAutoPeek } from '@components/layout/DrawerAutoPeek';
+
+import { useUiActivity } from '@store/uiActivity';
 
 
 
@@ -88,7 +98,15 @@ export const TabNavigator: React.FC = () => {
 
   return (
 
-    <View style={styles.wrap}>
+    <View
+      style={styles.wrap}
+      onStartShouldSetResponderCapture={() => {
+        // Observe every touch-down (does not capture) so the Instructions
+        // lightbulb can collapse its idle label when the user becomes active.
+        useUiActivity.getState().bump();
+        return false;
+      }}
+    >
 
       <Tab.Navigator
         id="MainTabs"
@@ -210,9 +228,17 @@ export const TabNavigator: React.FC = () => {
 
       </Tab.Navigator>
 
-      <FloatingCityButton />
-
       <CartMiniSheet />
+
+      <AiChatWidget />
+
+      <CategoriesDrawer />
+
+      <UtilityDrawer />
+
+      <InstructionsPopup />
+
+      <DrawerAutoPeek />
 
     </View>
 

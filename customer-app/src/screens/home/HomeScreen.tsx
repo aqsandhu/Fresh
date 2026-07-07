@@ -1,12 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ScrollView, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { HomeStackParamList, Category, StoreProduct } from '@app-types';
-import { COLORS, SPACING } from '@utils/constants';
+import { useQueryClient } from '@tanstack/react-query';
+import { HomeStackParamList } from '@app-types';
+import { COLORS } from '@utils/constants';
 import { useTabBarMetrics } from '@/lib/tabBarMetrics';
-import { ErrorView } from '@components';
 import { MobileHeader } from '@components/layout/MobileHeader';
 import {
   HeroSection,
@@ -14,64 +14,33 @@ import {
   FeaturedProductsSection,
   DeliveryInfoSection,
 } from '@components/home/sections';
-import { productService } from '@services/product.service';
 import { cartService, type MyCoupon } from '@services/cart.service';
 import { CouponWinModal } from '@components/common/CouponWinModal';
 import { useCityContext } from '@/context/CityContext';
 import { useAuthStore } from '@store';
 
-/** Mirrors website/app/(shop)/page.tsx section order exactly. */
+/** Mirrors website/app/(shop)/page.tsx — each section self-fetches via react-query. */
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const { selectedCityId } = useCityContext();
   const { inset: tabBarInset } = useTabBarMetrics();
   const { isAuthenticated } = useAuthStore();
+  const queryClient = useQueryClient();
 
   const [winCoupons, setWinCoupons] = useState<MyCoupon[]>([]);
   const [winVisible, setWinVisible] = useState(false);
-
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [featuredProducts, setFeaturedProducts] = useState<StoreProduct[]>([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const loadData = useCallback(async () => {
-    if (!selectedCityId) {
-      setCategories([]);
-      setFeaturedProducts([]);
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
-    try {
-      setError(null);
-      const [categoriesRes, productsRes] = await Promise.all([
-        productService.getCategories(),
-        productService.getFeaturedProducts(500),
-      ]);
-
-      if (categoriesRes.success) setCategories(categoriesRes.data);
-      if (productsRes.success) setFeaturedProducts(productsRes.data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load data');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [selectedCityId]);
-
-  useEffect(() => {
-    setLoading(true);
-    setCategories([]);
-    setFeaturedProducts([]);
-    loadData();
-  }, [loadData]);
-
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    loadData();
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['featured-products'] }),
+        queryClient.invalidateQueries({ queryKey: ['categories'] }),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   // After login, surface any newly-earned coupons (welcome-back / milestone).
@@ -94,14 +63,6 @@ export const HomeScreen: React.FC = () => {
     (navigation.getParent() as { navigate: (name: string, params?: object) => void } | undefined)?.navigate('Shop', { screen });
   };
 
-  if (error && !loading) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <ErrorView message={error} onRetry={loadData} />
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <MobileHeader onSearchPress={() => navigation.navigate('Search')} />
@@ -111,16 +72,12 @@ export const HomeScreen: React.FC = () => {
       >
         {/* Website-parity order: products → category wall → hero → delivery. */}
         <FeaturedProductsSection
-          products={featuredProducts}
-          loading={loading}
           onProductPress={(product) =>
             navigation.navigate('ProductDetail', { productId: product.id })
           }
           onViewAll={() => goToShop('ProductsMain')}
         />
         <CategoriesSection
-          categories={categories}
-          loading={loading}
           onCategoryPress={(category) =>
             navigation.navigate('CategoryProducts', {
               categoryId: category.id,

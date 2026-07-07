@@ -1,49 +1,66 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
 import { StoreProduct } from '@app-types';
 import { COLORS, SPACING } from '@utils/constants';
+import { useCityContext } from '@/context/CityContext';
+import { productService } from '@services/product.service';
 import { ProductCard } from '@components';
 
 interface FeaturedProductsSectionProps {
-  products: StoreProduct[];
-  loading: boolean;
   onProductPress: (product: StoreProduct) => void;
   onViewAll: () => void;
 }
 
+/** Self-fetches (react-query) like the website — robust to city-ready timing. */
 export const FeaturedProductsSection: React.FC<FeaturedProductsSectionProps> = ({
-  products,
-  loading,
   onProductPress,
   onViewAll,
-}) => (
-  <View style={styles.wrap}>
-    <Text style={styles.title}>Featured Products</Text>
+}) => {
+  const { selectedCityId } = useCityContext();
+  const { data: products = [], isLoading: loading } = useQuery({
+    queryKey: ['featured-products', selectedCityId],
+    queryFn: async () => {
+      const res = await productService.getFeaturedProducts(500);
+      return res.success ? res.data : [];
+    },
+    enabled: !!selectedCityId,
+    staleTime: 5 * 60 * 1000,
+  });
 
-    <TouchableOpacity style={styles.viewAll} onPress={onViewAll} activeOpacity={0.75}>
-      <Text style={styles.viewAllText}>Click to View All Products</Text>
-      <MaterialIcons name="arrow-forward" size={16} color={COLORS.primary600} />
-    </TouchableOpacity>
+  return (
+    <View style={styles.wrap}>
+      {/* Subtle top wash — matches website bg-gradient-to-b white → gray-50. */}
+      <LinearGradient colors={['#ffffff', '#f9fafb']} style={StyleSheet.absoluteFill} />
+      <Text style={styles.title}>Featured Products</Text>
 
-    {loading ? (
-      <ActivityIndicator color={COLORS.primary600} style={{ paddingVertical: SPACING.xl }} />
-    ) : products.length === 0 ? (
-      <Text style={styles.empty}>No featured products available at the moment.</Text>
-    ) : (
-      <View style={styles.grid}>
-        {products.map((item) => (
-          <View key={item.id} style={styles.gridItem}>
-            <ProductCard product={item} onPress={onProductPress} fullWidth showMobileAddButton />
-          </View>
-        ))}
-      </View>
-    )}
-  </View>
-);
+      <TouchableOpacity style={styles.viewAll} onPress={onViewAll} activeOpacity={0.75}>
+        <Text style={styles.viewAllText}>Click to View All Products</Text>
+        <MaterialIcons name="arrow-forward" size={16} color={COLORS.primary600} />
+      </TouchableOpacity>
+
+      {loading ? (
+        <ActivityIndicator color={COLORS.primary600} style={{ paddingVertical: SPACING.xl }} />
+      ) : products.length === 0 ? (
+        <Text style={styles.empty}>No featured products available at the moment.</Text>
+      ) : (
+        <View style={styles.grid}>
+          {products.map((item) => (
+            <View key={item.id} style={styles.gridItem}>
+              <ProductCard product={item} onPress={onProductPress} fullWidth showMobileAddButton />
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
-  wrap: { paddingVertical: SPACING.xl, backgroundColor: COLORS.gray50 },
+  // Website: pt-5 (20px) / pb-10 (40px) — first section under the navbar.
+  wrap: { paddingTop: 20, paddingBottom: 40, backgroundColor: COLORS.gray50 },
   title: {
     fontSize: 26,
     fontWeight: '700',

@@ -25,6 +25,7 @@ import { productService } from '@services/product.service';
 import { Category, StoreProduct } from '@app-types';
 import { BrandLogo } from '@components/BrandLogo';
 import { TodaysBasketModal } from '@components/home/TodaysBasketModal';
+import { NotificationBell } from '@components/notifications/NotificationBell';
 
 interface BannerSettings {
   leftText: string;
@@ -57,7 +58,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   const navigation = useNavigation<any>();
   const { isAuthenticated } = useAuthStore();
   const { getTotalItems } = useCartStore();
-  const { unreadCount, loadNotifications } = useNotificationStore();
+  const { loadNotifications } = useNotificationStore();
   const { toggleCartDropdown, setMobileHeaderBottomY } = useCartUiStore();
   const headerWrapRef = useRef<View>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -284,21 +285,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           >
             <MaterialIcons name="search" size={22} color={COLORS.gray600} />
           </TouchableOpacity>
-          {isAuthenticated && (
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => closeAndNavigate('Profile', 'Notifications')}
-            >
-              <MaterialIcons name="notifications-none" size={22} color={COLORS.gray600} />
-              {unreadCount > 0 && (
-                <View style={styles.notifBadge}>
-                  <Text style={styles.notifBadgeText}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
+          {isAuthenticated && <NotificationBell />}
           <TouchableOpacity style={styles.iconBtn} onPress={toggleCartDropdown}>
             <MaterialIcons name="shopping-cart" size={22} color={COLORS.gray600} />
             {cartCount > 0 && (

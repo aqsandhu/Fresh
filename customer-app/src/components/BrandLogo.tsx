@@ -17,13 +17,24 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 }) => {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // A remote <Image> with width:undefined collapses to 0px wide in RN, so the
+  // logo never shows. Measure the natural aspect ratio and give it real width.
+  const [ratio, setRatio] = useState(3);
 
   useEffect(() => {
     let cancelled = false;
     fetchBrandLogoUrl().then((u) => {
-      if (!cancelled) {
-        setUrl(u);
-        setLoading(false);
+      if (cancelled) return;
+      setUrl(u);
+      setLoading(false);
+      if (u) {
+        Image.getSize(
+          u,
+          (w, h) => {
+            if (!cancelled && h > 0) setRatio(w / h);
+          },
+          () => {}
+        );
       }
     });
     return () => {
@@ -48,7 +59,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   return (
     <Image
       source={{ uri: url }}
-      style={[styles.img, { height }, imageStyle]}
+      style={[styles.img, { height, width: height * ratio }, imageStyle]}
       resizeMode="contain"
       accessibilityLabel="Fresh Bazar logo"
     />
@@ -58,7 +69,6 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
 const styles = StyleSheet.create({
   img: {
     alignSelf: 'center',
-    width: undefined,
     maxWidth: '100%',
   },
   placeholder: {

@@ -34,12 +34,6 @@ export const PinReauthGate: React.FC<Props> = ({ thresholdMs = PIN_STALE_MS, chi
     setStale(Date.now() - pinVerifiedAt > thresholdMs);
   }, [pinVerifiedAt, thresholdMs]);
 
-  useEffect(() => {
-    if (!isAuthenticated || !user?.phone) {
-      rootNavigation.navigate('Auth', { screen: 'Login', params: { redirect: 'CartFlow' } });
-    }
-  }, [isAuthenticated, user?.phone, rootNavigation]);
-
   const handleVerify = async (entered: string) => {
     if (!user?.phone) {
       Toast.show({ type: 'error', text1: 'Session error. Please log in again.' });
@@ -59,12 +53,10 @@ export const PinReauthGate: React.FC<Props> = ({ thresholdMs = PIN_STALE_MS, chi
     }
   };
 
+  // Guests are NOT bounced to a login screen — they stay on checkout and sign
+  // in via the inline CheckoutAuthPanel (website parity).
   if (!isAuthenticated || !user?.phone) {
-    return (
-      <View style={styles.loaderWrap}>
-        <ActivityIndicator size="large" color={COLORS.primary600} />
-      </View>
-    );
+    return <>{children}</>;
   }
 
   if (!stale) {

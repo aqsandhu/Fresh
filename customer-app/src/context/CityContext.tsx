@@ -72,16 +72,47 @@ export function CityProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    reloadCities().finally(async () => {
-      const stored = await getStoredCity();
+    (async () => {
+      let list: ServiceCity[] = [];
+      setIsLoading(true);
+      try {
+        list = await fetchCities();
+        setCities(list);
+      } catch {
+        setCities([]);
+      } finally {
+        setIsLoading(false);
+      }
+
+      let stored = await getStoredCity();
+
+      // The stored city may come from a DIFFERENT backend (e.g. the app was
+      // previously pointed at a staging DB). A stale city id silently returns
+      // empty categories/products. Validate against the live list: keep exact
+      // id matches, remap by name when possible, otherwise force re-select.
+      if (stored?.id && list.length > 0) {
+        const byId = list.find((c) => c.id === stored!.id);
+        if (!byId) {
+          const byName = list.find(
+            (c) => c.name.trim().toLowerCase() === stored!.name?.trim().toLowerCase()
+          );
+          if (byName) {
+            stored = { id: byName.id, name: byName.name, province: byName.province };
+            await persistCity(stored);
+          } else {
+            stored = null;
+          }
+        }
+      }
+
       setSelectedCityState(stored);
       setCachedCityId(stored?.id ?? null);
       if (stored?.id) {
         switchCartCity(stored.id);
       }
       setIsReady(true);
-    });
-  }, [reloadCities, switchCartCity]);
+    })();
+  }, [switchCartCity]);
 
   const setCity = useCallback(
     async (city: ServiceCity | StoredCity) => {

@@ -18,6 +18,7 @@ import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { aiChatService, type ChatMessage } from '@services/aiChat.service';
 import { navigationRef } from '@/navigation/navigationUtils';
 import { useAuthStore } from '@store';
+import { useAiChatUi } from '@store/drawerUi';
 
 /** Best-effort current screen name for page-aware answers. */
 function currentPage(): string | undefined {
@@ -132,7 +133,8 @@ function renderRich(text: string, onOpenLink: (url: string) => void): React.Reac
 }
 
 export const AiChatWidget: React.FC = () => {
-  const [open, setOpen] = useState(false);
+  const open = useAiChatUi((s) => s.open);
+  const setOpen = useAiChatUi((s) => s.setOpen);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -227,16 +229,7 @@ export const AiChatWidget: React.FC = () => {
 
   return (
     <>
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setOpen(true)}
-        activeOpacity={0.85}
-        accessibilityLabel="Chat with FreshBazar Support"
-      >
-        <MaterialIcons name="chat" size={26} color={COLORS.white} />
-      </TouchableOpacity>
-
-      <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
+      <Modal visible={open} animationType="fade" transparent onRequestClose={() => setOpen(false)}>
         <KeyboardAvoidingView
           style={styles.overlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -301,7 +294,6 @@ export const AiChatWidget: React.FC = () => {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    bottom: 90,
     right: 16,
     width: 56,
     height: 56,
@@ -316,12 +308,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     zIndex: 50,
   },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  // Website mobile chat: a floating rounded card (inset-x-3 bottom-3 top-16),
+  // appearing in place — not a full-width bottom sheet sliding up.
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding: 12,
+    paddingTop: 64,
+  },
   sheet: {
+    flex: 1,
     backgroundColor: COLORS.white,
-    borderTopLeftRadius: BORDER_RADIUS.xxl,
-    borderTopRightRadius: BORDER_RADIUS.xxl,
-    height: '75%',
+    borderRadius: BORDER_RADIUS.xxl,
     overflow: 'hidden',
   },
   header: {

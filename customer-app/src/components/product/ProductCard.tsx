@@ -4,10 +4,16 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { truncateText, formatCurrency } from '@utils/helpers';
 import { ProductPrice } from './ProductPrice';
-import { ProductUnit, StoreProduct } from '@app-types';
+import { ProductQuality, ProductUnit, StoreProduct } from '@app-types';
 import { useCartStore } from '@store';
 import { useVariableWeightNotice } from '@store/variableWeightNotice';
-import { getUnitOptions, getUnitPickerDisplayLabel, UNIT_PICKER_CHIP } from '@/lib/unitPricing';
+import {
+  getUnitOptions,
+  getUnitPickerDisplayLabel,
+  UNIT_PICKER_CHIP,
+  offeredQualities,
+  qualityStock,
+} from '@/lib/unitPricing';
 
 interface ProductCardProps {
   product: StoreProduct;
@@ -27,35 +33,79 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const mobileAdd = showMobileAddButton || fullWidth;
   const { addItem, updateQuantity, removeItem, getItemQuantity } = useCartStore();
   const notifyVariableWeight = useVariableWeightNotice((s) => s.notify);
-  const unitOptions = useMemo(() => getUnitOptions(product), [product]);
+  // Quality tiers (A/B/C) — mirrors website ProductCard + app ProductDetailScreen.
+  // B/C only appear when the admin has set that tier's consumer price.
+  const qualities = useMemo(() => offeredQualities(product), [product]);
+  const [selectedQuality, setSelectedQuality] = useState<ProductQuality>('A');
+  const unitOptions = useMemo(
+    () => getUnitOptions(product, selectedQuality),
+    [product, selectedQuality]
+  );
   const hasFractionUnits = unitOptions.length > 1;
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full');
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
 
   const activeOption = unitOptions.find((o) => o.unit === selectedUnit) || unitOptions[0];
   const displayPrice = activeOption?.price ?? product.price;
+  // Stock is per-quality (shared with restaurants) — the selected tier's bucket.
+  const inStock = qualityStock(product, selectedQuality) > 0;
   const compareAtPrice =
-    selectedUnit === 'full' && product.originalPrice != null && product.originalPrice > displayPrice
+    selectedQuality === 'A' &&
+    selectedUnit === 'full' &&
+    product.originalPrice != null &&
+    product.originalPrice > displayPrice
       ? product.originalPrice
       : undefined;
-  const quantity = getItemQuantity(product.id, selectedUnit);
+  const quantity = getItemQuantity(product.id, selectedUnit, selectedQuality);
+
+  const selectQuality = (q: ProductQuality) => {
+    setSelectedQuality(q);
+    setSelectedUnit('full');
+  };
+
+  const qualitySelector =
+    qualities.length > 1 ? (
+      <View style={styles.qualityRow}>
+        <Text style={styles.qualityLabel}>QUALITY</Text>
+        <View style={styles.qualityToggle}>
+          {qualities.map((q) => {
+            const active = selectedQuality === q;
+            return (
+              <TouchableOpacity
+                key={q}
+                style={[styles.qualitySeg, active && styles.qualitySegActive]}
+                onPress={(e) => {
+                  e.stopPropagation?.();
+                  selectQuality(q);
+                }}
+              >
+                <Text style={[styles.qualitySegText, active && styles.qualitySegTextActive]}>
+                  {q}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+    ) : null;
 
   const handleAddToCart = async () => {
-    await addItem(product, 1, selectedUnit);
+    if (!inStock) return;
+    await addItem(product, 1, selectedUnit, selectedQuality);
     if (product.isVariableWeight) {
       notifyVariableWeight(product.id, product.variableWeightNote);
     }
   };
 
   const handleIncrement = async () => {
-    await updateQuantity(product.id, quantity + 1, selectedUnit);
+    await updateQuantity(product.id, quantity + 1, selectedUnit, selectedQuality);
   };
 
   const handleDecrement = async () => {
     if (quantity <= 1) {
-      await removeItem(product.id, selectedUnit);
+      await removeItem(product.id, selectedUnit, selectedQuality);
     } else {
-      await updateQuantity(product.id, quantity - 1, selectedUnit);
+      await updateQuantity(product.id, quantity - 1, selectedUnit, selectedQuality);
     }
   };
 
@@ -151,6 +201,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <Image source={{ uri: product.images[0] }} style={styles.horizontalImage} />
         <View style={styles.horizontalContent}>
           <Text style={styles.name}>{truncateText(product.name, 25)}</Text>
+          {qualitySelector}
           {unitPicker}
           <ProductPrice
             price={displayPrice}
@@ -160,7 +211,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             stackDiscount
           />
         </View>
-        <View style={styles.actionContainer}>{cartControls}</View>
+        <View style={styles.actionContainer}>{inStock ? cartControls : null}</View>
       </TouchableOpacity>
     );
   }
@@ -180,7 +231,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </View>
         )}
         <View style={styles.badgeStack}>
-          {product.isFresh !== false && product.inStock && (
+          {product.isFresh !== false && inStock && (
             <View style={styles.freshBadge}>
               <MaterialIcons name="eco" size={10} color={COLORS.white} />
               <Text style={styles.freshText}>Fresh</Text>
@@ -194,7 +245,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </View>
           ) : null}
         </View>
-        {!product.inStock ? (
+        {!inStock ? (
           <View style={styles.outOfStockBadge}>
             <Text style={styles.outOfStockText}>Out of Stock</Text>
           </View>
@@ -209,6 +260,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {product.nameUrdu}
           </Text>
         ) : null}
+        {qualitySelector}
         {unitPicker}
         {!mobileAdd ? (
           <View style={styles.footer}>
@@ -219,7 +271,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               originalPrice={compareAtPrice}
               stackDiscount
             />
-            {cartControls}
+            {inStock ? cartControls : null}
           </View>
         ) : (
           <>
@@ -232,7 +284,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                 stackDiscount
               />
             </View>
-            {quantity > 0 ? (
+            {!inStock ? (
+              <View style={styles.mobileOutOfStockRow}>
+                <Text style={styles.mobileOutOfStockText}>Out of Stock</Text>
+              </View>
+            ) : quantity > 0 ? (
               <View style={styles.mobileStepperRow}>{mobileInlineStepper}</View>
             ) : (
               <TouchableOpacity
@@ -308,6 +364,51 @@ const styles = StyleSheet.create({
   content: { padding: SPACING.sm, flex: 1 },
   name: { fontSize: 15, fontWeight: '600', color: COLORS.gray900, minHeight: 20 },
   nameUrdu: { fontSize: 14, fontWeight: '700', color: COLORS.gray800, marginBottom: 4, textAlign: 'right' },
+  qualityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  qualityLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    color: COLORS.gray400,
+  },
+  qualityToggle: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: COLORS.gray100,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: 2,
+  },
+  qualitySeg: {
+    flex: 1,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qualitySegActive: {
+    backgroundColor: COLORS.white,
+    shadowColor: COLORS.black,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  qualitySegText: { fontSize: 12, fontWeight: '700', color: COLORS.gray500 },
+  qualitySegTextActive: { color: COLORS.primary700 },
+  mobileOutOfStockRow: {
+    marginTop: SPACING.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.gray100,
+    paddingVertical: 8,
+    borderRadius: BORDER_RADIUS.lg,
+  },
+  mobileOutOfStockText: { color: COLORS.gray500, fontSize: 13, fontWeight: '700' },
   unitPicker: {
     flexDirection: 'row',
     alignItems: 'center',
