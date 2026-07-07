@@ -256,10 +256,12 @@ export const categoriesApi = {
 
 // Auth API
 export const authApi = {
-  // Step 1: Check if phone is registered (Firebase sends OTP client-side)
-  sendOtp: async (phone: string) => {
-    const response = await api.post('/auth/send-otp', { phone })
-    return response.data // { success, data: { phone, userExists, userName }, message }
+  // Step 1: Check the phone + (in backend-OTP mode) have the server send the
+  // code itself — WhatsApp first, SMS fallback. Response data carries
+  // { mode: 'bypass'|'backend'|'firebase', channel?: 'whatsapp'|'sms' }.
+  sendOtp: async (phone: string, channel?: 'whatsapp' | 'sms') => {
+    const response = await api.post('/auth/send-otp', channel ? { phone, channel } : { phone })
+    return response.data // { success, data: { phone, userExists, userName, mode, channel }, message }
   },
 
   // Step 2a: Verify Firebase ID token and login (existing user)

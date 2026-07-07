@@ -23,8 +23,12 @@ import { formatPhoneNumber } from '@utils/helpers';
 import { isOtpBypassEnabled, otpBypassHint } from '@utils/otpBypass';
 import { finishAuthRedirect } from '@utils/authRedirect';
 import { setLastPhone } from '@/lib/phoneStorage';
+import { startSmsOtpListener } from '@/lib/phoneAutoFill';
 
 type OTPScreenProps = NativeStackScreenProps<AuthStackParamList, 'OTP'>;
+
+const channelLabel = (channel?: 'whatsapp' | 'sms') =>
+  channel === 'whatsapp' ? 'WhatsApp' : 'SMS';
 
 export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
   const { phone, purpose, redirect, userName } = route.params;
@@ -32,6 +36,7 @@ export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [error, setError] = useState('');
   const [timer, setTimer] = useState(60);
+  const [channel, setChannel] = useState<'whatsapp' | 'sms' | undefined>(route.params.channel);
   const { verifyOTP, isLoading } = useAuthStore();
   const inputRefs = useRef<(TextInput | null)[]>([]);
 
@@ -48,8 +53,37 @@ export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
     }
   }, [timer]);
 
+  // Android zero-tap: SMS Retriever hands us the arriving OTP SMS (thanks to
+  // the app hash the backend appends) — fill and verify without any typing.
+  // No-op on iOS/Expo Go; there the keyboard's oneTimeCode suggestion covers it.
+  useEffect(() => {
+    if (isOtpBypassEnabled()) return;
+    const stop = startSmsOtpListener((code) => {
+      setOtp(code.split(''));
+      setError('');
+      handleVerify(code);
+    });
+    return stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Fill all boxes from one string — keyboard autofill/paste inserts the
+   *  whole code into the focused box. */
+  const applyFullCode = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 6);
+    if (!digits) return;
+    const next = Array.from({ length: 6 }, (_, i) => digits[i] ?? '');
+    setOtp(next);
+    setError('');
+    inputRefs.current[Math.min(digits.length, 5)]?.focus();
+    if (digits.length === 6) handleVerify(digits);
+  };
+
   const handleOtpChange = (index: number, value: string) => {
-    if (value.length > 1) return;
+    if (value.length > 1) {
+      applyFullCode(value);
+      return;
+    }
 
     const newOtp = [...otp];
     newOtp[index] = value;
@@ -108,13 +142,20 @@ export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
     }
   };
 
-  const handleResend = () => {
+  const handleResend = (channelOverride?: 'whatsapp' | 'sms') => {
     setTimer(60);
     setOtp(['', '', '', '', '', '']);
     setError('');
     inputRefs.current[0]?.focus();
     const { sendOtp } = useAuthStore.getState();
-    sendOtp(phone).catch(console.error);
+    sendOtp(phone, channelOverride)
+      .then((result) => {
+        if (result.channel) setChannel(result.channel);
+      })
+      .catch((err: any) => {
+        setError(err?.message || 'Failed to resend the code');
+        setTimer(0);
+      });
   };
 
   const isResetPin = purpose === 'resetPin';
@@ -145,7 +186,7 @@ export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
               ) : isResetPin ? (
                 `Verify OTP to reset your PIN for ${formatPhoneNumber(phone)}`
               ) : (
-                `OTP sent to ${formatPhoneNumber(phone)} via SMS`
+                `OTP sent to ${formatPhoneNumber(phone)} via ${channelLabel(channel)}`
               )
             }
           >
@@ -169,7 +210,11 @@ export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
                   onChangeText={(value) => handleOtpChange(index, value)}
                   onKeyPress={({ nativeEvent }) => handleKeyPress(index, nativeEvent.key)}
                   keyboardType="number-pad"
-                  maxLength={1}
+                  // >1 so keyboard autofill can insert the whole code — the
+                  // handler distributes it across the boxes.
+                  maxLength={index === 0 ? 6 : 1}
+                  textContentType="oneTimeCode"
+                  autoComplete={index === 0 ? 'sms-otp' : 'off'}
                   selectTextOnFocus
                 />
               ))}
@@ -190,9 +235,16 @@ export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
                   Resend OTP in <Text style={styles.timer}>{timer}s</Text>
                 </Text>
               ) : (
-                <TouchableOpacity onPress={handleResend}>
-                  <Text style={styles.resendText}>Resend OTP</Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity onPress={() => handleResend()}>
+                    <Text style={styles.resendText}>Resend OTP</Text>
+                  </TouchableOpacity>
+                  {channel === 'whatsapp' && (
+                    <TouchableOpacity onPress={() => handleResend('sms')} style={styles.smsFallbackBtn}>
+                      <Text style={styles.smsFallbackText}>WhatsApp not received? Send via SMS</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
               )}
             </View>
 
@@ -251,6 +303,8 @@ const styles = StyleSheet.create({
   timerText: { fontSize: 14, color: COLORS.gray500 },
   timer: { fontWeight: '600', color: COLORS.primary },
   resendText: { fontSize: 14, fontWeight: '600', color: COLORS.primary },
+  smsFallbackBtn: { marginTop: SPACING.md },
+  smsFallbackText: { fontSize: 13, color: COLORS.gray500, textDecorationLine: 'underline' },
   changeNumberBtn: {
     flexDirection: 'row',
     alignItems: 'center',

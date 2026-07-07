@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import PinInput from '@components/auth/PinInput';
 import { useAuthStore } from '@store';
 import { authService } from '@services/auth.service';
 import { clearLastPhone, getLastPhone, maskPhone, setLastPhone } from '@/lib/phoneStorage';
+import { getDevicePhoneNumber } from '@/lib/phoneAutoFill';
 import Toast from 'react-native-toast-message';
 
 type Step = 'phone' | 'pin' | 'newPin';
@@ -43,6 +44,7 @@ export const LoginScreen: React.FC = () => {
   const [newPinConfirm, setNewPinConfirm] = useState('');
   const [resetCode, setResetCode] = useState(route.params?.resetCode ?? '');
   const [bootstrapping, setBootstrapping] = useState(true);
+  const phoneHintShown = useRef(false);
 
   const { sendOtp, verifyWithPin, resetPinAndLogin, isLoading } = useAuthStore();
 
@@ -94,6 +96,21 @@ export const LoginScreen: React.FC = () => {
     };
   }, [route.params?.another, route.params?.initialStep, route.params?.phone, route.params?.resetCode]);
 
+  // Android: offer the SIM number via Google's Phone Number Hint sheet the
+  // first time the empty phone step shows — one tap fills the field. No-op on
+  // iOS/Expo Go (helper returns null) where the keyboard suggestion covers it.
+  useEffect(() => {
+    if (bootstrapping || step !== 'phone' || phone || phoneHintShown.current) return;
+    phoneHintShown.current = true;
+    getDevicePhoneNumber().then((detected) => {
+      if (detected) {
+        setPhone(detected);
+        setError('');
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bootstrapping, step]);
+
   const finishLogin = useCallback(() => {
     finishAuthRedirect(rootNavigation, redirect);
   }, [redirect, rootNavigation]);
@@ -132,6 +149,7 @@ export const LoginScreen: React.FC = () => {
           phone,
           userExists: result.userExists,
           userName: result.userName,
+          channel: result.channel,
           redirect,
         });
       }
@@ -163,12 +181,13 @@ export const LoginScreen: React.FC = () => {
 
   const handleForgotPin = async () => {
     try {
-      await sendOtp(phone);
+      const result = await sendOtp(phone);
       navigation.navigate('OTP', {
         phone,
         userExists: true,
         userName,
         purpose: 'resetPin',
+        channel: result.channel,
         redirect,
       });
     } catch (err: any) {
@@ -290,6 +309,10 @@ export const LoginScreen: React.FC = () => {
                   maxLength={11}
                   error={error}
                   leftIcon={<MaterialIcons name="phone" size={20} color={COLORS.gray400} />}
+                  // iOS QuickType suggests the user's own number; Android
+                  // autofill can offer it too (plus our Phone Number Hint sheet).
+                  textContentType="telephoneNumber"
+                  autoComplete="tel"
                   autoFocus
                 />
                 <Button

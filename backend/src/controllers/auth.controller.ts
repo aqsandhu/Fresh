@@ -24,6 +24,14 @@ import {
 import { normalizePhoneNumber } from '../utils/validators';
 import { verifyPhoneFromRequest } from '../services/otp.service';
 import { isOtpBypassEnabled } from '../config/otpBypass';
+import { getOtpMode, OTP_RESEND_COOLDOWN_SECONDS } from '../config/otpProvider';
+import {
+  ensureOtpTable,
+  checkSendAllowed,
+  generateOtpCode,
+  persistOtp,
+} from '../services/otpStore.service';
+import { deliverOtp } from '../services/otpSender.service';
 import { getPinStatusForPhone, ensurePinColumns, hasPinColumns } from '../config/pinAuth';
 import {
   getPinLockoutState,
@@ -66,10 +74,17 @@ function authSuccess<T extends Record<string, unknown>>(
 // ============================================================================
 // STEP 1: SEND OTP (for both login and register)
 // POST /api/auth/send-otp
+// ----------------------------------------------------------------------------
+// mode 'bypass'   → fixed code, nothing sent
+// mode 'backend'  → we generate the code and send it: WhatsApp Cloud API
+//                   first (cheapest in PK), SMS gateway fallback
+// mode 'firebase' → OTP is sent client-side via the Firebase SDK; backend
+//                   just confirms user existence
 // ============================================================================
 export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { phone } = req.body;
+  const { phone, channel } = req.body as { phone: string; channel?: 'whatsapp' | 'sms' };
   const normalizedPhone = normalizePhoneNumber(phone);
+  const mode = getOtpMode();
 
   // Check if user exists (frontend uses this to decide login vs register flow)
   const existingUser = await query(
@@ -83,15 +98,58 @@ export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Account is suspended. Please contact support.', 403);
   }
 
-  // OTP is sent client-side via Firebase SDK — backend just confirms user existence
-  logger.info('Phone check for Firebase OTP flow', { phone: normalizedPhone, userExists });
-
-  successResponse(res, {
+  const baseData = {
     phone: normalizedPhone,
     userExists,
     userName: userExists ? existingUser.rows[0].full_name : null,
     otpBypass: isOtpBypassEnabled(),
-  }, isOtpBypassEnabled()
+    mode,
+  };
+
+  if (mode === 'backend') {
+    if (!(await ensureOtpTable())) {
+      return errorResponse(res, 'Verification is temporarily unavailable. Please try again.', 503);
+    }
+
+    // Anti SMS-pumping: per-phone cooldown + per-phone/per-IP hourly caps.
+    const ip = req.ip || null;
+    const gate = await checkSendAllowed(normalizedPhone, ip);
+    if (!gate.allowed) {
+      res.setHeader('Retry-After', String(gate.retryAfterSec));
+      return errorResponse(res, gate.reason, 429);
+    }
+
+    // Deliver first, persist only on success — a failed send must not burn
+    // the user's per-hour quota or resend cooldown.
+    const code = generateOtpCode();
+    const delivery = await deliverOtp(normalizedPhone, code, channel);
+
+    if (!delivery.ok) {
+      logger.error('OTP delivery failed on every channel', {
+        phone: normalizedPhone,
+        error: delivery.error,
+      });
+      return errorResponse(res, 'Could not send the code right now. Please try again.', 502);
+    }
+
+    const { expiresInSec } = await persistOtp(normalizedPhone, code, delivery.channel, ip);
+    logger.info('Backend OTP sent', { phone: normalizedPhone, channel: delivery.channel, userExists });
+
+    return successResponse(
+      res,
+      {
+        ...baseData,
+        channel: delivery.channel,
+        expiresInSec,
+        resendInSec: OTP_RESEND_COOLDOWN_SECONDS,
+      },
+      delivery.channel === 'whatsapp' ? 'Code sent on WhatsApp' : 'Code sent via SMS'
+    );
+  }
+
+  logger.info('Phone check for OTP flow', { phone: normalizedPhone, userExists, mode });
+
+  successResponse(res, baseData, isOtpBypassEnabled()
     ? 'OTP bypass active — use the configured fixed code'
     : 'Ready for OTP verification');
 });

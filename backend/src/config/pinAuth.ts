@@ -41,7 +41,7 @@ export async function hasPinColumns(): Promise<boolean> {
 }
 
 /** Derive a direct DB URL for DDL when Render uses Supabase pooler on :6543. */
-function getMigrationConnectionString(): string | null {
+export function getMigrationConnectionString(): string | null {
   const direct = process.env.DATABASE_MIGRATION_URL || process.env.DIRECT_DATABASE_URL;
   if (direct) return direct;
 

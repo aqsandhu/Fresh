@@ -21,7 +21,7 @@ import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
-import { isOtpBypassEnabled, otpBypassHint } from '@/lib/otpBypass'
+import { isOtpBypassEnabled, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
 import PinInput from '@/components/auth/PinInput'
 import BrandLogo from '@/components/ui/BrandLogo'
 import AutoHeight from '@/components/ui/AutoHeight'
@@ -60,6 +60,8 @@ export default function LoginPage() {
   const [pin, setPin] = useState('')
   const [bootstrapping, setBootstrapping] = useState(true)
   const [otpPurpose, setOtpPurpose] = useState<'login' | 'resetPin'>('login')
+  const [otpMode, setOtpMode] = useState<OtpMode>(isOtpBypassEnabled() ? 'bypass' : 'firebase')
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms' | undefined>(undefined)
   const [newPin, setNewPin] = useState('')
   const [newPinConfirm, setNewPinConfirm] = useState('')
 
@@ -155,11 +157,12 @@ export default function LoginPage() {
   }
 
   // ── Send OTP ──────────────────────────────────────────────────────────
-  const sendOtp = async (phoneNumber: string) => {
+  const sendOtp = async (phoneNumber: string, channel?: 'whatsapp' | 'sms') => {
     setIsLoading(true)
     try {
-      // Step 1: Check user existence with backend
-      const res = await authApi.sendOtp(phoneNumber)
+      // Step 1: Check user existence with backend (backend-OTP mode also sends
+      // the code here — WhatsApp first, SMS fallback).
+      const res = await authApi.sendOtp(phoneNumber, channel)
       const data = res.data
 
       if (!data.userExists) {
@@ -171,7 +174,10 @@ export default function LoginPage() {
       setNormalizedPhone(data.phone)
       setUserName(data.userName)
 
-      if (isOtpBypassEnabled()) {
+      const mode = resolveOtpMode(data.mode)
+      setOtpMode(mode)
+
+      if (mode === 'bypass') {
         setStep('otp')
         setOtp(['', '', '', '', '', ''])
         setResendTimer(60)
@@ -179,7 +185,16 @@ export default function LoginPage() {
         return
       }
 
-      // Step 2: Send OTP via Firebase (SMS)
+      if (mode === 'backend') {
+        setOtpChannel(data.channel)
+        setStep('otp')
+        setOtp(['', '', '', '', '', ''])
+        setResendTimer(60)
+        toast.success(data.channel === 'whatsapp' ? 'Code sent on WhatsApp' : 'OTP sent via SMS')
+        return
+      }
+
+      // Firebase mode: send OTP via Firebase (SMS) using invisible reCAPTCHA.
       const verifier = initRecaptcha()
       const confirmation = await signInWithPhoneNumber(getFirebaseAuth(), data.phone, verifier)
       confirmationResultRef.current = confirmation
@@ -304,7 +319,7 @@ export default function LoginPage() {
 
     setIsLoading(true)
     try {
-      if (isOtpBypassEnabled()) {
+      if (isCodeEntryMode(otpMode)) {
         const code = resetOtpCodeRef.current
         if (!code) {
           toast.error('Verification expired. Please request OTP again.')
@@ -368,11 +383,14 @@ export default function LoginPage() {
   // ── Verify OTP ────────────────────────────────────────────────────────
   const verifyOtp = useCallback(async (code: string) => {
     if (code.length !== 6) return
-    if (!isOtpBypassEnabled() && !confirmationResultRef.current) return
+    const codeEntry = isCodeEntryMode(otpMode)
+    if (!codeEntry && !confirmationResultRef.current) return
     setIsLoading(true)
     try {
       if (otpPurpose === 'resetPin') {
-        if (isOtpBypassEnabled()) {
+        if (codeEntry) {
+          // Backend/bypass: the code itself proves ownership — reuse it for
+          // reset-pin + verify-login in handleNewPinSubmit.
           resetOtpCodeRef.current = code
         } else {
           const result = await confirmationResultRef.current!.confirm(code)
@@ -385,7 +403,7 @@ export default function LoginPage() {
         return
       }
 
-      if (isOtpBypassEnabled()) {
+      if (codeEntry) {
         const res = await authApi.verifyLoginWithCode(normalizedPhone || phone, code)
         const { user, tokens } = res.data
         setLastPhone(user.phone)
@@ -433,17 +451,17 @@ export default function LoginPage() {
       const msg = backendMsg || firebaseErrorMessage(err, 'Invalid OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
       // eslint-disable-next-line no-console
-      console.error('[Firebase OTP verify error]', err)
+      console.error('[OTP verify error]', err)
       setOtp(['', '', '', '', '', ''])
       setTimeout(() => document.getElementById('otp-0')?.focus(), 100)
     } finally {
       setIsLoading(false)
     }
-  }, [setAuth, router, searchParams, normalizedPhone, phone, otpPurpose])
+  }, [setAuth, router, searchParams, normalizedPhone, phone, otpPurpose, otpMode])
 
   // ── Resend OTP ────────────────────────────────────────────────────────
-  const handleResend = async () => {
-    await sendOtp(phone)
+  const handleResend = async (channel?: 'whatsapp' | 'sms') => {
+    await sendOtp(phone, channel)
   }
 
   // ── OTP Input Handlers ────────────────────────────────────────────────
@@ -530,7 +548,7 @@ export default function LoginPage() {
                   <>
                     {otpPurpose === 'resetPin' ? 'Verify OTP to reset your PIN for ' : 'OTP sent to '}
                     <span className="font-semibold text-gray-700">{normalizedPhone}</span>
-                    {otpPurpose === 'login' && ' via SMS'}
+                    {otpPurpose === 'login' && ` via ${otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}`}
                   </>
                 )
               ) : step === 'newPin' ? (
@@ -661,6 +679,7 @@ export default function LoginPage() {
                         onChange={(e) => handleOtpChange(index, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
                         onFocus={(e) => e.target.select()}
+                        autoComplete={index === 0 ? 'one-time-code' : 'off'}
                         autoFocus={index === 0}
                         className="w-9 h-11 sm:w-11 sm:h-14 md:w-12 text-center text-lg sm:text-xl font-bold border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white disabled:opacity-50 flex-1 max-w-[2.75rem] sm:max-w-none sm:flex-none"
                         disabled={isLoading}
@@ -693,13 +712,24 @@ export default function LoginPage() {
                         Resend OTP in <span className="font-semibold text-gray-700">{resendTimer}s</span>
                       </p>
                     ) : (
-                      <button
-                        onClick={handleResend}
-                        disabled={isLoading}
-                        className="text-sm text-primary-600 font-medium hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors disabled:opacity-50"
-                      >
-                        Resend OTP
-                      </button>
+                      <div className="flex flex-col items-center gap-1">
+                        <button
+                          onClick={() => handleResend()}
+                          disabled={isLoading}
+                          className="text-sm text-primary-600 font-medium hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors disabled:opacity-50"
+                        >
+                          Resend OTP
+                        </button>
+                        {otpMode === 'backend' && otpChannel === 'whatsapp' && (
+                          <button
+                            onClick={() => handleResend('sms')}
+                            disabled={isLoading}
+                            className="text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+                          >
+                            WhatsApp not received? Send via SMS
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 

@@ -39,7 +39,7 @@ import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
-import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint } from '@/lib/otpBypass'
+import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
 import { getLastPhone, maskPhone, setLastPhone } from '@/lib/phoneStorage'
 
 type Step = 'phone' | 'pin' | 'otp' | 'register'
@@ -63,6 +63,8 @@ export default function CheckoutAuthPanel() {
   //   'register' → brand-new user → move to the Register (name + PIN) step
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [otpPurpose, setOtpPurpose] = useState<'login' | 'register'>('login')
+  const [otpMode, setOtpMode] = useState<OtpMode>(isOtpBypassEnabled() ? 'bypass' : 'firebase')
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms' | undefined>(undefined)
   const [resendTimer, setResendTimer] = useState(0)
 
   // Login (returning user) PIN.
@@ -111,10 +113,14 @@ export default function CheckoutAuthPanel() {
   }
 
   // ── Send OTP (used for new-user register AND PIN-less existing login) ────
-  const sendOtp = async (phoneNumber: string, purpose: 'login' | 'register') => {
+  const sendOtp = async (
+    phoneNumber: string,
+    purpose: 'login' | 'register',
+    channel?: 'whatsapp' | 'sms'
+  ) => {
     setIsLoading(true)
     try {
-      const res = await authApi.sendOtp(phoneNumber)
+      const res = await authApi.sendOtp(phoneNumber, channel)
       const data = res.data
 
       // Defensive: existence is already known from pin-status, but keep the
@@ -123,11 +129,23 @@ export default function CheckoutAuthPanel() {
       if (data.userName) setUserName(data.userName)
       setOtpPurpose(purpose)
 
-      if (isOtpBypassEnabled()) {
+      const mode = resolveOtpMode(data.mode)
+      setOtpMode(mode)
+
+      if (mode === 'bypass') {
         setStep('otp')
         setOtp(['', '', '', '', '', ''])
         setResendTimer(60)
         toast.success(otpBypassHint(), { duration: 6000 })
+        return
+      }
+
+      if (mode === 'backend') {
+        setOtpChannel(data.channel)
+        setStep('otp')
+        setOtp(['', '', '', '', '', ''])
+        setResendTimer(60)
+        toast.success(data.channel === 'whatsapp' ? 'Code sent on WhatsApp' : 'OTP sent via SMS')
         return
       }
 
@@ -215,19 +233,23 @@ export default function CheckoutAuthPanel() {
   // ── OTP verify ──────────────────────────────────────────────────────────
   const verifyOtp = async (code: string) => {
     if (code.length !== 6) return
-    if (!isOtpBypassEnabled() && !confirmationResultRef.current) return
+    const codeEntry = isCodeEntryMode(otpMode)
+    if (!codeEntry && !confirmationResultRef.current) return
     setIsLoading(true)
     try {
       if (otpPurpose === 'register') {
-        // New user: just validate the code here, then collect name + PIN. The
-        // account itself is created on the Register step (verify-register).
-        if (isOtpBypassEnabled()) {
+        // New user: just capture the code here, then collect name + PIN. The
+        // account itself is created on the Register step (verify-register),
+        // which is where a backend-sent code is actually validated.
+        if (otpMode === 'bypass') {
           if (!isValidOtpBypassCode(code)) {
             toast.error('Invalid OTP. Please try again.')
             setOtp(['', '', '', '', '', ''])
             setTimeout(() => document.getElementById('cotp-0')?.focus(), 100)
             return
           }
+          verifiedOtpCodeRef.current = code
+        } else if (otpMode === 'backend') {
           verifiedOtpCodeRef.current = code
         } else {
           const result = await confirmationResultRef.current!.confirm(code)
@@ -241,7 +263,7 @@ export default function CheckoutAuthPanel() {
       }
 
       // Existing user without a PIN: verify code → sign in directly.
-      if (isOtpBypassEnabled()) {
+      if (codeEntry) {
         const res = await authApi.verifyLoginWithCode(normalizedPhone || phone, code)
         const { user, tokens } = res.data
         setLastPhone(user.phone)
@@ -289,7 +311,7 @@ export default function CheckoutAuthPanel() {
     setIsLoading(true)
     try {
       // 1) Create the account (verify-register also returns auth tokens).
-      const res = isOtpBypassEnabled()
+      const res = isCodeEntryMode(otpMode)
         ? await authApi.verifyRegisterWithCode({
             phone: normalizedPhone || phone,
             code: verifiedOtpCodeRef.current,
@@ -498,7 +520,7 @@ export default function CheckoutAuthPanel() {
                 <span className="font-medium text-amber-700">{otpBypassHint()}</span>
               ) : (
                 <>
-                  We sent a 6-digit code by SMS to{' '}
+                  We sent a 6-digit code by {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} to{' '}
                   <span className="font-semibold">{normalizedPhone || phone}</span>. Enter it
                   below to {otpPurpose === 'register' ? 'verify your number.' : 'sign in.'}
                 </>
@@ -517,6 +539,7 @@ export default function CheckoutAuthPanel() {
                   onChange={(e) => handleOtpChange(index, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(index, e)}
                   onFocus={(e) => e.target.select()}
+                  autoComplete={index === 0 ? 'one-time-code' : 'off'}
                   autoFocus={index === 0}
                   disabled={isLoading}
                   className="flex-1 min-w-0 max-w-[3rem] w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white disabled:opacity-50"
@@ -547,14 +570,26 @@ export default function CheckoutAuthPanel() {
               {resendTimer > 0 ? (
                 <span className="text-gray-500">Resend in {resendTimer}s</span>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => sendOtp(normalizedPhone || phone, otpPurpose)}
-                  disabled={isLoading}
-                  className="text-primary-600 font-medium hover:text-primary-700 disabled:opacity-50"
-                >
-                  Resend OTP
-                </button>
+                <div className="flex flex-col items-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => sendOtp(normalizedPhone || phone, otpPurpose)}
+                    disabled={isLoading}
+                    className="text-primary-600 font-medium hover:text-primary-700 disabled:opacity-50"
+                  >
+                    Resend OTP
+                  </button>
+                  {otpMode === 'backend' && otpChannel === 'whatsapp' && (
+                    <button
+                      type="button"
+                      onClick={() => sendOtp(normalizedPhone || phone, otpPurpose, 'sms')}
+                      disabled={isLoading}
+                      className="text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+                    >
+                      Send via SMS instead
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </motion.div>

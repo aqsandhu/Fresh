@@ -8,6 +8,8 @@ import {
   isOtpBypassEnabled,
   verifyOtpBypassCode,
 } from '../config/otpBypass';
+import { isBackendOtpEnabled } from '../config/otpProvider';
+import { verifyStoredOtp } from './otpStore.service';
 import { normalizePhoneNumber } from '../utils/validators';
 
 export type PhoneAuthRequest = {
@@ -67,7 +69,9 @@ export async function verifyFirebaseToken(
 
 /**
  * Verify phone auth from an API request body.
- * Uses fixed OTP bypass when OTP_BYPASS_ENABLED=true; otherwise Firebase idToken.
+ * Priority: OTP bypass (fixed code) → backend-generated OTP (phone + code
+ * against otp_codes) → Firebase idToken. The idToken path stays available in
+ * every mode so app builds from the Firebase era keep logging in.
  */
 export async function verifyPhoneFromRequest(
   body: PhoneAuthRequest
@@ -83,6 +87,16 @@ export async function verifyPhoneFromRequest(
       success: true,
       phone: normalizePhoneNumber(body.phone),
       message: 'Bypass OTP verified',
+    };
+  }
+
+  if (isBackendOtpEnabled() && body.phone && body.code) {
+    const normalizedPhone = normalizePhoneNumber(body.phone);
+    const result = await verifyStoredOtp(normalizedPhone, body.code);
+    return {
+      success: result.success,
+      phone: result.success ? normalizedPhone : undefined,
+      message: result.message,
     };
   }
 

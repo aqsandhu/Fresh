@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from 'express';
 import Joi, { ObjectSchema, ValidationError as JoiValidationError } from 'joi';
 import { ValidationError } from './errorHandler';
 import { isOtpBypassEnabled } from '../config/otpBypass';
+import { isCodeEntryMode } from '../config/otpProvider';
 
 // Validation source types
 type ValidationSource = 'body' | 'query' | 'params' | 'headers' | 'cookies';
@@ -98,62 +99,69 @@ const otpCodeField = Joi.string().length(6).pattern(/^\d{6}$/).required().messag
   'any.required': 'OTP code is required',
 });
 
+const idTokenField = Joi.string().min(100).messages({
+  'string.min': 'Invalid verification token',
+  'any.required': 'Verification token is required',
+});
+
+// In code-entry modes (bypass OR backend-generated OTP) clients send
+// { phone, code }; an idToken is still accepted so app builds from the
+// Firebase era keep working during the switch-over.
 function buildVerifyLoginSchema(): ObjectSchema {
-  if (isOtpBypassEnabled()) {
+  if (isCodeEntryMode()) {
     return Joi.object({
-      phone: commonSchemas.phone.required(),
-      code: otpCodeField,
-    });
+      phone: commonSchemas.phone,
+      code: otpCodeField.optional(),
+      idToken: idTokenField,
+    })
+      .xor('code', 'idToken')
+      .with('code', 'phone');
   }
   return Joi.object({
-    idToken: Joi.string().min(100).required().messages({
-      'string.min': 'Invalid verification token',
-      'any.required': 'Verification token is required',
-    }),
+    idToken: idTokenField.required(),
   });
 }
 
 function buildVerifyRegisterSchema(): ObjectSchema {
-  if (isOtpBypassEnabled()) {
-    return Joi.object({
-      phone: commonSchemas.phone.required(),
-      code: otpCodeField,
-      full_name: commonSchemas.name.required(),
-      email: commonSchemas.email,
-      password: commonSchemas.password.optional(),
-    });
-  }
-  return Joi.object({
-    idToken: Joi.string().min(100).required().messages({
-      'string.min': 'Invalid verification token',
-      'any.required': 'Verification token is required',
-    }),
+  const profileFields = {
     full_name: commonSchemas.name.required(),
     email: commonSchemas.email,
     password: commonSchemas.password.optional(),
+  };
+  if (isCodeEntryMode()) {
+    return Joi.object({
+      phone: commonSchemas.phone,
+      code: otpCodeField.optional(),
+      idToken: idTokenField,
+      ...profileFields,
+    })
+      .xor('code', 'idToken')
+      .with('code', 'phone');
+  }
+  return Joi.object({
+    idToken: idTokenField.required(),
+    ...profileFields,
   });
 }
 
 function buildResetPinConfirmSchema(): ObjectSchema {
-  if (isOtpBypassEnabled()) {
+  const newPinField = Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
+    'string.length': 'PIN must be exactly 4 digits',
+    'string.pattern.base': 'PIN must contain only digits (0-9)',
+  });
+  if (isCodeEntryMode()) {
     return Joi.object({
-      phone: commonSchemas.phone.required(),
-      code: otpCodeField,
-      newPin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
-        'string.length': 'PIN must be exactly 4 digits',
-        'string.pattern.base': 'PIN must contain only digits (0-9)',
-      }),
-    });
+      phone: commonSchemas.phone,
+      code: otpCodeField.optional(),
+      idToken: idTokenField,
+      newPin: newPinField,
+    })
+      .xor('code', 'idToken')
+      .with('code', 'phone');
   }
   return Joi.object({
-    idToken: Joi.string().min(100).required().messages({
-      'string.min': 'Invalid Firebase verification token',
-      'any.required': 'Verification token is required',
-    }),
-    newPin: Joi.string().length(4).pattern(/^\d{4}$/).required().messages({
-      'string.length': 'PIN must be exactly 4 digits',
-      'string.pattern.base': 'PIN must contain only digits (0-9)',
-    }),
+    idToken: idTokenField.required(),
+    newPin: newPinField,
   });
 }
 
@@ -161,6 +169,9 @@ function buildResetPinConfirmSchema(): ObjectSchema {
 export const authSchemas = {
   sendOtp: Joi.object({
     phone: commonSchemas.phone.required(),
+    // Backend-OTP mode: default is WhatsApp-first with SMS fallback; an
+    // explicit 'sms' means the user tapped "Send via SMS instead".
+    channel: Joi.string().valid('whatsapp', 'sms'),
   }),
 
   get verifyLogin() {

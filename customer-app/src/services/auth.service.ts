@@ -26,9 +26,15 @@ export interface AuthTokens {
 
 export interface SendOtpResponse {
   phone: string;
-  channel: string;
+  /** Delivery channel the backend actually used ('whatsapp' | 'sms'). */
+  channel?: 'whatsapp' | 'sms';
   userExists: boolean;
   userName: string | null;
+  otpBypass?: boolean;
+  /** 'bypass' | 'backend' | 'firebase' — which system verifies the code. */
+  mode?: string;
+  expiresInSec?: number;
+  resendInSec?: number;
 }
 
 export interface AuthResponse {

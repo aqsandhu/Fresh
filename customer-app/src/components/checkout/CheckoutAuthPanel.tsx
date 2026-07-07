@@ -7,6 +7,7 @@ import { useAuthStore } from '@store';
 import { authService } from '@services/auth.service';
 import { isOtpBypassEnabled, otpBypassHint } from '@/utils/otpBypass';
 import { getLastPhone, maskPhone, setLastPhone } from '@/lib/phoneStorage';
+import { getDevicePhoneNumber, startSmsOtpListener } from '@/lib/phoneAutoFill';
 
 type Step = 'phone' | 'pin' | 'otp' | 'register';
 
@@ -30,6 +31,7 @@ export const CheckoutAuthPanel: React.FC = () => {
   const [pin, setPin] = useState('');
   const [otp, setOtp] = useState('');
   const [otpPurpose, setOtpPurpose] = useState<'login' | 'register'>('login');
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms' | undefined>(undefined);
   const verifiedCodeRef = useRef('');
 
   const [regName, setRegName] = useState('');
@@ -37,21 +39,48 @@ export const CheckoutAuthPanel: React.FC = () => {
 
   useEffect(() => {
     getLastPhone().then((saved) => {
-      if (saved) setPhone(saved);
+      if (saved) {
+        setPhone(saved);
+        return;
+      }
+      // Android: no remembered number — offer the SIM number via Google's
+      // Phone Number Hint sheet (no-op on iOS/Expo Go).
+      getDevicePhoneNumber().then((detected) => {
+        if (detected) setPhone(detected);
+      });
     });
   }, []);
 
+  // Android zero-tap: auto-read the arriving OTP SMS while the OTP step shows.
+  useEffect(() => {
+    if (step !== 'otp' || isOtpBypassEnabled()) return;
+    const stop = startSmsOtpListener((code) => {
+      setOtp(code);
+      submitOtp(code);
+    });
+    return stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
   const isSignupSide = step === 'otp' ? otpPurpose === 'register' : step === 'register';
 
-  const startOtp = async (value: string, purpose: 'login' | 'register') => {
-    await sendOtp(value);
+  const startOtp = async (
+    value: string,
+    purpose: 'login' | 'register',
+    channel?: 'whatsapp' | 'sms'
+  ) => {
+    const result = await sendOtp(value, channel);
+    setOtpChannel(result.channel);
     setOtpPurpose(purpose);
     setOtp('');
     setStep('otp');
     if (isOtpBypassEnabled()) {
       Toast.show({ type: 'info', text1: otpBypassHint(), visibilityTime: 5000 });
     } else {
-      Toast.show({ type: 'success', text1: 'OTP sent via SMS' });
+      Toast.show({
+        type: 'success',
+        text1: result.channel === 'whatsapp' ? 'Code sent on WhatsApp' : 'OTP sent via SMS',
+      });
     }
   };
 
@@ -82,11 +111,13 @@ export const CheckoutAuthPanel: React.FC = () => {
     }
   };
 
-  const submitPin = async () => {
-    if (pin.length !== 4) return;
+  const submitPin = async (pinArg?: string) => {
+    // Explicit arg avoids the stale-closure state on auto-submit.
+    const pinValue = pinArg ?? pin;
+    if (pinValue.length !== 4) return;
     setLoading(true);
     try {
-      await verifyWithPin(normalizedPhone || phone, pin);
+      await verifyWithPin(normalizedPhone || phone, pinValue);
       await setLastPhone(normalizedPhone || phone);
       Toast.show({ type: 'success', text1: 'Signed in!' });
     } catch (err: any) {
@@ -97,18 +128,20 @@ export const CheckoutAuthPanel: React.FC = () => {
     }
   };
 
-  const submitOtp = async () => {
-    if (otp.length !== 6) return;
+  const submitOtp = async (otpArg?: string) => {
+    // Explicit arg avoids the stale-closure state on auto-submit / zero-tap.
+    const code = otpArg ?? otp;
+    if (code.length !== 6) return;
     setLoading(true);
     try {
       if (otpPurpose === 'register') {
-        verifiedCodeRef.current = otp;
+        verifiedCodeRef.current = code;
         setRegName('');
         setRegPin('');
         setStep('register');
         Toast.show({ type: 'success', text1: 'Phone verified! Name + PIN to finish.' });
       } else {
-        await verifyOTP(normalizedPhone || phone, otp);
+        await verifyOTP(normalizedPhone || phone, code);
         await setLastPhone(normalizedPhone || phone);
         Toast.show({ type: 'success', text1: 'Signed in!' });
       }
@@ -180,6 +213,8 @@ export const CheckoutAuthPanel: React.FC = () => {
             value={phone}
             onChangeText={(t) => setPhone(t.replace(/\D/g, '').slice(0, 11))}
             maxLength={11}
+            textContentType="telephoneNumber"
+            autoComplete="tel"
           />
           <PrimaryButton label="Continue" loading={loading} onPress={submitPhone} />
           <Text style={styles.hint}>
@@ -203,7 +238,7 @@ export const CheckoutAuthPanel: React.FC = () => {
             onChangeText={(t) => {
               const v = t.replace(/\D/g, '').slice(0, 4);
               setPin(v);
-              if (v.length === 4) setTimeout(submitPin, 50);
+              if (v.length === 4) setTimeout(() => submitPin(v), 50);
             }}
             maxLength={4}
             autoFocus
@@ -224,7 +259,7 @@ export const CheckoutAuthPanel: React.FC = () => {
             <Text style={styles.otpNoteText}>
               {isOtpBypassEnabled()
                 ? otpBypassHint()
-                : `6-digit code SMS kiya gaya hai ${normalizedPhone || phone} par.`}
+                : `6-digit code ${otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'} par bheja gaya hai ${normalizedPhone || phone} ko.`}
             </Text>
           </View>
           <TextInput
@@ -235,16 +270,26 @@ export const CheckoutAuthPanel: React.FC = () => {
             onChangeText={(t) => {
               const v = t.replace(/\D/g, '').slice(0, 6);
               setOtp(v);
-              if (v.length === 6) setTimeout(submitOtp, 50);
+              if (v.length === 6) setTimeout(() => submitOtp(v), 50);
             }}
             maxLength={6}
+            textContentType="oneTimeCode"
+            autoComplete="sms-otp"
             autoFocus
           />
           <PrimaryButton
             label={otpPurpose === 'register' ? 'Verify number' : 'Verify & sign in'}
             loading={loading}
-            onPress={submitOtp}
+            onPress={() => submitOtp()}
           />
+          {otpChannel === 'whatsapp' && (
+            <TouchableOpacity
+              onPress={() => startOtp(normalizedPhone || phone, otpPurpose, 'sms').catch(() => undefined)}
+              disabled={loading}
+            >
+              <Text style={styles.mutedLink}>WhatsApp not received? Send via SMS</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={backToPhone} disabled={loading}>
             <Text style={styles.mutedLink}>← Change number</Text>
           </TouchableOpacity>

@@ -24,7 +24,7 @@ import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
-import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint } from '@/lib/otpBypass'
+import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
 
 type Step = 'phone' | 'otp' | 'profile' | 'pin'
 
@@ -57,6 +57,8 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [resendTimer, setResendTimer] = useState(0)
+  const [otpMode, setOtpMode] = useState<OtpMode>(isOtpBypassEnabled() ? 'bypass' : 'firebase')
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms' | undefined>(undefined)
   // PIN setup (final step)
   const [pin, setPin] = useState('')
   const [pinConfirm, setPinConfirm] = useState('')
@@ -101,10 +103,10 @@ export default function RegisterPage() {
   }
 
   // ── Send OTP ──────────────────────────────────────────────────────────
-  const sendOtp = useCallback(async (phoneNumber: string) => {
+  const sendOtp = useCallback(async (phoneNumber: string, channel?: 'whatsapp' | 'sms') => {
     setIsLoading(true)
     try {
-      const res = await authApi.sendOtp(phoneNumber)
+      const res = await authApi.sendOtp(phoneNumber, channel)
       const data = res.data
 
       if (data.userExists) {
@@ -119,11 +121,23 @@ export default function RegisterPage() {
       setNormalizedPhone(data.phone)
       setPhone(phoneNumber)
 
-      if (isOtpBypassEnabled()) {
+      const mode = resolveOtpMode(data.mode)
+      setOtpMode(mode)
+
+      if (mode === 'bypass') {
         setStep('otp')
         setOtp(['', '', '', '', '', ''])
         setResendTimer(60)
         toast.success(otpBypassHint(), { duration: 6000 })
+        return
+      }
+
+      if (mode === 'backend') {
+        setOtpChannel(data.channel)
+        setStep('otp')
+        setOtp(['', '', '', '', '', ''])
+        setResendTimer(60)
+        toast.success(data.channel === 'whatsapp' ? 'Code sent on WhatsApp' : 'OTP sent via SMS')
         return
       }
 
@@ -139,7 +153,7 @@ export default function RegisterPage() {
       const backendMsg = err?.response?.data?.message
       const msg = backendMsg || firebaseErrorMessage(err, 'Failed to send OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
-      console.error('[Firebase OTP send error]', err)
+      console.error('[OTP send error]', err)
       recaptchaVerifierRef.current?.clear()
       recaptchaVerifierRef.current = null
     } finally {
@@ -164,10 +178,11 @@ export default function RegisterPage() {
   // ── Verify OTP → Go to profile step ───────────────────────────────────
   const verifyOtp = useCallback(async (code: string) => {
     if (code.length !== 6) return
-    if (!isOtpBypassEnabled() && !confirmationResultRef.current) return
+    const codeEntry = isCodeEntryMode(otpMode)
+    if (!codeEntry && !confirmationResultRef.current) return
     setIsLoading(true)
     try {
-      if (isOtpBypassEnabled()) {
+      if (otpMode === 'bypass') {
         if (!isValidOtpBypassCode(code)) {
           toast.error('Invalid OTP. Please try again.')
           setOtp(['', '', '', '', '', ''])
@@ -177,6 +192,15 @@ export default function RegisterPage() {
         setVerifiedOtpCode(code)
         setStep('profile')
         toast.success('Phone verified! Now set up your profile.')
+        return
+      }
+
+      if (otpMode === 'backend') {
+        // Real backend-sent code — the server validates it at verify-register.
+        // Advance now; that call rejects a wrong code and bounces us back.
+        setVerifiedOtpCode(code)
+        setStep('profile')
+        toast.success('Enter your details to finish.')
         return
       }
 
@@ -190,13 +214,13 @@ export default function RegisterPage() {
       const msg = firebaseErrorMessage(err, 'Invalid OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
       // eslint-disable-next-line no-console
-      console.error('[Firebase OTP verify error]', err)
+      console.error('[OTP verify error]', err)
       setOtp(['', '', '', '', '', ''])
       setTimeout(() => document.getElementById('rotp-0')?.focus(), 100)
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [otpMode])
 
   // ── Complete Registration ─────────────────────────────────────────────
   // Two-stage: verify-register stores the user + tokens (so the next call
@@ -205,7 +229,7 @@ export default function RegisterPage() {
   const onProfileSubmit = async (data: ProfileForm) => {
     setIsLoading(true)
     try {
-      const res = isOtpBypassEnabled()
+      const res = isCodeEntryMode(otpMode)
         ? await authApi.verifyRegisterWithCode({
             phone: normalizedPhone,
             code: verifiedOtpCode,
@@ -283,8 +307,8 @@ export default function RegisterPage() {
   }
 
   // ── Resend OTP ────────────────────────────────────────────────────────
-  const handleResend = async () => {
-    await sendOtp(phone)
+  const handleResend = async (channel?: 'whatsapp' | 'sms') => {
+    await sendOtp(phone, channel)
   }
 
   // ── OTP Input Handlers ────────────────────────────────────────────────
@@ -381,7 +405,7 @@ export default function RegisterPage() {
                   />
 
                   <Button type="submit" fullWidth isLoading={isLoading} size="lg">
-                    Send OTP via SMS
+                    Send Verification Code
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </form>
@@ -396,7 +420,7 @@ export default function RegisterPage() {
                     {isOtpBypassEnabled() ? (
                       <span className="text-amber-600">{otpBypassHint()}</span>
                     ) : (
-                      <>Enter the OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via SMS</>
+                      <>Enter the OTP sent to <span className="font-semibold text-gray-700">{normalizedPhone}</span> via {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}</>
                     )}
                   </p>
 
@@ -412,6 +436,7 @@ export default function RegisterPage() {
                         onChange={(e) => handleOtpChange(index, e.target.value)}
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
                         onFocus={(e) => e.target.select()}
+                        autoComplete={index === 0 ? 'one-time-code' : 'off'}
                         autoFocus={index === 0}
                         className="flex-1 min-w-0 max-w-[3rem] w-10 h-12 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold border-2 border-gray-200 rounded-lg sm:rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all bg-gray-50 focus:bg-white"
                       />
@@ -434,13 +459,24 @@ export default function RegisterPage() {
                         Resend in <span className="font-semibold text-gray-700">{resendTimer}s</span>
                       </p>
                     ) : (
-                      <button
-                        onClick={handleResend}
-                        disabled={isLoading}
-                        className="text-sm text-primary-600 font-medium hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors disabled:opacity-50"
-                      >
-                        Resend OTP
-                      </button>
+                      <div className="flex flex-col items-center gap-1">
+                        <button
+                          onClick={() => handleResend()}
+                          disabled={isLoading}
+                          className="text-sm text-primary-600 font-medium hover:text-primary-700 px-3 py-1.5 rounded-lg hover:bg-primary-50 transition-colors disabled:opacity-50"
+                        >
+                          Resend OTP
+                        </button>
+                        {otpMode === 'backend' && otpChannel === 'whatsapp' && (
+                          <button
+                            onClick={() => handleResend('sms')}
+                            disabled={isLoading}
+                            className="text-xs text-gray-500 underline hover:text-gray-700 disabled:opacity-50"
+                          >
+                            WhatsApp not received? Send via SMS
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 

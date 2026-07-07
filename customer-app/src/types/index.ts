@@ -301,6 +301,8 @@ export type AuthStackParamList = {
     userName?: string | null;
     purpose?: 'login' | 'resetPin';
     redirect?: string;
+    /** Delivery channel the backend used ('whatsapp' | 'sms') — drives the UI copy. */
+    channel?: 'whatsapp' | 'sms';
   };
   Register: {
     phone?: string;

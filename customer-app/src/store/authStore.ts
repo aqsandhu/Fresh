@@ -13,7 +13,15 @@ import { registerSessionHandlers } from '@/lib/sessionEvents';
 
 interface AuthStore extends AuthState {
   // Actions
-  sendOtp: (phone: string) => Promise<{ userExists: boolean; userName: string | null }>;
+  sendOtp: (
+    phone: string,
+    channel?: 'whatsapp' | 'sms'
+  ) => Promise<{
+    userExists: boolean;
+    userName: string | null;
+    /** Channel the backend actually delivered on (undefined in bypass/firebase modes). */
+    channel?: 'whatsapp' | 'sms';
+  }>;
   verifyOTP: (phone: string, otp: string) => Promise<void>;
   register: (phone: string, code: string, fullName: string, email?: string, password?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -40,12 +48,16 @@ export const useAuthStore = create<AuthStore>()(
       isLoading: false,
       pinVerifiedAt: null,
 
-      sendOtp: async (phone: string) => {
+      sendOtp: async (phone: string, channel?: 'whatsapp' | 'sms') => {
         set({ isLoading: true });
         try {
-          const response = await authService.sendOtp({ phone });
+          const response = await authService.sendOtp({ phone, channel });
           if (response.success) {
-            return { userExists: response.data.userExists, userName: response.data.userName };
+            return {
+              userExists: response.data.userExists,
+              userName: response.data.userName,
+              channel: response.data.channel,
+            };
           }
           throw new Error('Failed to send OTP');
         } finally {

@@ -25,6 +25,7 @@ import AuthStepIndicator, { RegisterStep } from '@components/auth/AuthStepIndica
 import PinInput from '@components/auth/PinInput';
 import { useAuthStore } from '@store';
 import { setLastPhone } from '@/lib/phoneStorage';
+import { getDevicePhoneNumber, startSmsOtpListener } from '@/lib/phoneAutoFill';
 import { formatPhoneNumber } from '@utils/helpers';
 
 type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, 'Register'>;
@@ -47,8 +48,10 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
   const [pin, setPinValue] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [pinStage, setPinStage] = useState<PinStage>('create');
+  const [otpChannel, setOtpChannel] = useState<'whatsapp' | 'sms' | undefined>(undefined);
 
   const autoOtpStarted = useRef(false);
+  const phoneHintShown = useRef(false);
   const otpInputRefs = useRef<(TextInput | null)[]>([]);
 
   const { sendOtp, register, setPin, isLoading } = useAuthStore();
@@ -61,9 +64,9 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
   }, [timer]);
 
   const sendRegisterOtp = useCallback(
-    async (phoneNumber: string) => {
+    async (phoneNumber: string, channel?: 'whatsapp' | 'sms') => {
       try {
-        const result = await sendOtp(phoneNumber);
+        const result = await sendOtp(phoneNumber, channel);
         if (result.userExists) {
           Toast.show({
             type: 'info',
@@ -72,6 +75,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
           navigation.replace('Login', { phone: phoneNumber, redirect });
           return;
         }
+        setOtpChannel(result.channel);
         setPhone(phoneNumber);
         setStep('otp');
         setOtp(['', '', '', '', '', '']);
@@ -88,6 +92,30 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
     autoOtpStarted.current = true;
     sendRegisterOtp(paramPhone);
   }, [autoOtp, paramPhone, sendRegisterOtp]);
+
+  // Android: one-tap SIM number fill on the empty phone step (see LoginScreen).
+  useEffect(() => {
+    if (step !== 'phone' || phone || phoneHintShown.current) return;
+    phoneHintShown.current = true;
+    getDevicePhoneNumber().then((detected) => {
+      if (detected) {
+        setPhone(detected);
+        setErrors((prev) => ({ ...prev, phone: undefined }));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // Android zero-tap: auto-read the arriving OTP SMS while the OTP step shows.
+  useEffect(() => {
+    if (step !== 'otp' || isOtpBypassEnabled()) return;
+    const stop = startSmsOtpListener((code) => {
+      setOtp(code.split(''));
+      verifyOtp(code);
+    });
+    return stop;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   const validatePhone = (value: string): boolean => {
     if (!value) {
@@ -122,8 +150,20 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
     Toast.show({ type: 'success', text1: 'Phone verified! Now set up your profile.' });
   };
 
+  /** Keyboard autofill/paste inserts the whole code into one box — distribute. */
+  const applyFullCode = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 6);
+    if (!digits) return;
+    setOtp(Array.from({ length: 6 }, (_, i) => digits[i] ?? ''));
+    otpInputRefs.current[Math.min(digits.length, 5)]?.focus();
+    if (digits.length === 6) verifyOtp(digits);
+  };
+
   const handleOtpChange = (index: number, value: string) => {
-    if (value.length > 1) return;
+    if (value.length > 1) {
+      applyFullCode(value);
+      return;
+    }
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
@@ -205,10 +245,10 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
     }
   };
 
-  const handleResend = () => {
+  const handleResend = (channel?: 'whatsapp' | 'sms') => {
     setTimer(60);
     setOtp(['', '', '', '', '', '']);
-    sendRegisterOtp(phone).catch(console.error);
+    sendRegisterOtp(phone, channel).catch(console.error);
   };
 
   const formatPhoneInput = (text: string) => text.replace(/[^0-9]/g, '').slice(0, 11);
@@ -277,10 +317,12 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
                   maxLength={11}
                   error={errors.phone}
                   leftIcon={<MaterialIcons name="phone" size={20} color={COLORS.gray400} />}
+                  textContentType="telephoneNumber"
+                  autoComplete="tel"
                   autoFocus
                 />
                 <Button
-                  title="Send OTP via SMS"
+                  title="Send Verification Code"
                   onPress={onPhoneSubmit}
                   disabled={phone.length < 11}
                   size="large"
@@ -296,7 +338,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
                   ) : (
                     <>
                       Enter the OTP sent to{' '}
-                      <Text style={styles.phoneBold}>{formatPhoneNumber(phone)}</Text> via SMS
+                      <Text style={styles.phoneBold}>{formatPhoneNumber(phone)}</Text> via{' '}
+                      {otpChannel === 'whatsapp' ? 'WhatsApp' : 'SMS'}
                     </>
                   )}
                 </Text>
@@ -312,7 +355,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
                       onChangeText={(value) => handleOtpChange(index, value)}
                       onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}
                       keyboardType="number-pad"
-                      maxLength={1}
+                      // >1 so keyboard autofill can insert the whole code —
+                      // the handler distributes it across the boxes.
+                      maxLength={index === 0 ? 6 : 1}
+                      textContentType="oneTimeCode"
+                      autoComplete={index === 0 ? 'sms-otp' : 'off'}
                       selectTextOnFocus
                     />
                   ))}
@@ -329,9 +376,16 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
                       Resend in <Text style={styles.timerBold}>{timer}s</Text>
                     </Text>
                   ) : (
-                    <TouchableOpacity onPress={handleResend}>
-                      <Text style={styles.resendText}>Resend OTP</Text>
-                    </TouchableOpacity>
+                    <>
+                      <TouchableOpacity onPress={() => handleResend()}>
+                        <Text style={styles.resendText}>Resend OTP</Text>
+                      </TouchableOpacity>
+                      {otpChannel === 'whatsapp' && (
+                        <TouchableOpacity onPress={() => handleResend('sms')} style={styles.smsFallbackBtn}>
+                          <Text style={styles.smsFallbackText}>WhatsApp not received? Send via SMS</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
                   )}
                 </View>
                 <TouchableOpacity
@@ -487,6 +541,8 @@ const styles = StyleSheet.create({
   timerText: { fontSize: 14, color: COLORS.gray500 },
   timerBold: { fontWeight: '600', color: COLORS.gray700 },
   resendText: { fontSize: 14, fontWeight: '600', color: COLORS.primary600 },
+  smsFallbackBtn: { marginTop: SPACING.md },
+  smsFallbackText: { fontSize: 13, color: COLORS.gray500, textDecorationLine: 'underline' },
   changeNumberBtn: {
     flexDirection: 'row',
     alignItems: 'center',
