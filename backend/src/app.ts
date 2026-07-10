@@ -19,7 +19,7 @@ import path from 'path';
 import { initSentry, setupSentryMiddleware, setupSentryErrorHandler } from './config/sentry';
 
 // Import Socket.IO
-import { initializeSocket } from './config/socket';
+import { initializeSocket, getIO } from './config/socket';
 
 // Import Swagger configuration
 import { setupSwagger } from './config/swagger';
@@ -54,7 +54,10 @@ import { runReconciliation } from './utils/reconciliation';
 import { runAbandonedCartReminders } from './controllers/marketing.controller';
 
 let reconciliationTimer: NodeJS.Timeout | null = null;
+let reconciliationKickoffTimer: NodeJS.Timeout | null = null;
 let marketingTimer: NodeJS.Timeout | null = null;
+let marketingKickoffTimer: NodeJS.Timeout | null = null;
+let dbRetryTimer: NodeJS.Timeout | null = null;
 
 /** Hourly abandoned-cart reminder pass (no-op unless enabled in settings). */
 function startMarketingScheduler(): void {
@@ -65,7 +68,7 @@ function startMarketingScheduler(): void {
     runAbandonedCartReminders().catch((e) =>
       logger.error('Abandoned-cart reminder tick failed', { error: (e as Error)?.message })
     );
-  setTimeout(tick, 2 * 60 * 1000); // first pass ~2 min after boot
+  marketingKickoffTimer = setTimeout(tick, 2 * 60 * 1000); // first pass ~2 min after boot
   marketingTimer = setInterval(tick, HOUR);
   logger.info('Marketing scheduler started (hourly)');
 }
@@ -80,7 +83,7 @@ function startReconciliationScheduler(): void {
     runReconciliation().catch((e) =>
       logger.error('Reconciliation tick failed', { error: (e as Error)?.message })
     );
-  setTimeout(async () => {
+  reconciliationKickoffTimer = setTimeout(async () => {
     try {
       const last = await dbQuery(`SELECT run_at FROM reconciliation_runs ORDER BY run_at DESC LIMIT 1`);
       const lastAt = last.rows[0]?.run_at ? new Date(last.rows[0].run_at).getTime() : 0;
@@ -91,6 +94,21 @@ function startReconciliationScheduler(): void {
   }, 60 * 1000);
   reconciliationTimer = setInterval(tick, DAY);
   logger.info('Reconciliation scheduler started (daily)');
+}
+
+/** Clears every scheduler/retry timer so shutdown never races a fresh DB job
+ *  against a closing pool. Safe to call repeatedly. */
+function stopSchedulers(): void {
+  if (marketingTimer) clearInterval(marketingTimer);
+  if (reconciliationTimer) clearInterval(reconciliationTimer);
+  if (marketingKickoffTimer) clearTimeout(marketingKickoffTimer);
+  if (reconciliationKickoffTimer) clearTimeout(reconciliationKickoffTimer);
+  if (dbRetryTimer) clearTimeout(dbRetryTimer);
+  marketingTimer = null;
+  reconciliationTimer = null;
+  marketingKickoffTimer = null;
+  reconciliationKickoffTimer = null;
+  dbRetryTimer = null;
 }
 import { morganStream } from './utils/logger';
 import {
@@ -245,7 +263,8 @@ setupSentryMiddleware(app);
 // HTTP request logging
 app.use(morgan(NODE_ENV === 'development' ? 'dev' : 'combined', {
   stream: morganStream,
-  skip: (req: Request) => req.path === '/health', // Skip health check logs
+  // Skip probe endpoints — they'd drown real request logs.
+  skip: (req: Request) => req.path === '/health' || req.path === '/live' || req.path === '/ready',
 }));
 
 // ============================================================================
@@ -288,6 +307,23 @@ app.get('/health', async (req: Request, res: Response) => {
   }
 
   res.status(dbConnected ? 200 : 503).json(payload);
+});
+
+// Liveness: "is the process up?" — no dependency checks, never 503s while the
+// event loop runs. Platforms should use this for RESTART decisions.
+app.get('/live', (_req: Request, res: Response) => {
+  res.status(200).json({ success: true, message: 'alive', timestamp: new Date().toISOString() });
+});
+
+// Readiness: "should this instance receive traffic?" — single fast DB probe
+// (no retries, unlike /health's 3×3s) so load balancers get an answer quickly.
+app.get('/ready', async (_req: Request, res: Response) => {
+  const dbConnected = await testConnection(1, 0).catch(() => false);
+  res.status(dbConnected ? 200 : 503).json({
+    success: dbConnected,
+    message: dbConnected ? 'ready' : 'Database connection failed',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ============================================================================
@@ -422,10 +458,10 @@ const startServer = async () => {
           logger.info('Database connection established after startup!');
           await runStartupTasks();
         } else {
-          setTimeout(retryDb, 30000); // Retry every 30 seconds
+          dbRetryTimer = setTimeout(retryDb, 30000); // Retry every 30 seconds
         }
       };
-      setTimeout(retryDb, 30000);
+      dbRetryTimer = setTimeout(retryDb, 30000);
     }
   } catch (error) {
     logger.error('Failed to start server:', error);
@@ -437,23 +473,47 @@ const startServer = async () => {
 // GRACEFUL SHUTDOWN
 // ============================================================================
 
+let shuttingDown = false;
+
 const gracefulShutdown = async (signal: string) => {
+  if (shuttingDown) return; // double SIGTERM/SIGINT — first one wins
+  shuttingDown = true;
   logger.info(`${signal} received. Starting graceful shutdown...`);
 
-  try {
-    // Close database pool
-    await closePool();
-    logger.info('Database connections closed');
-
-    // Close HTTP server (also closes Socket.IO)
-    httpServer.close(() => {
-      logger.info('HTTP server closed');
-      process.exit(0);
-    });
-  } catch (error) {
-    logger.error('Error during shutdown:', error);
+  // Failsafe: connected websockets / keep-alive sockets can hold the server
+  // open indefinitely — never hang shutdown past 10s.
+  const forceExit = setTimeout(() => {
+    logger.warn('Graceful shutdown timed out after 10s — forcing exit');
     process.exit(1);
-  }
+  }, 10000);
+  forceExit.unref();
+
+  // 1) Stop schedulers first so no new background DB job starts mid-shutdown.
+  stopSchedulers();
+
+  // 2) Stop accepting connections and drain in-flight work. Socket.IO's
+  //    close() disconnects websocket clients AND closes the shared HTTP
+  //    server; fall back to plain httpServer.close() if it never initialized.
+  const closeServer = (done: () => void) => {
+    try {
+      getIO().close(done);
+    } catch {
+      httpServer.close(done);
+    }
+  };
+
+  closeServer(async () => {
+    logger.info('HTTP server closed');
+    try {
+      // 3) Only now close the pool — nothing left that can query it.
+      await closePool();
+      logger.info('Database connections closed');
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error during shutdown:', error);
+      process.exit(1);
+    }
+  });
 };
 
 // Handle shutdown signals

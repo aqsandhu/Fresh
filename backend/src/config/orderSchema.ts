@@ -9,6 +9,7 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
+import { buildSslConfig } from './dbSsl';
 
 let couponColumnsCached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
@@ -71,7 +72,7 @@ export async function hasOrderCouponColumns(): Promise<boolean> {
 async function runAlterOnConnection(connectionString: string): Promise<void> {
   const pool = new Pool({
     connectionString,
-    ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+    ssl: buildSslConfig(connectionString),
     max: 1,
     connectionTimeoutMillis: 15000,
   });
@@ -151,10 +152,7 @@ export async function ensureUrgentDeliveryColumns(): Promise<boolean> {
     if (!connectionString) return false;
     const pool = new Pool({
       connectionString,
-      ssl:
-        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
-          ? false
-          : { rejectUnauthorized: false },
+      ssl: buildSslConfig(connectionString),
       max: 1,
       connectionTimeoutMillis: 15000,
     });
@@ -210,10 +208,7 @@ export async function ensureRestaurantOrderColumns(): Promise<boolean> {
     if (!connectionString) return false;
     const pool = new Pool({
       connectionString,
-      ssl:
-        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
-          ? false
-          : { rejectUnauthorized: false },
+      ssl: buildSslConfig(connectionString),
       max: 1,
       connectionTimeoutMillis: 15000,
     });
@@ -250,10 +245,7 @@ export async function ensureOrderStatusNotificationTrigger(): Promise<boolean> {
 
     const pool = new Pool({
       connectionString,
-      ssl:
-        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
-          ? false
-          : { rejectUnauthorized: false },
+      ssl: buildSslConfig(connectionString),
       max: 1,
       connectionTimeoutMillis: 15000,
     });

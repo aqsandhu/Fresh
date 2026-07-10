@@ -27,8 +27,6 @@ const PAGES: { value: string; label: string }[] = [
   { value: 'register', label: 'Create Account' },
 ];
 
-const pageLabel = (v: string) => PAGES.find((p) => p.value === v)?.label || v;
-
 export const UserTips: React.FC = () => {
   const queryClient = useQueryClient();
   const { selectedCityId, selectedCity } = useCityContext();

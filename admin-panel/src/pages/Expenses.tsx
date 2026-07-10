@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Plus, ShoppingCart, Receipt, Filter } from 'lucide-react';
+import { Loader2, Plus, ShoppingCart, Filter } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -8,6 +8,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { financeService, type ExpenseFilters } from '@/services/finance.service';
 import { formatDateTime } from '@/utils/formatters';
+import { getStockPurchaseBalance } from '@/utils/stockPurchase';
 import toast from 'react-hot-toast';
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
@@ -21,36 +22,6 @@ const nowLocal = () => {
   return d.toISOString().slice(0, 16); // yyyy-MM-ddTHH:mm for datetime-local
 };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-type NumericInput = string | number | null | undefined;
-
-const parseWeightInput = (value: NumericInput): number => {
-  const parsed = typeof value === 'number' ? value : parseFloat(String(value ?? ''));
-  return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const roundWeight = (value: number): number => Math.round(value * 1000) / 1000;
-
-export function getStockPurchaseBalance(
-  rawWeight: NumericInput,
-  gradeA: NumericInput,
-  gradeB: NumericInput,
-  gradeC: NumericInput,
-  waste: NumericInput
-) {
-  const raw = parseWeightInput(rawWeight);
-  const gradedTotal = roundWeight(
-    parseWeightInput(gradeA) + parseWeightInput(gradeB) + parseWeightInput(gradeC) + parseWeightInput(waste)
-  );
-  const remaining = roundWeight(raw - gradedTotal);
-
-  return {
-    raw,
-    gradedTotal,
-    remaining,
-    balanced: raw > 0 && Math.abs(remaining) < 0.001,
-  };
-}
 
 export const Expenses: React.FC = () => {
   const qc = useQueryClient();

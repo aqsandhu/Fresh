@@ -5,7 +5,6 @@
 import { Request, Response, NextFunction } from 'express';
 import Joi, { ObjectSchema, ValidationError as JoiValidationError } from 'joi';
 import { ValidationError } from './errorHandler';
-import { isOtpBypassEnabled } from '../config/otpBypass';
 import { isCodeEntryMode } from '../config/otpProvider';
 
 // Validation source types

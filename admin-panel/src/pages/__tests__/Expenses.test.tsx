@@ -1,4 +1,4 @@
-import { getStockPurchaseBalance } from '@/pages/Expenses';
+import { getStockPurchaseBalance } from '@/utils/stockPurchase';
 
 describe('getStockPurchaseBalance', () => {
   it('marks a purchase balanced when grades plus waste equal raw weight', () => {

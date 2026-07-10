@@ -4,64 +4,7 @@
 
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 import logger from '../utils/logger';
-
-/**
- * TLS options for the DB connection.
- *
- * IMPORTANT — managed Postgres providers (Supabase, Render) terminate TLS with
- * a SELF-SIGNED certificate chain. Verifying that against the system CA store
- * fails with SELF_SIGNED_CERT_IN_CHAIN and takes the whole API down, so the
- * connection is encrypted-but-unverified BY DEFAULT. Verification is opt-in:
- * the only correct way to verify a self-signed provider is to PIN its CA via
- * DB_SSL_CA — flipping rejectUnauthorized on without a CA just breaks.
- *
- * Resolution order:
- *   1. DB_SSL=false                          → no TLS at all.
- *   2. DB_SSL_CA (PEM string or base64)      → pin the provider CA, full verify
- *      (the recommended way to close the MITM window).
- *      Supabase: Dashboard → Settings → Database → "SSL Certificate".
- *   3. DB_SSL_REJECT_UNAUTHORIZED=true|false → explicit override (wins).
- *   4. default                               → encrypted, unverified
- *      (rejectUnauthorized:false) so a self-signed provider connects out of
- *      the box. We warn in production so this isn't silently left open.
- */
-function buildSslConfig(): false | { rejectUnauthorized: boolean; ca?: string } {
-  if (process.env.DB_SSL === 'false') return false;
-  if (!process.env.DATABASE_URL && process.env.DB_SSL !== 'true') return false;
-
-  // HIGHEST PRIORITY kill-switch. An explicit DB_SSL_REJECT_UNAUTHORIZED=false
-  // means "connect even if the cert can't be verified" and MUST win over
-  // everything else — including a DB_SSL_CA that doesn't match the presented
-  // chain. Supabase's POOLER (port 6543) presents a self-signed cert that the
-  // downloadable project CA does NOT cover, so pinning that CA there fails with
-  // SELF_SIGNED_CERT_IN_CHAIN; this switch guarantees the API can still connect.
-  if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false') {
-    return { rejectUnauthorized: false };
-  }
-
-  // Pin a provider CA → full verification. Only works when the CA actually
-  // matches the presented chain (e.g. Supabase DIRECT connection on 5432, not
-  // the pooler). If it can't, set DB_SSL_REJECT_UNAUTHORIZED=false above.
-  const rawCa = process.env.DB_SSL_CA?.trim();
-  if (rawCa) {
-    const ca = rawCa.includes('-----BEGIN')
-      ? rawCa
-      : Buffer.from(rawCa, 'base64').toString('utf8');
-    return { rejectUnauthorized: true, ca };
-  }
-
-  if (process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true') {
-    return { rejectUnauthorized: true };
-  }
-
-  // Production defaults to verified TLS. Local/test keeps the previous
-  // unverified fallback for self-signed development databases; production
-  // deployments that truly need that must opt out explicitly above.
-  if (process.env.NODE_ENV === 'production') {
-    return { rejectUnauthorized: true };
-  }
-  return { rejectUnauthorized: false };
-}
+import { buildSslConfig } from './dbSsl';
 
 function parsePoolInt(value: string | undefined, fallback: number, min: number): number {
   const parsed = Number.parseInt(value || '', 10);
@@ -136,7 +79,7 @@ function buildPoolConfig() {
     const sizing = buildPoolSizing(process.env.DATABASE_URL);
     return {
       connectionString: process.env.DATABASE_URL,
-      ssl: buildSslConfig(),
+      ssl: buildSslConfig(process.env.DATABASE_URL),
       min: sizing.min,
       max: sizing.max,
       connectionTimeoutMillis: 10000,
@@ -154,7 +97,7 @@ function buildPoolConfig() {
     database: process.env.DB_NAME || 'grocery_db',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || '',
-    ssl: buildSslConfig(),
+    ssl: buildSslConfig(process.env.DATABASE_URL),
     min: sizing.min,
     max: sizing.max,
     connectionTimeoutMillis: 10000,

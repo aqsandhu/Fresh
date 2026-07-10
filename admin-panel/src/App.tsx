@@ -8,43 +8,52 @@ import { NotificationProvider } from '@/context/NotificationContext';
 import { canAccessRoute, firstAccessibleRoute } from '@/lib/permissions';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { BrandFavicon } from '@/components/BrandFavicon';
-import {
-  Login,
-  Dashboard,
-  Orders,
-  Products,
-  PriceManager,
-  StockManagement,
-  Expenses,
-  Workers,
-  Profit,
-  Catalog,
-  Management,
-  RidersHub,
-  Categories,
-  Customers,
-  Riders,
-  AttaRequests,
-  WhatsAppOrders,
-  Addresses,
-  ServiceCities,
-  DeliveryZones,
-  Roles,
-  CouponsUsed,
-  Reviews,
-  Complaints,
-  UserTips,
-  RiderApplications,
-  Restaurants,
-  OrderCollectionPoints,
-  Settings,
-  Platform,
-  ServiceAreas,
-  Baskets,
-  FranchiseInquiries,
-  AbandonedCarts,
-} from '@/pages';
 import './App.css';
+
+// Route-level code splitting: every page loads as its own chunk on first
+// visit instead of shipping the whole admin in one 888 KB bundle. Pages use
+// named exports, so each lazy() maps the name onto the default the API wants.
+const Login = React.lazy(() => import('@/pages/Login').then((m) => ({ default: m.Login })));
+const Dashboard = React.lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Orders = React.lazy(() => import('@/pages/Orders').then((m) => ({ default: m.Orders })));
+const Products = React.lazy(() => import('@/pages/Products').then((m) => ({ default: m.Products })));
+const PriceManager = React.lazy(() => import('@/pages/PriceManager').then((m) => ({ default: m.PriceManager })));
+const StockManagement = React.lazy(() => import('@/pages/StockManagement').then((m) => ({ default: m.StockManagement })));
+const Expenses = React.lazy(() => import('@/pages/Expenses').then((m) => ({ default: m.Expenses })));
+const Workers = React.lazy(() => import('@/pages/Workers').then((m) => ({ default: m.Workers })));
+const Profit = React.lazy(() => import('@/pages/Profit').then((m) => ({ default: m.Profit })));
+const Catalog = React.lazy(() => import('@/pages/Catalog').then((m) => ({ default: m.Catalog })));
+const Management = React.lazy(() => import('@/pages/Management').then((m) => ({ default: m.Management })));
+const RidersHub = React.lazy(() => import('@/pages/RidersHub').then((m) => ({ default: m.RidersHub })));
+const Categories = React.lazy(() => import('@/pages/Categories').then((m) => ({ default: m.Categories })));
+const Customers = React.lazy(() => import('@/pages/Customers').then((m) => ({ default: m.Customers })));
+const Riders = React.lazy(() => import('@/pages/Riders').then((m) => ({ default: m.Riders })));
+const AttaRequests = React.lazy(() => import('@/pages/AttaRequests').then((m) => ({ default: m.AttaRequests })));
+const WhatsAppOrders = React.lazy(() => import('@/pages/WhatsAppOrders').then((m) => ({ default: m.WhatsAppOrders })));
+const Addresses = React.lazy(() => import('@/pages/Addresses').then((m) => ({ default: m.Addresses })));
+const ServiceCities = React.lazy(() => import('@/pages/ServiceCities').then((m) => ({ default: m.ServiceCities })));
+const DeliveryZones = React.lazy(() => import('@/pages/DeliveryZones').then((m) => ({ default: m.DeliveryZones })));
+const Roles = React.lazy(() => import('@/pages/Roles').then((m) => ({ default: m.Roles })));
+const CouponsUsed = React.lazy(() => import('@/pages/CouponsUsed').then((m) => ({ default: m.CouponsUsed })));
+const Reviews = React.lazy(() => import('@/pages/Reviews').then((m) => ({ default: m.Reviews })));
+const Complaints = React.lazy(() => import('@/pages/Complaints').then((m) => ({ default: m.Complaints })));
+const UserTips = React.lazy(() => import('@/pages/UserTips').then((m) => ({ default: m.UserTips })));
+const RiderApplications = React.lazy(() => import('@/pages/RiderApplications').then((m) => ({ default: m.RiderApplications })));
+const Restaurants = React.lazy(() => import('@/pages/Restaurants').then((m) => ({ default: m.Restaurants })));
+const OrderCollectionPoints = React.lazy(() => import('@/pages/OrderCollectionPoints').then((m) => ({ default: m.OrderCollectionPoints })));
+const Settings = React.lazy(() => import('@/pages/Settings').then((m) => ({ default: m.Settings })));
+const Platform = React.lazy(() => import('@/pages/Platform').then((m) => ({ default: m.Platform })));
+const ServiceAreas = React.lazy(() => import('@/pages/ServiceAreas').then((m) => ({ default: m.ServiceAreas })));
+const Baskets = React.lazy(() => import('@/pages/Baskets').then((m) => ({ default: m.Baskets })));
+const FranchiseInquiries = React.lazy(() => import('@/pages/FranchiseInquiries').then((m) => ({ default: m.FranchiseInquiries })));
+const AbandonedCarts = React.lazy(() => import('@/pages/AbandonedCarts').then((m) => ({ default: m.AbandonedCarts })));
+
+// Same spinner the auth gates use — shown while a page chunk downloads.
+const PageLoader: React.FC = () => (
+  <div className="min-h-screen flex items-center justify-center">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
+  </div>
+);
 
 // Create Query Client
 const queryClient = new QueryClient({
@@ -470,7 +479,9 @@ function App() {
         <ErrorBoundary>
           <BrowserRouter>
             <BrandFavicon />
-            <AppRoutes />
+            <React.Suspense fallback={<PageLoader />}>
+              <AppRoutes />
+            </React.Suspense>
           </BrowserRouter>
         </ErrorBoundary>
         </CityProvider>

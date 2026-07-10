@@ -19,7 +19,6 @@ import {
   Save,
   Edit2,
   Navigation2,
-  X,
   Bell,
   MessageCircle,
   Wifi,

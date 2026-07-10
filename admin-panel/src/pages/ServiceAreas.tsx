@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MapPinned, Save, Trash2, Plus, ShieldAlert, MessageCircle } from 'lucide-react';
+import { Save, Trash2, Plus, ShieldAlert, MessageCircle } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { 
   User, 
@@ -52,16 +52,7 @@ export default function ProfilePage() {
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login?redirect=/profile')
-      return
-    }
-    loadProfile()
-    loadAddresses()
-  }, [isAuthenticated])
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       const res = await authApi.getProfile()
       const data = res.data || res
@@ -93,9 +84,9 @@ export default function ProfilePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router, logout, authUser])
 
-  const loadAddresses = async () => {
+  const loadAddresses = useCallback(async () => {
     try {
       const res = await addressesApi.getAll()
       const list = Array.isArray(res) ? res : []
@@ -108,7 +99,16 @@ export default function ProfilePage() {
     } catch {
       // addresses optional
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/login?redirect=/profile')
+      return
+    }
+    loadProfile()
+    loadAddresses()
+  }, [isAuthenticated, router, loadProfile, loadAddresses])
 
   const handleSaveProfile = async () => {
     setSaving(true)

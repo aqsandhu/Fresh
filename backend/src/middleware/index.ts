@@ -60,6 +60,7 @@ export {
   riderLocationRateLimiter,
   orderRateLimiter,
   webhookRateLimiter,
+  publicTrackingRateLimiter,
   createRateLimiter,
 } from './rateLimiter';
 

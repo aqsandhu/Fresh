@@ -34,7 +34,6 @@ export const SettingsScreen: React.FC = () => {
 
   const [notifications, setNotifications] = useState(true);
   const [promotions, setPromotions] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const [locationServices, setLocationServices] = useState(true);
   const [deleting, setDeleting] = useState(false);
 

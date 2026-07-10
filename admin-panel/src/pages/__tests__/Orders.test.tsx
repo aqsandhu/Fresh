@@ -1,8 +1,3 @@
-import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-
 // Mock the Orders page component behavior
 jest.mock('@/services/order.service', () => ({
   orderService: {
@@ -19,13 +14,6 @@ jest.mock('@/services/rider.service', () => ({
 }));
 
 describe('Orders Page', () => {
-  const createTestQueryClient = () =>
-    new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    });
-
   const mockOrders = [
     {
       id: 'order-1',

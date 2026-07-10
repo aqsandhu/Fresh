@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Settings as SettingsIcon,
   Truck,
   Clock,
   Calendar,
@@ -9,8 +8,6 @@ import {
   Edit,
   Trash2,
   Save,
-  X,
-  Check,
   MapPin,
   DollarSign,
   AlertCircle,
@@ -77,17 +74,23 @@ export const Settings: React.FC = () => {
   const { user } = useAuthContext();
   const permissions = user?.permissions;
   const role = user?.role;
-  const baseTabs = visibleSettingsTabs(permissions, role);
+  const baseTabs = useMemo(() => visibleSettingsTabs(permissions, role), [permissions, role]);
   const showBrandTab = canViewBrandSettingsTab(permissions, role);
   const showFaviconTab = canViewFaviconSettingsTab(permissions, role);
   const canEditBrandLogo = canUpdateBrandLogo(role);
   const canEditFavicon = canUpdateFavicon(role);
   const showWhatsappTab = canViewWhatsappSettingsTab(permissions, role);
-  const allowedTabs: SettingsTabId[] = showWhatsappTab
-    ? baseTabs.includes('whatsapp')
-      ? baseTabs
-      : [...baseTabs, 'whatsapp']
-    : baseTabs;
+  // useMemo: the useEffect below keys on this — a fresh array identity every
+  // render would re-run it needlessly.
+  const allowedTabs: SettingsTabId[] = useMemo(
+    () =>
+      showWhatsappTab
+        ? baseTabs.includes('whatsapp')
+          ? baseTabs
+          : [...baseTabs, 'whatsapp']
+        : baseTabs,
+    [showWhatsappTab, baseTabs]
+  );
   const [activeTab, setActiveTab] = useState<SettingsTabId>('delivery');
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
@@ -134,7 +137,7 @@ export const Settings: React.FC = () => {
     bannerTickerItems: [] as string[],
   });
   // Fetch Settings
-  const { data: settings, isLoading: isLoadingSettings } = useQuery({
+  const { data: settings } = useQuery({
     queryKey: ['settings'],
     queryFn: () => settingsService.getSettings(),
   });

@@ -1,5 +1,5 @@
 import { io, Socket } from 'socket.io-client';
-import { API_BASE_URL, API_TIMEOUT } from '../utils/constants';
+import { API_BASE_URL } from '../utils/constants';
 import { useAuthStore } from '../store/authStore';
 
 /**

@@ -14,10 +14,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList, Notification, NotificationType } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { formatDateTime, getRelativeTime } from '@utils/helpers';
-import { EmptyState, ErrorView, LoadingOverlay } from '@components';
+import { getRelativeTime } from '@utils/helpers';
+import { EmptyState } from '@components';
 import { useNotificationStore } from '@store';
-import { notificationService } from '@services/notification.service';
 
 const getNotificationIcon = (type: NotificationType | string): string => {
   switch (type) {

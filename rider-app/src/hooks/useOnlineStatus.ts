@@ -72,7 +72,7 @@ export const useOnlineStatus = () => {
 
       await offlineQueue.processQueue(
         processor,
-        (action, result) => {
+        (action, _result) => {
           console.log('Queued action processed:', action.id);
         },
         (action, error) => {

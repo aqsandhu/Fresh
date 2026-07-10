@@ -51,13 +51,11 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
     markPickedUp,
     markDelivered,
     requestCustomerCall,
-    uploadDeliveryProof,
     uploadDoorPicture,
     pinLocation,
   } = useTaskStore();
 
   const { language } = useSettingsStore();
-  const { rider } = useAuthStore();
 
   const loadTask = useCallback(async () => {
     try {

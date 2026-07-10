@@ -1,9 +1,8 @@
 import { api, unwrap } from './api';
-import type { 
-  Product, 
+import type {
+  Product,
   CreateProductData,
-  PaginatedResponse, 
-  ApiResponse 
+  ApiResponse
 } from '@/types';
 
 interface ProductFilters {

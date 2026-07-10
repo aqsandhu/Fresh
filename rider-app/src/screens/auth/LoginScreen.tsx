@@ -8,7 +8,6 @@ import {
   Platform,
   ScrollView,
   Alert,
-  Image,
   TouchableOpacity,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,14 +17,14 @@ import { useSettingsStore } from '../../store/settingsStore';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../utils/constants';
-import { getTranslation, isValidPhoneNumber, formatPhoneNumber } from '../../utils/helpers';
+import { getTranslation, isValidPhoneNumber } from '../../utils/helpers';
 import { BrandLogo } from '../../components/BrandLogo';
 
 interface LoginScreenProps {
   navigation: any;
 }
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
+const LoginScreen: React.FC<LoginScreenProps> = () => {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);

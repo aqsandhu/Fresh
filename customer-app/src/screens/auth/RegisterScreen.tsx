@@ -114,7 +114,6 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
       verifyOtp(code);
     });
     return stop;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
   const validatePhone = (value: string): boolean => {

@@ -72,6 +72,7 @@ const orderRedisStore = makeStore('order');
 const webhookRedisStore = makeStore('webhook');
 const passwordResetRedisStore = makeStore('pwreset');
 const riderLocationRedisStore = makeStore('riderloc');
+const trackingRedisStore = makeStore('tracking');
 
 function skipInDev(req: Request): boolean {
   if (!isDev) return false;
@@ -233,6 +234,27 @@ export const webhookRateLimiter: RateLimitRequestHandler = rateLimit({
   message: {
     success: false,
     message: 'Webhook rate limit exceeded',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
+});
+
+// Public order tracking is unauthenticated (order number + phone). The lookup
+// itself is safe (crypto-random order numbers, phone must match), but it
+// returns a delivery address + live rider location, so make enumeration
+// attempts expensive: 30 lookups / 15 min per IP. No legitimate client polls
+// this endpoint (the website/app track pages use the authenticated route).
+export const publicTrackingRateLimiter: RateLimitRequestHandler = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 1000 : 30,
+  skip: skipInDev,
+  store: trackingRedisStore,
+  message: {
+    success: false,
+    message: 'Too many tracking requests, please try again later',
   },
   standardHeaders: true,
   legacyHeaders: false,

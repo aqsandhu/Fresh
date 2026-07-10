@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
@@ -61,15 +62,7 @@ export default function AddressesPage() {
     [addresses, selectedCity?.name]
   )
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login?redirect=/addresses')
-      return
-    }
-    loadAddresses()
-  }, [isAuthenticated, selectedCity?.id])
-
-  const loadAddresses = async () => {
+  const loadAddresses = useCallback(async () => {
     try {
       const res = await api.get('/addresses')
       const raw = res.data?.data || res.data || []
@@ -79,7 +72,17 @@ export default function AddressesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/login?redirect=/addresses')
+      return
+    }
+    loadAddresses()
+    // selectedCity?.id keyed on purpose: cityAddresses re-filters per city and a
+    // fresh fetch keeps the list current when the user switches city.
+  }, [isAuthenticated, selectedCity?.id, router, loadAddresses])
 
   const closeForm = () => {
     setFormInitial(undefined)
@@ -234,9 +237,11 @@ export default function AddressesPage() {
                     )}
                     {addr.door_picture_url && (
                       <div className="mt-2">
-                        <img
+                        <Image
                           src={resolveImageUrl(addr.door_picture_url)}
                           alt="Door"
+                          width={80}
+                          height={64}
                           className="w-20 h-16 object-cover rounded border"
                         />
                       </div>

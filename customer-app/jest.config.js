@@ -8,4 +8,7 @@ module.exports = {
   moduleNameMapper: {
     '^react$': require.resolve('react'),
   },
+  // RN renders can exceed jest's 5s default when suites run in parallel
+  // (turbo/CI) — a real hang still fails, just later.
+  testTimeout: 15000,
 };

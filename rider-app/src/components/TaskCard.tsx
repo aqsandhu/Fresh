@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Task } from '../types';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../utils/constants';
-import { getTaskTypeLabel, getTaskStatusLabel, formatTime, formatDistance } from '../utils/helpers';
+import { getTaskTypeLabel, getTaskStatusLabel, formatDistance } from '../utils/helpers';
 import { useSettingsStore } from '../store/settingsStore';
 
 interface TaskCardProps {
@@ -16,7 +16,6 @@ interface TaskCardProps {
 const TaskCard: React.FC<TaskCardProps> = ({
   task,
   onPress,
-  showActions = true,
   compact = false,
 }) => {
   const { language } = useSettingsStore();

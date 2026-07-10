@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTaskStore } from '../../store/taskStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../utils/constants';
-import { formatCurrency, formatDate, getTranslation } from '../../utils/helpers';
+import { formatCurrency, formatDate } from '../../utils/helpers';
 import { Earning } from '../../types';
 
 interface EarningsScreenProps {
@@ -19,7 +19,7 @@ interface EarningsScreenProps {
 }
 
 const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
-  const { earnings, fetchEarnings, todayStats } = useTaskStore();
+  const { earnings, fetchEarnings } = useTaskStore();
   const { language } = useSettingsStore();
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState({

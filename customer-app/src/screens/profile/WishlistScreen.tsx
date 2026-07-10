@@ -14,7 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList, Product } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { Button, EmptyState, ProductPrice } from '@components';
+import { EmptyState, ProductPrice } from '@components';
 import { useWishlistStore, useCartStore } from '@store';
 
 export const WishlistScreen: React.FC = () => {

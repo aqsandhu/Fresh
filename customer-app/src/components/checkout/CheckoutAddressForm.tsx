@@ -11,7 +11,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Image,
-  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
@@ -22,7 +21,6 @@ import { DoorPhotoCropModal } from '@components/common/DoorPhotoCropModal';
 import { addressService, type CreateAddressRequest } from '@services/address.service';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
 import { getAccuratePosition } from '@/lib/geolocation';
-import { REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
 import { normalizeAddressType, type AddressTypeValue } from '@/constants/addressTypes';
 import { pickDoorPhotoFromLibrary } from '@/lib/pickDoorPhoto';
 import { CheckoutMapPicker } from './CheckoutMapPicker';

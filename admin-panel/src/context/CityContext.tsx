@@ -205,6 +205,9 @@ export const CityProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   return <CityContext.Provider value={value}>{children}</CityContext.Provider>;
 };
 
+// Companion hook of the provider above — splitting it into its own file would
+// churn every consumer import for a hot-reload-only concern.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useCityContext(): CityContextValue {
   const ctx = useContext(CityContext);
   if (!ctx) {

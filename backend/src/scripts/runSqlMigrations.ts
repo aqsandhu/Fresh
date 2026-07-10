@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import { buildSslConfig } from '../config/dbSsl';
 
 dotenv.config();
 
@@ -66,9 +67,12 @@ async function main(): Promise<void> {
   const baseline = process.argv.includes('--baseline');
   const connectionString = getConnectionString();
 
+  // Same TLS policy as the app pool (config/dbSsl.ts): verified in production,
+  // CA-pinnable via DB_SSL_CA. Migrations carry schema-changing SQL, so they
+  // must never be the one connection that skips certificate verification.
   const pool = new Pool({
     connectionString,
-    ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+    ssl: buildSslConfig(connectionString),
     max: 1,
     connectionTimeoutMillis: 15000,
   });

@@ -37,8 +37,6 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
     resetSettings,
   } = useSettingsStore();
 
-  const { rider } = useAuthStore();
-
   // Handle language change
   const handleLanguageChange = () => {
     Alert.alert(

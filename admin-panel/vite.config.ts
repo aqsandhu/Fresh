@@ -20,6 +20,23 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    build: {
+      // Chunks above this are a bundle-budget signal — keep it honest.
+      chunkSizeWarningLimit: 500,
+      rollupOptions: {
+        output: {
+          // Stable vendor chunks: framework code changes rarely, so returning
+          // admins keep it cached while page chunks change per deploy.
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return undefined
+            if (id.includes('socket.io') || id.includes('engine.io')) return 'realtime'
+            if (id.includes('lucide-react')) return 'icons'
+            if (id.includes('react')) return 'react-vendor'
+            return 'vendor'
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
       proxy: {

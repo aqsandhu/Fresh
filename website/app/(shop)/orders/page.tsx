@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import OrderFeedback from '@/components/feedback/OrderFeedback'
@@ -71,15 +72,7 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'completed'>('all')
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login?redirect=/orders')
-      return
-    }
-    loadOrders()
-  }, [isAuthenticated])
-
-  const loadOrders = async () => {
+  const loadOrders = useCallback(async () => {
     try {
       const res = await ordersApi.getAll()
       const rawOrders = Array.isArray(res) ? res : []
@@ -108,7 +101,15 @@ export default function OrdersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push('/login?redirect=/orders')
+      return
+    }
+    loadOrders()
+  }, [isAuthenticated, router, loadOrders])
 
   const filteredOrders = orders.filter((order) => {
     if (activeTab === 'active') {
@@ -224,10 +225,12 @@ export default function OrdersPage() {
                     {order.items.map((item, idx) => (
                       <div key={idx} className="flex items-center gap-4">
                         <div className="relative w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                          <img
+                          <Image
                             src={item.image || '/placeholder-product.png'}
                             alt={item.name}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="64px"
+                            className="object-cover"
                           />
                         </div>
                         <div className="flex-1">

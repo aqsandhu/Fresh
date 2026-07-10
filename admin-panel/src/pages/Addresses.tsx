@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MapPin,
@@ -7,26 +7,22 @@ import {
   Home,
   User,
   Phone,
-  Navigation,
   Calendar,
   Trash2,
   Edit3,
   ChevronDown,
   X,
   Loader2,
-  Building,
   Filter,
-  Image,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { addressService } from '@/services/address.service';
 import { customerService } from '@/services/customer.service';
 import { useAuthContext } from '@/context/AuthContext';
 import { resolveImageUrl } from '@/utils/formatters';
-import type { Address, Customer } from '@/types';
+import type { Address } from '@/types';
 import toast from 'react-hot-toast';
 
 export const Addresses: React.FC = () => {
@@ -50,13 +46,14 @@ export const Addresses: React.FC = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  const customers = customersData?.customers || [];
+  // Stable [] fallbacks (useMemo) so downstream useMemo deps don't see a new
+  // array identity on every render while the queries are loading.
+  const customers = useMemo(() => customersData?.customers || [], [customersData?.customers]);
 
   // Fetch addresses (optionally filtered by customer)
   const {
     data: addressesData,
     isLoading: addressesLoading,
-    refetch: refetchAddresses,
   } = useQuery({
     queryKey: ['addresses', selectedCustomerId],
     queryFn: () =>
@@ -66,7 +63,7 @@ export const Addresses: React.FC = () => {
     enabled: true,
   });
 
-  const addresses: Address[] = addressesData || [];
+  const addresses: Address[] = useMemo(() => addressesData || [], [addressesData]);
 
   // Filter addresses by search
   const filteredAddresses = useMemo(() => {

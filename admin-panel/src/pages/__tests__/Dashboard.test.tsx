@@ -15,7 +15,7 @@ jest.mock('@/services/dashboard.service', () => ({
 // Mock formatters
 jest.mock('@/utils/formatters', () => ({
   formatCurrency: (value: number) => `Rs. ${value.toLocaleString()}`,
-  formatDate: (date: string) => 'Jan 1, 2024',
+  formatDate: (_date: string) => 'Jan 1, 2024',
   formatOrderStatus: (status: string) => status.charAt(0).toUpperCase() + status.slice(1),
   getOrderStatusColor: () => ({ bg: 'bg-green-100', text: 'text-green-800' }),
 }));

@@ -22,6 +22,7 @@ import {
   OTP_MAX_SENDS_PER_IP_HOUR,
 } from '../config/otpProvider';
 import logger from '../utils/logger';
+import { buildSslConfig } from '../config/dbSsl';
 
 /** A just-verified code may be re-verified within this window (PIN reset flow). */
 const REVERIFY_GRACE_SECONDS = 120;
@@ -75,7 +76,7 @@ export async function ensureOtpTable(): Promise<boolean> {
     }
     const pool = new Pool({
       connectionString: migrationUrl,
-      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+      ssl: buildSslConfig(migrationUrl),
       max: 1,
       connectionTimeoutMillis: 15000,
     });

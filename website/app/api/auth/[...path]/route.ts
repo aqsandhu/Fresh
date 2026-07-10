@@ -96,23 +96,24 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   return res
 }
 
-type RouteContext = { params: { path: string[] } }
+// Next 15: route params resolve asynchronously.
+type RouteContext = { params: Promise<{ path: string[] }> }
 
-export function GET(request: NextRequest, { params }: RouteContext) {
-  return proxy(request, params.path)
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  return proxy(request, (await params).path)
 }
-export function POST(request: NextRequest, { params }: RouteContext) {
-  return proxy(request, params.path)
+export async function POST(request: NextRequest, { params }: RouteContext) {
+  return proxy(request, (await params).path)
 }
-export function PUT(request: NextRequest, { params }: RouteContext) {
-  return proxy(request, params.path)
+export async function PUT(request: NextRequest, { params }: RouteContext) {
+  return proxy(request, (await params).path)
 }
-export function PATCH(request: NextRequest, { params }: RouteContext) {
-  return proxy(request, params.path)
+export async function PATCH(request: NextRequest, { params }: RouteContext) {
+  return proxy(request, (await params).path)
 }
-export function DELETE(request: NextRequest, { params }: RouteContext) {
-  return proxy(request, params.path)
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  return proxy(request, (await params).path)
 }
-export function OPTIONS(request: NextRequest, { params }: RouteContext) {
-  return proxy(request, params.path)
+export async function OPTIONS(request: NextRequest, { params }: RouteContext) {
+  return proxy(request, (await params).path)
 }

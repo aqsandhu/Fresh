@@ -1,6 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { 
   MapPin, 
@@ -341,10 +342,12 @@ export default function TrackOrderPage() {
                 }, index: number) => (
                   <div key={index} className="flex items-center gap-4">
                     <div className="relative w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                      <img
+                      <Image
                         src={item.product?.image || item.product?.image_url || '/placeholder-product.png'}
                         alt={item.product.name}
-                        className="w-full h-full object-cover"
+                        fill
+                        sizes="80px"
+                        className="object-cover"
                       />
                     </div>
                     <div className="flex-1">

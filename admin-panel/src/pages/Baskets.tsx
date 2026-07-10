@@ -72,7 +72,9 @@ export const Baskets: React.FC = () => {
     queryFn: () => productService.getProducts({ limit: 200 } as any),
     enabled: isSuperAdmin && modalOpen,
   });
-  const products = productsData?.products || [];
+  // Stable [] fallback so productOptions' useMemo dep doesn't change identity
+  // on every render while the query is loading.
+  const products = useMemo(() => productsData?.products || [], [productsData?.products]);
   const productOptions = useMemo(
     () => [
       { value: '', label: 'Select product…' },

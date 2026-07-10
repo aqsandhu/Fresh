@@ -21,7 +21,7 @@ interface LocationState {
   clearError: () => void;
 }
 
-export const useLocationStore = create<LocationState>((set, get) => ({
+export const useLocationStore = create<LocationState>((set) => ({
   // Initial state
   currentLocation: null,
   isTracking: false,

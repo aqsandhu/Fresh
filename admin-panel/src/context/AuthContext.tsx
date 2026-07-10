@@ -120,6 +120,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   );
 };
 
+// Companion hook of the provider above — splitting it into its own file would
+// churn every consumer import for a hot-reload-only concern.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuthContext = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {

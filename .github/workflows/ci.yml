@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck · Lint · Test · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        # version is read from package.json "packageManager"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (all workspaces)
+        run: pnpm exec turbo run typecheck
+
+      # Zero-warning policy: backend, website and admin lint with
+      # --max-warnings=0 baked into their lint scripts. Mobile apps lint too,
+      # but their remaining react-hooks warnings are being ratcheted down —
+      # they fail only on ERRORS for now.
+      - name: Lint
+        run: pnpm exec turbo run lint
+
+      - name: Test (all workspaces)
+        run: pnpm exec turbo run test
+
+      - name: Dependency audit (fail on any known vulnerability)
+        run: pnpm audit --prod
+
+      - name: Build backend
+        run: pnpm --filter @freshbazar/backend build
+
+      - name: Build website
+        run: pnpm --filter freshbazar-website build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid/api
+
+      - name: Build admin panel
+        run: pnpm --filter freshbazar-admin build
+
+      # Bundle budget: fail if any single admin JS chunk exceeds 600 KB
+      # minified (the split build's largest chunk is ~165 KB today).
+      - name: Admin bundle budget
+        run: |
+          over=$(find admin-panel/dist/assets -name '*.js' -size +600k | tee /dev/stderr | wc -l)
+          if [ "$over" -gt 0 ]; then
+            echo "::error::Admin bundle budget exceeded (chunk >600KB minified)"
+            exit 1
+          fi

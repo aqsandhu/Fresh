@@ -45,6 +45,20 @@ import { useCityContext } from '@/context/CityContext'
 
 type RealAddress = SavedAddress
 
+// Pure date helpers (module scope so the useCallback loaders below don't need
+// them as dependencies).
+const getDateString = (day: 'today' | 'tomorrow') => {
+  const d = new Date()
+  if (day === 'tomorrow') d.setDate(d.getDate() + 1)
+  return d.toISOString().split('T')[0]
+}
+
+const getDisplayDate = (day: 'today' | 'tomorrow') => {
+  const d = new Date()
+  if (day === 'tomorrow') d.setDate(d.getDate() + 1)
+  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
 // Public wrapper.
 //
 // NEW FLOW (inline auth on checkout):
@@ -317,50 +331,16 @@ function CheckoutPage() {
     }
   }, [isAuthenticated])
 
-  const getDateString = (day: 'today' | 'tomorrow') => {
-    const d = new Date()
-    if (day === 'tomorrow') d.setDate(d.getDate() + 1)
-    return d.toISOString().split('T')[0]
-  }
-
-  const getDisplayDate = (day: 'today' | 'tomorrow') => {
-    const d = new Date()
-    if (day === 'tomorrow') d.setDate(d.getDate() + 1)
-    return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
-  }
-
+  // Latest-value ref: loadTimeSlots reads the cutoff through this so it can stay
+  // referentially stable — including slotCutoffPercent in its deps would make
+  // the load-effect below re-fetch (and reset the selected slot) the moment the
+  // settings call lands.
+  const slotCutoffRef = useRef(slotCutoffPercent)
   useEffect(() => {
-    // Wait for persisted auth state to load from localStorage before loading
-    // the authed-only data. Hard refresh sees `isAuthenticated` briefly false.
-    if (!authHasHydrated) return
-    // NOTE: Guests no longer reach this component — CheckoutPageWrapper renders
-    // <GuestCheckout> (inline login / sign-up) for them instead of redirecting.
-    // The old redirect is kept here, commented, so the previous behaviour can be
-    // restored by reverting this change:
-    //   if (!isAuthenticated) {
-    //     router.push('/login?redirect=/checkout')
-    //     return
-    //   }
-    if (!isAuthenticated) return
-    loadAddresses()
-    loadTimeSlots('today')
-  }, [authHasHydrated, isAuthenticated, selectedCity?.id])
+    slotCutoffRef.current = slotCutoffPercent
+  }, [slotCutoffPercent])
 
-  // Sync the cart server-side exactly once. After that we only refetch the
-  // delivery charge when the slot changes — this makes slot changes feel
-  // instant instead of re-uploading the whole cart on every click.
-  useEffect(() => {
-    if (!isAuthenticated || items.length === 0 || cartSynced) return
-    syncCartToServer()
-  }, [isAuthenticated, items.length, cartSynced, syncCartToServer])
-
-  // Re-price delivery only when the selected slot changes.
-  useEffect(() => {
-    if (!cartSynced || !selectedTimeSlot) return
-    refetchDeliveryCharge(selectedTimeSlot)
-  }, [cartSynced, selectedTimeSlot, refetchDeliveryCharge])
-
-  const loadTimeSlots = async (day: 'today' | 'tomorrow') => {
+  const loadTimeSlots = useCallback(async (day: 'today' | 'tomorrow') => {
     setLoadingSlots(true)
     setSelectedTimeSlot('')
     try {
@@ -368,7 +348,7 @@ function CheckoutPage() {
       const slots = await settingsApi.getTimeSlots(date)
       setTimeSlots(slots)
       const firstAvailable = slots.find(
-        (slot) => !getSlotAvailability(slot, day, slotCutoffPercent).unavailable
+        (slot) => !getSlotAvailability(slot, day, slotCutoffRef.current).unavailable
       )
       if (firstAvailable) setSelectedTimeSlot(firstAvailable.id)
     } catch {
@@ -376,19 +356,9 @@ function CheckoutPage() {
     } finally {
       setLoadingSlots(false)
     }
-  }
+  }, [])
 
-  const handleDayChange = (day: 'today' | 'tomorrow') => {
-    setSelectedDay(day)
-    loadTimeSlots(day)
-    // Scroll back up to where the slots start so the newly loaded slots for the
-    // chosen day are in view (the day buttons sit below the slot grid).
-    requestAnimationFrame(() => {
-      deliveryTimeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    })
-  }
-
-  const loadAddresses = async () => {
+  const loadAddresses = useCallback(async () => {
     try {
       const res = await addressesApi.getAll()
       const raw = (res as any).data || res
@@ -405,6 +375,48 @@ function CheckoutPage() {
     } finally {
       setLoadingAddresses(false)
     }
+  }, [selectedCity?.name])
+
+  useEffect(() => {
+    // Wait for persisted auth state to load from localStorage before loading
+    // the authed-only data. Hard refresh sees `isAuthenticated` briefly false.
+    if (!authHasHydrated) return
+    // NOTE: Guests no longer reach this component — CheckoutPageWrapper renders
+    // <GuestCheckout> (inline login / sign-up) for them instead of redirecting.
+    // The old redirect is kept here, commented, so the previous behaviour can be
+    // restored by reverting this change:
+    //   if (!isAuthenticated) {
+    //     router.push('/login?redirect=/checkout')
+    //     return
+    //   }
+    if (!isAuthenticated) return
+    loadAddresses()
+    loadTimeSlots('today')
+    // selectedCity?.id keyed on purpose: loadAddresses re-filters per city.
+  }, [authHasHydrated, isAuthenticated, selectedCity?.id, loadAddresses, loadTimeSlots])
+
+  // Sync the cart server-side exactly once. After that we only refetch the
+  // delivery charge when the slot changes — this makes slot changes feel
+  // instant instead of re-uploading the whole cart on every click.
+  useEffect(() => {
+    if (!isAuthenticated || items.length === 0 || cartSynced) return
+    syncCartToServer()
+  }, [isAuthenticated, items.length, cartSynced, syncCartToServer])
+
+  // Re-price delivery only when the selected slot changes.
+  useEffect(() => {
+    if (!cartSynced || !selectedTimeSlot) return
+    refetchDeliveryCharge(selectedTimeSlot)
+  }, [cartSynced, selectedTimeSlot, refetchDeliveryCharge])
+
+  const handleDayChange = (day: 'today' | 'tomorrow') => {
+    setSelectedDay(day)
+    loadTimeSlots(day)
+    // Scroll back up to where the slots start so the newly loaded slots for the
+    // chosen day are in view (the day buttons sit below the slot grid).
+    requestAnimationFrame(() => {
+      deliveryTimeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   // User can place an order if either:

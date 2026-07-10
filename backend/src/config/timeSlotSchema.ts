@@ -12,6 +12,7 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
+import { buildSslConfig } from './dbSsl';
 
 let cached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
@@ -56,10 +57,7 @@ export async function hasTimeSlotBookings(): Promise<boolean> {
 async function runDdl(connectionString: string): Promise<void> {
   const pool = new Pool({
     connectionString,
-    ssl:
-      process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
-        ? false
-        : { rejectUnauthorized: false },
+    ssl: buildSslConfig(connectionString),
     max: 1,
     connectionTimeoutMillis: 15000,
   });

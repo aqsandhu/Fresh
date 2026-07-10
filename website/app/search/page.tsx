@@ -27,28 +27,35 @@ export default function SearchPage() {
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 5000])
 
   useEffect(() => {
-    if (query) {
-      performSearch()
-    } else {
+    if (!query) {
       setLoading(false)
+      return
+    }
+    // Cancellation guard: a slow response for an OLD query must never
+    // overwrite the results of the query the user is currently looking at.
+    let cancelled = false
+    const performSearch = async () => {
+      setLoading(true)
+      try {
+        const response = await productsApi.getAll({
+          search: query,
+          limit: 50,
+        })
+        if (!cancelled) setProducts(response.products)
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Search error:', error)
+          toast.error('Failed to search products')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    performSearch()
+    return () => {
+      cancelled = true
     }
   }, [query])
-
-  const performSearch = async () => {
-    setLoading(true)
-    try {
-      const response = await productsApi.getAll({
-        search: query,
-        limit: 50,
-      })
-      setProducts(response.products)
-    } catch (error) {
-      console.error('Search error:', error)
-      toast.error('Failed to search products')
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const sortedProducts = [...products].sort((a, b) => {
     switch (sortBy) {

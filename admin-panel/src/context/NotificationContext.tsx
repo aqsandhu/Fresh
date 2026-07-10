@@ -171,6 +171,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let connectionInterval: ReturnType<typeof setInterval> | undefined;
     let cleanupConnectError: (() => void) | undefined;
+    // Snapshot the Map itself (created once by useRef) so the cleanup below
+    // clears exactly the timers this effect run knew about — reading
+    // flashTimersRef.current inside the cleanup races the ref's later value.
+    const flashTimers = flashTimersRef.current;
 
     const handleNewOrder = (data: Record<string, unknown>) => {
       const isUrgent = data.isUrgent === true;
@@ -346,8 +350,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       offSocketEvent('rider:application', handleRiderApplication);
       offSocketEvent('restaurant:application', handleRestaurantApplication);
       offSocketEvent('ocp:shortage', handleOcpShortage);
-      flashTimersRef.current.forEach((t) => clearTimeout(t));
-      flashTimersRef.current.clear();
+      flashTimers.forEach((t) => clearTimeout(t));
+      flashTimers.clear();
       disconnectSocket();
     };
   }, [isAuthenticated, pushNotification, flashOrder, queryClient]);
@@ -385,6 +389,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// Companion hooks of the provider above — splitting them into their own file
+// would churn every consumer import for a hot-reload-only concern.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useNotifications(): NotificationContextValue {
   const ctx = useContext(NotificationContext);
   if (!ctx) {
@@ -393,6 +400,7 @@ export function useNotifications(): NotificationContextValue {
   return ctx;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useOptionalNotifications(): NotificationContextValue | null {
   return useContext(NotificationContext) ?? null;
 }

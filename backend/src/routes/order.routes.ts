@@ -8,6 +8,7 @@ import {
   authenticate,
   verifyUserActive,
   orderRateLimiter,
+  publicTrackingRateLimiter,
   validate,
   orderSchemas,
 } from '../middleware';
@@ -17,7 +18,7 @@ const router = Router();
 // Time slots (public)
 router.get('/time-slots', orderController.getTimeSlots);
 
-router.get('/track/public/:orderNumber', orderController.trackOrderPublic);
+router.get('/track/public/:orderNumber', publicTrackingRateLimiter, orderController.trackOrderPublic);
 router.get('/track/:id', authenticate, verifyUserActive, orderController.trackOrder);
 
 // Protected routes

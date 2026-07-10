@@ -1,3 +1,6 @@
+/* eslint-disable react-refresh/only-export-components --
+   Jest test double for @tanstack/react-query; never part of the app's
+   fast-refresh graph. */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 export class QueryClient {
@@ -46,6 +49,10 @@ export function useQuery(options?: {
     return () => {
       cancelled = true;
     };
+    // Mirrors real react-query: re-fetch only when the SERIALIZED key (or
+    // enabled) changes. `options` is a fresh object literal every render and
+    // must not be a dependency or the double would refetch in a loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryKey, options?.enabled]);
 
   return {

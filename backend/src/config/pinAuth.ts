@@ -7,6 +7,7 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
+import { buildSslConfig } from './dbSsl';
 
 let pinColumnsCached: boolean | null = null;
 let ensurePinColumnsPromise: Promise<boolean> | null = null;
@@ -69,7 +70,7 @@ export function getMigrationConnectionString(): string | null {
 async function runAlterOnConnection(connectionString: string): Promise<boolean> {
   const pool = new Pool({
     connectionString,
-    ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+    ssl: buildSslConfig(connectionString),
     max: 1,
     connectionTimeoutMillis: 15000,
   });

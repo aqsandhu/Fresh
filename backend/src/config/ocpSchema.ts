@@ -7,6 +7,7 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
+import { buildSslConfig } from './dbSsl';
 
 let cached: boolean | null = null;
 let ddlEnsured = false;
@@ -61,10 +62,7 @@ export async function ensureOcpTables(): Promise<boolean> {
     }
     const pool = new Pool({
       connectionString,
-      ssl:
-        process.env.DB_SSL === 'false' || process.env.DB_SSL_REJECT_UNAUTHORIZED === 'false'
-          ? false
-          : { rejectUnauthorized: false },
+      ssl: buildSslConfig(connectionString),
       max: 1,
       connectionTimeoutMillis: 15000,
     });

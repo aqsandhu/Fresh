@@ -33,7 +33,9 @@ export const StockManagement: React.FC = () => {
     queryKey: ['stock-overview'],
     queryFn: () => stockService.overview(),
   });
-  const products = data?.products || [];
+  // Stable [] fallback so `filtered`'s useMemo dep keeps its identity between
+  // renders while the query is loading.
+  const products = useMemo(() => data?.products || [], [data?.products]);
   const ocps = data?.ocps || [];
 
   const filtered = useMemo(() => {
@@ -110,7 +112,7 @@ export const StockManagement: React.FC = () => {
   );
 };
 
-function QualityRow({ p, q, onAction }: { p: StockProduct; q: StockQuality; onAction: (a: Action) => void }) {
+function QualityRow({ q, onAction }: { p: StockProduct; q: StockQuality; onAction: (a: Action) => void }) {
   const tone = q.quality === 'A' ? 'bg-emerald-50 text-emerald-700' : q.quality === 'B' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700';
   return (
     <tr className="border-t border-gray-100">

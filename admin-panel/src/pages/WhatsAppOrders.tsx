@@ -182,7 +182,9 @@ export const WhatsAppOrders: React.FC = () => {
     queryKey: ['products-for-whatsapp'],
     queryFn: () => productService.getProducts({ page: 1, limit: 200 }),
   });
-  const products = productsData?.products || [];
+  // Stable [] fallback for the useMemo below (product search) — avoids a new
+  // array identity on every render while the query is loading.
+  const products = useMemo(() => productsData?.products || [], [productsData?.products]);
 
   // Delivery settings — same source the website checkout uses (/site-settings/delivery).
   const { data: deliveryConf } = useQuery({

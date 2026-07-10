@@ -15,6 +15,8 @@ interface LayoutProps {
  * its own <Layout> must NOT render the sidebar/header again. The wrapper sets
  * this context to true so the nested <Layout> renders only its content.
  */
+// Tiny flag context consumed only by Layout itself; a separate file adds no value.
+// eslint-disable-next-line react-refresh/only-export-components
 export const LayoutNestedContext = React.createContext(false);
 
 export const Layout: React.FC<LayoutProps> = ({

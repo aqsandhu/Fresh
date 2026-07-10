@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { renderWithProviders } from '@/test-utils/renderWithProviders';
 
 jest.mock('@react-navigation/native', () => {
   const actual = jest.requireActual('@react-navigation/native');
@@ -37,7 +37,7 @@ import { HomeScreen } from '@screens/home/HomeScreen';
 
 describe('Customer HomeScreen', () => {
   it('renders without crashing', () => {
-    const tree = render(<HomeScreen />);
+    const tree = renderWithProviders(<HomeScreen />);
     expect(tree).toBeTruthy();
   });
 });
