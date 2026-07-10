@@ -45,23 +45,9 @@ import apiClient from '@services/api';
 import { useCartStore, useAuthStore } from '@store';
 import { getSlotAvailability } from '@/lib/timeSlots';
 import { formatAddressLine, addressTypeLabel } from '@/lib/addressDisplay';
+import { pktDateString, pktDisplayDate, pktWallClock } from '@/lib/businessDate';
 
 type DayTab = 'today' | 'tomorrow';
-
-function getDateString(day: DayTab): string {
-  const d = new Date();
-  if (day === 'tomorrow') d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
-}
-
-function getDisplayDate(day: DayTab): string {
-  const d = new Date();
-  if (day === 'tomorrow') d.setDate(d.getDate() + 1);
-  const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
-  const dayNum = d.getDate();
-  const month = d.toLocaleDateString('en-US', { month: 'short' });
-  return `${weekday}, ${dayNum} ${month}`;
-}
 
 export const CheckoutScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<CartStackParamList>>();
@@ -200,7 +186,7 @@ export const CheckoutScreen: React.FC = () => {
     setLoadingSlots(true);
     setSelectedSlotId('');
     try {
-      const res = await orderService.getDeliverySlots(getDateString(day));
+      const res = await orderService.getDeliverySlots(pktDateString(day));
       const slots = res.success ? res.data : [];
       setTimeSlots(slots);
       const firstAvailable = slots.find((slot) => {
@@ -213,7 +199,8 @@ export const CheckoutScreen: React.FC = () => {
             end_time: slot.endTime,
           },
           day,
-          deliverySlotCutoffPercent
+          deliverySlotCutoffPercent,
+          pktWallClock()
         );
         return !availability.unavailable;
       });
@@ -336,7 +323,8 @@ export const CheckoutScreen: React.FC = () => {
             endTime: selectedSlotForOrder.endTime,
           },
           activeDay,
-          deliverySlotCutoffPercent
+          deliverySlotCutoffPercent,
+          pktWallClock()
         ).unavailable)
     ) {
       Toast.show({
@@ -396,7 +384,7 @@ export const CheckoutScreen: React.FC = () => {
       if (urgent) {
         body.urgent_delivery = 'true';
       } else {
-        if (activeDay === 'tomorrow') body.requested_delivery_date = getDateString('tomorrow');
+        if (activeDay === 'tomorrow') body.requested_delivery_date = pktDateString('tomorrow');
         if (selectedSlotId) body.time_slot_id = selectedSlotId;
       }
 
@@ -644,7 +632,8 @@ export const CheckoutScreen: React.FC = () => {
                 const availability = getSlotAvailability(
                   { id: slot.id, startTime: slot.startTime, endTime: slot.endTime },
                   activeDay,
-                  deliverySlotCutoffPercent
+                  deliverySlotCutoffPercent,
+                  pktWallClock()
                 );
                 const availableSlots = slot.available_slots ?? 0;
                 const disabled = availableSlots <= 0 || availability.unavailable;
@@ -701,7 +690,7 @@ export const CheckoutScreen: React.FC = () => {
                   {day === 'today' ? 'Today' : 'Tomorrow'}
                 </Text>
                 <Text style={[styles.dayTabDate, activeDay === day && styles.dayTabDateActive]}>
-                  {getDisplayDate(day)}
+                  {pktDisplayDate(day)}
                 </Text>
               </TouchableOpacity>
             ))}

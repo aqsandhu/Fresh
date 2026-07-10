@@ -233,7 +233,16 @@ export async function verifyStoredOtp(
   );
 
   if (!matches) {
-    await query(`UPDATE otp_codes SET attempts = attempts + 1 WHERE id = $1`, [row.id]);
+    const consumed = await query(
+      `UPDATE otp_codes
+          SET attempts = attempts + 1
+        WHERE id = $1 AND attempts < $2 AND verified_at IS NULL
+        RETURNING attempts`,
+      [row.id, OTP_MAX_ATTEMPTS]
+    );
+    if (consumed.rows.length === 0) {
+      return { success: false, message: 'Too many wrong attempts. Please request a new code.' };
+    }
     return { success: false, message: 'Invalid OTP. Please try again.' };
   }
 

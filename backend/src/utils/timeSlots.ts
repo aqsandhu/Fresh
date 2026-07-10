@@ -41,10 +41,11 @@ export async function validateAndClaimTimeSlot(client: PoolClient, opts: SlotCla
     `SELECT
         ts.max_orders,
         (ts.status <> 'available')                                            AS disabled,
-        (COALESCE($2::date, CURRENT_DATE) < CURRENT_DATE)                     AS past,
+        (COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) < (NOW() AT TIME ZONE 'Asia/Karachi')::date) AS past,
         (ts.applicable_days IS NOT NULL
-          AND NOT (EXTRACT(DOW FROM COALESCE($2::date, CURRENT_DATE))::int = ANY(ts.applicable_days))) AS wrong_day,
-        (COALESCE($2::date, CURRENT_DATE) = CURRENT_DATE AND NOW()::time >= ts.end_time) AS passed
+          AND NOT (EXTRACT(DOW FROM COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date))::int = ANY(ts.applicable_days))) AS wrong_day,
+        (COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) = (NOW() AT TIME ZONE 'Asia/Karachi')::date
+          AND (NOW() AT TIME ZONE 'Asia/Karachi')::time >= ts.end_time) AS passed
       FROM time_slots ts WHERE ts.id = $1`,
     [slotId, date]
   );
@@ -68,7 +69,7 @@ export async function validateAndClaimTimeSlot(client: PoolClient, opts: SlotCla
   if (await hasTimeSlotBookings()) {
     const claim = await client.query(
       `INSERT INTO time_slot_bookings (time_slot_id, delivery_date, booked_count)
-       VALUES ($1, COALESCE($2::date, CURRENT_DATE), 1)
+       VALUES ($1, COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date), 1)
        ON CONFLICT (time_slot_id, delivery_date)
        DO UPDATE SET booked_count = time_slot_bookings.booked_count + 1, updated_at = NOW()
          WHERE $3::int IS NULL OR time_slot_bookings.booked_count < $3

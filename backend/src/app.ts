@@ -396,6 +396,10 @@ const startServer = async () => {
     const runStartupTasks = async (failFast = false) => {
       try {
         await ensureDatabaseExtensions();
+        // Production schema is owned exclusively by versioned migrations
+        // (Render preDeployCommand). Runtime DDL is kept only as a local-dev
+        // convenience so multiple production replicas never race on ALTERs.
+        if (NODE_ENV !== 'production') {
         await ensurePinColumns();
         await ensureAddressColumns();
         await ensureOrderCouponColumns();
@@ -423,6 +427,7 @@ const startServer = async () => {
         const catalogV2Ready = await ensureCatalogV2Columns();
         if (!catalogV2Ready) {
           throw new Error('catalog-v2 columns are required but could not be ensured');
+        }
         }
         // Start the daily reconciliation watchdog once the DB/schema is ready.
         startReconciliationScheduler();

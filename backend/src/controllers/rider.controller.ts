@@ -79,11 +79,16 @@ export const updateFcmToken = asyncHandler(async (req: Request, res: Response) =
 
   const result = await query(
     `UPDATE users
-        SET device_tokens = CASE
-              WHEN device_tokens IS NULL THEN ARRAY[$2]::text[]
-              WHEN NOT ($2 = ANY(device_tokens)) THEN array_append(device_tokens, $2)
-              ELSE device_tokens
-            END,
+        SET device_tokens = (
+              SELECT ARRAY(
+                SELECT token
+                FROM unnest(ARRAY[$2]::text[] || COALESCE(device_tokens, ARRAY[]::text[]))
+                     WITH ORDINALITY AS t(token, ord)
+                GROUP BY token
+                ORDER BY MIN(ord)
+                LIMIT 5
+              )
+            ),
             updated_at = NOW()
       WHERE id = $1 AND status = 'active' AND deleted_at IS NULL
       RETURNING id`,

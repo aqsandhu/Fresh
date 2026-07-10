@@ -45,7 +45,7 @@ router.patch(
 router.post('/tasks/:id/cancel', riderController.cancelTaskByRider);
 router.put('/tasks/:id/deliver', riderController.confirmDelivery);
 router.post('/tasks/:id/deliver', riderController.confirmDelivery);
-router.put('/tasks/:id/pin-location', riderController.pinLocation);
+router.put('/tasks/:id/pin-location', validate(riderSchemas.updateLocation), riderController.pinLocation);
 router.post('/tasks/:id/door-picture', uploadDoorPictureMiddleware, riderController.uploadDoorPicture);
 
 // Call request (privacy protected)

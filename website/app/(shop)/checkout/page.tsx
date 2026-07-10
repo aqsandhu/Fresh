@@ -33,6 +33,7 @@ import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { resolveLineUnitPrice, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
 import { getSlotAvailability } from '@/lib/timeSlots'
+import { pktDateString, pktDisplayDate, pktWallClock } from '@/lib/businessDate'
 import { addressesApi, settingsApi, cartApi, myCouponsApi, type MyCoupon } from '@/lib/api'
 import api from '@/lib/api'
 import AddressActions from '@/components/checkout/AddressActions'
@@ -44,20 +45,6 @@ import { getSelectedCityId, addressMatchesSelectedCity } from '@/lib/cityStorage
 import { useCityContext } from '@/context/CityContext'
 
 type RealAddress = SavedAddress
-
-// Pure date helpers (module scope so the useCallback loaders below don't need
-// them as dependencies).
-const getDateString = (day: 'today' | 'tomorrow') => {
-  const d = new Date()
-  if (day === 'tomorrow') d.setDate(d.getDate() + 1)
-  return d.toISOString().split('T')[0]
-}
-
-const getDisplayDate = (day: 'today' | 'tomorrow') => {
-  const d = new Date()
-  if (day === 'tomorrow') d.setDate(d.getDate() + 1)
-  return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
-}
 
 // Public wrapper.
 //
@@ -344,11 +331,11 @@ function CheckoutPage() {
     setLoadingSlots(true)
     setSelectedTimeSlot('')
     try {
-      const date = getDateString(day)
+      const date = pktDateString(day)
       const slots = await settingsApi.getTimeSlots(date)
       setTimeSlots(slots)
       const firstAvailable = slots.find(
-        (slot) => !getSlotAvailability(slot, day, slotCutoffRef.current).unavailable
+        (slot) => !getSlotAvailability(slot, day, slotCutoffRef.current, pktWallClock()).unavailable
       )
       if (firstAvailable) setSelectedTimeSlot(firstAvailable.id)
     } catch {
@@ -489,7 +476,7 @@ function CheckoutPage() {
       !urgent &&
       selectedSlot &&
       (selectedSlot.available_slots <= 0 ||
-        getSlotAvailability(selectedSlot, selectedDay, slotCutoffPercent).unavailable)
+        getSlotAvailability(selectedSlot, selectedDay, slotCutoffPercent, pktWallClock()).unavailable)
     ) {
       toast.error('Selected time slot is no longer available. Please pick another.')
       return
@@ -548,7 +535,7 @@ function CheckoutPage() {
         orderPayload.urgent_delivery = 'true'
       } else {
         if (selectedDay === 'tomorrow') {
-          orderPayload.requested_delivery_date = getDateString('tomorrow')
+          orderPayload.requested_delivery_date = pktDateString('tomorrow')
         }
         if (selectedTimeSlot) {
           orderPayload.time_slot_id = selectedTimeSlot
@@ -865,7 +852,7 @@ function CheckoutPage() {
                   </p>
                 ) : (
                   timeSlots.map((slot) => {
-                    const availability = getSlotAvailability(slot, selectedDay, slotCutoffPercent)
+                    const availability = getSlotAvailability(slot, selectedDay, slotCutoffPercent, pktWallClock())
                     const slotDisabled =
                       slot.available_slots <= 0 || availability.unavailable
                     return (
@@ -923,7 +910,7 @@ function CheckoutPage() {
                   >
                     <CalendarDays className="w-5 h-5 mb-1" />
                     <span className="font-semibold text-sm capitalize">{day}</span>
-                    <span className="text-xs opacity-75">{getDisplayDate(day)}</span>
+                    <span className="text-xs opacity-75">{pktDisplayDate(day)}</span>
                   </button>
                 ))}
               </div>

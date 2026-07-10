@@ -12,7 +12,10 @@ import { captureMessage } from '../config/sentry';
 const isDev = process.env.NODE_ENV !== 'production';
 
 const WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000');
-const MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || (isDev ? '10000' : '100'));
+// The global limiter is intentionally generous: Pakistani mobile carriers use
+// CGNAT, so many unrelated customers share one public IP. Sensitive auth/order
+// routes retain their much tighter dedicated limiters below.
+const MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || (isDev ? '10000' : '2000'));
 const AUTH_WINDOW_MS = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000');
 const AUTH_MAX_REQUESTS = parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || (isDev ? '1000' : '50'));
 

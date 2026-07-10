@@ -459,6 +459,7 @@ export const orderSchemas = {
       'pending', 'confirmed', 'preparing', 'ready_for_pickup',
       'out_for_delivery', 'delivered', 'cancelled'
     ).required(),
+    rider_id: commonSchemas.uuid.optional(),
     reason: Joi.string().allow('').max(500),
   }),
   

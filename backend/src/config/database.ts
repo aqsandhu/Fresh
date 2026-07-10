@@ -158,7 +158,13 @@ export const withTransaction = async <T>(
     await client.query('COMMIT');
     return result;
   } catch (error) {
-    await client.query('ROLLBACK');
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackError) {
+      logger.error('Transaction rollback failed; destroying pooled connection', { rollbackError });
+      client.release(rollbackError as Error);
+      throw error;
+    }
     throw error;
   } finally {
     client.release();

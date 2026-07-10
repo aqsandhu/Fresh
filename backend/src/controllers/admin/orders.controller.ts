@@ -379,18 +379,26 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
   // straight to delivered+paid. The only hard guard is below — a
   // cancelled/refunded order must never flip to delivered (that resurrected
   // dead orders and inflated revenue).
-  const result = await query(
-    `UPDATE orders
-     SET payment_status = 'completed',
-         paid_amount = total_amount,
-         status = 'delivered',
-         delivered_at = COALESCE(delivered_at, NOW()),
-         updated_at = NOW()
-     WHERE id = $1 AND deleted_at IS NULL
-       AND status NOT IN ('cancelled', 'refunded')
-     RETURNING *`,
-    [id]
-  );
+  const result = await withTransaction(async (client) => {
+    const updated = await client.query(
+      `UPDATE orders
+       SET payment_status = 'completed', paid_amount = total_amount,
+           status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW()
+       WHERE id = $1 AND deleted_at IS NULL AND status NOT IN ('cancelled', 'refunded')
+       RETURNING *`,
+      [id]
+    );
+    if (updated.rows.length === 0) return updated;
+    await client.query(
+      `UPDATE rider_tasks SET status = 'completed',
+              completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
+       WHERE order_id = $1 AND status != 'completed'`,
+      [id]
+    );
+    await commitOrderSaleOnDelivery(client, id);
+    await deductOcpStockOnDelivery(client, id);
+    return updated;
+  });
 
   if (result.rows.length === 0) {
     const exists = await query(
@@ -408,19 +416,14 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
   }
 
   // Also complete any associated rider task
-  await query(
-    `UPDATE rider_tasks
-     SET status = 'completed', completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
-     WHERE order_id = $1 AND status != 'completed'`,
-    [id]
-  );
+  /* Delivery, rider task and stock commits are completed atomically above.
 
   // The order is now delivered: commit the system-stock sale (reserved →
   // permanent) and deduct the OCP's own stock. Both idempotent + self-guarded.
   await withTransaction(async (client) => {
     await commitOrderSaleOnDelivery(client, id);
     await deductOcpStockOnDelivery(client, id);
-  });
+  }); */
 
   logger.info('Payment received & order delivered', { orderId: id, updatedBy: req.user?.id });
 
@@ -1366,21 +1369,41 @@ export const updateAttaStatus = asyncHandler(async (req: Request, res: Response)
     return errorResponse(res, 'Invalid status', 400);
   }
 
-  let sql = `UPDATE atta_requests SET status = $1, ${update.column} = NOW()`;
-  const params: any[] = [status];
-  let paramIndex = 2;
+  const allowedFrom: Record<string, string[]> = {
+    picked_up: ['pending_pickup'],
+    at_mill: ['picked_up'],
+    milling: ['picked_up', 'at_mill'],
+    ready_for_delivery: ['at_mill', 'milling'],
+    out_for_delivery: ['ready_for_delivery'],
+    delivered: ['out_for_delivery'],
+  };
+  if (update.riderColumn && rider_id) {
+    const rider = await query(
+      `SELECT id FROM riders WHERE id = $1 AND status = 'active' AND deleted_at IS NULL`,
+      [rider_id]
+    );
+    if (rider.rows.length === 0) return errorResponse(res, 'Active rider not found', 400);
+  }
+
+  let sql = `UPDATE atta_requests SET status = $1, ${update.column} = COALESCE(${update.column}, NOW())`;
+  const params: any[] = [status, allowedFrom[status]];
+  let paramIndex = 3;
 
   if (update.riderColumn && rider_id) {
     sql += `, ${update.riderColumn} = $${paramIndex++}`;
     params.push(rider_id);
   }
 
-  sql += `, updated_at = NOW() WHERE id = $${paramIndex} RETURNING *`;
+  sql += `, updated_at = NOW() WHERE id = $${paramIndex} AND status = ANY($2::text[]) RETURNING *`;
   params.push(id);
 
   const result = await query(sql, params);
 
   if (result.rows.length === 0) {
+    const exists = await query('SELECT status FROM atta_requests WHERE id = $1', [id]);
+    if (exists.rows.length > 0) {
+      return errorResponse(res, `Invalid atta status transition: ${exists.rows[0].status} → ${status}`, 409);
+    }
     return notFoundResponse(res, 'Atta request not found');
   }
 

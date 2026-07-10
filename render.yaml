@@ -15,6 +15,8 @@ services:
     branch: main
     rootDir: backend
     buildCommand: npm install && npm run build
+    # Apply versioned SQL migrations before the new API process receives traffic.
+    preDeployCommand: npm run migrate:sql
     startCommand: npm start
     envVars:
       - key: NODE_ENV
@@ -42,6 +44,8 @@ services:
         value: postgres
       - key: DB_SSL
         value: "true"
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: "2000"
       - key: CORS_ORIGIN
         value: "https://freshbazar.pk,https://www.freshbazar.pk,https://freshbazar-admin.vercel.app,https://admin.freshbazar.pk"
       - key: CORS_CREDENTIALS

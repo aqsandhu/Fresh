@@ -339,7 +339,7 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
   try {
     const responseBody = await withTransaction(async (client) => {
       const orderResult = await client.query(
-        `SELECT id, total_amount, payment_status, payment_method
+        `SELECT id, total_amount, payment_status, payment_method, status
            FROM orders
           WHERE id = $1 AND deleted_at IS NULL
           FOR UPDATE`,
@@ -358,6 +358,12 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
       // to match the order total within a small rounding tolerance before we
       // mark the order as fully paid.
       if (status === 'completed') {
+        if (['cancelled', 'refunded'].includes(order.status)) {
+          throw Object.assign(
+            new Error(`Payment received for ${order.status} order; manual refund review required`),
+            { http: 409 }
+          );
+        }
         if (!Number.isFinite(paidAmount)) {
           throw Object.assign(new Error('Invalid payment amount'), { http: 400 });
         }

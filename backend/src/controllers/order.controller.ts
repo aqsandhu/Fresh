@@ -293,8 +293,13 @@ export const trackOrder = asyncHandler(async (req: Request, res: Response) => {
 
   if (req.user) {
     const isOwner = req.user.id === order.user_id;
-    const isStaff = ['admin', 'super_admin', 'rider'].includes(req.user.role);
-    if (!isOwner && !isStaff) {
+    const isAdmin = ['admin', 'super_admin'].includes(req.user.role);
+    let isAssignedRider = false;
+    if (req.user.role === 'rider') {
+      const rider = await query('SELECT 1 FROM riders WHERE id = $1 AND user_id = $2', [order.rider_id, req.user.id]);
+      isAssignedRider = rider.rows.length > 0;
+    }
+    if (!isOwner && !isAdmin && !isAssignedRider) {
       return errorResponse(res, 'You can only track your own orders', 403);
     }
   }
@@ -445,7 +450,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
          LIMIT 1`,
         [address.city]
       );
-      if (addressCity.rows[0]?.id && addressCity.rows[0].id !== orderCityId) {
+      if (!addressCity.rows[0]?.id || addressCity.rows[0].id !== orderCityId) {
         throw new BadRequestError('Delivery address is not in the selected service city.');
       }
     }
@@ -1042,7 +1047,7 @@ export const getTimeSlots = asyncHandler(async (req: Request, res: Response) => 
   const perDate = await hasTimeSlotBookings();
   const bookedExpr = perDate ? 'COALESCE(tsb.booked_count, 0)' : 'ts.booked_orders';
   const join = perDate
-    ? `LEFT JOIN time_slot_bookings tsb ON tsb.time_slot_id = ts.id AND tsb.delivery_date = COALESCE($2::date, CURRENT_DATE)`
+    ? `LEFT JOIN time_slot_bookings tsb ON tsb.time_slot_id = ts.id AND tsb.delivery_date = COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date)`
     : '';
   const params: unknown[] = perDate ? [dayOfWeek, dateParam] : [dayOfWeek];
   const result = await query(
