@@ -354,3 +354,57 @@ describe('POST /api/orders coupon accounting', () => {
     ).toBe(true);
   });
 });
+
+describe('POST /api/orders stock guard', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('rejects an out-of-stock product and never inserts an order', async () => {
+    mockQuery.mockImplementation(((sql: any) => {
+      const text = String(sql);
+      if (text.includes('information_schema')) {
+        return Promise.resolve(ok([{ exists: 1 }]));
+      }
+      if (text.includes('FROM users')) {
+        return Promise.resolve(ok([ACTIVE_USER_ROW]));
+      }
+      return Promise.resolve(ok([]));
+    }) as any);
+
+    // Same harness as the happy path, but the locked product row reports
+    // out_of_stock — the guard must fire inside the transaction.
+    const base = createOrderClient();
+    const clientQuery = jest.fn<any>((sql: any, params?: any[]) => {
+      const text = String(sql);
+      if (text.includes('FROM products') && text.includes('half_kg_price') && text.includes('FOR UPDATE')) {
+        return Promise.resolve(
+          ok([{
+            id: VALID_PRODUCT2,
+            price: '100', half_kg_price: null, quarter_kg_price: null, half_dozen_price: null,
+            stock_status: 'out_of_stock', is_active: true, name_en: 'Tomatoes', city_id: VALID_CITY,
+            primary_image: null, sku: 'TOM-1', stock_quantity: 0,
+          }])
+        );
+      }
+      return base(sql, params);
+    });
+    mockWithTransaction.mockImplementationOnce(async (cb: any) => cb({ query: clientQuery }));
+
+    const res = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({
+        address_id: VALID_ADDRESS,
+        payment_method: 'cash_on_delivery',
+        city_id: VALID_CITY,
+        time_slot_id: VALID_SLOT,
+        requested_delivery_date: '2026-06-19',
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+    expect(res.body.message).toMatch(/out of stock/i);
+    expect(
+      clientQuery.mock.calls.some((c: any[]) => String(c[0]).includes('INSERT INTO orders'))
+    ).toBe(false);
+  });
+});

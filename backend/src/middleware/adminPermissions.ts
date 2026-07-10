@@ -241,6 +241,16 @@ function resolveRequiredPermissions(
       : ['settings.update'];
   }
   if (p.startsWith('/reports')) return ['orders.view'];
+  // Franchise inquiries + marketing tools (migrations 45/46). These routes
+  // used to be unmapped → default deny 403'd every non-super admin with no
+  // way to grant access. The codes are seeded from PERMISSION_CATALOGUE the
+  // next time the roles UI loads, so the super admin can now assign them.
+  if (p.startsWith('/franchise-inquiries')) {
+    return m === 'GET' ? ['franchise.view', 'franchise.manage'] : ['franchise.manage'];
+  }
+  if (p.startsWith('/marketing')) {
+    return m === 'GET' ? ['marketing.view', 'marketing.manage'] : ['marketing.manage'];
+  }
 
   // Unmapped — default deny.
   return null;

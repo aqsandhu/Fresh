@@ -70,6 +70,10 @@ export const PERMISSION_CODES = [
   'finance.shareholders.view',
   'finance.shareholders.manage',
   'finance.shareholders.pay',
+  'franchise.view',
+  'franchise.manage',
+  'marketing.view',
+  'marketing.manage',
 ] as const;
 
 export type PermissionCode = (typeof PERMISSION_CODES)[number];
@@ -145,4 +149,8 @@ export const PERMISSION_CATALOGUE: PermissionCatalogueRow[] = [
   { code: 'finance.shareholders.view',      description: 'View shareholders and payouts',          category: 'Finance' },
   { code: 'finance.shareholders.manage',    description: 'Create/edit shareholders',               category: 'Finance' },
   { code: 'finance.shareholders.pay',       description: 'Record shareholder payouts',             category: 'Finance' },
+  { code: 'franchise.view',      description: 'View franchise inquiries',                  category: 'Franchise' },
+  { code: 'franchise.manage',    description: 'Update / resolve franchise inquiries',      category: 'Franchise' },
+  { code: 'marketing.view',      description: 'View abandoned carts and marketing settings', category: 'Marketing' },
+  { code: 'marketing.manage',    description: 'Run cart reminders / update marketing settings', category: 'Marketing' },
 ];

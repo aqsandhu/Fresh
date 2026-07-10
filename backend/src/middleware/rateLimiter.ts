@@ -7,6 +7,7 @@ import RedisStore, { type SendCommandFn } from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { Request, Response } from 'express';
 import logger from '../utils/logger';
+import { captureMessage } from '../config/sentry';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
@@ -15,7 +16,28 @@ const MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || (isDev ? '1
 const AUTH_WINDOW_MS = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000');
 const AUTH_MAX_REQUESTS = parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || (isDev ? '1000' : '50'));
 
-const redis = process.env.REDIS_URL ? new Redis(process.env.REDIS_URL) : null;
+// maxRetriesPerRequest keeps a Redis outage from hanging every rate-limited
+// request while ioredis retries forever — commands fail after 2 reconnect
+// attempts and the limiter fails OPEN (passOnStoreError below).
+const redis = process.env.REDIS_URL
+  ? new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 2 })
+  : null;
+
+// A Redis outage used to degrade the limiters SILENTLY (a single logger.warn
+// at boot). Alert loudly — but at most once per interval so a flapping
+// connection doesn't flood Sentry with thousands of duplicate events.
+const REDIS_ALERT_INTERVAL_MS = 5 * 60 * 1000;
+let lastRedisAlertAt = 0;
+function alertRedisDegraded(context: string, err?: unknown): void {
+  const now = Date.now();
+  if (now - lastRedisAlertAt < REDIS_ALERT_INTERVAL_MS) return;
+  lastRedisAlertAt = now;
+  const message = `Rate limiter Redis unavailable (${context}) — limits degraded (fail-open, per-instance)`;
+  logger.error(message, { err });
+  captureMessage(message, 'error');
+}
+
+redis?.on('error', (err: Error) => alertRedisDegraded('connection error', err));
 
 /**
  * Build a Redis-backed store with a per-limiter prefix so different limiters
@@ -29,8 +51,16 @@ function makeStore(prefix: string) {
   if (!redis) return undefined;
   return new RedisStore({
     prefix: `rl:${prefix}:`,
-    sendCommand: ((...args: string[]) =>
-      redis.call(...(args as [string, ...string[]]))) as SendCommandFn,
+    sendCommand: (async (...args: string[]) => {
+      try {
+        return await redis.call(...(args as [string, ...string[]]));
+      } catch (err) {
+        alertRedisDegraded('command failed', err);
+        // passOnStoreError on every limiter turns this into fail-open: the
+        // request proceeds unthrottled instead of 500ing the whole API.
+        throw err;
+      }
+    }) as SendCommandFn,
   });
 }
 
@@ -50,13 +80,21 @@ function skipInDev(req: Request): boolean {
 }
 
 export async function initRateLimiterStore(): Promise<void> {
-  if (redis) {
-    try {
-      await redis.ping();
-      logger.info('Redis connected for auth/register rate limiting');
-    } catch (err) {
-      logger.warn('Redis ping failed — auth/register limiters fall back to in-memory', { err });
+  if (!redis) {
+    if (!isDev) {
+      const message =
+        'REDIS_URL not set in production — rate limits and lockouts are per-instance ' +
+        'in-memory (reset on every restart; not shared across instances)';
+      logger.warn(message);
+      captureMessage(message, 'warning');
     }
+    return;
+  }
+  try {
+    await redis.ping();
+    logger.info('Redis connected for rate limiting');
+  } catch (err) {
+    alertRedisDegraded('startup ping failed', err);
   }
 }
 
@@ -71,6 +109,9 @@ export const apiRateLimiter: RateLimitRequestHandler = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
   handler: (req: Request, res: Response) => {
     res.status(429).json({
       success: false,
@@ -91,6 +132,9 @@ export const authRateLimiter: RateLimitRequestHandler = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
   skipSuccessfulRequests: true,
   handler: (req: Request, res: Response) => {
     res.status(429).json({
@@ -112,6 +156,9 @@ export const registerRateLimiter: RateLimitRequestHandler = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
 });
 
 export const passwordResetRateLimiter: RateLimitRequestHandler = rateLimit({
@@ -125,6 +172,9 @@ export const passwordResetRateLimiter: RateLimitRequestHandler = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
 });
 
 export const adminRateLimiter: RateLimitRequestHandler = rateLimit({
@@ -138,6 +188,9 @@ export const adminRateLimiter: RateLimitRequestHandler = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
 });
 
 export const riderLocationRateLimiter: RateLimitRequestHandler = rateLimit({
@@ -151,6 +204,9 @@ export const riderLocationRateLimiter: RateLimitRequestHandler = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
 });
 
 export const orderRateLimiter: RateLimitRequestHandler = rateLimit({
@@ -164,6 +220,9 @@ export const orderRateLimiter: RateLimitRequestHandler = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
 });
 
 export const webhookRateLimiter: RateLimitRequestHandler = rateLimit({
@@ -177,6 +236,9 @@ export const webhookRateLimiter: RateLimitRequestHandler = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
 });
 
 export const createRateLimiter = (

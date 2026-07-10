@@ -37,6 +37,7 @@ import {
   getPinLockoutState,
   registerPinFailure,
   clearPinFailures,
+  passwordLockKey,
 } from '../config/pinLockout';
 import logger from '../utils/logger';
 import { loadAdminSession } from '../utils/adminSession';
@@ -302,12 +303,31 @@ export const verifyRegisterOtp = asyncHandler(async (req: Request, res: Response
 });
 
 // ============================================================================
+// PASSWORD LOGIN — PER-ACCOUNT LOCKOUT
+// A per-IP rate limit alone can't stop a distributed guessing run against one
+// known account (proxies/botnets rotate IPs). Password logins therefore share
+// the PIN lockout store: after PIN_FAIL_THRESHOLD wrong passwords the account
+// locks for an escalating window regardless of source IP.
+// ============================================================================
+function respondAccountLocked(res: Response, lockedUntil: number): void {
+  const retryAfter = Math.ceil((lockedUntil - Date.now()) / 1000);
+  res.setHeader('Retry-After', String(retryAfter));
+  errorResponse(res, 'Too many failed login attempts. Please try again later.', 429);
+}
+
+// ============================================================================
 // LEGACY: Password-based login (kept for admin/rider compatibility)
 // POST /api/auth/login
 // ============================================================================
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { phone, password } = req.body;
   const normalizedPhone = normalizePhoneNumber(phone);
+
+  const lockKey = passwordLockKey('user', normalizedPhone);
+  const lockState = await getPinLockoutState(lockKey);
+  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+    return respondAccountLocked(res, lockState.lockedUntil);
+  }
 
   const result = await query(
     `SELECT id, phone, full_name, email, password_hash, role, status, is_phone_verified
@@ -316,6 +336,8 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   );
 
   if (result.rows.length === 0) {
+    // Count a failure so attackers can't probe phone numbers for free.
+    await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid phone number or password');
   }
 
@@ -331,8 +353,15 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 
   const isPasswordValid = await bcrypt.compare(password, user.password_hash);
   if (!isPasswordValid) {
+    const { lockedUntil } = await registerPinFailure(lockKey);
+    if (lockedUntil) {
+      return respondAccountLocked(res, lockedUntil);
+    }
     return unauthorizedResponse(res, 'Invalid phone number or password');
   }
+
+  // Correct password — reset the brute-force counter.
+  await clearPinFailures(lockKey);
 
   const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);
@@ -964,6 +993,15 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   // Normalize phone number
   const normalizedPhone = normalizePhoneNumber(phone);
 
+  // Per-account lockout — admin accounts are the highest-value target for a
+  // distributed password-guessing run; the per-IP limiter alone can't stop it.
+  const lockKey = passwordLockKey('admin', normalizedPhone);
+  const lockState = await getPinLockoutState(lockKey);
+  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+    logger.warn('Admin login blocked: account locked out', { normalizedPhone });
+    return respondAccountLocked(res, lockState.lockedUntil);
+  }
+
   // Find user with admin role
   const result = await query(
     `SELECT u.id, u.phone, u.full_name, u.email, u.password_hash, u.role, u.status, u.admin_role_id
@@ -975,6 +1013,8 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
 
   if (result.rows.length === 0) {
     logger.warn('Admin login failed: no admin user with this phone', { normalizedPhone });
+    // Count a failure so attackers can't probe for admin phone numbers for free.
+    await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
@@ -983,6 +1023,7 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   // OTP-only accounts have password_hash = NULL — bcrypt.compare would throw.
   if (!user.password_hash) {
     logger.warn('Admin login failed: account has no password set', { userId: user.id });
+    await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
@@ -990,9 +1031,16 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
   const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
   if (!isPasswordValid) {
-    logger.warn('Admin login failed: password mismatch', { userId: user.id, phone: user.phone });
+    const { lockedUntil } = await registerPinFailure(lockKey);
+    logger.warn('Admin login failed: password mismatch', { userId: user.id, phone: user.phone, lockedUntil });
+    if (lockedUntil) {
+      return respondAccountLocked(res, lockedUntil);
+    }
     return unauthorizedResponse(res, 'Invalid credentials');
   }
+
+  // Correct password — reset the brute-force counter.
+  await clearPinFailures(lockKey);
 
   // SECURITY FIX: enforce account status (was missing — suspended admins could log in).
   if (user.status !== 'active') {
@@ -1062,6 +1110,13 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
   // Normalize phone number
   const normalizedPhone = normalizePhoneNumber(phone);
 
+  // Per-account lockout (same protection as the admin/PIN flows).
+  const lockKey = passwordLockKey('rider', normalizedPhone);
+  const lockState = await getPinLockoutState(lockKey);
+  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+    return respondAccountLocked(res, lockState.lockedUntil);
+  }
+
   // Find user with rider role
   const result = await query(
     `SELECT u.id, u.phone, u.full_name, u.email, u.password_hash, u.role, u.status,
@@ -1073,6 +1128,8 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
   );
 
   if (result.rows.length === 0) {
+    // Count a failure so attackers can't probe for rider phone numbers for free.
+    await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
@@ -1089,6 +1146,7 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
 
   // OTP-only accounts have password_hash = NULL — bcrypt.compare would throw.
   if (!user.password_hash) {
+    await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
@@ -1096,8 +1154,15 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
   const isPasswordValid = await bcrypt.compare(password, user.password_hash);
 
   if (!isPasswordValid) {
+    const { lockedUntil } = await registerPinFailure(lockKey);
+    if (lockedUntil) {
+      return respondAccountLocked(res, lockedUntil);
+    }
     return unauthorizedResponse(res, 'Invalid credentials');
   }
+
+  // Correct password — reset the brute-force counter.
+  await clearPinFailures(lockKey);
 
   const tokens = await issueTokenPair(user.id, user.phone, user.role);
   attachAuthCookies(res, tokens);

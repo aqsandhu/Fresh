@@ -33,6 +33,15 @@ const memory = new Map<string, PinLockoutEntry>();
 
 const redisKey = (phone: string) => `pinlock:${phone}`;
 
+/**
+ * Password-login lockouts (customer/admin/rider) reuse this store: same
+ * failure threshold, same escalating windows, same Redis persistence. The
+ * scope prefix keeps password failures from mixing with PIN failures (or with
+ * each other) for the same phone number.
+ */
+export const passwordLockKey = (scope: 'user' | 'admin' | 'rider', phone: string): string =>
+  `pw:${scope}:${phone}`;
+
 // Keep the record alive across the whole escalation-retention horizon so that
 // repeated lock rounds keep escalating (a 15-min lockout that expired at the
 // same time as the 15-min failure window used to wipe totalRounds, defeating

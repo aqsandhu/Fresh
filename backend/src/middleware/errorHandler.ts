@@ -4,7 +4,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import logger from '../utils/logger';
-import { clearSentryUser } from '../config/sentry';
+import { clearSentryUser, captureException } from '../config/sentry';
 
 // Custom API Error class
 export class ApiError extends Error {
@@ -199,10 +199,15 @@ export const asyncHandler = (
 export const handleUnhandledRejection = (): void => {
   process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
     logger.error('Unhandled Rejection', { reason, promise });
-    // In production, you might want to exit and let PM2 restart
-    if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
-    }
+    // Report, DON'T exit: exiting here dropped every in-flight request
+    // (orders included) for one stray fire-and-forget rejection — under load
+    // that was the most realistic self-inflicted outage. A rejected promise
+    // has not corrupted the process state the way a synchronous throw can,
+    // so alerting is the right response, not a restart.
+    captureException(
+      reason instanceof Error ? reason : new Error(`Unhandled rejection: ${String(reason)}`),
+      { source: 'unhandledRejection' }
+    );
   });
 };
 
@@ -210,9 +215,12 @@ export const handleUnhandledRejection = (): void => {
 export const handleUncaughtException = (): void => {
   process.on('uncaughtException', (error: Error) => {
     logger.error('Uncaught Exception', { error: error.message, stack: error.stack });
-    // In production, exit and let PM2 restart
+    captureException(error, { source: 'uncaughtException' });
+    // A synchronous throw leaves the process in an unknown state — exit and
+    // let the platform (Render) restart. The short delay lets Sentry/logs
+    // flush so the crash is never invisible.
     if (process.env.NODE_ENV === 'production') {
-      process.exit(1);
+      setTimeout(() => process.exit(1), 2000);
     }
   });
 };
