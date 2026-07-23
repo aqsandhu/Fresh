@@ -52,6 +52,11 @@ class AuthService {
     };
   }
 
+  /** Best-effort server-side session revocation (POST /auth/logout). */
+  async logout(): Promise<void> {
+    await apiService.post<ApiResponse<void>>('/auth/logout');
+  }
+
   async updateOnlineStatus(isOnline: boolean): Promise<void> {
     const status = isOnline ? 'available' : 'offline';
     const response = await apiService.put<ApiResponse<void>>('/rider/status', { status });

@@ -81,7 +81,9 @@ class NotificationService {
       const notifications = Array.isArray(payload) ? payload : payload?.notifications ?? [];
       return { ...body, data: notifications };
     } catch {
-      return { success: true, data: [] };
+      // Report failure so the UI can show a stale/retry state instead of a
+      // fake "no notifications" empty state.
+      return { success: false, data: [] };
     }
   }
 
@@ -142,6 +144,24 @@ class NotificationService {
     const Notifications = getNotifications();
     if (!Notifications) return;
     await Notifications.cancelAllScheduledNotificationsAsync();
+  }
+
+  /**
+   * Subscribe to push-notification taps. Returns an unsubscribe function.
+   * No-op (returns a dummy unsubscriber) when expo-notifications is unavailable.
+   */
+  addNotificationResponseListener(
+    handler: (data: Record<string, any>) => void
+  ): () => void {
+    const Notifications = getNotifications();
+    if (!Notifications) return () => {};
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data;
+      if (data && typeof data === 'object') {
+        handler(data as Record<string, any>);
+      }
+    });
+    return () => sub.remove();
   }
 
   async sendRiderArrivalNotification(orderId: string): Promise<void> {

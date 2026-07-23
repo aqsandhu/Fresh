@@ -211,14 +211,19 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
 
     setIsCalling(true);
     try {
-      await requestCustomerCall(task.id);
-      Alert.alert(
-        language === 'ur' ? 'کال کی درخواست' : 'Call Request',
-        language === 'ur'
-          ? 'صارف کو کال کی اطلاع بھیج دی گئی ہے۔ صارف کو مطلع کیا جائے گا کہ آپ ان کے دروازے پر ہیں۔'
-          : 'Call request sent to customer. They will be notified that you are at their door.',
-        [{ text: 'OK' }]
-      );
+      const virtualNumber = await requestCustomerCall(task.id);
+      if (virtualNumber) {
+        // Backend hands us the (masked) number to dial — place the call.
+        Linking.openURL(`tel:${virtualNumber}`).catch(() => {});
+      } else {
+        Alert.alert(
+          language === 'ur' ? 'کال کی درخواست' : 'Call Request',
+          language === 'ur'
+            ? 'کال کی درخواست رجسٹر ہو گئی ہے، لیکن کوئی نمبر دستیاب نہیں۔'
+            : 'Call request registered, but no contact number is available for this order.',
+          [{ text: 'OK' }]
+        );
+      }
     } catch (error) {
       Alert.alert(
         language === 'ur' ? 'خرابی' : 'Error',
@@ -357,31 +362,23 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
 
     switch (task.status) {
       case 'assigned':
+        // Pickup ALWAYS comes first — even delivery tasks must be picked up
+        // before they can be delivered (skipping pickup breaks the backend
+        // task lifecycle).
         return (
-          task.type === 'delivery' ? (
-            <Button
-              title={language === 'ur' ? 'ڈیلیورڈ کا نشان لگائیں' : 'Mark Delivered'}
-              onPress={handleMarkDelivered}
-              variant="success"
-              size="large"
-              fullWidth
-              icon="check-circle"
-              loading={isProcessing}
-            />
-          ) : (
-            <Button
-              title={language === 'ur' ? 'پک اپ کا نشان لگائیں' : 'Mark Picked Up'}
-              onPress={handleMarkPickedUp}
-              variant="primary"
-              size="large"
-              fullWidth
-              icon="package-variant-closed-check"
-              loading={isProcessing}
-            />
-          )
+          <Button
+            title={language === 'ur' ? 'پک اپ کا نشان لگائیں' : 'Mark Picked Up'}
+            onPress={handleMarkPickedUp}
+            variant="primary"
+            size="large"
+            fullWidth
+            icon="package-variant-closed-check"
+            loading={isProcessing}
+          />
         );
       case 'picked_up':
       case 'in_transit':
+      case 'in_progress':
         return (
           <Button
             title={language === 'ur' ? 'ڈیلیورڈ کا نشان لگائیں' : 'Mark Delivered'}
@@ -722,12 +719,12 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
             </Text>
             <View style={styles.infoRow}>
               <MaterialCommunityIcons
-                name={task.paymentMethod === 'cod' ? 'cash' : 'credit-card'}
+                name={task.paymentMethod === 'cash_on_delivery' ? 'cash' : 'credit-card'}
                 size={18}
                 color={COLORS.gray500}
               />
               <Text style={styles.infoText}>
-                {task.paymentMethod === 'cod'
+                {task.paymentMethod === 'cash_on_delivery'
                   ? (language === 'ur' ? 'کیش آن ڈیلیوری' : 'Cash on Delivery')
                   : task.paymentMethod}
               </Text>

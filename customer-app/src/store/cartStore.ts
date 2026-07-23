@@ -35,10 +35,14 @@ const DEFAULT_BASE_CHARGE = 100;
 const DEFAULT_FREE_THRESHOLD = 500;
 
 async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThreshold: number; slotCutoffPercent: number }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
     const params = withCityParams();
     const qs = params.city_id ? `?city_id=${encodeURIComponent(params.city_id)}` : '';
-    const res = await fetch(`${API_BASE_URL}/site-settings/delivery${qs}`);
+    const res = await fetch(`${API_BASE_URL}/site-settings/delivery${qs}`, {
+      signal: controller.signal,
+    });
     const json = await res.json();
     const data = json?.data || json;
     const cutoff = parseFloat(data?.slot_cutoff_percent);
@@ -48,7 +52,10 @@ async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThresh
       slotCutoffPercent: Number.isFinite(cutoff) ? cutoff : 60,
     };
   } catch {
+    // Timeout/network failure — fall back to safe defaults
     return { baseCharge: DEFAULT_BASE_CHARGE, freeThreshold: DEFAULT_FREE_THRESHOLD, slotCutoffPercent: 60 };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -168,7 +175,7 @@ export const useCartStore = create<CartStore>()(
 
           const items = get().items;
           cartService
-            .syncCartWithBackend(items)
+            .syncCartWithBackend(items, get().activeCityId)
             .then((ok) => {
               if (ok) set({ lastSyncedAt: Date.now(), syncError: null });
               else set({ syncError: 'Failed to sync cart with server.' });
@@ -188,7 +195,13 @@ export const useCartStore = create<CartStore>()(
             );
             return persistActiveCityItems(state, nextItems);
           });
-          await cartService.syncCartWithBackend(get().items);
+          // Empty cart → DELETE /cart/clear (backend rejects sync with items:[])
+          const items = get().items;
+          if (items.length === 0) {
+            await cartService.clearBackendCart();
+          } else {
+            await cartService.syncCartWithBackend(items, get().activeCityId);
+          }
         } finally {
           set({ isLoading: false });
         }
@@ -210,7 +223,13 @@ export const useCartStore = create<CartStore>()(
             );
             return persistActiveCityItems(state, nextItems);
           });
-          await cartService.syncCartWithBackend(get().items);
+          // Empty cart → DELETE /cart/clear (backend rejects sync with items:[])
+          const items = get().items;
+          if (items.length === 0) {
+            await cartService.clearBackendCart();
+          } else {
+            await cartService.syncCartWithBackend(items, get().activeCityId);
+          }
         } finally {
           set({ isLoading: false });
         }
@@ -247,7 +266,11 @@ export const useCartStore = create<CartStore>()(
 
       syncWithBackend: async () => {
         try {
-          const success = await cartService.syncCartWithBackend(get().items);
+          const items = get().items;
+          const success =
+            items.length === 0
+              ? await cartService.clearBackendCart()
+              : await cartService.syncCartWithBackend(items, get().activeCityId);
           if (success) set({ lastSyncedAt: Date.now(), syncError: null });
           return success;
         } catch {

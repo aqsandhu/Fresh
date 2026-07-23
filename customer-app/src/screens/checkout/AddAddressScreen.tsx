@@ -294,7 +294,11 @@ export const AddAddressScreen: React.FC = () => {
 
       Alert.alert(
         'Success',
-        isEditing ? 'Address updated successfully!' : 'Address saved successfully!',
+        apiSuccess
+          ? isEditing
+            ? 'Address updated successfully!'
+            : 'Address saved successfully!'
+          : 'Address saved on this device (offline). It must be re-saved while online before it can be used for checkout.',
         [
           {
             text: 'OK',

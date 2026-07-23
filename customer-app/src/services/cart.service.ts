@@ -25,6 +25,7 @@ export interface MyCoupon {
 class CartService {
   private syncInProgress = false;
   private pendingItems: StoreCartItem[] | null = null;
+  private pendingCityId: string | null = null;
 
   private async hasAuthToken(): Promise<boolean> {
     const token = await getStoredToken();
@@ -37,19 +38,25 @@ class CartService {
    * is queued and flushed when it finishes — so no edit is lost and a merely
    * queued call isn't reported as a failure.
    */
-  async syncCartWithBackend(items: StoreCartItem[]): Promise<boolean> {
+  async syncCartWithBackend(items: StoreCartItem[], cityId?: string | null): Promise<boolean> {
     if (!(await this.hasAuthToken())) return true;
 
     if (this.syncInProgress) {
       this.pendingItems = items;
+      this.pendingCityId = cityId ?? this.pendingCityId;
       return true;
     }
 
+    // Backend requires city_id (Joi: commonSchemas.uuid.required()) — never
+    // send a sync without it, and never sync an empty items array (min(1));
+    // empty carts go through DELETE /cart/clear instead.
+    const resolvedCityId = cityId || (await getSelectedCityId());
+    if (!resolvedCityId || items.length === 0) return false;
+
     this.syncInProgress = true;
     try {
-      const cityId = await getSelectedCityId();
       await apiClient.post('/cart/sync', {
-        ...(cityId ? { city_id: cityId } : {}),
+        city_id: resolvedCityId,
         items: items.map((item) => ({
           product_id: item.product.id,
           quantity: item.quantity,
@@ -65,8 +72,10 @@ class CartService {
       // A newer snapshot arrived mid-sync — flush it so the server isn't stale.
       if (this.pendingItems) {
         const next = this.pendingItems;
+        const nextCityId = this.pendingCityId;
         this.pendingItems = null;
-        this.syncCartWithBackend(next).catch(() => {});
+        this.pendingCityId = null;
+        this.syncCartWithBackend(next, nextCityId).catch(() => {});
       }
     }
   }

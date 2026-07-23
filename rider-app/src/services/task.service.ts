@@ -255,12 +255,14 @@ class TaskService {
     return earnings;
   }
 
-  async requestCustomerCall(orderId: string): Promise<{ callId: string; expiresAt: string }> {
-    // Backend validation requires { order_id } (the order id, not the rider task id)
-    const response = await apiService.post<ApiResponse<{ callId: string; expiresAt: string }>>(
-      `/rider/call-request`,
-      { order_id: orderId }
-    );
+  async requestCustomerCall(
+    orderId: string
+  ): Promise<{ call_request_id: string; virtual_number: string | null }> {
+    // Backend validation requires { order_id } (the order id, not the rider task id).
+    // Real response shape: { call_request_id, virtual_number }.
+    const response = await apiService.post<
+      ApiResponse<{ call_request_id: string; virtual_number: string | null }>
+    >(`/rider/call-request`, { order_id: orderId });
     if (!response.success) {
       throw new Error(response.message || 'Failed to request call');
     }
@@ -270,7 +272,9 @@ class TaskService {
     return response.data;
   }
 
-  async requestCall(orderId: string): Promise<{ callId: string; expiresAt: string }> {
+  async requestCall(
+    orderId: string
+  ): Promise<{ call_request_id: string; virtual_number: string | null }> {
     return this.requestCustomerCall(orderId);
   }
 

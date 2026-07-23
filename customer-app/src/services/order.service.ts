@@ -88,7 +88,7 @@ function mapBackendOrder(raw: any): Order {
   };
 
   return {
-    id: raw.id,
+    id: raw.id || '',
     orderNumber: raw.order_number || '',
     userId: raw.user_id || '',
     cityId: raw.city_id || undefined,

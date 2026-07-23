@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Linking,
+  Alert,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -202,8 +203,23 @@ export const AiChatWidget: React.FC = () => {
       }
       return;
     }
-    if (/^https?:\/\//i.test(url)) {
-      Linking.openURL(url).catch(() => {});
+    // Only https:// links may be opened, and only after the user confirms
+    // the destination domain (AI output is untrusted input).
+    if (/^https:\/\//i.test(url)) {
+      let domain = url;
+      try {
+        domain = new URL(url).hostname;
+      } catch {
+        /* keep raw url */
+      }
+      Alert.alert(
+        'Open link?',
+        `This will open an external website:\n${domain}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open', onPress: () => Linking.openURL(url).catch(() => {}) },
+        ]
+      );
     }
   };
 

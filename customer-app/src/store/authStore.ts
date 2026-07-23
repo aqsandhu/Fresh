@@ -10,6 +10,7 @@ import {
   clearTokens,
 } from '@/lib/secureTokens';
 import { registerSessionHandlers } from '@/lib/sessionEvents';
+import { socketService } from '@services/socket.service';
 
 interface AuthStore extends AuthState {
   // Actions
@@ -111,6 +112,9 @@ export const useAuthStore = create<AuthStore>()(
         } catch (error) {
           console.error('Logout error:', error);
         } finally {
+          // Tear down the socket before tokens disappear so the next session
+          // never inherits this user's authenticated connection.
+          socketService.disconnect();
           await clearTokens();
           await AsyncStorage.removeItem(STORAGE_KEYS.USER);
           set({
@@ -118,6 +122,7 @@ export const useAuthStore = create<AuthStore>()(
             token: null,
             isAuthenticated: false,
             isLoading: false,
+            pinVerifiedAt: null,
           });
         }
       },
@@ -206,7 +211,11 @@ export const useAuthStore = create<AuthStore>()(
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
       // Token is kept in SecureStore, not in the AsyncStorage-persisted blob.
-      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+        pinVerifiedAt: state.pinVerifiedAt,
+      }),
     }
   )
 );
@@ -222,6 +231,8 @@ registerSessionHandlers({
   },
   onTokenUpdate: (token) => {
     useAuthStore.setState({ token, isAuthenticated: true });
+    // Keep the live socket authenticated with the refreshed token
+    socketService.updateAuthToken(token);
   },
 });
 

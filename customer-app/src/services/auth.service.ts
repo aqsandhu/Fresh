@@ -128,9 +128,17 @@ class AuthService {
     }
   }
 
-  async setPin(pin: string): Promise<ApiResponse<{ ok: boolean }>> {
+  async setPin(
+    pin: string,
+    currentPin?: string
+  ): Promise<ApiResponse<{ ok: boolean; sessions_revoked?: boolean }>> {
     try {
-      const response = await apiClient.post('/auth/set-pin', { pin });
+      // Contract C2: { pin, current_pin? } — current_pin is REQUIRED by the
+      // backend when the user already has a PIN set.
+      const response = await apiClient.post('/auth/set-pin', {
+        pin,
+        ...(currentPin ? { current_pin: currentPin } : {}),
+      });
       return response.data;
     } catch (error) {
       throw handleApiError(error);

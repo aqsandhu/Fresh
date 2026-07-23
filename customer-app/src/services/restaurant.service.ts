@@ -2,10 +2,39 @@
 // separate from the consumer auth (a restaurant-scoped Bearer token).
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL } from '@utils/constants';
 
 const TOKEN_KEY = 'restaurant_token';
 const INFO_KEY = 'restaurant_info';
+
+// Session secrets live in expo-secure-store (encrypted), not AsyncStorage.
+// One-time migration moves any legacy AsyncStorage values across.
+let migrationPromise: Promise<void> | null = null;
+function migrateLegacyStorage(): Promise<void> {
+  if (!migrationPromise) {
+    migrationPromise = (async () => {
+      try {
+        const [legacyToken, legacyInfo] = await Promise.all([
+          AsyncStorage.getItem(TOKEN_KEY),
+          AsyncStorage.getItem(INFO_KEY),
+        ]);
+        if (legacyToken != null) {
+          await SecureStore.setItemAsync(TOKEN_KEY, legacyToken);
+        }
+        if (legacyInfo != null) {
+          await SecureStore.setItemAsync(INFO_KEY, legacyInfo);
+        }
+        if (legacyToken != null || legacyInfo != null) {
+          await AsyncStorage.multiRemove([TOKEN_KEY, INFO_KEY]);
+        }
+      } catch {
+        /* non-fatal — session simply re-authenticates */
+      }
+    })();
+  }
+  return migrationPromise;
+}
 
 export interface RestaurantInfo {
   id: string;
@@ -33,16 +62,17 @@ export interface RestaurantCheckoutExtras {
 }
 
 export async function setRestaurantSession(token: string, info: RestaurantInfo): Promise<void> {
-  await AsyncStorage.multiSet([
-    [TOKEN_KEY, token],
-    [INFO_KEY, JSON.stringify(info)],
-  ]);
+  await migrateLegacyStorage();
+  await SecureStore.setItemAsync(TOKEN_KEY, token);
+  await SecureStore.setItemAsync(INFO_KEY, JSON.stringify(info));
 }
 export async function getRestaurantToken(): Promise<string | null> {
-  return AsyncStorage.getItem(TOKEN_KEY);
+  await migrateLegacyStorage();
+  return SecureStore.getItemAsync(TOKEN_KEY);
 }
 export async function getRestaurantInfo(): Promise<RestaurantInfo | null> {
-  const raw = await AsyncStorage.getItem(INFO_KEY);
+  await migrateLegacyStorage();
+  const raw = await SecureStore.getItemAsync(INFO_KEY);
   try {
     return raw ? (JSON.parse(raw) as RestaurantInfo) : null;
   } catch {
@@ -50,7 +80,8 @@ export async function getRestaurantInfo(): Promise<RestaurantInfo | null> {
   }
 }
 export async function clearRestaurantSession(): Promise<void> {
-  await AsyncStorage.multiRemove([TOKEN_KEY, INFO_KEY]);
+  await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
+  await SecureStore.deleteItemAsync(INFO_KEY).catch(() => {});
 }
 
 async function rfetch(path: string, options: RequestInit = {}): Promise<any> {

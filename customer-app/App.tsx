@@ -8,6 +8,7 @@ import { AppNavigator } from '@navigation';
 import { useNetworkStatus } from '@hooks';
 import { useAuthStore } from '@store';
 import { notificationService } from '@services/notification.service';
+import { navigationRef } from '@navigation/navigationUtils';
 import { COLORS, SPACING } from '@utils/constants';
 import { ErrorBoundary, MarketingCartTracker } from '@components/common';
 import { VariableWeightNoticeModal } from '@components/common/VariableWeightNoticeModal';
@@ -72,6 +73,19 @@ export default function App() {
     // Pull the latest admin-managed widget content and redraw any
     // home-screen widgets (no-op on iOS / builds without the module).
     refreshWidgetConfig().catch(() => {});
+  }, []);
+
+  // Handle push-notification taps: deep-link into the order tracking screen.
+  useEffect(() => {
+    const unsubscribe = notificationService.addNotificationResponseListener((data) => {
+      const orderId = data?.orderId || data?.order_id;
+      if (!orderId || !navigationRef.isReady()) return;
+      (navigationRef as any).navigate('Main', {
+        screen: 'Orders',
+        params: { screen: 'TrackOrder', params: { orderId: String(orderId) } },
+      });
+    });
+    return unsubscribe;
   }, []);
 
   // Register for push notifications after login and on app start when
