@@ -46,6 +46,7 @@ export interface Task {
   orderNumber?: string;
   orderId?: string;
   attaRequestId?: string;
+  attaRequestNumber?: string;
   type?: string;
   taskType?: string;
   status: TaskStatus;
@@ -146,7 +147,8 @@ export interface RiderStatsData {
 export interface Earning {
   id: string;
   date: string;
-  amount: number;
+  /** null when the backend only reports counts (amount unknown) */
+  amount: number | null;
   type: 'delivery' | 'bonus' | 'incentive' | 'atta';
   description: string;
   orderId?: string;

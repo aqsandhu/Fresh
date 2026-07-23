@@ -1298,6 +1298,14 @@ export const getAttaRequests = asyncHandler(async (req: Request, res: Response) 
     params.push(status);
   }
 
+  // City scoping via the pickup address — same rule as updateAttaStatus, so a
+  // scoped admin can't list another city's requests (customer PII included).
+  const attaScope = await resolveCityScope(req);
+  if (!attaScope.unrestricted && attaScope.cityName && attaScope.dbReady) {
+    sql += ` AND LOWER(COALESCE(a.city, '')) = LOWER($${paramIndex++})`;
+    params.push(attaScope.cityName);
+  }
+
   // Count total
   const countResult = await query(`SELECT COUNT(*) ${sql}`, params);
   const total = parseInt(countResult.rows[0].count);

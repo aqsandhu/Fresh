@@ -50,6 +50,20 @@ describe('canAccessRoute', () => {
       expect(canAccessRoute(path, ['*'])).toBe(true);
     }
   });
+
+  it('gates franchise inquiries and abandoned carts behind their catalog codes', () => {
+    expect(canAccessRoute('/admin/franchise-inquiries', ['franchise.view'])).toBe(true);
+    expect(canAccessRoute('/admin/franchise-inquiries', ['orders.view'])).toBe(false);
+    expect(canAccessRoute('/admin/abandoned-carts', ['marketing.view'])).toBe(true);
+    expect(canAccessRoute('/admin/abandoned-carts', ['orders.view'])).toBe(false);
+  });
+
+  it('no longer treats platform/service-areas/baskets as unmapped', () => {
+    for (const path of ['/admin/platform', '/admin/service-areas', '/admin/baskets']) {
+      expect(ROUTE_PERMISSIONS[path]).toBeDefined();
+      expect(canAccessRoute(path, [])).toBe(false);
+    }
+  });
 });
 
 describe('firstAccessibleRoute', () => {

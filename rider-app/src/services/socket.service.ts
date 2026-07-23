@@ -1,6 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import { API_BASE_URL } from '../utils/constants';
 import { useAuthStore } from '../store/authStore';
+import { useTaskStore } from '../store/taskStore';
+import { notificationService } from './notification.service';
 
 /**
  * SocketService - Manages Socket.IO connection for the rider app.
@@ -8,6 +10,7 @@ import { useAuthStore } from '../store/authStore';
  */
 class SocketService {
   private socket: Socket | null = null;
+  private connectedToken: string | null = null;
   private static instance: SocketService;
 
   static getInstance(): SocketService {
@@ -18,16 +21,22 @@ class SocketService {
   }
 
   connect() {
-    if (this.socket?.connected) return;
-
     const token = useAuthStore.getState().token;
     if (!token) {
       console.log('[Socket] No token found, skipping connection');
       return;
     }
 
+    // Already connected as this user — nothing to do. If a socket exists for
+    // a DIFFERENT user (previous rider), tear it down first so the next
+    // rider never inherits an authenticated session.
+    if (this.socket) {
+      if (this.socket.connected && this.connectedToken === token) return;
+      this.disconnect();
+    }
+
     // Extract base URL without /api
-    const baseUrl = API_BASE_URL.replace('/api', '');
+    const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
 
     this.socket = io(baseUrl, {
       auth: { token },
@@ -37,6 +46,17 @@ class SocketService {
       reconnectionDelay: 2000,
       reconnectionDelayMax: 10000,
       randomizationFactor: 0.5,
+    });
+    this.connectedToken = token;
+
+    // Re-authenticate before every (re)connection attempt so a refreshed
+    // token replaces the stale one instead of looping on connect_error.
+    this.socket.io.on('reconnect_attempt', () => {
+      const latest = useAuthStore.getState().token;
+      if (latest && this.socket) {
+        this.socket.auth = { token: latest };
+        this.connectedToken = latest;
+      }
     });
 
     this.socket.on('connect', () => {
@@ -49,6 +69,13 @@ class SocketService {
 
     this.socket.on('connect_error', (err) => {
       console.error('[Socket] Connection error:', err.message);
+      // Present the current token on the next attempt (it may have been
+      // refreshed since this socket was created).
+      const latest = useAuthStore.getState().token;
+      if (latest && this.socket && latest !== this.connectedToken) {
+        this.socket.auth = { token: latest };
+        this.connectedToken = latest;
+      }
     });
 
     this.socket.on('reconnect', (attemptNumber) => {
@@ -62,12 +89,25 @@ class SocketService {
     // Global notification handlers
     this.socket.on('rider:new_assignment', (data) => {
       console.log('[Socket] New assignment:', data);
+      // Refresh the task list and surface a local notification
+      useTaskStore
+        .getState()
+        .fetchActiveTasks()
+        .catch(() => {});
+      notificationService
+        .showNotification(
+          'New Task Assigned!',
+          data?.message || `New delivery assignment${data?.orderNumber ? `: Order #${data.orderNumber}` : ''}`,
+          { type: 'new_task', orderId: data?.orderId }
+        )
+        .catch(() => {});
     });
   }
 
   disconnect() {
     this.socket?.disconnect();
     this.socket = null;
+    this.connectedToken = null;
     console.log('[Socket] Disconnected manually');
   }
 

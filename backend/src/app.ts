@@ -139,7 +139,21 @@ const NODE_ENV = process.env.NODE_ENV || 'development';
 // X-Forwarded-For. Trusting exactly one hop lets express-rate-limit and
 // req.ip work correctly without blindly trusting arbitrary header values.
 // Override via TRUST_PROXY env var if the proxy chain is deeper.
-app.set('trust proxy', Number(process.env.TRUST_PROXY ?? 1));
+// TRUST_PROXY accepts booleans ('true'/'false'), a hop count ('1'), or an IP
+// list — parsing everything through Number() turns 'true' into NaN and breaks
+// req.ip / rate limiting.
+const trustProxyEnv = process.env.TRUST_PROXY;
+const trustProxy =
+  trustProxyEnv === undefined || trustProxyEnv === ''
+    ? 1
+    : trustProxyEnv === 'true'
+      ? true
+      : trustProxyEnv === 'false'
+        ? false
+        : Number.isNaN(Number(trustProxyEnv))
+          ? trustProxyEnv
+          : Number(trustProxyEnv);
+app.set('trust proxy', trustProxy);
 
 // ============================================================================
 // INITIALIZE SENTRY (BEFORE ALL MIDDLEWARE)
@@ -151,12 +165,22 @@ initSentry();
 // SECURITY MIDDLEWARE
 // ============================================================================
 
-// Helmet for security headers
-app.use(helmet({
+// Helmet for security headers. Swagger UI boots via an inline <script>, which
+// the production CSP blocks (blank /api/docs) — serve the docs routes with CSP
+// disabled instead (they are password-gated in production anyway).
+const helmetWithCsp = helmet({
   contentSecurityPolicy: NODE_ENV === 'production',
   crossOriginEmbedderPolicy: NODE_ENV === 'production',
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-}));
+});
+const helmetWithoutCsp = helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+});
+app.use((req, res, next) =>
+  req.path.startsWith('/api/docs') ? helmetWithoutCsp(req, res, next) : helmetWithCsp(req, res, next)
+);
 
 const allowedOrigins = getAllowedOrigins();
 const allowAnyOrigin = allowedOrigins.includes('*');

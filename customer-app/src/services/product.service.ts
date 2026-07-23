@@ -25,7 +25,7 @@ function parseTickerItems(raw: unknown): string[] {
 // DATA MAPPING: Backend snake_case → Customer App types
 // ============================================================================
 
-const BACKEND_URL = API_BASE_URL.replace('/api', '');
+const BACKEND_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 
 function resolveImageUrl(path: string | null | undefined): string {
   if (!path) return '';

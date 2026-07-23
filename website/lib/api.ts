@@ -61,6 +61,10 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && original && !original._retried) {
       const isRefreshCall = original.url?.includes('/auth/refresh')
+      // A 401 from an auth endpoint (bad PIN, bad credentials) is an expected
+      // failure of the inline login/sign-up flow — don't yank the user away
+      // to /login (e.g. mid-checkout).
+      const isAuthEndpoint = original.url?.includes('/auth/')
       if (isRefreshCall) {
         if (typeof window !== 'undefined') {
           redirectToLogin()
@@ -81,7 +85,7 @@ api.interceptors.response.use(
         return api.request(original)
       }
 
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && !isAuthEndpoint) {
         redirectToLogin()
       }
     }
@@ -96,7 +100,7 @@ api.interceptors.response.use(
 
 // Image URLs need the real backend host — the '/api' rewrite doesn't cover
 // /uploads, so a relative base would 404 on Vercel.
-const BACKEND_URL = ABSOLUTE_API_URL.replace('/api', '')
+const BACKEND_URL = ABSOLUTE_API_URL.replace(/\/api\/?$/, '')
 
 // Resolve a stored image reference to a full URL the browser can load. Returns
 // `undefined` (NOT a fake placeholder path) when there is no image, so cards
@@ -228,7 +232,7 @@ export const productsApi = {
   },
 
   getByCategory: async (categoryId: string, params?: { page?: number; limit?: number; sortBy?: string; sortOrder?: string }): Promise<{ products: Product[]; meta: any }> => {
-    const response = await api.get('/products', { params: { category: categoryId, ...params } })
+    const response = await api.get('/products', { params: withCityParams({ category: categoryId, ...params }) })
     const body = response.data
     const products = (body.data || []).map(mapBackendProduct)
     const meta = body.meta || {}

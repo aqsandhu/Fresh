@@ -38,6 +38,7 @@ import { settingsService } from '@/services/settings.service';
 import { financeService } from '@/services/finance.service';
 import { useAuthContext } from '@/context/AuthContext';
 import { hasPermission } from '@/lib/permissions';
+import { esc } from '@/lib/escape';
 import type { Rider, CreateRiderData, RiderStats } from '@/types';
 import { isRequired, isValidPhone, isValidCNIC } from '@/utils/validators';
 import { formatCurrency, resolveImageUrl } from '@/utils/formatters';
@@ -1101,7 +1102,7 @@ export const Riders: React.FC = () => {
                 latitude={riderLocation.latitude}
                 longitude={riderLocation.longitude}
                 accuracy={riderLocation.accuracy ?? null}
-                popupHtml={`<b>${trackingRider?.fullName || 'Rider'}</b><br/>${riderLocation.accuracy != null ? `Accuracy: ±${riderLocation.accuracy.toFixed(1)} m` : ''}`}
+                popupHtml={`<b>${esc(trackingRider?.fullName || 'Rider')}</b><br/>${riderLocation.accuracy != null ? `Accuracy: ±${riderLocation.accuracy.toFixed(1)} m` : ''}`}
                 height={400}
               />
             </div>

@@ -115,8 +115,8 @@ class OfflineQueue {
         await this.incrementRetryCount(action.id);
         onError?.(action, error);
 
-        // Remove if max retries reached
-        if (action.retryCount >= 3) {
+        // Remove if max retries reached (check the post-increment value)
+        if (action.retryCount + 1 >= 3) {
           await this.removeAction(action.id);
         }
       }

@@ -3,7 +3,7 @@ import { ApiResponse, Address } from '@app-types';
 import { API_BASE_URL } from '@utils/constants';
 import { pickString } from '@freshbazar/shared-types';
 
-const BACKEND_URL = API_BASE_URL.replace('/api', '');
+const BACKEND_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 
 function resolveImageUrl(path: string | null | undefined): string {
   if (!path) return '';
@@ -123,9 +123,8 @@ class AddressService {
       const doorUri = data.doorImage?.trim();
       if (doorUri && isLocalDoorImageUri(doorUri)) {
         const formData = buildDoorFormData(data, doorUri);
-        const response = await apiClient.post('/addresses', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        // Let axios/RN set the multipart Content-Type (with boundary).
+        const response = await apiClient.post('/addresses', formData);
         const raw = response.data;
         return { success: true, data: mapBackendAddress(raw.data) };
       }
@@ -144,9 +143,8 @@ class AddressService {
       const doorUri = data.doorImage?.trim();
       if (doorUri && isLocalDoorImageUri(doorUri)) {
         const formData = buildDoorFormData(data, doorUri);
-        const response = await apiClient.put(`/addresses/${id}`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        // Let axios/RN set the multipart Content-Type (with boundary).
+        const response = await apiClient.put(`/addresses/${id}`, formData);
         const raw = response.data;
         return { success: true, data: mapBackendAddress(raw.data) };
       }

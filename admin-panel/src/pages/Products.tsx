@@ -226,8 +226,13 @@ export const Products: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [page, setPage] = useState(1);
+  // Images are tracked as two separate lists: images already stored on the
+  // product (existingImages, resolved URLs in the same order as the backend
+  // array so indexes match deleteProductImage) and newly picked files
+  // (selectedImages) with their local previews (imagePreviews).
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   const [formData, setFormData] = useState<CreateProductData>({
@@ -370,6 +375,7 @@ export const Products: React.FC = () => {
     setEditingProduct(null);
     setSelectedImages([]);
     setImagePreviews([]);
+    setExistingImages([]);
     setFormErrors({});
     setFormData({
       nameEn: '',
@@ -406,6 +412,8 @@ export const Products: React.FC = () => {
   const openEditModal = async (product: Product) => {
     setEditingProduct(product);
     setSelectedImages([]);
+    setImagePreviews([]);
+    setExistingImages([]);
     setFormErrors({});
     let tags: string[] = product.tags || [];
     let isVariableWeight = product.isVariableWeight ?? false;
@@ -425,15 +433,14 @@ export const Products: React.FC = () => {
     } catch {
       // Keep list tags if detail fetch fails
     }
-    // Show existing images as previews
-    const imgUrl = getProductImageUrl(product);
-    if (imgUrl) {
-      const imgs = product.images && product.images.length > 0
-        ? product.images.map(img => resolveImageUrl(img))
-        : [imgUrl];
-      setImagePreviews(imgs);
+    // Show existing images (from the fresh detail fetch when available) as
+    // previews, kept in backend-array order so removal indexes stay valid.
+    const rawImages = (detail.images && detail.images.length > 0 ? detail.images : product.images) || [];
+    if (rawImages.length > 0) {
+      setExistingImages(rawImages.map(img => resolveImageUrl(img)));
     } else {
-      setImagePreviews([]);
+      const imgUrl = getProductImageUrl(product);
+      setExistingImages(imgUrl ? [imgUrl] : []);
     }
     setFormData({
       nameEn: product.nameEn,
@@ -493,6 +500,7 @@ export const Products: React.FC = () => {
     setEditingProduct(null);
     setSelectedImages([]);
     setImagePreviews([]);
+    setExistingImages([]);
     setFormErrors({});
   };
 
@@ -520,9 +528,24 @@ export const Products: React.FC = () => {
     });
   };
 
+  // Remove a newly picked (not yet uploaded) file.
   const removeImage = (index: number) => {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Remove an image already stored on the product — deletes it on the backend
+  // immediately, then drops it from local state so indexes stay aligned.
+  const removeExistingImage = async (index: number) => {
+    if (!editingProduct) return;
+    try {
+      await productService.deleteProductImage(editingProduct.id, index);
+      setExistingImages(prev => prev.filter((_, i) => i !== index));
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      toast.success('Image removed');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to delete image');
+    }
   };
 
   // Form Validation
@@ -641,7 +664,10 @@ export const Products: React.FC = () => {
       title="Products"
       subtitle="Manage your product catalog"
       searchPlaceholder="Search products..."
-      onSearch={setSearchQuery}
+      onSearch={(q) => {
+        setSearchQuery(q);
+        setPage(1);
+      }}
     >
       {/* Bulk-action bar — only renders when at least one product is selected.
           Lets the admin reassign category for many products in one click. */}
@@ -1091,14 +1117,30 @@ export const Products: React.FC = () => {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Product Images</label>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-              {imagePreviews.length > 0 && (
+              {(existingImages.length > 0 || imagePreviews.length > 0) && (
                 <div className="grid grid-cols-4 gap-3 mb-4">
+                  {existingImages.map((url, index) => (
+                    <div key={`existing-${index}`} className="relative group">
+                      <img
+                        src={url}
+                        alt={`Image ${index + 1}`}
+                        className="w-full h-24 object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeExistingImage(index)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
                   {imagePreviews.map((preview, index) => (
-                    <div key={index} className="relative group">
+                    <div key={`new-${index}`} className="relative group">
                       <img
                         src={preview}
-                        alt={`Preview ${index + 1}`}
-                        className="w-full h-24 object-cover rounded-lg"
+                        alt={`New image ${index + 1}`}
+                        className="w-full h-24 object-cover rounded-lg ring-2 ring-primary-300"
                       />
                       <button
                         type="button"

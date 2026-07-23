@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, VALIDATION } from '@utils/constants';
 import { Button, Input, LoadingOverlay } from '@components';
@@ -62,9 +63,15 @@ export const EditProfileScreen: React.FC = () => {
       }
       navigation.goBack();
     } catch (error: any) {
-      // Fallback: save locally if API fails
-      updateUser({ full_name: name.trim(), email: email.trim() || undefined });
-      navigation.goBack();
+      // Only fall back to a local save on genuine network errors (no server
+      // response). Surface server errors (e.g. 409 email conflict) instead.
+      if (error?.statusCode) {
+        Toast.show({ type: 'error', text1: error.message || 'Failed to update profile' });
+      } else {
+        updateUser({ full_name: name.trim(), email: email.trim() || undefined });
+        Toast.show({ type: 'info', text1: 'Saved locally — will sync when back online' });
+        navigation.goBack();
+      }
     } finally {
       setLoading(false);
     }

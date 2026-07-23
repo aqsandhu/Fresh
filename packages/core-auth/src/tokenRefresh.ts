@@ -18,6 +18,20 @@ function normalizeApiBaseUrl(apiBaseUrl: string): string {
 }
 
 /**
+ * Only a genuine auth rejection (401/403 from the refresh endpoint) should
+ * trigger onRefreshFailed (forced logout). Transient failures — network
+ * errors, timeouts, 5xx — must NOT log the user out; the caller just gets
+ * null and can retry later.
+ */
+function isGenuineAuthFailure(error: unknown): boolean {
+  if (axios.isAxiosError(error)) {
+    const status = error.response?.status;
+    return status === 401 || status === 403;
+  }
+  return false;
+}
+
+/**
  * Cookie-only refresh succeeds with an empty string (no bearer token in memory).
  * Bearer refresh returns the new access token, or null on failure.
  */
@@ -80,8 +94,10 @@ export function createTokenRefreshService(
         await config.storage.storeTokens(parsed.accessToken, parsed.refreshToken);
         config.onTokenRefreshed?.(parsed.accessToken);
         return parsed.accessToken;
-      } catch {
-        config.onRefreshFailed?.();
+      } catch (error) {
+        if (isGenuineAuthFailure(error)) {
+          config.onRefreshFailed?.();
+        }
         return null;
       } finally {
         refreshPromise = null;

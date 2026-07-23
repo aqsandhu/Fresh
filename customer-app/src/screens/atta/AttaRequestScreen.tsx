@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 import { ProfileStackParamList, Address } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ATTA_CHAKKI, VALIDATION } from '@utils/constants';
 import { formatCurrency } from '@utils/helpers';
@@ -116,8 +117,12 @@ export const AttaRequestScreen: React.FC = () => {
       if (response.success) {
         navigation.navigate('AttaTracking', { requestId: response.data.id });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating request:', error);
+      Toast.show({
+        type: 'error',
+        text1: error?.message || 'Failed to submit request. Please try again.',
+      });
     } finally {
       setLoading(false);
     }

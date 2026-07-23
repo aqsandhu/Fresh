@@ -6,8 +6,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AppNavigator } from '@navigation';
 import { useNetworkStatus } from '@hooks';
+import { useAuthStore } from '@store';
+import { notificationService } from '@services/notification.service';
 import { COLORS, SPACING } from '@utils/constants';
-import { ErrorBoundary, AiChatWidget, MarketingCartTracker } from '@components/common';
+import { ErrorBoundary, MarketingCartTracker } from '@components/common';
 import { VariableWeightNoticeModal } from '@components/common/VariableWeightNoticeModal';
 import { refreshWidgetConfig } from '@/lib/appWidget';
 
@@ -62,6 +64,8 @@ const bannerStyles = StyleSheet.create({
 });
 
 export default function App() {
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
   useEffect(() => {
     // Initialize app
     console.log('Fresh Bazar Customer App Started');
@@ -69,6 +73,22 @@ export default function App() {
     // home-screen widgets (no-op on iOS / builds without the module).
     refreshWidgetConfig().catch(() => {});
   }, []);
+
+  // Register for push notifications after login and on app start when
+  // already authenticated (persisted session).
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    (async () => {
+      try {
+        const token = await notificationService.registerForPushNotifications();
+        if (token) {
+          await notificationService.sendPushTokenToServer(token);
+        }
+      } catch {
+        // Push registration is best-effort
+      }
+    })();
+  }, [isAuthenticated]);
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -78,7 +98,7 @@ export default function App() {
             <NetworkStatusBanner />
             <AppNavigator />
             <VariableWeightNoticeModal />
-            <AiChatWidget />
+            {/* AiChatWidget is mounted once inside TabNavigator */}
             <MarketingCartTracker />
           </QueryClientProvider>
         </ErrorBoundary>

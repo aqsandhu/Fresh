@@ -12,7 +12,7 @@
 // ============================================================================
 
 import multer from 'multer';
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { uploadFileToStorage, isStorageConfigured } from '../config/storage';
 import { BadRequestError } from './errorHandler';
 import logger from '../utils/logger';
@@ -182,17 +182,17 @@ function pushFilesToStorage(folder: string) {
 // disk-storage exports. The `folder` arg controls where files land in the
 // bucket; pick one that matches the resource for easier auditing.
 // ----------------------------------------------------------------------------
-export const uploadSingle = (fieldName: string, folder = 'misc') => [
+export const uploadSingle = (fieldName: string, folder = 'misc'): RequestHandler[] => [
   upload.single(fieldName),
   pushFilesToStorage(folder),
 ];
 
-export const uploadMultiple = (fieldName: string, maxCount: number = 5, folder = 'misc') => [
+export const uploadMultiple = (fieldName: string, maxCount: number = 5, folder = 'misc'): RequestHandler[] => [
   upload.array(fieldName, maxCount),
   pushFilesToStorage(folder),
 ];
 
-export const uploadFields = (fields: multer.Field[], folder = 'misc') => [
+export const uploadFields = (fields: multer.Field[], folder = 'misc'): RequestHandler[] => [
   upload.fields(fields),
   pushFilesToStorage(folder),
 ];
@@ -201,19 +201,19 @@ export const uploadFields = (fields: multer.Field[], folder = 'misc') => [
 // Specific middlewares used directly in routes/controllers — pre-folder so
 // each resource type lands in its own subfolder under the bucket.
 // ----------------------------------------------------------------------------
-export const uploadDoorPicture = [upload.single('door_picture'), pushFilesToStorage('addresses/door-pictures')];
-export const uploadProductImage = [upload.single('image'), pushFilesToStorage('products')];
-export const uploadCNICImages = [
+export const uploadDoorPicture: RequestHandler[] = [upload.single('door_picture'), pushFilesToStorage('addresses/door-pictures')];
+export const uploadProductImage: RequestHandler[] = [upload.single('image'), pushFilesToStorage('products')];
+export const uploadCNICImages: RequestHandler[] = [
   upload.fields([
     { name: 'cnic_front', maxCount: 1 },
     { name: 'cnic_back', maxCount: 1 },
   ]),
   pushFilesToStorage('riders/cnic'),
 ];
-export const uploadVehicleImage = [upload.single('vehicle_image'), pushFilesToStorage('riders/vehicle')];
-export const uploadLicenseImage = [upload.single('license_image'), pushFilesToStorage('riders/license')];
-export const uploadDeliveryProof = [upload.single('delivery_proof'), pushFilesToStorage('orders/delivery-proof')];
-export const uploadPickupProof = [upload.single('pickup_proof'), pushFilesToStorage('orders/pickup-proof')];
+export const uploadVehicleImage: RequestHandler[] = [upload.single('vehicle_image'), pushFilesToStorage('riders/vehicle')];
+export const uploadLicenseImage: RequestHandler[] = [upload.single('license_image'), pushFilesToStorage('riders/license')];
+export const uploadDeliveryProof: RequestHandler[] = [upload.single('delivery_proof'), pushFilesToStorage('orders/delivery-proof')];
+export const uploadPickupProof: RequestHandler[] = [upload.single('pickup_proof'), pushFilesToStorage('orders/pickup-proof')];
 
 // ----------------------------------------------------------------------------
 // Error handler for multer — unchanged shape, only catches multer-specific

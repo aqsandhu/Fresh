@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -35,11 +35,8 @@ const TasksListScreen: React.FC<TasksListScreenProps> = ({ navigation }) => {
   const { language } = useSettingsStore();
   const [refreshing, setRefreshing] = React.useState(false);
 
-  // Load tasks on mount
-  useEffect(() => {
-    loadTasks();
-  }, []);
-
+  // Initial fetch is owned by useTasks' mount effect — only (re)load on
+  // explicit pull-to-refresh here.
   const loadTasks = async () => {
     await Promise.all([fetchActiveTasks(), fetchCompletedTasks()]);
   };

@@ -82,8 +82,16 @@ export const errorHandler = (
   err: Error | ApiError,
   req: Request,
   res: Response,
-  _next: NextFunction
+  next: NextFunction
 ): void => {
+  // Response already started (torn connection / streaming handler): writing
+  // again would throw 'Cannot set headers after they are sent' — defer to the
+  // Express default handler instead.
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
   let statusCode = 500;
   let message = 'Internal server error';
   let errorDetails: any = null;

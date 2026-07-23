@@ -1,11 +1,15 @@
 /**
  * Client-side delivery rules — must mirror backend/src/utils/deliveryCalculator.ts
+ * and the DB seed (database/schema.sql: categories.qualifies_for_free_delivery
+ * and the FREE_VEG_FRUIT_MIN rule).
  *
  *   1. Free-delivery time slot → FREE
- *   2. Vegetables + fruits subtotal ≥ threshold → FREE
+ *   2. Vegetables + fruits + dry fruits subtotal ≥ threshold → FREE
  *   3. Otherwise → base charge
  *
- * Dry fruits, chicken, and other categories never count toward the veg/fruit minimum.
+ * Dry fruits DO count toward the free-delivery minimum (the DB seed marks the
+ * 'dry-fruits' category qualifies_for_free_delivery = TRUE and includes it in
+ * FREE_VEG_FRUIT_MIN). Chicken, meat, and other categories never count.
  */
 
 export const VEG_FRUIT_CATEGORY_SLUGS = [
@@ -13,15 +17,14 @@ export const VEG_FRUIT_CATEGORY_SLUGS = [
   'fruits',
   'sabzi',
   'fruit',
-] as const;
-
-/** Slugs that must never be treated as fresh veg/fruit (e.g. dry-fruit contains "fruit"). */
-export const NON_VEG_FRUIT_CATEGORY_SLUGS = [
-  'dry-fruit',
   'dry-fruits',
+  'dry fruits',
   'dryfruit',
   'dryfruits',
-  'dry fruit',
+] as const;
+
+/** Slugs that must never be treated as qualifying for the free-delivery minimum. */
+export const NON_VEG_FRUIT_CATEGORY_SLUGS = [
   'chicken',
   'meat',
   'grocery',
@@ -123,9 +126,9 @@ export function getDeliveryHint(
 
   const vegFruitSubtotal = getVegFruitSubtotal(items);
   if (vegFruitSubtotal >= freeThreshold) {
-    return `You qualify for free delivery (Rs. ${vegFruitSubtotal} in vegetables/fruits).`;
+    return `You qualify for free delivery (Rs. ${vegFruitSubtotal} in vegetables/fruits/dry fruits).`;
   }
 
   const remaining = Math.max(0, freeThreshold - vegFruitSubtotal);
-  return `Add Rs. ${remaining} more in vegetables/fruits for free delivery — other items don't count.`;
+  return `Add Rs. ${remaining} more in vegetables/fruits/dry fruits for free delivery — other items don't count.`;
 }

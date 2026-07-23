@@ -29,6 +29,7 @@ const mapTask = (row: any): Task => {
     orderNumber: row.order_number,
     orderId: row.order_id,
     attaRequestId: row.atta_request_id,
+    attaRequestNumber: row.atta_request_number,
     type: row.task_type || row.type,
     status: mapTaskStatus(row.status),
     customerName: row.customer_name,
@@ -142,7 +143,16 @@ class TaskService {
   }
 
   async markPickedUp(taskId: string, notes?: string): Promise<Task> {
-    return this.updateTaskStatus(taskId, 'picked_up', notes);
+    // Backend exposes PUT /rider/tasks/:id/pickup (confirmPickup); the generic
+    // status PATCH only accepts in_progress|completed|failed.
+    const response = await apiService.put<ApiResponse<any>>(`/rider/tasks/${taskId}/pickup`, {
+      notes,
+    });
+    if (!response.success) {
+      throw new Error(response.message || 'Failed to confirm pickup');
+    }
+    // Backend returns no task row here; re-fetch full task details
+    return this.getTaskById(taskId);
   }
 
   async markDelivered(
@@ -209,67 +219,47 @@ class TaskService {
     if (!response.success) {
       throw new Error(response.message || 'Failed to fetch earnings');
     }
-    // Backend returns { completed_deliveries, pickups, deliveries, atta_pickups, atta_deliveries }
-    // as COUNT strings. Convert to Earning[] format.
+    // Backend returns { completed_deliveries, pickups, deliveries, atta_pickups,
+    // atta_deliveries } as COUNT strings. Amount fields are consumed only when
+    // the backend provides them — never fabricate Rs. 0 amounts.
     const raw = response.data || {};
     const earnings: Earning[] = [];
     const today = new Date().toISOString().split('T')[0];
-    if (parseInt(raw.deliveries || raw.completed_deliveries || '0') > 0) {
+    const parseAmount = (...keys: string[]): number | null => {
+      for (const key of keys) {
+        const value = parseFloat(raw[key]);
+        if (Number.isFinite(value)) return value;
+      }
+      return null;
+    };
+    const deliveryCount = parseInt(raw.deliveries || raw.completed_deliveries || '0');
+    if (deliveryCount > 0) {
       earnings.push({
         id: 'delivery-today',
         date: today,
-        amount: 0,
+        amount: parseAmount('delivery_earnings', 'earnings', 'total_earnings'),
         type: 'delivery',
-        description: `${parseInt(raw.deliveries || raw.completed_deliveries || '0')} deliveries completed`,
+        description: `${deliveryCount} deliveries completed`,
       });
     }
-    if (parseInt(raw.atta_pickups || raw.attaPickups || '0') > 0) {
+    const attaCount = parseInt(raw.atta_pickups || raw.attaPickups || '0');
+    if (attaCount > 0) {
       earnings.push({
         id: 'atta-today',
         date: today,
-        amount: 0,
+        amount: parseAmount('atta_earnings'),
         type: 'atta',
-        description: `${parseInt(raw.atta_pickups || raw.attaPickups || '0')} atta pickups`,
+        description: `${attaCount} atta pickups`,
       });
     }
     return earnings;
   }
 
-  async uploadDeliveryProof(taskId: string, imageUri: string): Promise<string> {
-    const formData = new FormData();
-    formData.append('proof', {
-      uri: imageUri,
-      type: 'image/jpeg',
-      name: `delivery_${taskId}.jpg`,
-    } as any);
-
-    const response = await apiService.post<ApiResponse<{ url: string }>>(
-      `/rider/tasks/${taskId}/upload-proof`,
-      formData
-    );
-    if (!response.success) {
-      throw new Error(response.message || 'Failed to upload proof');
-    }
-    if (!response.data?.url) {
-      throw new Error('No proof URL returned');
-    }
-    return response.data.url;
-  }
-
-  async reportIssue(
-    taskId: string,
-    data: { issueType: string; description: string; photo?: string }
-  ): Promise<void> {
-    const response = await apiService.post<ApiResponse<void>>(`/rider/tasks/${taskId}/report`, data);
-    if (!response.success) {
-      throw new Error(response.message || 'Failed to report issue');
-    }
-  }
-
-  async requestCustomerCall(taskId: string): Promise<{ callId: string; expiresAt: string }> {
+  async requestCustomerCall(orderId: string): Promise<{ callId: string; expiresAt: string }> {
+    // Backend validation requires { order_id } (the order id, not the rider task id)
     const response = await apiService.post<ApiResponse<{ callId: string; expiresAt: string }>>(
       `/rider/call-request`,
-      { taskId }
+      { order_id: orderId }
     );
     if (!response.success) {
       throw new Error(response.message || 'Failed to request call');
@@ -280,8 +270,8 @@ class TaskService {
     return response.data;
   }
 
-  async requestCall(taskId: string): Promise<{ callId: string; expiresAt: string }> {
-    return this.requestCustomerCall(taskId);
+  async requestCall(orderId: string): Promise<{ callId: string; expiresAt: string }> {
+    return this.requestCustomerCall(orderId);
   }
 
   async pinLocation(taskId: string, latitude: number, longitude: number): Promise<{ latitude: number; longitude: number }> {

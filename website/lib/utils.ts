@@ -256,3 +256,15 @@ export function getTimeSlots(): { value: string; label: string; isFree: boolean 
     { value: '6pm-9pm', label: '6:00 PM - 9:00 PM', isFree: false },
   ]
 }
+
+/**
+ * Validate a ?redirect= target before router.push — only same-site absolute
+ * paths are allowed (no '//' scheme-relative URLs), anything else falls back
+ * to '/'. Prevents open redirects to external sites after login/register.
+ */
+export function sanitizeRedirect(target: string | null | undefined): string {
+  if (target && target.startsWith('/') && !target.startsWith('//')) {
+    return target
+  }
+  return '/'
+}

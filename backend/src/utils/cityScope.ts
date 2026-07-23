@@ -66,6 +66,11 @@ export async function resolveCityScope(req: Request): Promise<CityScope> {
       return { cityId: null, cityName: null, unrestricted: true, dbReady };
     }
 
+    // Reject malformed ids before they reach the UUID column (22P02 → 500).
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cityId)) {
+      throw new ForbiddenError('Selected city is not valid');
+    }
+
     const row = await query(
       'SELECT id, name FROM service_cities WHERE id = $1',
       [cityId]

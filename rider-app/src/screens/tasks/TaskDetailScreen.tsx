@@ -50,6 +50,7 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
     fetchTaskById,
     markPickedUp,
     markDelivered,
+    cancelTask,
     requestCustomerCall,
     uploadDoorPicture,
     pinLocation,
@@ -96,7 +97,7 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
 
     return () => {
       socketService.unsubscribeFromOrder(orderId, handleOrderUpdate);
-      socketService.off('rider:new_assignment');
+      socketService.off('rider:new_assignment', handleNewAssignment);
     };
   }, [task?.orderId, loadTask]);
 
@@ -231,6 +232,42 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
   };
 
   // Handle mark picked up
+  const handleReportProblem = () => {
+    if (!task) return;
+
+    Alert.alert(
+      language === 'ur' ? 'مسئلہ رپورٹ کریں' : 'Report Problem',
+      language === 'ur'
+        ? 'کیا آپ یہ ٹاسک ناکام (fail) کرنا چاہتے ہیں؟ ایڈمن کو مطلع کر دیا جائے گا۔'
+        : 'Do you want to fail this task? The admin will be notified.',
+      [
+        { text: language === 'ur' ? 'نہیں' : 'No', style: 'cancel' },
+        {
+          text: language === 'ur' ? 'ہاں' : 'Yes',
+          style: 'destructive',
+          onPress: async () => {
+            setIsProcessing(true);
+            try {
+              await cancelTask(task.id, 'Reported by rider');
+              Alert.alert(
+                language === 'ur' ? 'رپورٹ ہو گئی' : 'Reported',
+                language === 'ur' ? 'ٹاسک ناکام کر دیا گیا ہے' : 'Task has been failed',
+                [{ text: 'OK', onPress: () => navigation.goBack() }]
+              );
+            } catch (error) {
+              Alert.alert(
+                language === 'ur' ? 'خرابی' : 'Error',
+                language === 'ur' ? 'رپورٹ ناکام ہو گئی' : 'Failed to report the problem'
+              );
+            } finally {
+              setIsProcessing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleMarkPickedUp = async () => {
     if (!task) return;
 
@@ -430,7 +467,9 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
           <Text style={styles.sectionLabel}>
             {language === 'ur' ? 'آرڈر نمبر' : 'Order Number'}
           </Text>
-          <Text style={styles.orderId}>#{task.orderId || task.attaRequestId}</Text>
+          <Text style={styles.orderId}>
+            #{task.orderNumber || task.attaRequestNumber || task.orderId || task.attaRequestId}
+          </Text>
         </View>
 
         {/* Map Preview */}
@@ -810,6 +849,21 @@ const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }
 
         {/* Action Buttons */}
         <View style={styles.section}>{getActionButtons()}</View>
+
+        {/* Report Problem / Fail Task */}
+        {['assigned', 'picked_up', 'in_transit'].includes(task.status) && (
+          <View style={styles.section}>
+            <Button
+              title={language === 'ur' ? 'مسئلہ رپورٹ کریں' : 'Report Problem'}
+              onPress={handleReportProblem}
+              variant="danger"
+              size="large"
+              fullWidth
+              icon="alert-circle-outline"
+              loading={isProcessing}
+            />
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

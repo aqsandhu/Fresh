@@ -528,6 +528,10 @@ export const Roles: React.FC = () => {
                   toast.error('Name, phone and password are required');
                   return;
                 }
+                if (userForm.password.trim().length < 6) {
+                  toast.error('Password must be at least 6 characters');
+                  return;
+                }
                 createUserMutation.mutate({
                   fullName: userForm.fullName.trim(),
                   phone: userForm.phone.trim(),

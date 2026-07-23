@@ -73,7 +73,15 @@ export type TaskType = 'pickup' | 'delivery' | 'atta_pickup' | 'atta_delivery';
 /** Individual task states */
 export type TaskStatus = 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'failed';
 
-/** Notification event categories */
+/**
+ * Notification event categories.
+ * Values matching the SQL `notification_type` enum (database/schema.sql +
+ * migration 48): 'order_placed' … 'system', 'order_amount_updated',
+ * 'reconciliation_alert'. The last four values ('order_update',
+ * 'rider_arrived', 'atta_update', 'general') are client-side display categories
+ * used by the apps — they are NOT in the SQL enum and must not be inserted
+ * into the notifications table.
+ */
 export type NotificationType =
   | 'order_placed'
   | 'order_confirmed'
@@ -86,6 +94,9 @@ export type NotificationType =
   | 'call_request'
   | 'promotion'
   | 'system'
+  | 'order_amount_updated'
+  | 'reconciliation_alert'
+  // Client-side only (not in the SQL enum — see comment above):
   | 'order_update'
   | 'rider_arrived'
   | 'atta_update'
@@ -286,10 +297,11 @@ export interface Address {
   houseNumber?: string;
   writtenAddress: string;
   landmark?: string;
-  location: {
+  /** Nullable in the DB (addresses.location) — optional until the customer pins it. */
+  location?: {
     lat: number;
     lng: number;
-  };
+  } | null;
   locationAccuracy?: number;
   googlePlaceId?: string;
   doorPictureUrl?: string;
@@ -347,9 +359,11 @@ export interface CartItem {
 export interface Order {
   id: string;
   orderNumber: string;
-  userId: string;
+  /** NULL for restaurant (B2B) orders — migration 32 dropped the NOT NULL. */
+  userId?: string | null;
   source: OrderSource;
-  addressId: string;
+  /** NULL for restaurant orders — the address rides in deliveryAddressSnapshot. */
+  addressId?: string | null;
   deliveryAddressSnapshot?: any;
   timeSlotId?: string;
   requestedDeliveryDate?: string;
@@ -385,7 +399,9 @@ export interface Order {
 export interface OrderItem {
   id: string;
   orderId: string;
-  productId: string;
+  /** NULL after a permanent product delete (migration 19, ON DELETE SET NULL) —
+   *  the snapshot fields below keep history intact. */
+  productId?: string | null;
   productName: string;
   productImage?: string;
   productSku?: string;

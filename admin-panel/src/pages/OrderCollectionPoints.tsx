@@ -9,6 +9,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { ocpService, type Ocp, type OcpStockLine } from '@/services/ocp.service';
 import { productService } from '@/services/product.service';
+import { useDebounce } from '@/hooks/useDebounce';
 import { api } from '@/services/api';
 import toast from 'react-hot-toast';
 
@@ -192,9 +193,11 @@ function SendStockModal({ ocp, onClose }: { ocp: Ocp; onClose: () => void }) {
   // keyed by `${productId}|${quality}`
   const [entries, setEntries] = useState<Record<string, StockEntry>>({});
   const [search, setSearch] = useState('');
+  // Server-side search so products beyond the fetch cap are still reachable.
+  const debouncedSearch = useDebounce(search.trim());
   const { data, isLoading } = useQuery({
-    queryKey: ['products', 'ocp-stock'],
-    queryFn: () => productService.getProducts({ limit: 500, categoryId: undefined }),
+    queryKey: ['products', 'ocp-stock', debouncedSearch],
+    queryFn: () => productService.getProducts({ limit: 500, categoryId: undefined, search: debouncedSearch || undefined }),
   });
   const products = useMemo(() => data?.products || [], [data]);
 

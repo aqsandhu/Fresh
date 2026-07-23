@@ -142,7 +142,13 @@ export const query = async <T extends QueryResultRow = any>(
     });
     return result;
   } catch (error) {
-    logger.error('Query error:', { text, params, error });
+    // Never log raw params — they can carry password hashes, PINs, OTP codes,
+    // tokens and addresses. The count is enough to correlate with the SQL.
+    logger.error('Query error:', {
+      text,
+      paramCount: Array.isArray(params) ? params.length : 0,
+      error,
+    });
     throw error;
   }
 };
@@ -152,6 +158,14 @@ export const withTransaction = async <T>(
   callback: (client: PoolClient) => Promise<T>
 ): Promise<T> => {
   const client = await pool.connect();
+  // Track release so the finally block can't release twice: releasing an
+  // already-released client throws and would mask the original error.
+  let released = false;
+  const releaseOnce = (err?: Error) => {
+    if (released) return;
+    released = true;
+    client.release(err);
+  };
   try {
     await client.query('BEGIN');
     const result = await callback(client);
@@ -162,12 +176,12 @@ export const withTransaction = async <T>(
       await client.query('ROLLBACK');
     } catch (rollbackError) {
       logger.error('Transaction rollback failed; destroying pooled connection', { rollbackError });
-      client.release(rollbackError as Error);
+      releaseOnce(rollbackError as Error);
       throw error;
     }
     throw error;
   } finally {
-    client.release();
+    releaseOnce();
   }
 };
 

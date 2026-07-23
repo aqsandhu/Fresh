@@ -4,10 +4,10 @@
 
 import { Server } from 'socket.io';
 import { createServer } from 'http';
-import { verifyAccessToken } from './jwt';
+import { verifySocketToken } from './jwt';
 import { query } from './database';
 import logger from '../utils/logger';
-import { getAllowedOrigins } from '../utils/corsOrigins';
+import { isCorsOriginAllowed } from '../utils/corsOrigins';
 import { parseCookieHeader } from '../utils/authCookies';
 import { SocketEventRateLimiter } from '../utils/socketRateLimit';
 
@@ -73,11 +73,23 @@ function extractSocketToken(socket: {
 }
 
 export const initializeSocket = (httpServer: ReturnType<typeof createServer>) => {
-  const allowedOrigins = getAllowedOrigins();
-
   io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      // Mirror the REST CORS policy in app.ts: explicit allowlist, '*' allows
+      // any origin, dev also accepts localhost on any port. The callback form
+      // reflects the request origin, which stays valid with credentials:true
+      // (unlike a literal '*' origin, which browsers reject with credentials).
+      origin: (origin, callback) => {
+        // No Origin header: native apps, server-to-server — allow.
+        if (!origin || isCorsOriginAllowed(origin)) {
+          callback(null, true);
+          return;
+        }
+        logger.warn(`Socket.IO CORS blocked origin: ${origin}`, {
+          hint: 'Add this URL to CORS_ORIGIN (or CORS_EXTRA_ORIGINS) on Render',
+        });
+        callback(new Error('Not allowed by CORS'));
+      },
       credentials: true,
     },
     pingTimeout: 60000,
@@ -88,7 +100,7 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
     try {
       const token = extractSocketToken(socket);
       if (!token) throw new Error('Authentication required');
-      const decoded = verifyAccessToken(token);
+      const decoded = verifySocketToken(token);
       const userResult = await query(
         `SELECT id, phone, role, status
            FROM users
@@ -185,7 +197,10 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
         newMessage.sender_name =
           senderResult.rows[0]?.full_name || 'Unknown';
 
-        io.to(`order:${data.orderId}`).emit('chat:message', newMessage);
+        // Broadcast to everyone ELSE in the room — the sender keeps the
+        // optimistic copy it rendered locally (io.to would echo it back and
+        // duplicate the bubble).
+        socket.to(`order:${data.orderId}`).emit('chat:message', newMessage);
       } catch (err: any) {
         logger.error('Error handling chat:send:', err);
         socket.emit('chat:error', { message: 'Failed to send message' });
@@ -195,28 +210,37 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
     socket.on(
       'chat:typing',
       async (data: { orderId: string; isTyping: boolean }) => {
-        if (!typingRateLimiter.allow(socket.id, 'chat:typing')) return;
-        const allowed = await canAccessOrder(data.orderId, userId, role);
-        if (!allowed) return;
-        socket.to(`order:${data.orderId}`).emit('chat:typing', {
-          orderId: data.orderId,
-          isTyping: data.isTyping,
-          userId,
-        });
+        try {
+          if (!typingRateLimiter.allow(socket.id, 'chat:typing')) return;
+          const allowed = await canAccessOrder(data.orderId, userId, role);
+          if (!allowed) return;
+          socket.to(`order:${data.orderId}`).emit('chat:typing', {
+            orderId: data.orderId,
+            isTyping: data.isTyping,
+            userId,
+          });
+        } catch (err: any) {
+          logger.error('Error handling chat:typing:', err);
+        }
       }
     );
 
     socket.on('order:subscribe', async (orderId: string) => {
-      const allowed = await canAccessOrder(orderId, userId, role);
-      if (!allowed) {
-        logger.warn(
-          `Unauthorized order:subscribe by user ${userId} on order ${orderId}`
-        );
-        socket.emit('order:error', { message: 'Not authorized for this order' });
-        return;
+      try {
+        const allowed = await canAccessOrder(orderId, userId, role);
+        if (!allowed) {
+          logger.warn(
+            `Unauthorized order:subscribe by user ${userId} on order ${orderId}`
+          );
+          socket.emit('order:error', { message: 'Not authorized for this order' });
+          return;
+        }
+        socket.join(`order:${orderId}`);
+        logger.debug(`Socket ${socket.id} subscribed to order:${orderId}`);
+      } catch (err: any) {
+        logger.error('Error handling order:subscribe:', err);
+        socket.emit('order:error', { message: 'Failed to subscribe to order' });
       }
-      socket.join(`order:${orderId}`);
-      logger.debug(`Socket ${socket.id} subscribed to order:${orderId}`);
     });
 
     socket.on('order:unsubscribe', (orderId: string) => {

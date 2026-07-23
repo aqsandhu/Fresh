@@ -93,8 +93,9 @@ export const generateAccessToken = (
 // Short-lived token minted on demand for Socket.IO handshakes. Browser clients
 // authenticate the websocket cross-site (the HttpOnly cookie can't ride along),
 // so they fetch this token over the same-origin REST proxy and pass it in the
-// handshake `auth.token`. Same claims as an access token, so the existing
-// verifyAccessToken socket guard validates it unchanged.
+// handshake `auth.token`. The `type: 'socket'` claim isolates it from REST:
+// verifyAccessToken rejects it, so a 1h socket token can't be replayed as a
+// full-access REST token.
 const SOCKET_TOKEN_EXPIRES_IN = process.env.SOCKET_TOKEN_EXPIRES_IN || '1h';
 export const generateSocketToken = (
   userId: string,
@@ -102,7 +103,7 @@ export const generateSocketToken = (
   role: UserRole
 ): string => {
   return jwt.sign(
-    { userId, phone, role },
+    { userId, phone, role, type: 'socket' },
     jwtSecret,
     { expiresIn: SOCKET_TOKEN_EXPIRES_IN } as SignOptions
   );
@@ -121,9 +122,24 @@ export const generateRefreshToken = (
   );
 };
 
-// Verify access token
+// Verify access token. Socket-handshake tokens (type: 'socket') are rejected
+// so they can't be replayed against REST endpoints.
 export const verifyAccessToken = (token: string): JwtPayload => {
-  return jwt.verify(token, jwtSecret) as JwtPayload;
+  const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+  if (decoded?.type === 'socket') {
+    throw new Error('Socket tokens are not valid for REST');
+  }
+  return decoded;
+};
+
+// Verify a token for a Socket.IO handshake: accepts both dedicated socket
+// tokens (type: 'socket') and legacy plain access tokens (no type claim).
+export const verifySocketToken = (token: string): JwtPayload => {
+  const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+  if (decoded?.type && decoded.type !== 'socket') {
+    throw new Error('Not a socket token');
+  }
+  return decoded;
 };
 
 // Verify refresh token

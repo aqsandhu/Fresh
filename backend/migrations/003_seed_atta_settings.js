@@ -5,6 +5,24 @@
  */
 
 exports.up = async (pgm) => {
+  // Ordering fix: this migration runs BEFORE 005_create_system_settings, and
+  // schema.sql also creates system_settings on fresh installs. Make sure the
+  // table exists (no-op when it already does) so the seed below never fails
+  // regardless of run order.
+  pgm.sql(`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+      key varchar(255) NOT NULL UNIQUE,
+      value text,
+      description text,
+      data_type varchar(50) DEFAULT 'string',
+      is_public boolean NOT NULL DEFAULT false,
+      updated_by uuid REFERENCES users(id) ON DELETE SET NULL,
+      created_at timestamptz NOT NULL DEFAULT NOW(),
+      updated_at timestamptz NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // Insert default atta charge settings if they don't exist
   const settings = [
     { key: 'atta_service_charge', value: '50', description: 'Base service charge for atta chakki (Rs.)' },

@@ -4,7 +4,7 @@ import { ApiResponse, Order, OrderItem, OrderStatus, DeliverySlot, PaginatedResp
 import { withCityParams, getCachedCityId } from '@/lib/apiHelpers';
 import { getSelectedCityId } from '@/lib/cityStorage';
 
-const BACKEND_URL = API_BASE_URL.replace('/api', '');
+const BACKEND_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 
 export interface CreateOrderRequest {
   addressId: string;

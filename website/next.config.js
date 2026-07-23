@@ -31,6 +31,10 @@ function buildImageRemotePatterns() {
 }
 
 const nextConfig = {
+  // Emit a self-contained server bundle for the Docker image (website/Dockerfile
+  // copies .next/standalone). In this pnpm monorepo Next traces to the repo
+  // root, so the standalone server lands at .next/standalone/website/server.js.
+  output: 'standalone',
   env: {
     NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: googleMapsKey,
   },

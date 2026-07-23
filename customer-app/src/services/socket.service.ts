@@ -27,7 +27,7 @@ class SocketService {
     }
 
     // Extract base URL without /api
-    const baseUrl = API_BASE_URL.replace('/api', '');
+    const baseUrl = API_BASE_URL.replace(/\/api\/?$/, '');
 
     this.socket = io(baseUrl, {
       auth: { token },

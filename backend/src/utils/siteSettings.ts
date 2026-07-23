@@ -631,7 +631,20 @@ export async function clearHeroImageSettings(
   cityId: string | null,
   userId?: string
 ): Promise<HeroImageSettings> {
-  await upsertKeyedSetting(HERO_IMAGE_URL_KEY, '', cityId, userId);
-  await upsertKeyedSetting(HERO_IMAGE_STORAGE_PATH_KEY, '', cityId, userId);
+  // DELETE the city rows rather than writing '' — an empty-string city row
+  // would win the merge in fetchHeroImageSettings and shadow the global
+  // fallback, leaving the city with no hero at all.
+  const hasCityColumn = await hasSiteSettingsCityColumn();
+  const keys = [HERO_IMAGE_URL_KEY, HERO_IMAGE_STORAGE_PATH_KEY];
+  if (hasCityColumn) {
+    await query(
+      `DELETE FROM site_settings
+        WHERE key = ANY($1::text[]) AND city_id IS NOT DISTINCT FROM $2`,
+      [keys, cityId]
+    );
+  } else {
+    // Pre-city-column schema: a single global row is all there is to clear.
+    await query(`DELETE FROM site_settings WHERE key = ANY($1::text[])`, [keys]);
+  }
   return fetchHeroImageSettings(cityId);
 }

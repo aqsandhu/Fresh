@@ -5,6 +5,8 @@
  */
 
 exports.up = (pgm) => {
+  // ifNotExists: schema.sql creates this table on fresh installs — do not
+  // collide with it when migrate:up runs afterwards.
   pgm.createTable('audit_logs', {
     id: {
       type: 'uuid',
@@ -54,12 +56,23 @@ exports.up = (pgm) => {
       notNull: true,
       default: pgm.func('NOW()'),
     },
-  });
+  },
+  { ifNotExists: true });
 
-  // Add check constraint for action
-  pgm.addConstraint('audit_logs', 'audit_logs_action_check', {
-    check: 'action <> \'\'',
-  });
+  // Add check constraint for action. schema.sql declares the same CHECK
+  // inline (Postgres auto-names it audit_logs_action_check), so guard on
+  // existence to stay idempotent.
+  pgm.sql(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'audit_logs_action_check'
+      ) THEN
+        ALTER TABLE audit_logs
+          ADD CONSTRAINT audit_logs_action_check CHECK (action <> '');
+      END IF;
+    END $$;
+  `);
 
   // Indexes for common query patterns
   pgm.createIndex('audit_logs', 'admin_id');

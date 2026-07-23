@@ -1,26 +1,19 @@
 'use client'
 
-import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { 
-  Phone, 
-  Mail, 
-  MapPin, 
-  Clock, 
-  Send,
+import {
+  Phone,
+  Mail,
+  MapPin,
+  Clock,
   MessageCircle,
   Facebook,
   Instagram,
   Twitter,
-  Loader2
 } from 'lucide-react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
-import Input from '@/components/ui/Input'
-import api from '@/lib/api'
+import WhatsAppIcon from '@/components/ui/WhatsAppIcon'
+import { buildWhatsAppUrl } from '@/lib/whatsapp'
 
 const contactInfo = [
   {
@@ -49,52 +42,10 @@ const contactInfo = [
   },
 ]
 
-// Zod validation schema
-const contactSchema = z.object({
-  name: z.string()
-    .min(2, 'Name must be at least 2 characters')
-    .max(100, 'Name is too long'),
-  email: z.string()
-    .email('Please enter a valid email address')
-    .max(100, 'Email is too long'),
-  phone: z.string()
-    .min(11, 'Please enter a valid phone number')
-    .max(15, 'Phone number is too long')
-    .regex(/^\+?[0-9\-\s]+$/, 'Please enter a valid phone number'),
-  subject: z.string()
-    .min(1, 'Please select a subject'),
-  message: z.string()
-    .min(10, 'Message must be at least 10 characters')
-    .max(2000, 'Message is too long (maximum 2000 characters)'),
-})
-
-type ContactFormData = z.infer<typeof contactSchema>
+const SUPPORT_PHONE = '0300-1234567'
 
 export default function ContactPage() {
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  
-  const { 
-    register, 
-    handleSubmit, 
-    reset,
-    formState: { errors }
-  } = useForm<ContactFormData>({
-    resolver: zodResolver(contactSchema),
-  })
-
-  const onSubmit = async (data: ContactFormData) => {
-    setIsSubmitting(true)
-    try {
-      await api.post('/contact', data)
-      toast.success('Message sent successfully! We\'ll get back to you soon.')
-      reset()
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || 'Failed to send message. Please try again.'
-      toast.error(errorMessage)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+  const whatsappUrl = buildWhatsAppUrl(SUPPORT_PHONE)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -149,7 +100,7 @@ export default function ContactPage() {
       <section className="py-16">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12">
-            {/* Contact Form */}
+            {/* WhatsApp Support */}
             <motion.div
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
@@ -157,101 +108,36 @@ export default function ContactPage() {
               className="bg-white rounded-2xl p-8 shadow-sm"
             >
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                Send us a Message
+                Chat with us
               </h2>
               <p className="text-gray-600 mb-6">
-                Fill out the form below and we&apos;ll get back to you as soon as possible.
+                The fastest way to reach us is WhatsApp — our support team replies
+                during working hours (Mon-Sun, 9AM - 9PM).
               </p>
 
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-                <div className="grid md:grid-cols-2 gap-5">
-                  <div>
-                    <Input
-                      label="Your Name *"
-                      placeholder="John Doe"
-                      {...register('name')}
-                      error={errors.name?.message}
-                    />
-                  </div>
-                  <div>
-                    <Input
-                      label="Email Address *"
-                      type="email"
-                      placeholder="john@example.com"
-                      {...register('email')}
-                      error={errors.email?.message}
-                    />
-                  </div>
-                </div>
+              {whatsappUrl && (
+                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+                  <Button fullWidth size="lg">
+                    <WhatsAppIcon className="w-5 h-5 mr-2" />
+                    Chat on WhatsApp
+                  </Button>
+                </a>
+              )}
 
-                <div>
-                  <Input
-                    label="Phone Number *"
-                    placeholder="03XX-XXXXXXX"
-                    {...register('phone')}
-                    error={errors.phone?.message}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Subject *
-                  </label>
-                  <select
-                    {...register('subject')}
-                    className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                      errors.subject ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  >
-                    <option value="">Select a subject</option>
-                    <option value="general">General Inquiry</option>
-                    <option value="order">Order Related</option>
-                    <option value="delivery">Delivery Issue</option>
-                    <option value="feedback">Feedback</option>
-                    <option value="other">Other</option>
-                  </select>
-                  {errors.subject && (
-                    <p className="text-red-500 text-sm mt-1">{errors.subject.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Message *
-                  </label>
-                  <textarea
-                    rows={5}
-                    placeholder="How can we help you?"
-                    {...register('message')}
-                    className={`w-full px-4 py-2.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none ${
-                      errors.message ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  />
-                  {errors.message && (
-                    <p className="text-red-500 text-sm mt-1">{errors.message.message}</p>
-                  )}
-                </div>
-
-                <Button
-                  type="submit"
-                  fullWidth
-                  size="lg"
-                  isLoading={isSubmitting}
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-5 h-5 mr-2" />
-                      Send Message
-                    </>
-                  )}
-                </Button>
-              </form>
+              <div className="mt-6 space-y-3 text-sm text-gray-600">
+                <p className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-primary-600 shrink-0" />
+                  <a href={`tel:${SUPPORT_PHONE}`} className="hover:text-primary-600">
+                    {SUPPORT_PHONE}
+                  </a>
+                </p>
+                <p className="flex items-center gap-2">
+                  <Mail className="w-4 h-4 text-primary-600 shrink-0" />
+                  <a href="mailto:support@freshbazar.pk" className="hover:text-primary-600">
+                    support@freshbazar.pk
+                  </a>
+                </p>
+              </div>
             </motion.div>
 
             {/* Map & Social */}

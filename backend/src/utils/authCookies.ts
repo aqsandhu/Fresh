@@ -84,7 +84,7 @@ export function setAuthCookies(
   res.cookie(
     REFRESH_COOKIE,
     tokens.refreshToken,
-    cookieOptions(maxAgeForToken(tokens.refreshToken, REFRESH_MAX_AGE_MS), '/api/auth/refresh')
+    cookieOptions(maxAgeForToken(tokens.refreshToken, REFRESH_MAX_AGE_MS), '/api/auth')
   );
 }
 
@@ -92,7 +92,7 @@ export function clearAuthCookies(res: Response): void {
   const domain = resolveCookieDomain();
   res.clearCookie(ACCESS_COOKIE, { path: '/', ...(domain ? { domain } : {}) });
   res.clearCookie(REFRESH_COOKIE, {
-    path: '/api/auth/refresh',
+    path: '/api/auth',
     ...(domain ? { domain } : {}),
   });
 }

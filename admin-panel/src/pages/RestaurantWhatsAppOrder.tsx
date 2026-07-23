@@ -56,9 +56,25 @@ function unitsFor(p: any): { value: Unit; label: string; short: string }[] {
   }
   return out;
 }
+/** Explicit per-quality restaurant fraction price (null when blank/absent). */
+function explicitRestaurantFraction(p: any, q: Quality, u: Unit): number | null {
+  const opt = (v: unknown): number | null => {
+    const n = num(v);
+    return n != null && n >= 0 ? n : null;
+  };
+  if (u === 'half_kg') return opt(q === 'A' ? p?.restaurantHalfKgPriceA : q === 'B' ? p?.restaurantHalfKgPriceB : p?.restaurantHalfKgPriceC);
+  if (u === 'quarter_kg') return opt(q === 'A' ? p?.restaurantQuarterKgPriceA : q === 'B' ? p?.restaurantQuarterKgPriceB : p?.restaurantQuarterKgPriceC);
+  if (u === 'half_dozen') return opt(q === 'A' ? p?.restaurantHalfDozenPriceA : q === 'B' ? p?.restaurantHalfDozenPriceB : p?.restaurantHalfDozenPriceC);
+  return null;
+}
+
+/** Mirrors backend resolveRestaurantUnitPrice: explicit restaurant fraction
+ *  price first, then the restaurant/consumer base scaled by the fraction. */
 function unitPrice(p: any, q: Quality, u: Unit): number | null {
   const base = qualityBase(p, q);
   if (base == null) return null;
+  const explicit = explicitRestaurantFraction(p, q, u);
+  if (explicit != null) return explicit;
   if (u === 'half_kg') return base * 0.5;
   if (u === 'quarter_kg') return base * 0.25;
   if (u === 'half_dozen') return base * 0.5;

@@ -16,7 +16,6 @@ import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCartStore } from '@/store/cartStore'
 import ProductPrice from '@/components/ui/ProductPrice'
-import { productsApi } from '@/lib/api'
 import { Product } from '@/types'
 
 interface WishlistItem {
@@ -34,22 +33,15 @@ export default function WishlistPage() {
     loadWishlist()
   }, [])
 
-  const loadWishlist = async () => {
+  const loadWishlist = () => {
     try {
-      // Try to fetch from API first
-      const response = await productsApi.getAll({})
-      // For now, use localStorage as fallback
       const savedWishlist = localStorage.getItem('freshbazar-wishlist')
       if (savedWishlist) {
         const parsed = JSON.parse(savedWishlist)
-        setWishlistItems(parsed)
+        if (Array.isArray(parsed)) setWishlistItems(parsed)
       }
-    } catch (error) {
-      // Fallback to localStorage
-      const savedWishlist = localStorage.getItem('freshbazar-wishlist')
-      if (savedWishlist) {
-        setWishlistItems(JSON.parse(savedWishlist))
-      }
+    } catch {
+      // Corrupted payload — start with an empty wishlist.
     } finally {
       setLoading(false)
     }

@@ -138,6 +138,14 @@ export default function TrackOrderPage() {
       }
     },
     enabled: !!orderId,
+    // Poll so the status timeline updates live; stop once the order reaches a
+    // terminal state.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status && ['delivered', 'cancelled', 'refunded'].includes(status)
+        ? false
+        : 30_000
+    },
   })
 
   if (isLoading) {

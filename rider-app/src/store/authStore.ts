@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Rider, LoginCredentials } from '../types';
 import authService from '../services/auth.service';
+import { locationService } from '../services/location.service';
+import socketService from '../services/socket.service';
 import { storeTokens, clearTokens, getStoredToken } from '../lib/secureTokens';
 import { registerSessionHandlers } from '../lib/sessionEvents';
 
@@ -46,6 +48,17 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false,
             error: null,
           });
+          // Enrich with the real profile (total deliveries, rating, online
+          // status) — best-effort, login already succeeded.
+          try {
+            const profile = await authService.getProfile();
+            set({
+              rider: { ...response.rider, ...profile },
+              isOnline: profile.isOnline,
+            });
+          } catch {
+            // keep the login-mapped rider
+          }
         } catch (error: any) {
           const message = error?.response?.data?.message || error?.message || 'Login failed';
           set({ error: message, isLoading: false });
@@ -79,6 +92,11 @@ export const useAuthStore = create<AuthState>()(
       },
       
       logout: () => {
+        // Best-effort: tell the backend we are offline before tokens go away
+        authService.updateOnlineStatus(false).catch(() => {});
+        // Stop GPS tracking and tear down the socket before clearing tokens
+        locationService.stopTracking().catch(() => {});
+        socketService.disconnect();
         clearTokens().catch(() => {});
         set({
           rider: null,

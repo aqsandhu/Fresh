@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit, Save, ShoppingBasket, ShieldAlert, X } from 'lucide-react';
 import { Layout } from '@/components/layout';
@@ -12,6 +12,7 @@ import { productService } from '@/services/product.service';
 import { useCityContext } from '@/context/CityContext';
 import { useAuthContext } from '@/context/AuthContext';
 import { formatCurrency } from '@/utils/formatters';
+import { useDebounce } from '@/hooks/useDebounce';
 import toast from 'react-hot-toast';
 
 const QUALITY_OPTIONS = [
@@ -67,20 +68,39 @@ export const Baskets: React.FC = () => {
     enabled: isSuperAdmin,
   });
 
+  // Server-side product search so products beyond the fetch cap are reachable.
+  const [productSearch, setProductSearch] = useState('');
+  const debouncedProductSearch = useDebounce(productSearch.trim());
+
   const { data: productsData } = useQuery({
-    queryKey: ['admin-products-for-baskets', selectedCityId],
-    queryFn: () => productService.getProducts({ limit: 200 } as any),
+    queryKey: ['admin-products-for-baskets', selectedCityId, debouncedProductSearch],
+    queryFn: () => productService.getProducts({ limit: 200, search: debouncedProductSearch || undefined } as any),
     enabled: isSuperAdmin && modalOpen,
   });
   // Stable [] fallback so productOptions' useMemo dep doesn't change identity
   // on every render while the query is loading.
   const products = useMemo(() => productsData?.products || [], [productsData?.products]);
+  // Cache fetched products so items already picked stay visible in the
+  // dropdowns even when they fall out of the current search results.
+  const productCache = useRef<Record<string, { id: string; nameEn: string }>>({});
+  useEffect(() => {
+    for (const p of products) productCache.current[p.id] = p;
+  }, [products]);
   const productOptions = useMemo(
-    () => [
-      { value: '', label: 'Select product…' },
-      ...products.map((p) => ({ value: p.id, label: p.nameEn })),
-    ],
-    [products]
+    () => {
+      const options = [
+        { value: '', label: 'Select product…' },
+        ...products.map((p) => ({ value: p.id, label: p.nameEn })),
+      ];
+      for (const it of form.items) {
+        const cached = it.productId ? productCache.current[it.productId] : undefined;
+        if (cached && !options.some((o) => o.value === cached.id)) {
+          options.push({ value: cached.id, label: cached.nameEn });
+        }
+      }
+      return options;
+    },
+    [products, form.items]
   );
 
   const saveMutation = useMutation({
@@ -277,6 +297,12 @@ export const Baskets: React.FC = () => {
                 <Plus className="w-4 h-4 mr-1" /> Add product
               </Button>
             </div>
+            <Input
+              placeholder="Search products…"
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              className="mb-2"
+            />
             <div className="space-y-3">
               {form.items.map((it, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-end">

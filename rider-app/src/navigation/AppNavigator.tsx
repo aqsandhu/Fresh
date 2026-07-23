@@ -5,7 +5,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View, StyleSheet } from 'react-native';
 
 import { useAuthStore } from '../store/authStore';
+import { useTaskStore } from '../store/taskStore';
 import { startLocationTracking, stopLocationTracking } from '../services/location.service';
+import { taskService } from '../services/task.service';
+import { offlineQueue } from '../utils/offlineQueue';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { QueuedAction } from '../types';
 import { navigationRef, getPendingRedirect, clearPendingRedirect } from './navigationUtils';
 
 // Screens
@@ -89,9 +94,46 @@ const AuthNavigator = () => (
   </AuthStack.Navigator>
 );
 
+// Replay a queued offline action against the live API
+const processQueuedAction = async (action: QueuedAction): Promise<unknown> => {
+  if (action.type === 'task_action') {
+    const payload = action.payload as any;
+    switch (payload.action) {
+      case 'pickup':
+        return taskService.markPickedUp(payload.taskId, payload.notes);
+      case 'deliver':
+        return taskService.markDelivered(payload.taskId, payload.data || {});
+      case 'call_request':
+        if (!payload.orderId) throw new Error('Queued call request missing orderId');
+        return taskService.requestCustomerCall(payload.orderId);
+      default:
+        throw new Error(`Unknown queued action: ${payload.action}`);
+    }
+  }
+  throw new Error(`Unsupported queued action type: ${action.type}`);
+};
+
 // Main Navigator with TaskDetail
 const MainNavigator = () => {
   const isOnline = useAuthStore((state) => state.isOnline);
+  const { isConnected, isInternetReachable } = useOnlineStatus();
+  const wasReachable = useRef(false);
+
+  // Process the offline queue when connectivity returns
+  useEffect(() => {
+    const reachable = isConnected && isInternetReachable === true;
+    if (reachable && !wasReachable.current) {
+      (async () => {
+        try {
+          await offlineQueue.processQueue(processQueuedAction);
+          await useTaskStore.getState().refreshTasks();
+        } catch (error) {
+          console.error('[OfflineQueue] Failed to process queue:', error);
+        }
+      })();
+    }
+    wasReachable.current = reachable;
+  }, [isConnected, isInternetReachable]);
 
   useEffect(() => {
     if (isOnline) {

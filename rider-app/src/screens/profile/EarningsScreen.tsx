@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,12 +22,39 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
   const { earnings, fetchEarnings } = useTaskStore();
   const { language } = useSettingsStore();
   const [refreshing, setRefreshing] = useState(false);
-  const [summary, setSummary] = useState({
-    today: 0,
-    thisWeek: 0,
-    thisMonth: 0,
-    total: 0,
-  });
+
+  // Summary is derived from the store's earnings so it always reflects the
+  // freshest fetch (no stale closure). null = amount unknown (backend
+  // returned counts only); known amounts are summed.
+  const summary = useMemo(() => {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split('T')[0];
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split('T')[0];
+
+    const sum = (list: Earning[]): number | null => {
+      let total = 0;
+      let known = 0;
+      for (const e of list) {
+        if (e.amount != null) {
+          total += e.amount;
+          known++;
+        }
+      }
+      return known > 0 ? total : null;
+    };
+
+    return {
+      today: sum(earnings.filter((e) => e.date === today)),
+      thisWeek: sum(earnings.filter((e) => e.date >= weekAgo)),
+      thisMonth: sum(earnings.filter((e) => e.date >= monthAgo)),
+      total: sum(earnings),
+    };
+  }, [earnings]);
 
   // Load earnings on mount
   useEffect(() => {
@@ -42,7 +69,6 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
       .split('T')[0];
 
     await fetchEarnings(startDate, endDate);
-    calculateSummary();
   };
 
   const onRefresh = useCallback(async () => {
@@ -51,38 +77,8 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
     setRefreshing(false);
   }, []);
 
-  // Calculate summary from earnings
-  const calculateSummary = () => {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split('T')[0];
-    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split('T')[0];
-
-    const todayEarnings = earnings
-      .filter((e) => e.date === today)
-      .reduce((sum, e) => sum + e.amount, 0);
-
-    const weekEarnings = earnings
-      .filter((e) => e.date >= weekAgo)
-      .reduce((sum, e) => sum + e.amount, 0);
-
-    const monthEarnings = earnings
-      .filter((e) => e.date >= monthAgo)
-      .reduce((sum, e) => sum + e.amount, 0);
-
-    const totalEarnings = earnings.reduce((sum, e) => sum + e.amount, 0);
-
-    setSummary({
-      today: todayEarnings,
-      thisWeek: weekEarnings,
-      thisMonth: monthEarnings,
-      total: totalEarnings,
-    });
-  };
+  const formatAmount = (amount: number | null) =>
+    amount == null ? '—' : formatCurrency(amount);
 
   // Get earning type icon
   const getEarningTypeIcon = (type: string) => {
@@ -131,7 +127,9 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
         <Text style={styles.earningDescription}>{item.description}</Text>
         <Text style={styles.earningDate}>{formatDate(item.date)}</Text>
       </View>
-      <Text style={styles.earningAmount}>+{formatCurrency(item.amount)}</Text>
+      {item.amount != null && (
+        <Text style={styles.earningAmount}>+{formatCurrency(item.amount)}</Text>
+      )}
     </View>
   );
 
@@ -176,7 +174,7 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
                   {language === 'ur' ? 'آج' : 'Today'}
                 </Text>
                 <Text style={styles.summaryValue}>
-                  {formatCurrency(summary.today)}
+                  {formatAmount(summary.today)}
                 </Text>
               </View>
               <View style={styles.summaryCard}>
@@ -184,7 +182,7 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
                   {language === 'ur' ? 'اس ہفتے' : 'This Week'}
                 </Text>
                 <Text style={styles.summaryValue}>
-                  {formatCurrency(summary.thisWeek)}
+                  {formatAmount(summary.thisWeek)}
                 </Text>
               </View>
             </View>
@@ -195,7 +193,7 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
                   {language === 'ur' ? 'اس مہینے' : 'This Month'}
                 </Text>
                 <Text style={styles.summaryValue}>
-                  {formatCurrency(summary.thisMonth)}
+                  {formatAmount(summary.thisMonth)}
                 </Text>
               </View>
               <View style={[styles.summaryCard, styles.totalCard]}>
@@ -203,7 +201,7 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
                   {language === 'ur' ? 'کل' : 'Total'}
                 </Text>
                 <Text style={[styles.summaryValue, styles.totalValue]}>
-                  {formatCurrency(summary.total)}
+                  {formatAmount(summary.total)}
                 </Text>
               </View>
             </View>

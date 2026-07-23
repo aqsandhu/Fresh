@@ -24,8 +24,6 @@ export const useTasks = () => {
     requestCustomerCall,
     fetchTodayStats,
     fetchEarnings,
-    uploadDeliveryProof,
-    reportIssue,
     clearError,
     refreshTasks,
   } = useTaskStore();
@@ -133,8 +131,6 @@ export const useTasks = () => {
     requestCustomerCall: handleCallCustomer,
     fetchTodayStats,
     fetchEarnings,
-    uploadDeliveryProof,
-    reportIssue,
     clearError,
     refreshTasks,
     setActiveTab,

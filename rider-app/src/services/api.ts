@@ -101,10 +101,12 @@ class ApiService {
   }
 }
 
-// Check network/backend status
+// Check network/backend status — backend serves /health at the root,
+// not under /api.
 export const checkNetworkStatus = async (): Promise<boolean> => {
   try {
-    const response = await apiService.getClient().get('/health');
+    const rootUrl = API_BASE_URL.replace(/\/api\/?$/, '');
+    const response = await apiService.getClient().get(`${rootUrl}/health`);
     return response.status === 200;
   } catch {
     return false;

@@ -51,8 +51,10 @@ services:
   # ── Backend API ─────────────────────────────────────────────────────────
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      # Monorepo build: context is the repo root so the Dockerfile can reach
+      # the root pnpm-lock.yaml / pnpm-workspace.yaml.
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: freshbazar-backend
     restart: unless-stopped
     ports:
@@ -93,8 +95,13 @@ services:
   # ── Website (Next.js) ───────────────────────────────────────────────────
   website:
     build:
-      context: ./website
-      dockerfile: Dockerfile
+      # Monorepo build: context is the repo root (see backend above).
+      context: .
+      dockerfile: website/Dockerfile
+      args:
+        # NEXT_PUBLIC_* is inlined at build time, not read at runtime.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://backend:3000/api}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-Fresh Bazar}
     container_name: freshbazar-website
     restart: unless-stopped
     ports:
@@ -112,8 +119,12 @@ services:
   # ── Admin Panel ─────────────────────────────────────────────────────────
   admin-panel:
     build:
-      context: ./admin-panel
-      dockerfile: Dockerfile
+      # Monorepo build: context is the repo root (see backend above).
+      context: .
+      dockerfile: admin-panel/Dockerfile
+      args:
+        # VITE_* is inlined at build time, not read at runtime.
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/api}
     container_name: freshbazar-admin
     restart: unless-stopped
     ports:

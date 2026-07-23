@@ -72,6 +72,22 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, orderStatus }) => {
       setMessages((prev) => {
         // Avoid duplicates
         if (prev.some((m) => m.id === data.id)) return prev;
+        // Reconcile server echo with a pending optimistic message: same
+        // sender + same text, and the temp entry was created in the last
+        // 30s (device clock) → replace the temp entry instead of duplicating.
+        const now = Date.now();
+        const pendingIdx = prev.findIndex(
+          (m) =>
+            m.id.startsWith('temp-') &&
+            m.sender_type === data.sender_type &&
+            m.message === data.message &&
+            now - new Date(m.created_at).getTime() < 30000
+        );
+        if (pendingIdx !== -1) {
+          const next = [...prev];
+          next[pendingIdx] = data;
+          return next;
+        }
         return [...prev, data];
       });
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
@@ -91,7 +107,10 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, orderStatus }) => {
     }, 5000);
 
     return () => {
-      socketService.unsubscribeFromOrder(orderId, handleOrderUpdate);
+      // Remove only this component's listeners. Do NOT emit
+      // 'order:unsubscribe' here: the parent screen owns the shared order
+      // room and may still be listening for tracking updates.
+      socketService.off('order:update', handleOrderUpdate);
       socketService.offChatMessage(handleIncomingMessage);
       socketService.off('chat:typing', handleTypingEvent);
       clearInterval(connectionInterval);

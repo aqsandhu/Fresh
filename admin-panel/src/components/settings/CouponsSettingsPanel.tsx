@@ -227,6 +227,10 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
       toast.error('Enter a discount value greater than 0');
       return;
     }
+    if (form.discountType === 'percentage' && parseFloat(form.discountValue) > 100) {
+      toast.error('Percentage discount cannot be more than 100%');
+      return;
+    }
     if (form.triggerType === 'welcome_back' && !(parseInt(form.inactivityDays) >= 1)) {
       toast.error('Set the inactivity period (at least 1 day)');
       return;

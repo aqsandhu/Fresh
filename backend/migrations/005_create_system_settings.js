@@ -5,7 +5,8 @@
  */
 
 exports.up = (pgm) => {
-  // Only create if table doesn't exist
+  // Only create if table doesn't exist (schema.sql creates it on fresh
+  // installs, and 003_seed_atta_settings now self-heals it too)
   pgm.createTable('system_settings', {
     id: {
       type: 'uuid',
@@ -47,11 +48,12 @@ exports.up = (pgm) => {
       notNull: true,
       default: pgm.func('NOW()'),
     },
-  });
+  },
+  { ifNotExists: true });
 
   // Indexes
-  pgm.createIndex('system_settings', 'key', { unique: true });
-  pgm.createIndex('system_settings', 'is_public');
+  pgm.createIndex('system_settings', 'key', { unique: true, ifNotExists: true });
+  pgm.createIndex('system_settings', 'is_public', { ifNotExists: true });
 };
 
 exports.down = (pgm) => {

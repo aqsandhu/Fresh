@@ -45,8 +45,16 @@ const getDeliverySettings = async (
     let baseCharge = ENV_DEFAULT_DELIVERY_CHARGE;
     let freeThreshold = ENV_FREE_DELIVERY_MIN_AMOUNT;
     for (const row of result.rows) {
-      if (row.key === 'delivery_base_charge') baseCharge = parseFloat(row.value) || baseCharge;
-      if (row.key === 'delivery_free_delivery_threshold') freeThreshold = parseFloat(row.value) || freeThreshold;
+      // Nullish/NaN check (not ||): an admin-set 0 (free delivery / zero
+      // threshold) must be honored instead of falling back to the default.
+      if (row.key === 'delivery_base_charge') {
+        const n = parseFloat(row.value);
+        if (!Number.isNaN(n)) baseCharge = n;
+      }
+      if (row.key === 'delivery_free_delivery_threshold') {
+        const n = parseFloat(row.value);
+        if (!Number.isNaN(n)) freeThreshold = n;
+      }
     }
     return { baseCharge, freeThreshold };
   } catch {

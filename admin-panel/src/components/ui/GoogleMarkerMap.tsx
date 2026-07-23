@@ -81,6 +81,9 @@ export const GoogleMarkerMap: React.FC<GoogleMarkerMapProps> = ({
     marker.setPosition(position);
     map.panTo(position);
 
+    // Replace any previous click listener — re-running this effect (position or
+    // popup updates) must not stack listeners on the same marker.
+    maps.event.clearInstanceListeners(marker);
     if (popupHtml && infoRef.current) {
       infoRef.current.setContent(popupHtml);
       marker.addListener('click', () => infoRef.current.open({ anchor: marker, map }));

@@ -20,7 +20,16 @@ import { normalizePhoneNumber } from '../utils/validators';
 import { ensureOcpTables, hasOcpTables } from '../config/ocpSchema';
 import { assertNoOpenOcpShortages, moveCentralToOcp } from '../utils/ocpStock';
 import { assignRiderToOrder } from '../utils/assignRiderToOrder';
+import {
+  getPinLockoutState,
+  registerPinFailure,
+  clearPinFailures,
+} from '../config/pinLockout';
 import logger from '../utils/logger';
+
+// Per-account PIN brute-force lockout scope (complements the per-IP route
+// limiter — a 4-digit PIN is only 10k combinations).
+const pinLockKey = (phone: string) => `pin:ocp:${phone}`;
 
 function publicOcp(o: any) {
   return {
@@ -52,6 +61,15 @@ export const loginOcp = asyncHandler(async (req: Request, res: Response) => {
     return errorResponse(res, 'PIN must be exactly 4 digits.', 400);
   }
 
+  // Per-account lockout takes priority over any per-IP limit.
+  const lockKey = pinLockKey(normPhone);
+  const lockState = await getPinLockoutState(lockKey);
+  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+    const retryAfter = Math.ceil((lockState.lockedUntil - Date.now()) / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    return errorResponse(res, 'Too many failed PIN attempts. Try again later.', 429);
+  }
+
   const result = await query(
     `SELECT o.*, sc.name AS city_name
        FROM order_collection_points o
@@ -61,6 +79,8 @@ export const loginOcp = asyncHandler(async (req: Request, res: Response) => {
   );
   const ocp = result.rows[0];
   if (!ocp) {
+    // Count the failure so attackers can't probe phone numbers for free.
+    await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
   if (ocp.status !== 'active') {
@@ -69,8 +89,18 @@ export const loginOcp = asyncHandler(async (req: Request, res: Response) => {
 
   const valid = await bcrypt.compare(String(pin), ocp.pin_hash);
   if (!valid) {
+    const { lockedUntil } = await registerPinFailure(lockKey);
+    logger.warn('OCP PIN verify failed', { ocpId: ocp.id, lockedUntil });
+    if (lockedUntil) {
+      const retryAfter = Math.ceil((lockedUntil - Date.now()) / 1000);
+      res.setHeader('Retry-After', String(retryAfter));
+      return errorResponse(res, 'Too many failed PIN attempts. Try again later.', 429);
+    }
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
+
+  // Successful login resets the failure counter.
+  await clearPinFailures(lockKey);
 
   await query(
     `UPDATE order_collection_points SET last_login_at = NOW(), login_count = login_count + 1, updated_at = NOW() WHERE id = $1`,

@@ -3,6 +3,12 @@ import { Task, TaskStatus, DailyStats, Earning, RiderStatsData } from '../types'
 import { taskService } from '../services/task.service';
 import { offlineQueue } from '../utils/offlineQueue';
 
+// 4xx responses are deterministic failures — never queue them for offline retry.
+const isClientError = (error: any): boolean => {
+  const status = error?.response?.status;
+  return typeof status === 'number' && status >= 400 && status < 500;
+};
+
 interface TaskState {
   // State
   tasks: Task[];
@@ -38,13 +44,8 @@ interface TaskState {
   fetchTodayStats: () => Promise<void>;
   fetchMyStats: () => Promise<void>;
   fetchEarnings: (startDate?: string, endDate?: string) => Promise<void>;
-  uploadDeliveryProof: (taskId: string, imageUri: string) => Promise<string>;
   uploadDoorPicture: (taskId: string, imageUri: string) => Promise<string>;
   pinLocation: (taskId: string, latitude: number, longitude: number) => Promise<void>;
-  reportIssue: (
-    taskId: string,
-    data: { issueType: string; description: string; photo?: string }
-  ) => Promise<void>;
   clearError: () => void;
   refreshTasks: () => Promise<void>;
 }
@@ -140,12 +141,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
         isLoading: false,
       }));
     } catch (error: any) {
-      // Queue for offline
-      await offlineQueue.addAction('task_action', {
-        action: 'pickup',
-        taskId,
-        notes,
-      });
+      // Queue for offline (network/server failures only, not 4xx)
+      if (!isClientError(error)) {
+        await offlineQueue.addAction('task_action', {
+          action: 'pickup',
+          taskId,
+          notes,
+        });
+      }
       set({ error: error.message, isLoading: false });
       throw error;
     }
@@ -165,12 +168,14 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       // Refresh stats
       get().fetchTodayStats();
     } catch (error: any) {
-      // Queue for offline
-      await offlineQueue.addAction('task_action', {
-        action: 'deliver',
-        taskId,
-        data,
-      });
+      // Queue for offline (network/server failures only, not 4xx)
+      if (!isClientError(error)) {
+        await offlineQueue.addAction('task_action', {
+          action: 'deliver',
+          taskId,
+          data,
+        });
+      }
       set({ error: error.message, isLoading: false });
       throw error;
     }
@@ -194,14 +199,27 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   // Request customer call (privacy feature)
   requestCustomerCall: async (taskId) => {
+    // Backend expects the ORDER id; resolve it from the task we have in state
+    const state = get();
+    const task =
+      (state.currentTask?.id === taskId ? state.currentTask : null) ||
+      [...state.activeTasks, ...state.tasks].find((t) => t.id === taskId) ||
+      null;
+    const orderId = task?.orderId;
+    if (!orderId) {
+      throw new Error('No order linked to this task');
+    }
     try {
-      await taskService.requestCustomerCall(taskId);
+      await taskService.requestCustomerCall(orderId);
     } catch (error: any) {
-      // Queue for offline
-      await offlineQueue.addAction('task_action', {
-        action: 'call_request',
-        taskId,
-      });
+      // Queue for offline (network/server failures only, not 4xx)
+      if (!isClientError(error)) {
+        await offlineQueue.addAction('task_action', {
+          action: 'call_request',
+          taskId,
+          orderId,
+        });
+      }
       throw error;
     }
   },
@@ -237,11 +255,6 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     }
   },
 
-  // Upload delivery proof
-  uploadDeliveryProof: async (taskId, imageUri) => {
-    return await taskService.uploadDeliveryProof(taskId, imageUri);
-  },
-
   // Upload door picture for address
   uploadDoorPicture: async (taskId, imageUri) => {
     try {
@@ -267,16 +280,6 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       if (currentTask && currentTask.id === taskId) {
         set({ currentTask: { ...currentTask, has_location: true, location_added_by: 'rider' } });
       }
-    } catch (error: any) {
-      set({ error: error.message });
-      throw error;
-    }
-  },
-
-  // Report issue
-  reportIssue: async (taskId, data) => {
-    try {
-      await taskService.reportIssue(taskId, data);
     } catch (error: any) {
       set({ error: error.message });
       throw error;

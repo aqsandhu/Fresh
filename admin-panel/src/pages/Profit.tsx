@@ -299,14 +299,16 @@ function EditShareholderModal({ shareholder, remaining, onClose, onDone }: { sha
   });
   const pct = parseFloat(sharePercent) || 0;
   const overCap = pct > remaining + 1e-6;
+  const passwordTooShort = password.length > 0 && password.length < 6;
   return (
     <Modal isOpen onClose={onClose} title={`Edit ${shareholder.name}`}
-      footer={<div className="flex justify-end gap-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => mut.mutate()} disabled={mut.isPending || overCap} isLoading={mut.isPending}>Save</Button></div>}>
+      footer={<div className="flex justify-end gap-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => mut.mutate()} disabled={mut.isPending || overCap || passwordTooShort} isLoading={mut.isPending}>Save</Button></div>}>
       <div className="space-y-3">
         <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
         <Input label={`Share % (max ${remaining}% for this one)`} type="number" min={0} max={remaining} step="0.01" value={sharePercent}
           onChange={(e) => setSharePercent(e.target.value)} error={overCap ? `Only ${remaining}% can go to this shareholder` : undefined} />
-        <Input label="Reset password (optional, min 6)" type="text" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <Input label="Reset password (optional, min 6)" type="text" value={password} onChange={(e) => setPassword(e.target.value)}
+          error={passwordTooShort ? 'Password must be at least 6 characters' : undefined} />
         <p className="text-xs text-gray-400">Email (login id): {shareholder.email}</p>
       </div>
     </Modal>

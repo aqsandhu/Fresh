@@ -1,5 +1,10 @@
 'use client'
 
+// Search reads useSearchParams() without a Suspense boundary — opt out of
+// static prerender so `next build` doesn't fail on this page (same pattern
+// as login/register/checkout).
+export const dynamic = 'force-dynamic'
+
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion } from 'framer-motion'

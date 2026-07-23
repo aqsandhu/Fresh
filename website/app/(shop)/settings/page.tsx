@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { 
   Settings, 
@@ -32,43 +32,68 @@ interface SettingItem {
   options?: { value: string; label: string }[]
 }
 
+const SETTINGS_STORAGE_KEY = 'freshbazar-settings'
+
+const DEFAULT_SETTINGS = {
+  notifications: {
+    orderUpdates: true,
+    promotions: true,
+    deliveryAlerts: true,
+    emailNotifications: false,
+  },
+  preferences: {
+    language: 'en',
+    darkMode: false,
+  },
+  privacy: {
+    shareLocation: true,
+    analytics: true,
+  },
+}
+
+type Settings = typeof DEFAULT_SETTINGS
+
 export default function SettingsPage() {
   const { user } = useAuthStore()
   const [saving, setSaving] = useState<string | null>(null)
-  
-  // Settings state
-  const [settings, setSettings] = useState({
-    notifications: {
-      orderUpdates: true,
-      promotions: true,
-      deliveryAlerts: true,
-      emailNotifications: false,
-    },
-    preferences: {
-      language: 'en',
-      darkMode: false,
-    },
-    privacy: {
-      shareLocation: true,
-      analytics: true,
-    },
-  })
 
-  const handleToggle = async (section: string, key: string) => {
+  // Settings state
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
+
+  // Load persisted preferences on mount (localStorage is browser-only).
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY)
+      if (!saved) return
+      const parsed = JSON.parse(saved)
+      setSettings((prev) => ({
+        notifications: { ...prev.notifications, ...parsed?.notifications },
+        preferences: { ...prev.preferences, ...parsed?.preferences },
+        privacy: { ...prev.privacy, ...parsed?.privacy },
+      }))
+    } catch {
+      // Corrupted payload — keep defaults.
+    }
+  }, [])
+
+  const persistSettings = (next: Settings) => {
+    setSettings(next)
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next))
+  }
+
+  const handleToggle = (section: string, key: string) => {
     const settingId = `${section}.${key}`
     setSaving(settingId)
-    
+
     try {
-      setSettings(prev => ({
-        ...prev,
+      const next = {
+        ...settings,
         [section]: {
-          ...(prev as any)[section],
-          [key]: !(prev as any)[section][key],
+          ...(settings as any)[section],
+          [key]: !(settings as any)[section][key],
         },
-      }))
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500))
+      }
+      persistSettings(next)
       toast.success('Setting updated')
     } catch (error) {
       toast.error('Failed to update setting')
@@ -77,21 +102,19 @@ export default function SettingsPage() {
     }
   }
 
-  const handleSelect = async (section: string, key: string, value: string) => {
+  const handleSelect = (section: string, key: string, value: string) => {
     const settingId = `${section}.${key}`
     setSaving(settingId)
-    
+
     try {
-      setSettings(prev => ({
-        ...prev,
+      const next = {
+        ...settings,
         [section]: {
-          ...prev[section as keyof typeof prev],
+          ...settings[section as keyof Settings],
           [key]: value,
         },
-      }))
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500))
+      }
+      persistSettings(next)
       toast.success('Setting updated')
     } catch (error) {
       toast.error('Failed to update setting')

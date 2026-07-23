@@ -819,6 +819,10 @@ export const pinStatus = asyncHandler(async (req: Request, res: Response) => {
  */
 export const setPin = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user?.id) return unauthorizedResponse(res, 'Authentication required');
+  // PIN login is a customer convenience — admin roles must use password login.
+  if (['admin', 'super_admin'].includes(req.user.role)) {
+    return errorResponse(res, 'PIN sign-in is not available for admin accounts', 403);
+  }
   const { pin } = req.body as { pin: string };
 
   const pinReady = await ensurePinColumns();
@@ -886,6 +890,11 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const user = result.rows[0];
+
+  // PIN login is a customer convenience — admin roles must use password login.
+  if (['admin', 'super_admin'].includes(user.role)) {
+    return errorResponse(res, 'PIN sign-in is not available for admin accounts', 403);
+  }
 
   if (user.status !== 'active') {
     return errorResponse(res, 'Account is suspended. Please contact support.', 403);

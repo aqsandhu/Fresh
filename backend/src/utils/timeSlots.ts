@@ -96,7 +96,7 @@ export async function releaseTimeSlot(
     await client.query(
       `UPDATE time_slot_bookings
           SET booked_count = GREATEST(0, booked_count - 1), updated_at = NOW()
-        WHERE time_slot_id = $1 AND delivery_date = COALESCE($2::date, CURRENT_DATE)`,
+        WHERE time_slot_id = $1 AND delivery_date = COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date)`,
       [opts.slotId, date]
     );
   }

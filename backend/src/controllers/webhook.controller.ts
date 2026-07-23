@@ -161,6 +161,34 @@ const deriveIdempotencyKey = (
 };
 
 /**
+ * Release a webhook claim after a TRANSIENT processing failure: deleting the
+ * claim row frees the (source, idempotency_key) slot so the provider's retry
+ * can re-claim and reprocess. Without this, a webhook that failed after
+ * claiming would have every retry swallowed as an "Already processed"
+ * duplicate. Truly-processed rows are never touched.
+ */
+const releaseWebhookClaim = async (logId: string): Promise<void> => {
+  if (logId === 'unknown') return;
+
+  try {
+    await query(`DELETE FROM webhook_logs WHERE id = $1`, [logId]);
+  } catch (error) {
+    logger.error('Failed to release webhook claim (non-fatal)', { error, logId });
+  }
+};
+
+/**
+ * 200 for a genuine duplicate, 500 when the claim itself failed (DB error) —
+ * returning 200 there would silently drop the webhook.
+ */
+const duplicateOrUnavailable = (res: Response, claim: { logId: string }) => {
+  if (claim.logId === 'unknown') {
+    return errorResponse(res, 'Webhook could not be recorded — please retry', 500);
+  }
+  return successResponse(res, { alreadyProcessed: true }, 'Already processed');
+};
+
+/**
  * Update webhook log with final status and response.
  */
 const updateWebhookLog = async (
@@ -221,7 +249,7 @@ export const orderStatusWebhook = asyncHandler(async (req: Request, res: Respons
   );
   const claim = await claimWebhook('order_status', req.body, source, idempotencyKey, order_id);
   if (!claim.claimed) {
-    return successResponse(res, { alreadyProcessed: true }, 'Already processed');
+    return duplicateOrUnavailable(res, claim);
   }
   const logId = claim.logId;
 
@@ -286,9 +314,17 @@ export const orderStatusWebhook = asyncHandler(async (req: Request, res: Respons
     logger.info('Order status updated via webhook', { orderId: order_id, status, source: source || 'unknown' });
     return successResponse(res, responseBody, 'Order status updated successfully');
   } catch (err: any) {
-    await updateWebhookLog(logId, 'failed', { error: err?.message || 'unknown' });
-    const code = err?.http || 400;
-    return errorResponse(res, err?.message || 'Webhook failed', code);
+    if (err?.http) {
+      // Deterministic rejection (bad payload / illegal transition): record the
+      // failure and keep the claim so an identical retry stays a no-op.
+      await updateWebhookLog(logId, 'failed', { error: err?.message || 'unknown' });
+      return errorResponse(res, err?.message || 'Webhook failed', err.http);
+    }
+    // Transient failure (DB error mid-transaction): release the claim so the
+    // provider's retry can reprocess, and signal failure with a 500.
+    await releaseWebhookClaim(logId);
+    logger.error('Order status webhook processing failed', { error: err?.message, orderId: order_id });
+    return errorResponse(res, 'Webhook processing failed — please retry', 500);
   }
 });
 
@@ -332,7 +368,7 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
   );
   const claim = await claimWebhook('payment', req.body, source, idempotencyKey, order_id);
   if (!claim.claimed) {
-    return successResponse(res, { alreadyProcessed: true }, 'Already processed');
+    return duplicateOrUnavailable(res, claim);
   }
   const logId = claim.logId;
 
@@ -436,9 +472,17 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
     });
     return successResponse(res, responseBody, 'Payment status updated successfully');
   } catch (err: any) {
-    await updateWebhookLog(logId, 'failed', { error: err?.message || 'unknown' });
-    const code = err?.http || 400;
-    return errorResponse(res, err?.message || 'Webhook failed', code);
+    if (err?.http) {
+      // Deterministic rejection (bad payload / amount mismatch): record the
+      // failure and keep the claim so an identical retry stays a no-op.
+      await updateWebhookLog(logId, 'failed', { error: err?.message || 'unknown' });
+      return errorResponse(res, err?.message || 'Webhook failed', err.http);
+    }
+    // Transient failure (DB error mid-transaction): release the claim so the
+    // provider's retry can reprocess, and signal failure with a 500.
+    await releaseWebhookClaim(logId);
+    logger.error('Payment webhook processing failed', { error: err?.message, orderId: order_id });
+    return errorResponse(res, 'Webhook processing failed — please retry', 500);
   }
 });
 
@@ -470,7 +514,7 @@ export const smsWebhook = asyncHandler(async (req: Request, res: Response) => {
   );
   const claim = await claimWebhook('sms', req.body, source, idempotencyKey);
   if (!claim.claimed) {
-    return successResponse(res, { alreadyProcessed: true }, 'Already processed');
+    return duplicateOrUnavailable(res, claim);
   }
   const logId = claim.logId;
 
@@ -597,52 +641,4 @@ const verifyWebhookSignature = (
   }
 };
 
-/**
- * Register webhook endpoint
- * POST /api/webhooks/register
- * (Admin only)
- */
-export const registerWebhook = asyncHandler(async (req: Request, res: Response) => {
-  const { url, events, secret } = req.body;
 
-  // Validate inputs — a bad url/events array would otherwise be persisted and
-  // later fail (or fan out requests to an attacker-controlled address). Only
-  // http(s) targets and a non-empty string[] of events are accepted.
-  if (typeof url !== 'string' || !/^https?:\/\/.+/i.test(url.trim())) {
-    return errorResponse(res, 'A valid http(s) webhook url is required', 400);
-  }
-  if (
-    !Array.isArray(events) ||
-    events.length === 0 ||
-    !events.every((e) => typeof e === 'string' && e.trim().length > 0)
-  ) {
-    return errorResponse(res, 'events must be a non-empty array of strings', 400);
-  }
-  if (secret !== undefined && typeof secret !== 'string') {
-    return errorResponse(res, 'secret must be a string', 400);
-  }
-
-  // Store webhook configuration
-  const result = await query(
-    `INSERT INTO webhooks (url, events, secret, created_by)
-     VALUES ($1, $2, $3, $4)
-     RETURNING *`,
-    [url.trim(), events, secret ?? null, req.user?.id]
-  );
-
-  successResponse(res, result.rows[0], 'Webhook registered successfully', 201);
-});
-
-// Note: Create webhooks table if needed
-/*
-CREATE TABLE IF NOT EXISTS webhooks (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  url TEXT NOT NULL,
-  events TEXT[] NOT NULL,
-  secret TEXT,
-  is_active BOOLEAN DEFAULT TRUE,
-  created_by UUID REFERENCES users(id),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-*/

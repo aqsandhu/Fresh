@@ -98,8 +98,13 @@ function GuestCheckout() {
   const { items, getSubtotal, hasHydrated: cartHasHydrated } = useCartStore()
 
   // Empty cart → nothing to check out; mirror the authed page and bounce to /cart.
+  useEffect(() => {
+    if (cartHasHydrated && items.length === 0) {
+      router.push('/cart')
+    }
+  }, [cartHasHydrated, items.length, router])
+
   if (cartHasHydrated && items.length === 0) {
-    if (typeof window !== 'undefined') router.push('/cart')
     return null
   }
   if (!cartHasHydrated) {
@@ -132,7 +137,7 @@ function GuestCheckout() {
                   const unit = item.unit || 'full'
                   const linePrice = resolveLineUnitPrice(item)
                   return (
-                    <div key={`${item.product.id}::${unit}`} className="flex items-center gap-3">
+                    <div key={`${item.product.id}::${unit}::${item.quality ?? 'A'}`} className="flex items-center gap-3">
                       <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                         <Image
                           src={item.product.image || item.product.image_url || '/placeholder-product.png'}
@@ -558,8 +563,8 @@ function CheckoutPage() {
       // modal with two clear CTAs (Continue Shopping / View Order) instead.
     } catch (err: any) {
       const msg =
-        err?.message ||
         err?.response?.data?.message ||
+        err?.message ||
         'Failed to place order. Please try again.'
       toast.error(msg)
     } finally {
@@ -570,10 +575,13 @@ function CheckoutPage() {
   // Don't redirect to /cart on the very first render while the cart store
   // is still hydrating from localStorage — items[] starts empty and would
   // bounce a refresh straight to /cart even when the user has items saved.
-  if (cartHasHydrated && items.length === 0 && !orderPlaced) {
-    if (typeof window !== 'undefined') {
+  useEffect(() => {
+    if (cartHasHydrated && items.length === 0 && !orderPlaced) {
       router.push('/cart')
     }
+  }, [cartHasHydrated, items.length, orderPlaced, router])
+
+  if (cartHasHydrated && items.length === 0 && !orderPlaced) {
     return null
   }
   if (!cartHasHydrated || !authHasHydrated) {
@@ -967,7 +975,7 @@ function CheckoutPage() {
                   const caption = unitPriceCaption(unit)
                   return (
                     <div
-                      key={`${item.product.id}::${unit}`}
+                      key={`${item.product.id}::${unit}::${item.quality ?? 'A'}`}
                       className="flex items-center gap-3"
                     >
                       <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">

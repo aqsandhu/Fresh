@@ -10,7 +10,7 @@
 
 import { Request, Response } from 'express';
 import { query, withTransaction } from '../config/database';
-import { asyncHandler } from '../middleware';
+import { asyncHandler, BadRequestError } from '../middleware';
 import {
   successResponse,
   createdResponse,
@@ -120,7 +120,7 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
       [permissions]
     );
     if (permResult.rows.length !== permissions.length) {
-      throw new Error('One or more permission codes are invalid');
+      throw new BadRequestError('One or more permission codes are invalid');
     }
     const insertPromises = permResult.rows.map((p: any) =>
       client.query(
@@ -179,14 +179,14 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
     }
     if (city_id !== undefined) {
       if (!city_id) {
-        throw new Error('City is required');
+        throw new BadRequestError('City is required');
       }
       const cityRow = await client.query(
         'SELECT id, name FROM service_cities WHERE id = $1',
         [city_id]
       );
       if (cityRow.rows.length === 0) {
-        throw new Error('Selected city does not exist');
+        throw new BadRequestError('Selected city does not exist');
       }
       fields.push(`city_id = $${pi++}`);
       values.push(city_id);
@@ -213,7 +213,7 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
           [permissions]
         );
         if (permResult.rows.length !== permissions.length) {
-          throw new Error('One or more permission codes are invalid');
+          throw new BadRequestError('One or more permission codes are invalid');
         }
         await Promise.all(
           permResult.rows.map((p: any) =>

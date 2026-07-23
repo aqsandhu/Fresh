@@ -4,7 +4,12 @@
 -- Author: Database Architect
 -- Description: Complete production-ready schema for Pakistani grocery delivery
 -- Features: Smart delivery logic, Atta Chakki service, WhatsApp orders, Privacy controls
--- Version: 2.0 (With Schema Fixes Applied)
+-- Version: 2.1 (With Schema Fixes Applied)
+-- This file represents the FULLY-MIGRATED state: it includes everything that
+-- database/migrations/01-*.sql … 47-*.sql (and 48-fix-verified-audit-bugs.sql)
+-- add on top of a legacy install — RBAC (admin_roles/permissions), unit-fraction
+-- pricing, city scoping, coupons, reviews/complaints, restaurants, unified
+-- quality catalog, urgent delivery, per-date slot capacity and otp_codes.
 -- ============================================================================
 
 -- Enable required extensions
@@ -56,10 +61,14 @@ CREATE TYPE task_type AS ENUM ('pickup', 'delivery', 'atta_pickup', 'atta_delive
 CREATE TYPE task_status AS ENUM ('assigned', 'in_progress', 'completed', 'cancelled', 'failed');
 
 -- Notification types
+-- 'order_amount_updated' + 'reconciliation_alert' are emitted by the backend
+-- (admin variable-weight adjustment, finance reconciliation) — added by
+-- migration 48 for existing databases.
 CREATE TYPE notification_type AS ENUM (
-    'order_placed', 'order_confirmed', 'order_ready', 'out_for_delivery', 
+    'order_placed', 'order_confirmed', 'order_ready', 'out_for_delivery',
     'delivered', 'cancelled', 'payment_received', 'rider_assigned',
-    'call_request', 'promotion', 'system'
+    'call_request', 'promotion', 'system',
+    'order_amount_updated', 'reconciliation_alert'
 );
 
 -- Time slot types
@@ -86,7 +95,12 @@ CREATE TABLE users (
     pin_set_at TIMESTAMPTZ,
     role user_role DEFAULT 'customer',
     status user_status DEFAULT 'active',
-    
+
+    -- Custom admin role (migration 03). NULL = legacy behaviour: enum role
+    -- 'admin'/'super_admin' is treated as a global admin. FK added later,
+    -- after admin_roles is created (forward reference).
+    admin_role_id UUID,
+
     -- Profile info
     avatar_url TEXT,
     date_of_birth DATE,
@@ -164,9 +178,14 @@ CREATE TABLE riders (
     
     -- Work area
     assigned_zone_id UUID,  -- Reference to delivery zones
-    
+
+    -- Primary city this rider operates in (migration 04; FK added later,
+    -- after service_cities is created).
+    city_id UUID,
+
     -- Performance
     rating DECIMAL(2,1) DEFAULT 5.0 CHECK (rating >= 1.0 AND rating <= 5.0),
+    rating_count INTEGER NOT NULL DEFAULT 0,  -- Review aggregate (migration 24)
     total_deliveries INTEGER DEFAULT 0,
     total_earnings DECIMAL(12,2) DEFAULT 0.00,
     
@@ -238,11 +257,17 @@ CREATE TABLE categories (
     -- Category info
     name_ur VARCHAR(255) NOT NULL,  -- Urdu name
     name_en VARCHAR(255) NOT NULL,  -- English name
-    slug VARCHAR(255) UNIQUE NOT NULL,
-    
+    -- NOT globally unique: slugs are unique per city (migration 04 replaced
+    -- the old categories_slug_key with uq_categories_slug_city below).
+    slug VARCHAR(255) NOT NULL,
+
     -- Media
     icon_url TEXT,
     image_url TEXT,
+
+    -- Service city this category belongs to (migration 04; FK added later,
+    -- after service_cities is created).
+    city_id UUID,
     
     -- Hierarchy
     parent_id UUID REFERENCES categories(id),
@@ -281,18 +306,33 @@ CREATE TABLE products (
     -- Product info
     name_ur VARCHAR(255) NOT NULL,
     name_en VARCHAR(255) NOT NULL,
-    slug VARCHAR(255) UNIQUE NOT NULL,
+    -- NOT globally unique: slugs are unique per city (migration 04 replaced
+    -- the old products_slug_key with uq_products_slug_city below).
+    slug VARCHAR(255) NOT NULL,
     sku VARCHAR(100) UNIQUE,
     barcode VARCHAR(100),
-    
+
     -- Categorization
     category_id UUID NOT NULL REFERENCES categories(id),
     subcategory_id UUID REFERENCES categories(id) ON DELETE SET NULL,
-    
+
+    -- Service city this product is sold in (migration 04; FK added later,
+    -- after service_cities is created).
+    city_id UUID,
+
     -- Pricing
     price DECIMAL(10,2) NOT NULL CHECK (price >= 0),
     compare_at_price DECIMAL(10,2),  -- Original price for discounts
     cost_price DECIMAL(10,2),  -- For profit calculations
+
+    -- Unit-fraction pricing (migration 03). NULL = derive from price.
+    half_kg_price DECIMAL(10,2),      -- ½ kg price; NULL = derive as price * 0.5
+    quarter_kg_price DECIMAL(10,2),   -- ¼ kg price; NULL = derive as price * 0.25
+    half_dozen_price DECIMAL(10,2),   -- ½ dozen price; NULL = derive as price * 0.5
+
+    -- Review aggregates (migration 24)
+    rating_average DECIMAL(3,2) NOT NULL DEFAULT 0,
+    review_count INTEGER NOT NULL DEFAULT 0,
     
     -- Unit
     unit_type unit_type DEFAULT 'kg',
@@ -454,6 +494,9 @@ CREATE TABLE cart_items (
     -- | half_dozen (kept in sync with migration 03).
     unit VARCHAR(20) DEFAULT 'full',
 
+    -- Quality tier of the product on this line: A | B | C (migration 34).
+    quality VARCHAR(1) NOT NULL DEFAULT 'A',
+
     -- Calculated
     total_price DECIMAL(10,2) GENERATED ALWAYS AS (quantity * unit_price) STORED,
     weight_kg DECIMAL(8,3),
@@ -465,8 +508,9 @@ CREATE TABLE cart_items (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
 
-    -- Same product may appear once per unit (1 kg line + half-kg line).
-    CONSTRAINT cart_items_cart_product_unit_key UNIQUE (cart_id, product_id, unit)
+    -- A cart line is keyed by (product, unit, quality): the same product may
+    -- appear once per unit fraction AND per quality tier (migrations 03 + 34).
+    CONSTRAINT cart_items_cart_product_unit_quality_key UNIQUE (cart_id, product_id, unit, quality)
 );
 
 COMMENT ON TABLE cart_items IS 'Individual items in a shopping cart';
@@ -571,14 +615,28 @@ CREATE TABLE orders (
     order_number VARCHAR(50) UNIQUE NOT NULL,
     
     -- Customer info
-    user_id UUID NOT NULL REFERENCES users(id),
-    
+    -- NULL for restaurant (B2B) orders, which have no consumer account
+    -- (migration 32 dropped the NOT NULL).
+    user_id UUID REFERENCES users(id),
+
     -- Source
     source order_source DEFAULT 'app',
-    
+
     -- Address (snapshot at order time)
-    address_id UUID NOT NULL REFERENCES addresses(id),
+    -- NULL for restaurant orders — the address rides in
+    -- delivery_address_snapshot (migration 32 dropped the NOT NULL).
+    address_id UUID REFERENCES addresses(id),
     delivery_address_snapshot JSONB NOT NULL,  -- Full address copy
+
+    -- Restaurant (B2B) orders share this table with consumer orders so riders
+    -- and accounting stay combined (migration 32; FK added later, after the
+    -- restaurants table is created).
+    restaurant_id UUID,
+
+    -- Urgent (on-demand) delivery — ignores time slots, free-delivery
+    -- thresholds and coupons (migration 28).
+    is_urgent_delivery BOOLEAN NOT NULL DEFAULT FALSE,
+    urgent_delivery_eta VARCHAR(100),
     
     -- Time slot
     time_slot_id UUID REFERENCES time_slots(id),
@@ -617,7 +675,7 @@ CREATE TABLE orders (
 
     -- Privacy toggle. When FALSE the rider's task view hides the customer's
     -- name + phone (call still works via the in-app proxy). Defaults to
-    -- TRUE so existing flows behave unchanged.
+    -- FALSE (privacy-first, migration 08); the customer can opt in per order.
     show_customer_phone BOOLEAN DEFAULT FALSE,
     
     -- Timestamps
@@ -689,6 +747,10 @@ CREATE TABLE order_items (
     -- Which unit fraction was sold: full | half_kg | quarter_kg | half_dozen
     -- (kept in sync with migration 03).
     unit VARCHAR(20) DEFAULT 'full',
+
+    -- Quality tier sold (A | B | C). Nullable: historical rows predate the
+    -- unified quality catalog (migrations 31/34).
+    quality VARCHAR(1),
 
     -- Weight tracking
     weight_kg DECIMAL(8,3),
@@ -1108,6 +1170,18 @@ ALTER TABLE orders
     ADD CONSTRAINT fk_orders_city
     FOREIGN KEY (city_id) REFERENCES service_cities(id);
 
+ALTER TABLE categories
+    ADD CONSTRAINT fk_categories_city
+    FOREIGN KEY (city_id) REFERENCES service_cities(id);
+
+ALTER TABLE products
+    ADD CONSTRAINT fk_products_city
+    FOREIGN KEY (city_id) REFERENCES service_cities(id);
+
+ALTER TABLE riders
+    ADD CONSTRAINT fk_riders_city
+    FOREIGN KEY (city_id) REFERENCES service_cities(id);
+
 ALTER TABLE rider_tasks
     ADD CONSTRAINT fk_rider_tasks_atta_request
     FOREIGN KEY (atta_request_id) REFERENCES atta_requests(id) ON DELETE CASCADE;
@@ -1219,6 +1293,276 @@ CREATE TABLE audit_logs (
 );
 
 -- ============================================================================
+-- 27. ADMIN RBAC (migration 03)
+-- ----------------------------------------------------------------------------
+-- Custom admin roles with granular permission codes and optional city scope.
+-- Existing admins with the legacy enum role 'admin'/'super_admin' keep working
+-- — they are treated as global admins until assigned a custom role.
+-- ============================================================================
+CREATE TABLE permissions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    category VARCHAR(50),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE permissions IS
+    'Catalogue of all permission codes the backend understands.';
+
+CREATE TABLE admin_roles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT,
+    -- NULL scope = global. Otherwise the role only governs records that
+    -- match `city` (legacy text scope, superseded by city_id in migration 04).
+    city VARCHAR(100),
+    city_id UUID REFERENCES service_cities(id),
+    is_system BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by UUID REFERENCES users(id)
+);
+
+COMMENT ON TABLE admin_roles IS
+    'Named admin roles created by the super-admin. Optional city scope makes a role specific to one city''s orders / customers.';
+COMMENT ON COLUMN admin_roles.city_id IS 'Required scope for custom admin roles (NULL = global system role).';
+
+CREATE TABLE admin_role_permissions (
+    role_id UUID NOT NULL REFERENCES admin_roles(id) ON DELETE CASCADE,
+    permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    PRIMARY KEY (role_id, permission_id)
+);
+
+-- users.admin_role_id was declared on the users table above (cycle: users ↔
+-- admin_roles) — wire the FK now that admin_roles exists.
+ALTER TABLE users
+    ADD CONSTRAINT fk_users_admin_role
+    FOREIGN KEY (admin_role_id) REFERENCES admin_roles(id) ON DELETE SET NULL;
+
+CREATE INDEX idx_users_admin_role ON users(admin_role_id) WHERE admin_role_id IS NOT NULL;
+CREATE INDEX idx_admin_roles_city ON admin_roles(city) WHERE city IS NOT NULL;
+CREATE INDEX idx_admin_roles_city_id ON admin_roles(city_id);
+
+-- ============================================================================
+-- 28. DISCOUNT COUPONS (migrations 21 + 22)
+-- ----------------------------------------------------------------------------
+-- City-scoped coupon catalogue + redemption ledger + per-customer auto-coupon
+-- grants. Discount math and usage limits are enforced server-side inside the
+-- order transaction; used_count + coupon_redemptions are the source of truth.
+-- ============================================================================
+CREATE TABLE coupons (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    code VARCHAR(50) NOT NULL,
+    description TEXT,
+    discount_type VARCHAR(20) NOT NULL DEFAULT 'percentage'
+        CHECK (discount_type IN ('percentage', 'fixed', 'free_delivery')),
+    discount_value NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (discount_value >= 0),
+    max_discount_amount NUMERIC(10,2) CHECK (max_discount_amount IS NULL OR max_discount_amount >= 0),
+    min_order_amount NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (min_order_amount >= 0),
+    usage_limit INTEGER CHECK (usage_limit IS NULL OR usage_limit >= 0),
+    usage_limit_per_user INTEGER CHECK (usage_limit_per_user IS NULL OR usage_limit_per_user >= 0),
+    used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
+    first_order_only BOOLEAN NOT NULL DEFAULT FALSE,
+    valid_from TIMESTAMPTZ,
+    valid_until TIMESTAMPTZ,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    city_id UUID REFERENCES service_cities(id) ON DELETE CASCADE,
+    -- Automatic-coupon behaviour (migration 22): manual | welcome_back |
+    -- order_milestone. auto_reusable decides whether a granted auto coupon is
+    -- single-use or stays available permanently.
+    trigger_type VARCHAR(20) NOT NULL DEFAULT 'manual'
+        CONSTRAINT coupons_trigger_type_chk
+        CHECK (trigger_type IN ('manual', 'welcome_back', 'order_milestone')),
+    inactivity_days INTEGER CHECK (inactivity_days IS NULL OR inactivity_days >= 0),
+    milestone_orders INTEGER CHECK (milestone_orders IS NULL OR milestone_orders >= 1),
+    auto_reusable BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Codes are case-insensitive-unique within their scope: per-city for city
+-- coupons, globally for the (city_id NULL) global coupons.
+CREATE UNIQUE INDEX coupons_city_code_uidx
+    ON coupons (city_id, UPPER(code)) WHERE city_id IS NOT NULL;
+CREATE UNIQUE INDEX coupons_global_code_uidx
+    ON coupons (UPPER(code)) WHERE city_id IS NULL;
+CREATE INDEX coupons_lookup_idx ON coupons (UPPER(code), is_active);
+
+CREATE TABLE coupon_redemptions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    coupon_id UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    discount_amount NUMERIC(10,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX coupon_redemptions_coupon_user_idx ON coupon_redemptions (coupon_id, user_id);
+CREATE INDEX coupon_redemptions_order_idx ON coupon_redemptions (order_id);
+
+-- Per-customer grant ledger for auto coupons (migration 22).
+CREATE TABLE user_coupons (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    coupon_id UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'available'
+        CHECK (status IN ('available', 'used')),
+    source VARCHAR(20) NOT NULL DEFAULT 'manual',
+    granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    seen_at TIMESTAMPTZ,
+    used_at TIMESTAMPTZ,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    UNIQUE (user_id, coupon_id)
+);
+
+CREATE INDEX user_coupons_user_status_idx ON user_coupons (user_id, status);
+CREATE INDEX user_coupons_coupon_idx ON user_coupons (coupon_id);
+
+-- ============================================================================
+-- 29. REVIEWS + COMPLAINTS (migration 24)
+-- ============================================================================
+CREATE TABLE reviews (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    target_type VARCHAR(20) NOT NULL CHECK (target_type IN ('product', 'rider', 'service')),
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    rider_id UUID REFERENCES riders(id) ON DELETE CASCADE,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    city_id UUID REFERENCES service_cities(id) ON DELETE SET NULL,
+    rating SMALLINT NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT,
+    is_published BOOLEAN NOT NULL DEFAULT TRUE,
+    admin_reply TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- One review per customer per target per order.
+CREATE UNIQUE INDEX reviews_unique_product
+    ON reviews (user_id, order_id, product_id) WHERE target_type = 'product';
+CREATE UNIQUE INDEX reviews_unique_rider
+    ON reviews (user_id, order_id) WHERE target_type = 'rider';
+CREATE UNIQUE INDEX reviews_unique_service
+    ON reviews (user_id, order_id) WHERE target_type = 'service';
+CREATE INDEX reviews_product_idx ON reviews (product_id) WHERE target_type = 'product';
+CREATE INDEX reviews_rider_idx ON reviews (rider_id) WHERE target_type = 'rider';
+CREATE INDEX reviews_user_idx ON reviews (user_id);
+CREATE INDEX reviews_city_idx ON reviews (city_id);
+
+CREATE TABLE complaints (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    ticket_number VARCHAR(20) UNIQUE NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+    rider_id UUID REFERENCES riders(id) ON DELETE SET NULL,
+    city_id UUID REFERENCES service_cities(id) ON DELETE SET NULL,
+    category VARCHAR(40) NOT NULL DEFAULT 'other',
+    subject VARCHAR(200) NOT NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'open'
+        CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
+    priority VARCHAR(10) NOT NULL DEFAULT 'normal'
+        CHECK (priority IN ('low', 'normal', 'high')),
+    admin_response TEXT,
+    resolved_at TIMESTAMPTZ,
+    resolved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX complaints_user_idx ON complaints (user_id);
+CREATE INDEX complaints_status_idx ON complaints (status);
+CREATE INDEX complaints_city_idx ON complaints (city_id);
+CREATE INDEX complaints_order_idx ON complaints (order_id);
+
+-- ============================================================================
+-- 30. RESTAURANTS (migrations 30 + 33)
+-- ----------------------------------------------------------------------------
+-- B2B accounts: a restaurant registers (phone + 4-digit PIN), an admin reviews
+-- & approves it, then it logs in to the restaurant storefront. Phone is unique
+-- among LIVE rows only (partial index, migration 33) so a removed restaurant
+-- can re-register.
+-- ============================================================================
+CREATE TABLE restaurants (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    business_name VARCHAR(255) NOT NULL,
+    owner_name VARCHAR(255),
+    phone VARCHAR(20) NOT NULL,
+    pin_hash VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    address TEXT,
+    city VARCHAR(120),
+    city_id UUID REFERENCES service_cities(id) ON DELETE SET NULL,
+    location GEOGRAPHY(POINT, 4326),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'disabled', 'banned')),
+    free_delivery_threshold NUMERIC(10,2),
+    delivery_base_charge NUMERIC(10,2),
+    admin_notes TEXT,
+    approved_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    approved_at TIMESTAMPTZ,
+    last_login_at TIMESTAMPTZ,
+    login_count INTEGER NOT NULL DEFAULT 0,
+    deleted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX restaurants_status_idx ON restaurants (status);
+CREATE INDEX restaurants_city_idx ON restaurants (city_id);
+CREATE UNIQUE INDEX restaurants_phone_live_idx ON restaurants (phone) WHERE deleted_at IS NULL;
+
+-- orders.restaurant_id was declared on the orders table above — wire the FK
+-- now that restaurants exists.
+ALTER TABLE orders
+    ADD CONSTRAINT fk_orders_restaurant
+    FOREIGN KEY (restaurant_id) REFERENCES restaurants(id) ON DELETE SET NULL;
+
+CREATE INDEX orders_restaurant_idx ON orders (restaurant_id);
+
+-- ============================================================================
+-- 31. TIME_SLOT_BOOKINGS (migration 40)
+-- ----------------------------------------------------------------------------
+-- Per-(slot, delivery_date) booked seat count — the authoritative capacity
+-- gate (replaces the global time_slots.booked_orders for enforcement).
+-- ============================================================================
+CREATE TABLE time_slot_bookings (
+    time_slot_id UUID NOT NULL REFERENCES time_slots(id) ON DELETE CASCADE,
+    delivery_date DATE NOT NULL,
+    booked_count INTEGER NOT NULL DEFAULT 0 CHECK (booked_count >= 0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (time_slot_id, delivery_date)
+);
+
+CREATE INDEX time_slot_bookings_date_idx ON time_slot_bookings (delivery_date);
+
+COMMENT ON TABLE time_slot_bookings IS 'Per-(slot, delivery_date) booked seat count — authoritative capacity gate (replaces the global time_slots.booked_orders for enforcement).';
+
+-- ============================================================================
+-- 32. OTP_CODES (migration 47)
+-- ----------------------------------------------------------------------------
+-- Backend-generated one-time codes (OTP_PROVIDER=backend): hashed codes sent
+-- via WhatsApp Cloud API / SMS gateway, plus per-phone / per-IP send-count
+-- rate limiting against SMS pumping.
+-- ============================================================================
+CREATE TABLE otp_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    phone VARCHAR(20) NOT NULL,
+    code_hash VARCHAR(64) NOT NULL,          -- sha256(phone:code), never plaintext
+    channel VARCHAR(16) NOT NULL DEFAULT 'sms',   -- 'whatsapp' | 'sms'
+    request_ip VARCHAR(64),
+    attempts SMALLINT NOT NULL DEFAULT 0,    -- wrong tries against this code
+    verified_at TIMESTAMPTZ,                 -- single-use marker
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_otp_codes_phone_created ON otp_codes (phone, created_at DESC);
+CREATE INDEX idx_otp_codes_ip_created ON otp_codes (request_ip, created_at DESC);
+
+-- ============================================================================
 -- INDEXES FOR PERFORMANCE
 -- ============================================================================
 
@@ -1234,11 +1578,15 @@ CREATE INDEX idx_riders_user_id ON riders(user_id);
 CREATE INDEX idx_riders_status ON riders(status);
 CREATE INDEX idx_riders_location ON riders USING GIST(current_location) WHERE current_location IS NOT NULL;
 CREATE INDEX idx_riders_zone ON riders(assigned_zone_id) WHERE assigned_zone_id IS NOT NULL;
+CREATE INDEX idx_riders_city ON riders(city_id);
 
 -- Categories indexes
 CREATE INDEX idx_categories_parent ON categories(parent_id);
 CREATE INDEX idx_categories_active ON categories(is_active);
 CREATE INDEX idx_categories_slug ON categories(slug);
+CREATE INDEX idx_categories_city ON categories(city_id);
+-- Per-city slug uniqueness, migration 04 (same slug allowed in different cities)
+CREATE UNIQUE INDEX uq_categories_slug_city ON categories(slug, city_id);
 
 -- Products indexes
 CREATE INDEX idx_products_category ON products(category_id);
@@ -1246,6 +1594,9 @@ CREATE INDEX idx_products_subcategory ON products(subcategory_id) WHERE subcateg
 CREATE INDEX idx_products_status ON products(stock_status);
 CREATE INDEX idx_products_active ON products(is_active);
 CREATE INDEX idx_products_slug ON products(slug);
+CREATE INDEX idx_products_city ON products(city_id);
+-- Per-city slug uniqueness, migration 04
+CREATE UNIQUE INDEX uq_products_slug_city ON products(slug, city_id);
 CREATE INDEX idx_products_sku ON products(sku) WHERE sku IS NOT NULL;
 CREATE INDEX idx_products_price ON products(price);
 CREATE INDEX idx_products_featured ON products(is_featured) WHERE is_featured = TRUE;
@@ -1285,6 +1636,7 @@ CREATE INDEX idx_orders_source ON orders(source);
 CREATE INDEX idx_orders_whatsapp ON orders(whatsapp_order_id) WHERE whatsapp_order_id IS NOT NULL;
 CREATE INDEX idx_orders_address ON orders(address_id);
 CREATE INDEX idx_orders_status_date ON orders(status, placed_at);
+CREATE INDEX idx_orders_city ON orders(city_id);
 CREATE INDEX idx_orders_city_status ON orders(city_id, status) WHERE deleted_at IS NULL;
 CREATE INDEX idx_orders_city_placed ON orders(city_id, placed_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX idx_orders_status_city_placed ON orders(status, city_id, placed_at DESC) WHERE deleted_at IS NULL;
@@ -1440,6 +1792,21 @@ CREATE TRIGGER update_site_settings_updated_at BEFORE UPDATE ON site_settings
 CREATE TRIGGER update_system_settings_updated_at BEFORE UPDATE ON system_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_admin_roles_updated_at BEFORE UPDATE ON admin_roles
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_coupons_updated_at BEFORE UPDATE ON coupons
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_reviews_updated_at BEFORE UPDATE ON reviews
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_complaints_updated_at BEFORE UPDATE ON complaints
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_restaurants_updated_at BEFORE UPDATE ON restaurants
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
 -- Function to generate order number.
 -- Random 8-hex-char suffix (NOT a sequence) so order numbers are not
 -- enumerable — predictable IDs leak order volume and make tracking
@@ -1552,7 +1919,7 @@ CREATE OR REPLACE FUNCTION update_cart_weight()
 RETURNS TRIGGER AS $$
 BEGIN
     IF TG_OP = 'DELETE' THEN
-        UPDATE carts 
+        UPDATE carts
         SET total_weight_kg = (
             SELECT COALESCE(SUM(
                 ci.quantity * p.unit_value * CASE p.unit_type
@@ -1561,6 +1928,14 @@ BEGIN
                     WHEN 'liter' THEN 1.0
                     WHEN 'ml' THEN 0.001
                     ELSE 0.1
+                END
+                -- Unit-fraction lines weigh a fraction of the full unit
+                -- (migration 03 units; fixed in migration 48).
+                * CASE ci.unit
+                    WHEN 'half_kg' THEN 0.5
+                    WHEN 'quarter_kg' THEN 0.25
+                    WHEN 'half_dozen' THEN 0.5
+                    ELSE 1.0
                 END
             ), 0)
             FROM cart_items ci
@@ -1571,7 +1946,7 @@ BEGIN
         WHERE id = OLD.cart_id;
         RETURN OLD;
     ELSE
-        UPDATE carts 
+        UPDATE carts
         SET total_weight_kg = (
             SELECT COALESCE(SUM(
                 ci.quantity * p.unit_value * CASE p.unit_type
@@ -1580,6 +1955,12 @@ BEGIN
                     WHEN 'liter' THEN 1.0
                     WHEN 'ml' THEN 0.001
                     ELSE 0.1
+                END
+                * CASE ci.unit
+                    WHEN 'half_kg' THEN 0.5
+                    WHEN 'quarter_kg' THEN 0.25
+                    WHEN 'half_dozen' THEN 0.5
+                    ELSE 1.0
                 END
             ), 0)
             FROM cart_items ci
@@ -1632,21 +2013,22 @@ INSERT INTO time_slots (slot_name, start_time, end_time, max_orders, is_free_del
 
 -- Delivery charges configuration (Smart Delivery Logic)
 INSERT INTO delivery_charges_config (
-    rule_name, rule_code, description, condition_type, 
+    rule_name, rule_code, description, condition_type,
     applicable_categories, minimum_order_value,
     charge_type, charge_amount, is_free_delivery_slot,
-    start_time, end_time, priority, is_active
+    order_before_time, start_time, end_time, priority, is_active
 ) VALUES
 (
     'Free Delivery - Morning Slot (Order before 10AM)',
     'FREE_MORNING_SLOT',
     'Free delivery for orders placed before 10AM for 10AM-2PM delivery slot',
     'time_based',
-    NULL,  -- All categories
-    0,     -- No minimum
+    NULL,      -- All categories
+    0,         -- No minimum
     'free',
     0.00,
     TRUE,
+    '10:00',   -- order_before_time: required by calculate_delivery_charge()
     '10:00',
     '14:00',
     100,   -- Highest priority
@@ -1664,6 +2046,7 @@ INSERT INTO delivery_charges_config (
     FALSE,
     NULL,
     NULL,
+    NULL,
     90,
     TRUE
 ),
@@ -1679,6 +2062,7 @@ INSERT INTO delivery_charges_config (
     FALSE,
     NULL,
     NULL,
+    NULL,
     80,
     TRUE
 ),
@@ -1692,6 +2076,7 @@ INSERT INTO delivery_charges_config (
     'flat',
     100.00,
     FALSE,
+    NULL,
     NULL,
     NULL,
     10,   -- Lowest priority
@@ -1745,6 +2130,52 @@ INSERT INTO delivery_zones (name, code, cities, areas, standard_delivery_charge,
 ('Kachehri Chowk',  'GJ-02', ARRAY['Gujrat'], ARRAY['Kachehri Chowk', 'Rehman Shaheed Road', 'GT Road'],  100.00, 500.00),
 ('Small Industries','GJ-03', ARRAY['Gujrat'], ARRAY['Small Industries', 'Jalalpur Jattan Road'],          120.00, 500.00),
 ('Servis Chowk',    'GJ-04', ARRAY['Gujrat'], ARRAY['Servis Chowk', 'Bhimber Road'],                     120.00, 500.00);
+
+-- Admin RBAC seed (migrations 03 + 21 + 24 + 30): the permission catalogue the
+-- backend understands, plus a "Full Access" system role holding all of them so
+-- the super-admin always has a fallback in the UI.
+INSERT INTO permissions (code, description, category) VALUES
+('orders.view',        'View orders',                 'Orders'),
+('orders.update',      'Update order status',         'Orders'),
+('orders.cancel',      'Cancel orders',               'Orders'),
+('orders.refund',      'Refund orders',               'Orders'),
+('orders.assign_rider','Assign rider to orders',      'Orders'),
+('products.view',      'View products',               'Products'),
+('products.create',    'Create products',             'Products'),
+('products.update',    'Update products',             'Products'),
+('products.delete',    'Delete/deactivate products',  'Products'),
+('categories.manage',  'Manage categories',           'Products'),
+('customers.view',     'View customers',              'Customers'),
+('customers.update',   'Update customers',            'Customers'),
+('addresses.view',     'View customer addresses',     'Customers'),
+('addresses.update',   'Update customer addresses',   'Customers'),
+('riders.view',        'View riders',                 'Riders'),
+('riders.manage',      'Approve/manage riders',       'Riders'),
+('settings.view',      'View settings',               'Settings'),
+('settings.update',    'Update site settings',        'Settings'),
+('roles.manage',       'Create / manage admin roles', 'Admins'),
+('admins.manage',      'Invite / manage admin users', 'Admins'),
+('coupons.view',       'View discount coupons',             'Coupons'),
+('coupons.manage',     'Create / manage discount coupons',  'Coupons'),
+('reviews.view',       'View product / rider / service reviews', 'Support'),
+('reviews.manage',     'Moderate / reply to reviews',            'Support'),
+('complaints.view',    'View customer complaints',               'Support'),
+('complaints.manage',  'Respond to / resolve complaints',        'Support'),
+('restaurants.view',   'View restaurant accounts + requests', 'Restaurants'),
+('restaurants.manage', 'Approve / disable / ban / remove restaurants + settings', 'Restaurants')
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO admin_roles (name, description, city, is_system)
+VALUES ('Full Access', 'All permissions, all cities', NULL, TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- Attach every permission to the Full Access role.
+INSERT INTO admin_role_permissions (role_id, permission_id)
+SELECT r.id, p.id
+  FROM admin_roles r
+  CROSS JOIN permissions p
+ WHERE r.name = 'Full Access'
+ON CONFLICT DO NOTHING;
 
 -- ============================================================================
 -- ADMIN USER BOOTSTRAP
@@ -1949,7 +2380,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Assign house number to address on first order
+-- Assign house number to address on first order.
+-- Sequence comes from the LAST '-'-segment of existing house numbers in the
+-- zone ('GJ-01-0007' → 7). (The old SPLIT_PART(house_number, '-', 2) grabbed
+-- the MIDDLE segment of 'GJ-01-0001' — '01' for every row — so MAX was always
+-- 1 and every address after the first in a zone got the same house number.
+-- Fixed here and in migration 48.)
 CREATE OR REPLACE FUNCTION assign_house_number(p_address_id UUID)
 RETURNS VARCHAR(50) AS $$
 DECLARE
@@ -1962,18 +2398,19 @@ BEGIN
     FROM addresses a
     JOIN delivery_zones dz ON a.zone_id = dz.id
     WHERE a.id = p_address_id;
-    
+
     IF v_zone_code IS NULL THEN
         v_zone_code := 'UNK';
     END IF;
-    
-    -- Generate sequence for this zone (numeric suffix after "ZONE-")
+
+    -- Generate sequence for this zone (numeric suffix after the LAST '-')
     SELECT COALESCE(MAX(
-        CAST(NULLIF(SPLIT_PART(house_number, '-', 2), '') AS INTEGER)
+        CAST(regexp_replace(house_number, '^.*-', '') AS INTEGER)
     ), 0) + 1 INTO v_sequence
     FROM addresses
-    WHERE house_number LIKE v_zone_code || '-%';
-    
+    WHERE house_number LIKE v_zone_code || '-%'
+      AND regexp_replace(house_number, '^.*-', '') ~ '^\d+$';
+
     v_house_number := v_zone_code || '-' || LPAD(v_sequence::TEXT, 4, '0');
     
     -- Update address

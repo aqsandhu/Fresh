@@ -1118,13 +1118,29 @@ export const getTodayEarnings = asyncHandler(async (req: Request, res: Response)
       COUNT(CASE WHEN task_type = 'atta_pickup' THEN 1 END) as atta_pickups,
       COUNT(CASE WHEN task_type = 'atta_delivery' THEN 1 END) as atta_deliveries
     FROM rider_tasks
-    WHERE rider_id = $1 
+    WHERE rider_id = $1
     AND status = 'completed'
     AND DATE(completed_at) = CURRENT_DATE`,
     [riderId]
   );
 
-  successResponse(res, deliveriesResult.rows[0], 'Today\'s earnings retrieved successfully');
+  // Earning amounts: orders.rider_delivery_charge is set when an order is
+  // assigned and is the documented source for rider earnings reports (same
+  // rollup the admin rider-stats endpoint uses).
+  const earningsResult = await query(
+    `SELECT COALESCE(SUM(o.rider_delivery_charge), 0)::float AS total_earnings
+     FROM orders o
+     WHERE o.rider_id = $1
+       AND o.status = 'delivered'
+       AND o.deleted_at IS NULL
+       AND DATE(o.delivered_at) = CURRENT_DATE`,
+    [riderId]
+  );
+
+  successResponse(res, {
+    ...deliveriesResult.rows[0],
+    total_earnings: earningsResult.rows[0]?.total_earnings ?? 0,
+  }, 'Today\'s earnings retrieved successfully');
 });
 
 /**

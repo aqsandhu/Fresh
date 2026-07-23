@@ -21,7 +21,7 @@ import { GuidanceTips } from '@components/common/GuidanceTips';
 import { ORDERS_TIPS } from '@/content/guidanceTips';
 import { MobileHeader } from '@components/layout/MobileHeader';
 import { orderService } from '@services/order.service';
-import { useAuthStore } from '@store';
+import { useAuthStore, useCartStore } from '@store';
 import { useCityContext } from '@/context/CityContext';
 
 type OrderTab = 'all' | 'active' | 'completed';
@@ -104,8 +104,38 @@ export const OrdersListScreen: React.FC = () => {
     ]);
   };
 
-  const handleReorder = () => {
-    Toast.show({ type: 'success', text1: 'Items added to cart!' });
+  const handleReorder = async (order: Order) => {
+    const items = order.items || [];
+    if (items.length === 0) {
+      Toast.show({ type: 'info', text1: 'No items to reorder' });
+      return;
+    }
+    let added = 0;
+    for (const item of items) {
+      if (!item.productId) continue;
+      try {
+        await useCartStore.getState().addItem(
+          {
+            id: item.productId,
+            name: item.productName,
+            price: item.unitPrice ?? item.price,
+            unit: item.unit || 'piece',
+            images: item.productImage ? [item.productImage] : [],
+            imageUrl: item.productImage,
+            inStock: true,
+          },
+          item.quantity
+        );
+        added += item.quantity;
+      } catch {
+        // Skip items that can no longer be added
+      }
+    }
+    if (added > 0) {
+      Toast.show({ type: 'success', text1: `${added} item${added > 1 ? 's' : ''} added to cart!` });
+    } else {
+      Toast.show({ type: 'error', text1: 'Could not add items to cart' });
+    }
   };
 
   const onRefresh = () => {
@@ -172,7 +202,7 @@ export const OrdersListScreen: React.FC = () => {
               title="Reorder"
               variant="outline"
               size="small"
-              onPress={handleReorder}
+              onPress={() => handleReorder(item)}
               style={styles.actionBtn}
             />
           )}

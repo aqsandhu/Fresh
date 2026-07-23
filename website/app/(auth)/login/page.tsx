@@ -19,6 +19,7 @@ import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
+import { sanitizeRedirect } from '@/lib/utils'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
@@ -278,7 +279,7 @@ export default function LoginPage() {
         tokens
       )
       toast.success('Login successful!')
-      const redirectTo = searchParams.get('redirect') || '/'
+      const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
       router.push(redirectTo)
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Invalid PIN. Please try again.'
@@ -368,7 +369,7 @@ export default function LoginPage() {
       resetOtpCodeRef.current = null
       setNewPin('')
       setNewPinConfirm('')
-      const redirectTo = searchParams.get('redirect') || '/'
+      const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
       router.push(redirectTo)
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to reset PIN. Please try again.'
@@ -418,7 +419,7 @@ export default function LoginPage() {
           tokens
         )
         toast.success('Login successful!')
-        const redirectTo = searchParams.get('redirect') || '/'
+        const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
         router.push(redirectTo)
         return
       }
@@ -444,7 +445,7 @@ export default function LoginPage() {
       )
 
       toast.success('Login successful!')
-      const redirectTo = searchParams.get('redirect') || '/'
+      const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
       router.push(redirectTo)
     } catch (err: any) {
       const backendMsg = err?.response?.data?.message

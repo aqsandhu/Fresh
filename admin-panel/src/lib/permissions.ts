@@ -68,6 +68,22 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/rider-applications': ['rider_applications.view', 'rider_applications.manage', 'riders.view', 'riders.manage'],
   '/admin/restaurants': ['restaurants.view', 'restaurants.manage'],
   '/admin/ocp': ['ocp.manage', 'ocp.stock.send', 'ocp.settlements.receive', 'ocp.shortages.manage'],
+  // Platform feature flags (API itself is super-admin only).
+  '/admin/platform': ['settings.view', 'settings.update'],
+  // Service areas (map polygons; API is super-admin only) — gate like the other
+  // geography settings pages.
+  '/admin/service-areas': [
+    'settings.cities.view',
+    'settings.cities.manage',
+    'settings.delivery_zones.view',
+    'settings.delivery_zones.manage',
+    'settings.view',
+    'settings.update',
+  ],
+  // Today's Basket combos (API is super-admin only) — product management codes.
+  '/admin/baskets': ['products.view', 'products.update'],
+  '/admin/franchise-inquiries': ['franchise.view', 'franchise.manage'],
+  '/admin/abandoned-carts': ['marketing.view', 'marketing.manage'],
   '/admin/settings': ALL_SETTINGS_VIEW_CODES,
 };
 

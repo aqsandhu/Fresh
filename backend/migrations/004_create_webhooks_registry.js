@@ -5,6 +5,8 @@
  */
 
 exports.up = (pgm) => {
+  // ifNotExists: stay consistent with schema.sql-managed installs where the
+  // table may already exist.
   pgm.createTable('webhooks', {
     id: {
       type: 'uuid',
@@ -42,7 +44,8 @@ exports.up = (pgm) => {
       notNull: true,
       default: pgm.func('NOW()'),
     },
-  });
+  },
+  { ifNotExists: true });
 
   // Indexes
   pgm.createIndex('webhooks', 'created_by');

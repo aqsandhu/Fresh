@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -13,6 +13,7 @@ import { api } from '@/services/api';
 import { whatsappService } from '@/services/whatsapp.service';
 import { productService } from '@/services/product.service';
 import { resolveImageUrl } from '@/utils/formatters';
+import { useDebounce } from '@/hooks/useDebounce';
 import type { WhatsAppOrderData, WhatsappCustomerAddress, ApiResponse } from '@/types';
 import { RestaurantWhatsAppOrder } from './RestaurantWhatsAppOrder';
 import toast from 'react-hot-toast';
@@ -114,22 +115,27 @@ function offeredQualities(product: any): Quality[] {
   return out;
 }
 
+/** Explicit per-quality consumer fraction price (null when blank/absent). */
+function explicitConsumerFraction(product: any, unit: string, quality: Quality): number | null {
+  if (unit === 'half_kg') return optNum(quality === 'A' ? product?.halfKgPrice : quality === 'B' ? product?.halfKgPriceB : product?.halfKgPriceC);
+  if (unit === 'quarter_kg') return optNum(quality === 'A' ? product?.quarterKgPrice : quality === 'B' ? product?.quarterKgPriceB : product?.quarterKgPriceC);
+  if (unit === 'half_dozen') return optNum(quality === 'A' ? product?.halfDozenPrice : quality === 'B' ? product?.halfDozenPriceB : product?.halfDozenPriceC);
+  return null;
+}
+
 /** Per-unit price — mirrors backend resolveConsumerUnitPrice (no rounding here).
- *  Quality A honours the admin's half/quarter overrides; B/C derive from base. */
+ *  Every quality honours its explicit fraction price first, then derives from base. */
 function unitPriceFor(product: any, unit: string, quality: Quality = 'A'): number {
   const base = qualityBaseConsumer(product, quality) ?? (Number(product?.price) || 0);
-  const useOverrides = quality === 'A';
-  const opt = (v: unknown, fb: number) => {
-    const n = optNum(v);
-    return n == null ? fb : n;
-  };
+  const explicit = explicitConsumerFraction(product, unit, quality);
+  if (explicit != null) return explicit;
   switch (unit) {
     case 'half_kg':
-      return useOverrides ? opt(product?.halfKgPrice, base * 0.5) : base * 0.5;
+      return base * 0.5;
     case 'quarter_kg':
-      return useOverrides ? opt(product?.quarterKgPrice, base * 0.25) : base * 0.25;
+      return base * 0.25;
     case 'half_dozen':
-      return useOverrides ? opt(product?.halfDozenPrice, base * 0.5) : base * 0.5;
+      return base * 0.5;
     default:
       return base;
   }
@@ -178,13 +184,30 @@ export const WhatsAppOrders: React.FC = () => {
   const [lookingUp, setLookingUp] = useState(false);
   const [foundCustomer, setFoundCustomer] = useState(false);
 
+  // Server-side product search so products beyond the fetch cap are reachable.
+  const [productSearch, setProductSearch] = useState('');
+  const debouncedProductSearch = useDebounce(productSearch.trim());
+
   const { data: productsData } = useQuery({
-    queryKey: ['products-for-whatsapp'],
-    queryFn: () => productService.getProducts({ page: 1, limit: 200 }),
+    queryKey: ['products-for-whatsapp', debouncedProductSearch],
+    queryFn: () => productService.getProducts({ page: 1, limit: 200, search: debouncedProductSearch || undefined }),
   });
+  // Cache every fetched product so items already picked keep rendering (and
+  // pricing) correctly even when they fall out of the current search results.
+  const productCache = useRef<Record<string, any>>({});
+  useEffect(() => {
+    for (const p of productsData?.products || []) productCache.current[p.id] = p;
+  }, [productsData]);
   // Stable [] fallback for the useMemo below (product search) — avoids a new
   // array identity on every render while the query is loading.
-  const products = useMemo(() => productsData?.products || [], [productsData?.products]);
+  const products = useMemo(() => {
+    const list = productsData?.products || [];
+    const missing = items
+      .filter((i) => i.productId && !list.some((p: any) => p.id === i.productId))
+      .map((i) => productCache.current[i.productId])
+      .filter(Boolean);
+    return missing.length ? [...list, ...missing] : list;
+  }, [productsData?.products, items]);
 
   // Delivery settings — same source the website checkout uses (/site-settings/delivery).
   const { data: deliveryConf } = useQuery({
@@ -310,7 +333,12 @@ export const WhatsAppOrders: React.FC = () => {
     for (const it of validItems) {
       const product = (products as any[]).find((p: any) => p.id === it.productId);
       if (!product) continue;
-      const unitPrice = unitPriceFor(product, it.unit, it.quality);
+      // An explicit override price (replacement orders) is what the server will
+      // charge — the payload sends it (same predicate), so the preview must too.
+      const override = isReplacement && it.overridePrice !== undefined && it.overridePrice !== '' && Number.isFinite(parseFloat(it.overridePrice))
+        ? parseFloat(it.overridePrice)
+        : null;
+      const unitPrice = override ?? unitPriceFor(product, it.unit, it.quality);
       const lineTotal = round2(unitPrice * it.quantity);
       subtotal += lineTotal;
       if (product.qualifiesForFreeDelivery === true) vegFruitSubtotal += lineTotal;
@@ -332,7 +360,7 @@ export const WhatsAppOrders: React.FC = () => {
     const total = round2(subtotal + deliveryCharge);
     const remainingForFree = Math.max(0, freeThreshold - vegFruitSubtotal);
     return { validItems, subtotal, vegFruitSubtotal, deliveryCharge, total, isFreeSlot, remainingForFree };
-  }, [items, products, selectedSlotObj, timeSlotId, urgentOn, urgentCharge, baseCharge, freeThreshold]);
+  }, [items, products, selectedSlotObj, timeSlotId, urgentOn, urgentCharge, baseCharge, freeThreshold, isReplacement]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -570,6 +598,17 @@ export const WhatsAppOrders: React.FC = () => {
               <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
                 <Package className="w-5 h-5 mr-2" /> Order Items
               </h3>
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  // Enter searches instead of submitting the whole form.
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                  placeholder="Search products…"
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
+                />
+              </div>
               <div className="space-y-3">
                 {items.map((item, index) => {
                   const product = (products as any[]).find((p: any) => p.id === item.productId);

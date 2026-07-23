@@ -112,13 +112,29 @@ function resolveRequiredPermissions(
     return ['products.update'];
   }
   // Stock management. Normal stock intake belongs to Finance -> stock purchase;
-  // /stock/add is emergency correction only.
+  // every direct mutation here (emergency add, waste, quality convert, and the
+  // OCP shift/return/transfer moves) is a stock adjustment and needs the
+  // dedicated 'stock.adjust' code — 'products.update' alone is not enough.
   if (p.startsWith('/stock')) {
-    if (p === '/stock/add') return ['stock.adjust'];
+    if (
+      p === '/stock/add' ||
+      p === '/stock/waste' ||
+      p === '/stock/convert' ||
+      p === '/stock/shift' ||
+      p === '/stock/return' ||
+      p === '/stock/transfer'
+    ) {
+      return ['stock.adjust'];
+    }
     return m === 'GET' ? ['products.view'] : ['products.update'];
   }
   if (p.startsWith('/categories')) return ['categories.manage'];
   if (p.startsWith('/customers')) {
+    // PII export has its own granular code (view kept as fallback so existing
+    // city admins keep working until roles are re-seeded).
+    if (p === '/customers/export' && m === 'GET') return ['customers.export'];
+    // Deleting/anonymizing a customer is stronger than editing one.
+    if (m === 'DELETE') return ['customers.delete'];
     return m === 'GET' ? ['customers.view'] : ['customers.update'];
   }
   if (p.startsWith('/riders')) {
@@ -142,6 +158,8 @@ function resolveRequiredPermissions(
       : ['reviews.manage', 'orders.update'];
   }
   if (p.startsWith('/complaints')) {
+    // A complaint refund moves money — require the orders refund permission.
+    if (m === 'POST' && p.endsWith('/refund')) return ['orders.refund'];
     return m === 'GET'
       ? ['complaints.view', 'complaints.manage', 'orders.view']
       : ['complaints.manage', 'orders.update'];

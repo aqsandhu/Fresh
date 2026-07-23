@@ -119,7 +119,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
               const linePrice = resolveLineUnitPrice(item)
               return (
                 <div
-                  key={`${item.product.id}::${unit}`}
+                  key={`${item.product.id}::${unit}::${item.quality ?? 'A'}`}
                   className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
                 >
                   <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
@@ -161,7 +161,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                     <button
                       onClick={(e) => {
                         e.preventDefault()
-                        updateQuantity(item.product.id, item.quantity - 1, unit)
+                        updateQuantity(item.product.id, item.quantity - 1, unit, item.quality)
                       }}
                       className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-100 transition-colors"
                       aria-label="Decrease quantity"
@@ -178,7 +178,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                     <button
                       onClick={(e) => {
                         e.preventDefault()
-                        updateQuantity(item.product.id, item.quantity + 1, unit)
+                        updateQuantity(item.product.id, item.quantity + 1, unit, item.quality)
                       }}
                       className="w-7 h-7 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-100 transition-colors"
                       aria-label="Increase quantity"

@@ -11,6 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
+import Toast from 'react-native-toast-message';
 import { OrdersStackParamList, Order } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, ORDER_STATUS_MESSAGES } from '@utils/constants';
 import { formatCurrency, formatDateTime, getStatusColor } from '@utils/helpers';
@@ -58,9 +59,11 @@ export const OrderDetailScreen: React.FC = () => {
   const handleCancelOrder = async () => {
     try {
       await orderService.cancelOrder(orderId);
+      Toast.show({ type: 'success', text1: 'Order cancelled successfully' });
       loadOrder();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error cancelling order:', error);
+      Toast.show({ type: 'error', text1: error?.message || 'Failed to cancel order' });
     }
   };
 

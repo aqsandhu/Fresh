@@ -22,6 +22,7 @@ import PinInput from '@/components/auth/PinInput'
 import AutoHeight from '@/components/ui/AutoHeight'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
+import { sanitizeRedirect } from '@/lib/utils'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
@@ -293,7 +294,7 @@ export default function RegisterPage() {
     try {
       await authApi.setPin(confirmed)
       toast.success('PIN set! You can use it next time you log in.')
-      const redirectTo = searchParams.get('redirect') || '/'
+      const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
       router.push(redirectTo)
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Failed to save PIN. Please try again.'

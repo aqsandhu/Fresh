@@ -64,8 +64,9 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
   const { orderId } = req.params;
   const { message } = req.body;
 
-  if (!message || !message.trim()) {
-    return errorResponse(res, 'Message cannot be empty', 400);
+  // Non-string bodies used to crash on .trim() (TypeError → 500).
+  if (typeof message !== 'string' || !message.trim()) {
+    return errorResponse(res, 'Message must be a non-empty string', 400);
   }
 
   const trimmedMessage = message.trim();

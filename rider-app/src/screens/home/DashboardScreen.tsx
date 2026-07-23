@@ -10,6 +10,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/authStore';
+import authService from '../../services/auth.service';
 import { useTaskStore } from '../../store/taskStore';
 import { useLocationStore } from '../../store/locationStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -27,11 +28,10 @@ interface DashboardScreenProps {
 }
 
 const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
-  const [isOnline, setIsOnline] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { rider } = useAuthStore();
+  const { rider, isOnline, setOnline, setRider } = useAuthStore();
   const {
     activeTasks,
     todayStats,
@@ -52,6 +52,15 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
 
   const loadData = async () => {
     await Promise.all([fetchActiveTasks(), fetchTodayStats(), fetchMyStats()]);
+    // Refresh the profile so stats (total deliveries, rating, online status)
+    // reflect real backend values — best-effort.
+    try {
+      const profile = await authService.getProfile();
+      setRider(profile);
+      setOnline(profile.isOnline);
+    } catch {
+      // ignore — dashboard data already loaded
+    }
   };
 
   const onRefresh = useCallback(async () => {
@@ -60,7 +69,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
     setRefreshing(false);
   }, []);
 
-  // Handle online/offline toggle
+  // Handle online/offline toggle — syncs with the backend and the auth store
   const handleStatusToggle = async () => {
     setIsToggling(true);
 
@@ -80,30 +89,40 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           return;
         }
 
+        // Tell the backend first so it can start assigning tasks
+        await authService.updateOnlineStatus(true);
+
         // Start location tracking
         const trackingStarted = await startTracking(rider?.id || '');
         if (trackingStarted) {
-          setIsOnline(true);
+          setOnline(true);
+        } else {
+          // Roll back the backend status if tracking could not start
+          authService.updateOnlineStatus(false).catch(() => {});
         }
       } else {
         // Going offline
+        await authService.updateOnlineStatus(false);
         await stopTracking();
-        setIsOnline(false);
+        setOnline(false);
       }
     } catch (error) {
       console.error('Error toggling status:', error);
+      Alert.alert(
+        language === 'ur' ? 'خرابی' : 'Error',
+        language === 'ur'
+          ? 'اسٹیٹس تبدیل نہیں ہو سکا'
+          : 'Failed to update online status'
+      );
     } finally {
       setIsToggling(false);
     }
   };
 
-  // Handle task press
+  // Handle task press — TaskDetail lives on the root stack
   const handleTaskPress = (task: Task) => {
     setCurrentTask(task);
-    navigation.navigate('Tasks', {
-      screen: 'TaskDetail',
-      params: { taskId: task.id },
-    });
+    navigation.navigate('TaskDetail', { taskId: task.id });
   };
 
   // Handle view all tasks

@@ -19,7 +19,7 @@ import {
 import { RestaurantTabBar } from './RestaurantTabBar';
 import { useRestaurantCart } from '@store/restaurantCartStore';
 
-const BACKEND_URL = API_BASE_URL.replace('/api', '');
+const BACKEND_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 function imgUrl(path?: string | null): string {
   if (!path) return '';
   if (path.startsWith('http') || path.startsWith('data:')) return path;

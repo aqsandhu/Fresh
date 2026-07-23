@@ -210,7 +210,7 @@ export const CheckoutScreen: React.FC = () => {
     } finally {
       setLoadingSlots(false);
     }
-  }, []);
+  }, [deliverySlotCutoffPercent]);
 
   const syncCartToServer = useCallback(async () => {
     if (items.length === 0 || cartSynced) return;

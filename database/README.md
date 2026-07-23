@@ -5,13 +5,28 @@ which is which avoids drift.
 
 ## 1. `schema.sql` — canonical from-scratch schema
 The full, current schema for spinning up a brand-new database (local dev, a
-fresh Supabase project, CI). Run once on an empty database. It already includes
-everything the migrations below add, so **do not** run the migrations on top of
-a fresh `schema.sql` install — instead baseline them (see below).
+fresh Supabase project, CI). Run once on an empty database. It represents the
+fully-migrated state: everything `migrations/01-*.sql` … `48-*.sql` adds
+(RBAC, unit-fraction pricing, city scoping, coupons, reviews/complaints,
+restaurants, unified quality catalog, urgent delivery, per-date slot
+capacity, otp_codes, …) is already in it.
+
+Because every migration is idempotent (`IF NOT EXISTS` / `DO` blocks /
+`ON CONFLICT`), the belt-and-braces setup is to run the migrations on top of
+a fresh `schema.sql` install **without** baselining — each file simply
+no-ops where the object already exists, and heals any drift:
+
+```bash
+pnpm --filter @freshbazar/backend migrate:sql
+```
+
+(Baselining — `migrate:sql -- --baseline` — also works now that `schema.sql`
+is complete, and skips re-running the files. Either path converges to the
+same schema.)
 
 ## 2. `migrations/NN-*.sql` — versioned SQL migrations (go-forward system)
 Incremental changes for **existing** databases, in filename order (`01`, `02`,
-… `18`; `08b-` sorts after `08-`). All new schema changes go here, AND into
+… `48`; `08b-` sorts after `08-`). All new schema changes go here, AND into
 `schema.sql` so fresh installs stay in sync.
 
 Run them with the tracked runner (records applied files in a
@@ -51,6 +66,6 @@ truth — keep `schema.sql` and `migrations/` authoritative.
 
 ## Recommended order for a new environment
 1. `schema.sql`
-2. `pnpm --filter @freshbazar/backend migrate:sql -- --baseline` (mark all SQL migrations applied)
-3. `pnpm --filter @freshbazar/backend migrate:up` (legacy node-pg-migrate infra tables)
+2. `pnpm --filter @freshbazar/backend migrate:sql` (un-baselined — every file is idempotent, so this is a no-op where `schema.sql` already created the object and heals any drift; `-- --baseline` is a valid faster alternative)
+3. `pnpm --filter @freshbazar/backend migrate:up` (legacy node-pg-migrate infra tables — all guarded with `ifNotExists`, so they co-exist with `schema.sql`)
 4. Seed data as needed (`00-reset.sql` is a dev-only wipe helper).

@@ -14,6 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/authStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { notificationService } from '../../services/notification.service';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../utils/constants';
@@ -88,6 +89,17 @@ const LoginScreen: React.FC<LoginScreenProps> = () => {
         phone: cleanPhone,
         password,
       });
+
+      // Initialize push notifications (best-effort): permissions + channels,
+      // register the Expo push token with the backend, and wire listeners.
+      notificationService
+        .initialize()
+        .then((initialized) => {
+          if (!initialized) return;
+          notificationService.registerPushToken().catch(() => {});
+          notificationService.setupNotificationListeners();
+        })
+        .catch(() => {});
     } catch (err) {
       // Error is handled by the store
     }

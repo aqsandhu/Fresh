@@ -274,7 +274,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       isAuthenticated: false,
       accessToken: null,
@@ -303,6 +303,15 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user, isAuthenticated: !!user }),
       logout: () => {
         if (typeof window !== 'undefined') {
+          // Tell the backend to revoke the session and clear the HttpOnly
+          // cookies. Fire-and-forget: local state must clear even when the
+          // request fails or the token is already expired.
+          const accessToken = get().accessToken
+          fetch(`${getApiBaseUrl()}/auth/logout`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+          }).catch(() => {})
           clearTokens()
         }
         set({

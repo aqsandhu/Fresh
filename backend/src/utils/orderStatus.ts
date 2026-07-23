@@ -16,6 +16,8 @@ import { hasQualityCatalogColumns } from '../config/productSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { releaseProductReservation } from './systemStock';
 import { releaseTimeSlot } from './timeSlots';
+import { hasCouponsTable } from './coupons';
+import { hasUserCouponsTable } from './autoCoupons';
 
 /**
  * Allowed forward transitions. Anything not in this map is rejected so no
@@ -49,6 +51,42 @@ export const ORDER_STATUS_TIMESTAMPS: Record<string, string> = {
   delivered: 'delivered_at',
   cancelled: 'cancelled_at',
 };
+
+/**
+ * Undo the coupon side-effects recorded at checkout: drop the redemption row,
+ * hand the usage counter back (floored at 0), and re-open any single-use
+ * auto-coupon grant that this order consumed. No-op on databases that predate
+ * the coupon migrations, so every cancel path can call it unconditionally.
+ */
+export async function restoreCouponUsage(
+  client: PoolClient,
+  order: { id: string }
+): Promise<void> {
+  if (!(await hasCouponsTable())) return;
+
+  const redemption = await client.query(
+    `DELETE FROM coupon_redemptions WHERE order_id = $1 RETURNING coupon_id`,
+    [order.id]
+  );
+
+  for (const row of redemption.rows) {
+    await client.query(
+      'UPDATE coupons SET used_count = GREATEST(0, used_count - 1), updated_at = NOW() WHERE id = $1',
+      [row.coupon_id]
+    );
+  }
+
+  // Re-open consumed grants keyed by this order (reusable grants were never
+  // flipped, so this only touches genuinely single-use redemptions).
+  if (await hasUserCouponsTable()) {
+    await client.query(
+      `UPDATE user_coupons
+          SET status = 'available', used_at = NULL, order_id = NULL
+        WHERE order_id = $1 AND status = 'used'`,
+      [order.id]
+    );
+  }
+}
 
 /**
  * Put back what an order consumed when it was created: product stock
@@ -125,4 +163,7 @@ export async function restoreOrderInventory(
       [amount, item.product_id]
     );
   }
+
+  // Hand back any coupon the order consumed (no-op when coupon tables absent).
+  await restoreCouponUsage(client, order);
 }

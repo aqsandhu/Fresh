@@ -55,13 +55,16 @@ import logger from '../utils/logger';
  */
 export interface AuditLogEntry {
   action: string;
-  adminId: string;
+  // NULL (not 'anonymous') when unauthenticated — admin_id is a UUID column
+  // and the sentinel string used to fail the INSERT with 22P02.
+  adminId: string | null;
   adminEmail?: string;
   resource: string;
   resourceId?: string;
   oldData?: any;
   newData?: any;
-  ip: string;
+  // NULL (not 'system'/'unknown') when no IP is available — ip_address is INET.
+  ip: string | null;
   userAgent?: string;
   timestamp: string;
   status: 'success' | 'failed';
@@ -194,9 +197,9 @@ export const auditLogger = (options?: { optional?: boolean }) => {
     // Capture request data before processing
     const action = buildActionName(req);
     const { resource, resourceId } = extractResourceInfo(req);
-    const adminId = req.user?.id || 'anonymous';
+    const adminId = req.user?.id || null;
     const adminEmail = req.user?.full_name || req.user?.phone || 'unknown';
-    const ip = (req.ip || req.headers['x-forwarded-for'] || 'unknown') as string;
+    const ip = (req.ip || req.headers['x-forwarded-for'] || null) as string | null;
     const userAgent = req.headers['user-agent'];
     const newData = req.body;
 
@@ -295,7 +298,7 @@ export const logAdminAction = async (params: {
     resourceId: params.resourceId,
     oldData: params.oldData ? sanitizeData(params.oldData) : undefined,
     newData: params.newData ? sanitizeData(params.newData) : undefined,
-    ip: params.ip || 'system',
+    ip: params.ip || null,
     timestamp: new Date().toISOString(),
     status: params.status || 'success',
     errorMessage: params.errorMessage,

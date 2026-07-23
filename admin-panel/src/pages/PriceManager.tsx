@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { productService } from '@/services/product.service';
 import { categoryService } from '@/services/category.service';
+import { useDebounce } from '@/hooks/useDebounce';
 import type { Product } from '@/types';
 import toast from 'react-hot-toast';
 
@@ -59,6 +60,8 @@ const placeholderFor = (perKg: string, frac: number): string => {
 export const PriceManager: React.FC = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
+  // Server-side search so products beyond the fetch cap are still reachable.
+  const debouncedSearch = useDebounce(search.trim());
   const [category, setCategory] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'paused'>('all');
   const [rows, setRows] = useState<Record<string, Row>>({});
@@ -66,12 +69,17 @@ export const PriceManager: React.FC = () => {
   const [saving, setSaving] = useState(false);
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['products', 'price-manager'],
-    queryFn: () => productService.getProducts({ limit: 500 }),
-    staleTime: Infinity,
+    queryKey: ['products', 'price-manager', debouncedSearch],
+    queryFn: () => productService.getProducts({ limit: 500, search: debouncedSearch || undefined }),
     refetchOnWindowFocus: false,
   });
   const products = useMemo(() => data?.products || [], [data]);
+  // Cache every product we've ever fetched so a dirty row can still be saved
+  // (with correct restaurant/category context) after the search changes.
+  const productCache = useRef<Record<string, Product>>({});
+  useEffect(() => {
+    for (const p of products) productCache.current[p.id] = p;
+  }, [products]);
   const productById = useMemo(() => {
     const m: Record<string, Product> = {};
     for (const p of products) m[p.id] = p;
@@ -87,10 +95,27 @@ export const PriceManager: React.FC = () => {
   }, [cats]);
 
   useEffect(() => {
-    const next: Record<string, Row> = {};
-    for (const p of products) next[p.id] = toRow(p);
-    originals.current = next;
-    setRows(JSON.parse(JSON.stringify(next)));
+    // Reseed from the fresh fetch, but keep unsaved (dirty) edits — including
+    // for products that fall out of the current search result set.
+    setRows((prev) => {
+      const next: Record<string, Row> = {};
+      const nextOriginals: Record<string, Row> = {};
+      for (const p of products) {
+        const fresh = toRow(p);
+        const existing = prev[p.id];
+        const dirty = existing && originals.current[p.id] && !rowEq(existing, originals.current[p.id]);
+        next[p.id] = dirty ? existing : fresh;
+        nextOriginals[p.id] = fresh;
+      }
+      for (const id of Object.keys(prev)) {
+        if (!(id in next) && originals.current[id] && !rowEq(prev[id], originals.current[id])) {
+          next[id] = prev[id];
+          nextOriginals[id] = originals.current[id];
+        }
+      }
+      originals.current = nextOriginals;
+      return next;
+    });
   }, [products]);
 
   const categories = useMemo(() => {
@@ -120,13 +145,31 @@ export const PriceManager: React.FC = () => {
 
   const discard = () => setRows(JSON.parse(JSON.stringify(originals.current)));
 
+  // Validate the Quality-A /unit price of a dirty row. Empty is allowed (the
+  // field is simply left out of the update payload so the stored price is
+  // preserved); a non-empty value must parse to a number > 0.
+  const priceError = (id: string): string | null => {
+    const s = rows[id].price.trim();
+    if (s === '') return null;
+    const n = parseFloat(s);
+    const name = (productById[id] ?? productCache.current[id])?.nameEn || id;
+    if (!Number.isFinite(n)) return `"${name}": price "${s}" is not a valid number`;
+    if (n <= 0) return `"${name}": price must be greater than 0`;
+    return null;
+  };
+
   const save = async () => {
     if (dirtyIds.length === 0) return;
+    const errors = dirtyIds.map(priceError).filter((e): e is string => e !== null);
+    if (errors.length > 0) {
+      toast.error(errors[0]);
+      return;
+    }
     setSaving(true);
     const results = await Promise.allSettled(
       dirtyIds.map((id) => {
         const r = rows[id];
-        const p = productById[id];
+        const p = productById[id] ?? productCache.current[id];
         const catRest = p ? catAllowsRestaurants[p.categoryId] === true : false;
         const restA = catRest && r.restA;
         const restB = catRest && r.bEnabled && r.restB;
@@ -135,7 +178,9 @@ export const PriceManager: React.FC = () => {
           isActive: r.isActive,
           allowHalfKg: r.allowHalfKg,
           allowQuarterKg: r.allowQuarterKg,
-          price: parseFloat(r.price) || 0,
+          // Only send price when the admin actually entered one — never send 0
+          // for a cleared field (that would put the product on sale for Rs. 0).
+          ...(r.price.trim() !== '' ? { price: parseFloat(r.price) } : {}),
           halfKgPrice: numOrNull(r.halfKgPrice),
           quarterKgPrice: numOrNull(r.quarterKgPrice),
           halfDozenPrice: numOrNull(r.halfDozenPrice),

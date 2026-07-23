@@ -147,14 +147,24 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     riderParams
   );
 
-  // Atta requests stats
+  // Atta requests stats — city-scoped via the pickup address (atta_requests
+  // has no city_id column), same rule as getAttaRequests / updateAttaStatus.
+  let attaJoin = '';
+  let attaFilter = '';
+  const attaParams: unknown[] = [];
+  if (!scope.unrestricted && scope.cityName && scope.dbReady) {
+    attaJoin = ' LEFT JOIN addresses a ON ar.address_id = a.id';
+    attaParams.push(scope.cityName);
+    attaFilter = ` AND LOWER(COALESCE(a.city, '')) = LOWER($1)`;
+  }
   const attaStats = await query(
-    `SELECT 
+    `SELECT
       COUNT(*) as total_requests,
-      COUNT(CASE WHEN status = 'pending_pickup' THEN 1 END) as pending_pickup,
-      COUNT(CASE WHEN status = 'at_mill' OR status = 'milling' THEN 1 END) at_mill
-    FROM atta_requests
-    WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'`
+      COUNT(CASE WHEN ar.status = 'pending_pickup' THEN 1 END) as pending_pickup,
+      COUNT(CASE WHEN ar.status = 'at_mill' OR ar.status = 'milling' THEN 1 END) at_mill
+    FROM atta_requests ar${attaJoin}
+    WHERE ar.created_at >= CURRENT_DATE - INTERVAL '7 days'${attaFilter}`,
+    attaParams
   );
 
   successResponse(res, {

@@ -5,9 +5,9 @@ export function hashRefreshToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function refreshExpiryDate(): Date {
-  const raw = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
-  const match = /^(\d+)([dhms])$/i.exec(raw.trim());
+function refreshExpiryDate(ttl?: string): Date {
+  const raw = (ttl || process.env.JWT_REFRESH_EXPIRES_IN || '7d').trim();
+  const match = /^(\d+)([dhms])$/i.exec(raw);
   if (!match) {
     return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   }
@@ -22,12 +22,19 @@ function refreshExpiryDate(): Date {
   return new Date(Date.now() + amount * (multipliers[unit] || multipliers.d));
 }
 
+/**
+ * Persist a refresh token. `ttl` must match the JWT's own lifetime — admin
+ * tokens are signed with ADMIN_JWT_REFRESH_EXPIRES_IN (8h default), so
+ * persisting them with the customer TTL (7d) would keep a revoked-session
+ * row "active" long after the JWT itself died (and misreport expiry).
+ */
 export async function persistRefreshToken(
   userId: string,
-  refreshToken: string
+  refreshToken: string,
+  ttl?: string
 ): Promise<void> {
   const tokenHash = hashRefreshToken(refreshToken);
-  const expiresAt = refreshExpiryDate();
+  const expiresAt = refreshExpiryDate(ttl);
   await query(
     `INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
      VALUES ($1, $2, $3)

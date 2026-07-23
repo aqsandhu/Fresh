@@ -88,7 +88,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
           </View>
           <View style={styles.compactInfo}>
             <Text style={styles.compactOrderId}>
-              #{task.orderId || task.attaRequestId}
+              #{task.orderNumber || task.attaRequestNumber || task.orderId || task.attaRequestId}
             </Text>
             <Text style={styles.compactAddress} numberOfLines={1}>
               {task.customerAddress}
@@ -117,7 +117,7 @@ const TaskCard: React.FC<TaskCardProps> = ({
               {getTaskTypeLabel(task.type ?? '', language)}
             </Text>
             <Text style={styles.orderId}>
-              #{task.orderId || task.attaRequestId}
+              #{task.orderNumber || task.attaRequestNumber || task.orderId || task.attaRequestId}
             </Text>
           </View>
         </View>

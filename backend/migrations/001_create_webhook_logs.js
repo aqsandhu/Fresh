@@ -5,6 +5,8 @@
  */
 
 exports.up = (pgm) => {
+  // ifNotExists: schema.sql creates this table on fresh installs — do not
+  // collide with it when migrate:up runs afterwards.
   pgm.createTable('webhook_logs', {
     id: {
       type: 'uuid',
@@ -45,13 +47,25 @@ exports.up = (pgm) => {
       notNull: true,
       default: pgm.func('NOW()'),
     },
-  });
+  },
+  { ifNotExists: true });
 
   // Unique constraint on idempotency_key + source for duplicate prevention
-  pgm.addConstraint('webhook_logs', 'webhook_logs_idempotency_unique', {
-    unique: ['idempotency_key', 'source'],
-    // Only applies when idempotency_key is NOT NULL
-  });
+  // (schema.sql ships the same uniqueness as uq_webhook_logs_idempotency, so
+  // guard on either name to stay idempotent)
+  pgm.sql(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname IN ('webhook_logs_idempotency_unique', 'uq_webhook_logs_idempotency')
+      ) THEN
+        ALTER TABLE webhook_logs
+          ADD CONSTRAINT webhook_logs_idempotency_unique
+          UNIQUE (idempotency_key, source);
+      END IF;
+    END $$;
+  `);
 
   // Indexes for fast lookups
   pgm.createIndex('webhook_logs', 'idempotency_key');

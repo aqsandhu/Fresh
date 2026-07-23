@@ -205,6 +205,14 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
   const halfDozen = normPrice(half_dozen_price);
   const productTags = parseTagsInput(tags);
 
+  // Validate category_id: must exist and belong to this admin's city scope —
+  // same guard as moveProductsCategory, otherwise a cross-city or bogus id
+  // corrupts the catalog (or trips the FK into a 500).
+  const cat = await query('SELECT id, city_id FROM categories WHERE id = $1', [category_id]);
+  if (cat.rows.length === 0 || !cityRowInScope(scope, cat.rows[0].city_id)) {
+    return errorResponse(res, 'Invalid category_id', 400);
+  }
+
   const slug = generateSlug(name_en);
 
   // Check if slug exists in this city
@@ -362,6 +370,15 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
     return notFoundResponse(res, 'Product not found');
   }
   const productCityId = existing.rows[0].city_id;
+
+  // Validate a category change: must exist and stay inside the admin's city
+  // scope — same guard as moveProductsCategory.
+  if (updates.category_id !== undefined && updates.category_id !== null && updates.category_id !== '') {
+    const cat = await query('SELECT id, city_id FROM categories WHERE id = $1', [updates.category_id]);
+    if (cat.rows.length === 0 || !cityRowInScope(scope, cat.rows[0].city_id)) {
+      return errorResponse(res, 'Invalid category_id', 400);
+    }
+  }
 
   // Build update query
   const varWeightReady = await hasVariableWeightColumns();
@@ -948,10 +965,62 @@ export const deleteCategory = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Cannot delete category with subcategories. Please delete subcategories first.', 400);
   }
 
+  // Inactive products are hard-deleted below — apply the same guard philosophy
+  // as the single-product purge (deleteProduct): refuse when any product in the
+  // category still has stock, reservations, or business history. Only truly
+  // empty inactive rows may be removed.
+  const qualityReady = await hasQualityCatalogColumns();
+  const catalogV2Ready = await hasCatalogV2Columns();
+  const ocpReady = await hasOcpTables();
+  const onHandSql = qualityReady
+    ? 'COALESCE(SUM(stock_quantity + stock_quantity_b + stock_quantity_c), 0)'
+    : 'COALESCE(SUM(stock_quantity), 0)';
+  const reservedSql = catalogV2Ready
+    ? 'COALESCE(SUM(reserved_quantity + reserved_quantity_b + reserved_quantity_c), 0)'
+    : '0';
+  const [stockTotals, orderItems, movements, purchases, ocpStock, ocpMoves, ocpRequestItems] = await Promise.all([
+    query(`SELECT ${onHandSql} AS on_hand, ${reservedSql} AS reserved FROM products WHERE category_id = $1`, [id]),
+    query(
+      'SELECT COUNT(*)::int AS count FROM order_items WHERE product_id IN (SELECT id FROM products WHERE category_id = $1)',
+      [id]
+    ),
+    catalogV2Ready
+      ? query('SELECT COUNT(*)::int AS count FROM stock_movements WHERE product_id IN (SELECT id FROM products WHERE category_id = $1)', [id])
+      : Promise.resolve({ rows: [{ count: 0 }] } as any),
+    query('SELECT COUNT(*)::int AS count FROM stock_purchases WHERE product_id IN (SELECT id FROM products WHERE category_id = $1)', [id]).catch(() => ({ rows: [{ count: 0 }] } as any)),
+    ocpReady
+      ? query('SELECT COUNT(*)::int AS count FROM ocp_stock WHERE product_id IN (SELECT id FROM products WHERE category_id = $1)', [id])
+      : Promise.resolve({ rows: [{ count: 0 }] } as any),
+    ocpReady
+      ? query('SELECT COUNT(*)::int AS count FROM ocp_stock_movements WHERE product_id IN (SELECT id FROM products WHERE category_id = $1)', [id])
+      : Promise.resolve({ rows: [{ count: 0 }] } as any),
+    ocpReady
+      ? query('SELECT COUNT(*)::int AS count FROM ocp_stock_request_items WHERE product_id IN (SELECT id FROM products WHERE category_id = $1)', [id])
+      : Promise.resolve({ rows: [{ count: 0 }] } as any),
+  ]);
+
+  const blockers = {
+    onHand: parseFloat(stockTotals.rows[0]?.on_hand || 0) || 0,
+    reserved: parseFloat(stockTotals.rows[0]?.reserved || 0) || 0,
+    orderItems: Number(orderItems.rows[0]?.count || 0),
+    stockMovements: Number(movements.rows[0]?.count || 0),
+    stockPurchases: Number(purchases.rows[0]?.count || 0),
+    ocpStockRows: Number(ocpStock.rows[0]?.count || 0),
+    ocpMovements: Number(ocpMoves.rows[0]?.count || 0),
+    ocpStockRequestItems: Number(ocpRequestItems.rows[0]?.count || 0),
+  };
+  if (Object.values(blockers).some((value) => Math.abs(Number(value)) > 0)) {
+    return errorResponse(
+      res,
+      'Cannot delete category: its inactive products still have stock or business history. Purge them individually (super admin) once empty.',
+      400,
+      blockers
+    );
+  }
+
   // Clean up inactive products (and their cart rows) so the category FK
   // doesn't prevent deletion — this is what admins expect when the UI shows
-  // "0 products". Order history is safe: order_items snapshots the product
-  // and its product_id FK is ON DELETE SET NULL (migration 19).
+  // "0 products". The guard above proves these rows carry no stock or history.
   await withTransaction(async (client) => {
     await client.query(
       `DELETE FROM cart_items

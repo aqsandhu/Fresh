@@ -95,15 +95,34 @@ export const TrackOrderScreen: React.FC = () => {
     loadOrder();
     let handleRiderLocation: ((data: any) => void) | undefined;
 
+    // Named handlers so cleanup can remove exactly these listeners
+    const handleOrderUpdate = (data: any) => {
+      console.log('[TrackOrder] Real-time update:', data);
+      // Refresh order data on any update
+      loadOrder();
+    };
+    const handleRiderAssigned = (data: any) => {
+      if (data.orderId === orderId) {
+        loadOrder();
+      }
+    };
+    const handleStatusChanged = (data: any) => {
+      if (data.orderId === orderId) {
+        loadOrder();
+      }
+    };
+    const handleDelivered = (data: any) => {
+      if (data.orderId === orderId) {
+        loadOrder();
+        Alert.alert('Delivered!', data.message || 'Your order has been delivered!');
+      }
+    };
+
     const setupSocket = async () => {
       await socketService.connect();
 
       // Subscribe to order-specific updates
-      socketService.subscribeToOrder(orderId, (data: any) => {
-        console.log('[TrackOrder] Real-time update:', data);
-        // Refresh order data on any update
-        loadOrder();
-      });
+      socketService.subscribeToOrder(orderId, handleOrderUpdate);
 
       handleRiderLocation = (data: any) => {
         setTrackingData((prev) => {
@@ -124,26 +143,13 @@ export const TrackOrderScreen: React.FC = () => {
       socketService.on('rider:location', handleRiderLocation);
 
       // Listen for rider assignment
-      socketService.on('order:rider_assigned', (data: any) => {
-        if (data.orderId === orderId) {
-          loadOrder();
-        }
-      });
+      socketService.on('order:rider_assigned', handleRiderAssigned);
 
       // Listen for status changes
-      socketService.on('order:status_changed', (data: any) => {
-        if (data.orderId === orderId) {
-          loadOrder();
-        }
-      });
+      socketService.on('order:status_changed', handleStatusChanged);
 
       // Listen for delivery confirmation
-      socketService.on('order:delivered', (data: any) => {
-        if (data.orderId === orderId) {
-          loadOrder();
-          Alert.alert('Delivered!', data.message || 'Your order has been delivered!');
-        }
-      });
+      socketService.on('order:delivered', handleDelivered);
     };
 
     setupSocket();
@@ -157,10 +163,12 @@ export const TrackOrderScreen: React.FC = () => {
     const pollInterval = setInterval(loadOrder, 30000);
 
     return () => {
-      socketService.unsubscribeFromOrder(orderId);
-      socketService.off('order:rider_assigned');
-      socketService.off('order:status_changed');
-      socketService.off('order:delivered');
+      // Parent screen owns the order room subscription; remove only this
+      // screen's listeners so nested components (e.g. chat) stay subscribed.
+      socketService.unsubscribeFromOrder(orderId, handleOrderUpdate);
+      socketService.off('order:rider_assigned', handleRiderAssigned);
+      socketService.off('order:status_changed', handleStatusChanged);
+      socketService.off('order:delivered', handleDelivered);
       if (handleRiderLocation) socketService.off('rider:location', handleRiderLocation);
       clearInterval(connectionInterval);
       clearInterval(pollInterval);

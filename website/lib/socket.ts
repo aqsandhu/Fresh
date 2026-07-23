@@ -23,19 +23,20 @@ export const resolveSocketAuthToken = async (): Promise<string | null> => {
  * Connect to Socket.IO — HttpOnly cookie auth when enabled (no JS token).
  */
 export const connectSocket = (token?: string | null): Socket => {
-  const useCookies = usesHttpOnlyCookies();
-  const authToken = useCookies ? undefined : token || undefined;
+  // Always pass the resolved token (socket-token in cookie mode, access token
+  // in bearer mode) — the websocket connects cross-site, so HttpOnly cookies
+  // can't authenticate the handshake.
+  const authToken = token || undefined;
 
   if (socket) {
     if (authToken) socket.auth = { token: authToken };
-    else if (useCookies) socket.auth = {};
     if (!socket.connected) {
       socket.connect();
     }
     return socket;
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace('/api', '') || 'http://localhost:3000';
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/api\/?$/, '') || 'http://localhost:3000';
 
   socket = io(baseUrl, {
     withCredentials: true,
@@ -63,10 +64,8 @@ export const connectSocket = (token?: string | null): Socket => {
 
 export const reconnectSocket = (token?: string | null): Socket => {
   if (socket) {
-    const useCookies = usesHttpOnlyCookies();
-    const authToken = useCookies ? undefined : token || undefined;
+    const authToken = token || undefined;
     if (authToken) socket.auth = { token: authToken };
-    else if (useCookies) socket.auth = {};
     if (socket.connected) {
       socket.disconnect();
     }

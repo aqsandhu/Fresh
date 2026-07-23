@@ -85,7 +85,8 @@ export const ProfileScreen: React.FC = () => {
   const handleSaveProfile = async () => {
     setSaving(true);
     try {
-      const res = await authService.updateProfile({ fullName: editName, email: editEmail || undefined });
+      // Backend updateProfile expects snake_case full_name
+      const res = await authService.updateProfile({ full_name: editName, email: editEmail || undefined } as any);
       if (res.success) {
         updateUser({ fullName: editName, email: editEmail || undefined });
         setIsEditing(false);

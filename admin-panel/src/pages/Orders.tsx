@@ -52,6 +52,7 @@ import {
   resolveImageUrl,
 } from '@/utils/formatters';
 import { unitLabelShort } from '@/lib/unitLabels';
+import { esc } from '@/lib/escape';
 import toast from 'react-hot-toast';
 
 const ORDER_STATUSES: OrderStatus[] = [
@@ -101,15 +102,6 @@ function formatKgGrams(kg: number): string {
   if (grams === 0) return `${whole} kg`;
   if (whole === 0) return `${grams} g`;
   return `${whole} kg ${grams} g`;
-}
-
-function esc(value: unknown): string {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function buildOrderSlipHtml(order: Order): string {
@@ -828,7 +820,10 @@ export const Orders: React.FC = () => {
       title="Orders"
       subtitle="Manage and track customer orders"
       searchPlaceholder="Search orders..."
-      onSearch={setSearchQuery}
+      onSearch={(q) => {
+        setSearchQuery(q);
+        setPage(1);
+      }}
     >
       {/* Consumer vs Restaurant orders */}
       <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
@@ -893,7 +888,10 @@ export const Orders: React.FC = () => {
               label="Status"
               placeholder="All Statuses"
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as OrderStatus)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as OrderStatus);
+                setPage(1);
+              }}
               options={[
                 { value: '', label: 'All Statuses' },
                 ...ORDER_STATUSES.map((s) => ({ value: s, label: formatOrderStatus(s) })),
@@ -1566,7 +1564,7 @@ export const Orders: React.FC = () => {
                 latitude={riderLocation.latitude}
                 longitude={riderLocation.longitude}
                 accuracy={riderLocation.accuracy ?? null}
-                popupHtml={`<b>${trackingRiderName || 'Rider'}</b><br/>${riderLocation.accuracy != null ? `Accuracy: +/-${riderLocation.accuracy.toFixed(1)} m` : ''}`}
+                popupHtml={`<b>${esc(trackingRiderName || 'Rider')}</b><br/>${riderLocation.accuracy != null ? `Accuracy: +/-${riderLocation.accuracy.toFixed(1)} m` : ''}`}
                 height={400}
               />
             </div>

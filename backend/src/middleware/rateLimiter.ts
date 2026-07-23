@@ -2,7 +2,7 @@
 // RATE LIMITING MIDDLEWARE
 // ============================================================================
 
-import rateLimit, { type RateLimitRequestHandler } from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator, type RateLimitRequestHandler } from 'express-rate-limit';
 import RedisStore, { type SendCommandFn } from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { Request, Response } from 'express';
@@ -202,6 +202,10 @@ export const riderLocationRateLimiter: RateLimitRequestHandler = rateLimit({
   max: isDev ? 100 : 4,
   skip: skipInDev,
   store: riderLocationRedisStore,
+  // Key by the authenticated rider's user id (the route sits behind
+  // `authenticate`) so riders sharing a carrier NAT IP don't eat each other's
+  // quota; fall back to IP when no identity is available.
+  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ''),
   message: {
     success: false,
     message: 'Location updates too frequent',
