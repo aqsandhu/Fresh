@@ -117,15 +117,13 @@ export const captureMessage = (message: string, level: 'fatal' | 'error' | 'warn
 
 /**
  * Set user context for Sentry.
+ * PRIVACY: only the opaque user id is sent — email/phone (PII) must never
+ * leave for a third-party error tracker. The email/phone/role params are
+ * accepted for call-site compatibility but deliberately ignored.
  */
 export const setSentryUser = (user: { id: string; email?: string; phone?: string; role?: string }): void => {
   if (!process.env.SENTRY_DSN) return;
-  Sentry.setUser({
-    id: user.id,
-    email: user.email,
-    username: user.phone,
-    role: user.role,
-  });
+  Sentry.setUser({ id: user.id });
 };
 
 /**

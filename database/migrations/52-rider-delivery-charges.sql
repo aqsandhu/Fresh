@@ -1,13 +1,20 @@
 -- ============================================================================
--- ⚠ DEPRECATED — DO NOT RUN THIS FILE MANUALLY.
--- This file was an orphan: it was never wired into the versioned migration
--- runner. Its full contents now live, idempotently and tracked, in
---   database/migrations/52-rider-delivery-charges.sql
--- which is applied by `cd backend && npm run migrate:sql`. This file is kept
--- for historical reference only and will drift out of date.
+-- Migration 52 — Rider system: per-slot delivery charges + stats indexes
 -- ----------------------------------------------------------------------------
--- RIDER SYSTEM MIGRATION
--- Adds: per-slot delivery charges, payment tracking, enhanced rider fields
+-- Tracked, idempotent version of the ORPHANED database/rider_system_migration.sql
+-- (that file was never wired into the migrations/ runner, so databases
+-- provisioned only via schema.sql + migrate:sql missed it). The original file
+-- is deprecated — do not run it manually; this migration is the source of
+-- truth.
+--
+-- Adds: rider_delivery_charges (admin sets rates per rider per time slot),
+-- orders.rider_delivery_charge (snapshot of the rider rate at assignment
+-- time), and indexes for rider stats queries.
+--
+-- Idempotent — safe to re-run. No BEGIN/COMMIT: the migration runner wraps
+-- each file in its own transaction. rider_delivery_charges and
+-- orders.rider_delivery_charge are already in database/schema.sql for fresh
+-- installs; the stats indexes below exist only here.
 -- ============================================================================
 
 -- 1. Rider per-slot delivery charges (admin sets rates per rider per time slot)

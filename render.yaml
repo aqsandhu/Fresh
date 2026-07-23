@@ -44,6 +44,16 @@ services:
         value: postgres
       - key: DB_SSL
         value: "true"
+      # Supabase's pooler (:6543) and direct (:5432) endpoints present a
+      # SELF-SIGNED certificate that is not in the system CA store. Without
+      # this, a production boot with no pinned DB_SSL_CA would attempt
+      # system-CA verification and crash with SELF_SIGNED_CERT_IN_CHAIN
+      # (first-deploy boot failure). dbSsl.ts already defaults to unverified
+      # in production when DB_SSL_CA is absent; pinning it explicitly here
+      # silences the fallback warning. To upgrade to verified TLS, set
+      # DB_SSL_CA (dashboard) and REMOVE this key.
+      - key: DB_SSL_REJECT_UNAUTHORIZED
+        value: "false"
       - key: RATE_LIMIT_MAX_REQUESTS
         value: "2000"
       - key: CORS_ORIGIN

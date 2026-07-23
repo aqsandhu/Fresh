@@ -4,12 +4,22 @@
 -- Author: Database Architect
 -- Description: Complete production-ready schema for Pakistani grocery delivery
 -- Features: Smart delivery logic, Atta Chakki service, WhatsApp orders, Privacy controls
--- Version: 2.1 (With Schema Fixes Applied)
--- This file represents the FULLY-MIGRATED state: it includes everything that
--- database/migrations/01-*.sql … 47-*.sql (and 48-fix-verified-audit-bugs.sql)
--- add on top of a legacy install — RBAC (admin_roles/permissions), unit-fraction
--- pricing, city scoping, coupons, reviews/complaints, restaurants, unified
--- quality catalog, urgent delivery, per-date slot capacity and otp_codes.
+-- Version: 2.2 (Header corrected — see below)
+-- ----------------------------------------------------------------------------
+-- IMPORTANT: this file is NOT the fully-migrated state. It covers the core
+-- schema plus the earlier migrations (01-… roughly through 24/48 where noted
+-- inline), but ~29 tables introduced by later migrations (restaurant catalog
+-- 30-32/34/35, finance 38/41/42, service areas 43, today's basket 44,
+-- franchise 45, marketing 46, otp_codes 47, coupons 21/22, user tips 26,
+-- urgent delivery 28, rider applications 29, webhooks 15, refresh tokens 13,
+-- order collection points 36, …) are ONLY in database/migrations/*.sql.
+--
+-- The correct procedure for a fresh database is therefore:
+--   1. run this file (schema.sql), THEN
+--   2. run  cd backend && npm run migrate:sql
+--      (applies every database/migrations/NN-*.sql in order; all idempotent).
+-- Skipping step 2 leaves the database missing those tables and the API will
+-- fail at runtime with 42P01 (relation does not exist).
 -- ============================================================================
 
 -- Enable required extensions
@@ -174,6 +184,7 @@ CREATE TABLE riders (
     
     -- Location tracking
     current_location GEOGRAPHY(POINT, 4326),
+    location_accuracy DECIMAL(6,2),  -- GPS accuracy in meters (migration 50)
     location_updated_at TIMESTAMPTZ,
     
     -- Work area
@@ -214,6 +225,7 @@ CREATE TABLE riders (
 COMMENT ON TABLE riders IS 'Delivery personnel with verification and tracking';
 COMMENT ON COLUMN riders.cnic IS 'Pakistani Computerized National Identity Card';
 COMMENT ON COLUMN riders.current_location IS 'Real-time GPS coordinates using PostGIS';
+COMMENT ON COLUMN riders.location_accuracy IS 'GPS accuracy in meters reported by the rider app';
 -- COMMENT ON CONSTRAINT fk_riders_assigned_zone is set later, after the
 -- constraint is added via ALTER TABLE (delivery_zones is defined further
 -- down the file).
@@ -1439,13 +1451,22 @@ CREATE TABLE reviews (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- One review per customer per target per order.
+-- One review per customer per target per order. order_id is COALESCEd to a
+-- sentinel UUID so NULL order_ids cannot bypass the unique rule (migration 53;
+-- plain-NULL unique index entries are distinct in Postgres).
 CREATE UNIQUE INDEX reviews_unique_product
-    ON reviews (user_id, order_id, product_id) WHERE target_type = 'product';
+    ON reviews (user_id,
+                (COALESCE(order_id, '00000000-0000-0000-0000-000000000000'::uuid)),
+                product_id)
+    WHERE target_type = 'product';
 CREATE UNIQUE INDEX reviews_unique_rider
-    ON reviews (user_id, order_id) WHERE target_type = 'rider';
+    ON reviews (user_id,
+                (COALESCE(order_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+    WHERE target_type = 'rider';
 CREATE UNIQUE INDEX reviews_unique_service
-    ON reviews (user_id, order_id) WHERE target_type = 'service';
+    ON reviews (user_id,
+                (COALESCE(order_id, '00000000-0000-0000-0000-000000000000'::uuid)))
+    WHERE target_type = 'service';
 CREATE INDEX reviews_product_idx ON reviews (product_id) WHERE target_type = 'product';
 CREATE INDEX reviews_rider_idx ON reviews (rider_id) WHERE target_type = 'rider';
 CREATE INDEX reviews_user_idx ON reviews (user_id);

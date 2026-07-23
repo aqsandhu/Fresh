@@ -19,6 +19,9 @@
     "production": {
       "autoIncrement": true,
       "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://freshbazar-backend.onrender.com/api"
+      },
       "android": {
         "buildType": "app-bundle"
       }

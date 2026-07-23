@@ -18,6 +18,9 @@ coverage/
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.*.example
+!.env.example
 
 # Logs
 logs/
@@ -44,10 +47,14 @@ Thumbs.db
 # Expo / React Native
 .expo/
 *.jks
+*.keystore
+debug.keystore
 *.p8
 *.p12
 *.key
 *.mobileprovision
+google-services.json
+GoogleService-Info.plist
 *.orig.*
 
 # Vite dep-optimizer cache (build artifact — never commit)

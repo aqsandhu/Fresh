@@ -24,7 +24,15 @@ pnpm-debug.log*
 .env
 .env.local
 .env.*.local
+.env.*
 !.env.example
+!.env.*.example
+
+# Mobile signing / push credentials (never bake into images)
+*.keystore
+debug.keystore
+google-services.json
+GoogleService-Info.plist
 
 # Testing
 coverage
