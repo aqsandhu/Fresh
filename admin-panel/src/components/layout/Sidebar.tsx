@@ -1,5 +1,6 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -70,9 +71,13 @@ const navItems: NavItem[] = [
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
   const { logout, user } = useAuthContext();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { data: badgeCounts } = useBadgeCounts();
 
   const handleLogout = () => {
+    // Drop every cached query so the next admin on this machine never sees the
+    // previous session's data while fresh queries are still loading.
+    queryClient.clear();
     logout();
   };
 

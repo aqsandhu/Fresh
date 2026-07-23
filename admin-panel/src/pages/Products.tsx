@@ -28,6 +28,8 @@ import { categoryService } from '@/services/category.service';
 import type { Product, CreateProductData } from '@/types';
 import { formatCurrency, resolveImageUrl } from '@/utils/formatters';
 import { isRequired, isPositiveNumber, isNonNegativeNumber } from '@/utils/validators';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 import toast from 'react-hot-toast';
 
 const getProductImageUrl = (product: Product): string | null => {
@@ -203,6 +205,11 @@ const QualityPriceBlock: React.FC<{
 
 export const Products: React.FC = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  // Action-level gating (backend enforces the same codes — this is UX only).
+  const canCreateProduct = hasPermission(user?.permissions, 'products.create');
+  const canUpdateProduct = hasPermission(user?.permissions, 'products.update');
+  const canDeleteProduct = hasPermission(user?.permissions, 'products.delete');
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   // Pre-fill the category filter from the URL when arriving from
@@ -227,9 +234,11 @@ export const Products: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [page, setPage] = useState(1);
   // Images are tracked as two separate lists: images already stored on the
-  // product (existingImages, resolved URLs in the same order as the backend
-  // array so indexes match deleteProductImage) and newly picked files
-  // (selectedImages) with their local previews (imagePreviews).
+  // product (existingImages, RAW stored URLs in the same order as the backend
+  // array so indexes match deleteProductImage and the values can be echoed
+  // back as `existing_images` on submit — resolved only at render time) and
+  // newly picked files (selectedImages) with their local previews
+  // (imagePreviews).
   const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<string[]>([]);
@@ -291,9 +300,6 @@ export const Products: React.FC = () => {
       toast.success('Product created successfully');
       closeModal();
     },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to create product');
-    },
   });
 
   const updateMutation = useMutation({
@@ -304,9 +310,6 @@ export const Products: React.FC = () => {
       toast.success('Product updated successfully');
       closeModal();
     },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to update product');
-    },
   });
 
   const deleteMutation = useMutation({
@@ -314,9 +317,6 @@ export const Products: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success('Product deleted successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to delete product');
     },
   });
 
@@ -326,9 +326,6 @@ export const Products: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success('Product deactivated (in order history — cannot permanently delete)');
     },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to deactivate product');
-    },
   });
 
   const toggleActiveMutation = useMutation({
@@ -336,9 +333,6 @@ export const Products: React.FC = () => {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success(res.isActive ? 'Product activated' : 'Product deactivated');
-    },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to update product');
     },
   });
 
@@ -351,9 +345,6 @@ export const Products: React.FC = () => {
       setMoveDialogOpen(false);
       setSelectedIds(new Set());
       setMoveTargetCategory('');
-    },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to move products');
     },
   });
 
@@ -434,13 +425,16 @@ export const Products: React.FC = () => {
       // Keep list tags if detail fetch fails
     }
     // Show existing images (from the fresh detail fetch when available) as
-    // previews, kept in backend-array order so removal indexes stay valid.
+    // previews. RAW stored URLs are kept in backend-array order so removal
+    // indexes stay valid and the kept list can be sent back verbatim as
+    // `existing_images` on submit (Contract C1); they are resolved for display.
     const rawImages = (detail.images && detail.images.length > 0 ? detail.images : product.images) || [];
     if (rawImages.length > 0) {
-      setExistingImages(rawImages.map(img => resolveImageUrl(img)));
+      setExistingImages(rawImages);
+    } else if (product.primaryImage) {
+      setExistingImages([product.primaryImage]);
     } else {
-      const imgUrl = getProductImageUrl(product);
-      setExistingImages(imgUrl ? [imgUrl] : []);
+      setExistingImages([]);
     }
     setFormData({
       nameEn: product.nameEn,
@@ -543,8 +537,8 @@ export const Products: React.FC = () => {
       setExistingImages(prev => prev.filter((_, i) => i !== index));
       queryClient.invalidateQueries({ queryKey: ['products'] });
       toast.success('Image removed');
-    } catch (error: any) {
-      toast.error(error?.message || 'Failed to delete image');
+    } catch {
+      // The API interceptor already showed the error toast.
     }
   };
 
@@ -633,6 +627,10 @@ export const Products: React.FC = () => {
       submitData.images = selectedImages;
     }
     if (editingProduct) {
+      // Contract C1: always send the stored image URLs to KEEP so the backend
+      // merges kept + newly uploaded instead of legacy-replacing (which would
+      // wipe existing images whenever no new file was picked).
+      submitData.existingImages = existingImages;
       updateMutation.mutate({ id: editingProduct.id, data: submitData });
     } else {
       createMutation.mutate(submitData);
@@ -681,6 +679,8 @@ export const Products: React.FC = () => {
               variant="outline"
               size="sm"
               leftIcon={<FolderInput className="w-4 h-4" />}
+              disabled={!canUpdateProduct}
+              title={canUpdateProduct ? undefined : 'You do not have permission to update products'}
               onClick={() => {
                 setMoveTargetCategory('');
                 setMoveDialogOpen(true);
@@ -727,7 +727,12 @@ export const Products: React.FC = () => {
             />
           </div>
         </div>
-        <Button onClick={openAddModal} leftIcon={<Plus className="w-5 h-5" />}>
+        <Button
+          onClick={openAddModal}
+          leftIcon={<Plus className="w-5 h-5" />}
+          disabled={!canCreateProduct}
+          title={canCreateProduct ? undefined : 'You do not have permission to create products'}
+        >
           Add Product
         </Button>
       </div>
@@ -748,7 +753,12 @@ export const Products: React.FC = () => {
           <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No products found</h3>
           <p className="text-gray-500 mb-4">Get started by adding your first product</p>
-          <Button onClick={openAddModal} leftIcon={<Plus className="w-5 h-5" />}>
+          <Button
+            onClick={openAddModal}
+            leftIcon={<Plus className="w-5 h-5" />}
+            disabled={!canCreateProduct}
+            title={canCreateProduct ? undefined : 'You do not have permission to create products'}
+          >
             Add Product
           </Button>
         </Card>
@@ -838,23 +848,25 @@ export const Products: React.FC = () => {
                           the row. Cheaper than full delete + re-create. */}
                       <button
                         onClick={() => toggleActiveMutation.mutate(product.id)}
-                        title={product.isActive ? 'Deactivate (hide from store)' : 'Activate'}
-                        className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title={!canUpdateProduct ? 'You do not have permission to update products' : product.isActive ? 'Deactivate (hide from store)' : 'Activate'}
+                        disabled={!canUpdateProduct}
+                        className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500"
                       >
                         {product.isActive ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                       </button>
                       <button
                         onClick={() => openEditModal(product)}
-                        title="Edit"
-                        className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title={canUpdateProduct ? 'Edit' : 'You do not have permission to update products'}
+                        disabled={!canUpdateProduct}
+                        className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500"
                       >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(product)}
-                        title="Delete product"
-                        disabled={deleteMutation.isPending || deactivateMutation.isPending}
-                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        title={canDeleteProduct ? 'Delete product' : 'You do not have permission to delete products'}
+                        disabled={!canDeleteProduct || deleteMutation.isPending || deactivateMutation.isPending}
+                        className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -906,6 +918,12 @@ export const Products: React.FC = () => {
             <Button
               onClick={handleSubmit}
               isLoading={createMutation.isPending || updateMutation.isPending}
+              disabled={editingProduct ? !canUpdateProduct : !canCreateProduct}
+              title={
+                (editingProduct ? canUpdateProduct : canCreateProduct)
+                  ? undefined
+                  : `You do not have permission to ${editingProduct ? 'update' : 'create'} products`
+              }
             >
               {editingProduct ? 'Update' : 'Create'}
             </Button>
@@ -1122,7 +1140,7 @@ export const Products: React.FC = () => {
                   {existingImages.map((url, index) => (
                     <div key={`existing-${index}`} className="relative group">
                       <img
-                        src={url}
+                        src={resolveImageUrl(url)}
                         alt={`Image ${index + 1}`}
                         className="w-full h-24 object-cover rounded-lg"
                       />

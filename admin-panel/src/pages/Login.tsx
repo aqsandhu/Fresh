@@ -107,15 +107,9 @@ export const Login: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center">
-                <input type="checkbox" className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                <span className="ml-2 text-gray-600">Remember me</span>
-              </label>
-              <a href="#" className="text-primary-600 hover:text-primary-700 font-medium">
-                Forgot password?
-              </a>
-            </div>
+            {/* "Remember me" / "Forgot password?" were removed — neither was
+                wired to anything (href="#", uncontrolled checkbox). Re-add when
+                a real password-reset flow exists. */}
 
             <Button
               type="submit"

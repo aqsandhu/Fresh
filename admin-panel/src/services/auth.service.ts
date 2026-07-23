@@ -63,14 +63,17 @@ export const authService = {
   },
 
   logout: (): void => {
-    if (AUTH_COOKIES_ENABLED) {
-      // Revoke the refresh token + clear the HttpOnly cookies server-side.
-      // Fire-and-forget: local cleanup must not wait on the network.
-      api.post('/auth/logout').catch(() => {});
-    }
+    // Revoke the refresh token server-side (and clear the HttpOnly cookies in
+    // cookie mode). Bearer mode also calls this so the server invalidates the
+    // refresh token instead of leaving it live. Fire-and-forget: local
+    // cleanup must not wait on the network.
+    api.post('/auth/logout').catch(() => {});
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_refresh_token');
     localStorage.removeItem('admin_user');
+    // Persisted admin notifications (NotificationContext STORAGE_KEY) must not
+    // leak into the next session on a shared machine.
+    localStorage.removeItem('freshbazar-admin-notifications');
     clearCitySelection();
   },
 

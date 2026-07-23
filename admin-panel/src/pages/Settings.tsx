@@ -203,9 +203,6 @@ export const Settings: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       toast.success('Delivery settings updated successfully');
     },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to update delivery settings');
-    },
   });
 
   const createTimeSlotMutation = useMutation({
@@ -214,9 +211,6 @@ export const Settings: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
       toast.success('Time slot created successfully');
       closeTimeSlotModal();
-    },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to create time slot');
     },
   });
 
@@ -228,9 +222,6 @@ export const Settings: React.FC = () => {
       toast.success('Time slot updated successfully');
       closeTimeSlotModal();
     },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to update time slot');
-    },
   });
 
   const deleteTimeSlotMutation = useMutation({
@@ -238,9 +229,6 @@ export const Settings: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
       toast.success('Time slot deleted successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to delete time slot');
     },
   });
 
@@ -250,9 +238,6 @@ export const Settings: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['businessHours'] });
       toast.success('Business hours updated successfully');
     },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Failed to update business hours');
-    },
   });
 
   const updateBannerMutation = useMutation({
@@ -260,9 +245,6 @@ export const Settings: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bannerSettings', selectedCityId] });
       toast.success('Banner settings updated successfully');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update banner settings');
     },
   });
 
@@ -556,13 +538,17 @@ export const Settings: React.FC = () => {
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={() => openEditTimeSlotModal(slot)}
-                    className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                    disabled={!canUpdate('timeslots')}
+                    title={canUpdate('timeslots') ? 'Edit time slot' : 'You do not have permission to manage time slots'}
+                    className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500"
                   >
                     <Edit className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDeleteTimeSlot(slot.id)}
-                    className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    disabled={!canUpdate('timeslots')}
+                    title={canUpdate('timeslots') ? 'Delete time slot' : 'You do not have permission to manage time slots'}
+                    className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-500"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>

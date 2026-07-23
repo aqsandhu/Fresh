@@ -38,9 +38,6 @@ export const HeroImageSettingsPanel: React.FC<HeroImageSettingsPanelProps> = ({
       setPreview(null);
       toast.success(message);
     },
-    onError: (err: Error) => {
-      toast.error(err.message || 'Failed to upload hero image');
-    },
   });
 
   const removeMutation = useMutation({
@@ -49,9 +46,6 @@ export const HeroImageSettingsPanel: React.FC<HeroImageSettingsPanelProps> = ({
       queryClient.invalidateQueries({ queryKey: ['hero-image', selectedCityId] });
       setPreview(null);
       toast.success(message);
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || 'Failed to remove hero image');
     },
   });
 
@@ -64,6 +58,14 @@ export const HeroImageSettingsPanel: React.FC<HeroImageSettingsPanelProps> = ({
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       toast.error('Please choose a PNG, WebP, or JPG image');
+      e.target.value = '';
+      return;
+    }
+    // Enforce the advertised 5MB limit before uploading (matches the label
+    // next to the picker and the product-image rule).
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error(`"${file.name}" is too large — the hero image must be 5MB or smaller`);
+      e.target.value = '';
       return;
     }
     setPreview(URL.createObjectURL(file));

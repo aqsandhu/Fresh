@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 
 export class QueryClient {
   invalidateQueries = jest.fn(() => Promise.resolve());
+  clear = jest.fn();
 }
 
 const sharedQueryClient = new QueryClient();

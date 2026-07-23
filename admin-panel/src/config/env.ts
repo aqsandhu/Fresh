@@ -2,8 +2,19 @@
  * Runtime env for admin panel — works in Vite (via define) and Jest (via process.env).
  * Avoids import.meta in source so Jest can parse modules without Vite transforms.
  */
-export const API_BASE_URL =
-  process.env.VITE_API_URL || 'http://localhost:3000/api';
+const RAW_API_URL = process.env.VITE_API_URL;
+
+// Fail fast: a production bundle must never silently fall back to localhost —
+// that misconfiguration used to ship and only surfaced as broken API calls.
+if (!RAW_API_URL && process.env.NODE_ENV === 'production') {
+  throw new Error(
+    '[Fresh Bazar Admin] VITE_API_URL is not set. Set it to the deployed API ' +
+      'base URL (e.g. https://api.example.com/api) and rebuild — production ' +
+      'builds refuse to fall back to localhost.'
+  );
+}
+
+export const API_BASE_URL = RAW_API_URL || 'http://localhost:3000/api';
 
 export const IS_DEV = process.env.NODE_ENV !== 'production';
 

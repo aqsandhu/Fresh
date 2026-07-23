@@ -14,6 +14,17 @@ interface WhatsAppOrderSettingsPanelProps {
   canEdit: boolean;
 }
 
+/** Only real WhatsApp deep links — anything else breaks the app's Order button. */
+const isValidWhatsAppUrl = (url: string): boolean =>
+  url.startsWith('https://wa.me/') || url.startsWith('https://api.whatsapp.com/');
+
+const WHATSAPP_URL_ERROR =
+  'Only https://wa.me/ or https://api.whatsapp.com/ links are allowed';
+
+/** Blank is allowed (per-city blank = use the default link). */
+const urlFieldError = (url: string): string | null =>
+  url.trim() === '' || isValidWhatsAppUrl(url.trim()) ? null : WHATSAPP_URL_ERROR;
+
 export const WhatsAppOrderSettingsPanel: React.FC<WhatsAppOrderSettingsPanelProps> = ({
   canEdit,
 }) => {
@@ -39,9 +50,6 @@ export const WhatsAppOrderSettingsPanel: React.FC<WhatsAppOrderSettingsPanelProp
       setForm(saved);
       queryClient.invalidateQueries({ queryKey: ['whatsappOrderSettingsAll'] });
       toast.success('WhatsApp settings saved for all cities');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to save WhatsApp settings');
     },
   });
 
@@ -82,6 +90,17 @@ export const WhatsAppOrderSettingsPanel: React.FC<WhatsAppOrderSettingsPanelProp
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          // Block invalid links before they reach the server — a bad URL
+          // silently breaks the customer app's WhatsApp order button.
+          if (urlFieldError(form.globalWhatsappOrderUrl)) {
+            toast.error(`Default link: ${WHATSAPP_URL_ERROR}`);
+            return;
+          }
+          const badCity = form.cities.find((c) => urlFieldError(c.whatsappOrderUrl));
+          if (badCity) {
+            toast.error(`${badCity.cityName}: ${WHATSAPP_URL_ERROR}`);
+            return;
+          }
           saveMutation.mutate();
         }}
         className="space-y-6"
@@ -111,6 +130,7 @@ export const WhatsAppOrderSettingsPanel: React.FC<WhatsAppOrderSettingsPanelProp
             placeholder="https://wa.me/923001234567 — applies when a city has no own link"
             leftIcon={<MessageCircle className="w-4 h-4 text-gray-400" />}
             disabled={!canEdit}
+            error={urlFieldError(form.globalWhatsappOrderUrl) ?? undefined}
           />
           <p className="text-xs text-gray-500 mt-2">
             Stored once in Supabase <code className="text-gray-600">site_settings</code> (global row).
@@ -150,12 +170,17 @@ export const WhatsAppOrderSettingsPanel: React.FC<WhatsAppOrderSettingsPanelProp
                     <td className="px-4 py-3 min-w-[200px]">
                       <input
                         type="text"
-                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100"
+                        className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-gray-100 ${
+                          urlFieldError(city.whatsappOrderUrl) ? 'border-red-400' : 'border-gray-300'
+                        }`}
                         placeholder="Leave empty to use default"
                         value={city.whatsappOrderUrl}
                         onChange={(e) => updateCityUrl(city.cityId, e.target.value)}
                         disabled={!canEdit}
                       />
+                      {urlFieldError(city.whatsappOrderUrl) && (
+                        <p className="mt-1 text-xs text-red-600">{WHATSAPP_URL_ERROR}</p>
+                      )}
                     </td>
                   </tr>
                 ))

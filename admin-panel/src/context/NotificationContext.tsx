@@ -108,6 +108,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [flashingOrderIds, setFlashingOrderIds] = useState<Set<string>>(new Set());
   const [newOrderCount, setNewOrderCount] = useState(0);
   const flashTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Tracks an authenticated→logged-out transition (see the effect below).
+  const wasAuthenticated = useRef(false);
 
   const flashOrder = useCallback((orderId?: string, durationMs = 5000) => {
     if (!orderId) return;
@@ -165,8 +167,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (!isAuthenticated) {
       disconnectSocket();
       setIsSocketConnected(false);
+      // Logout hygiene: drop the in-memory list and the persisted copy so the
+      // next login on this machine doesn't see the previous admin's alerts.
+      // Only on an authenticated→logged-out TRANSITION — isAuthenticated is
+      // also false on initial mount while the session is being restored, and
+      // wiping then would break persistence across reloads.
+      if (wasAuthenticated.current) {
+        wasAuthenticated.current = false;
+        setNotifications([]);
+        setNewOrderCount(0);
+        localStorage.removeItem(STORAGE_KEY);
+      }
       return;
     }
+    wasAuthenticated.current = true;
 
     let cancelled = false;
     let connectionInterval: ReturnType<typeof setInterval> | undefined;
