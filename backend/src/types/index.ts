@@ -9,8 +9,13 @@
 // User Types
 // ---------------------------------------------------------------------------
 
-export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider' | 'moderator';
-export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending';
+// Aligned with database/schema.sql: CREATE TYPE user_role AS ENUM
+// ('customer', 'rider', 'admin', 'super_admin'). ('moderator' never existed in
+// the DB enum and had no runtime consumers.)
+export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider';
+// Aligned with user_status AS ENUM ('active', 'inactive', 'suspended',
+// 'deleted') — the DB has 'deleted', not 'pending'.
+export type UserStatus = 'active' | 'inactive' | 'suspended' | 'deleted';
 
 export interface User {
   id: string;
@@ -59,7 +64,9 @@ export interface Rider {
 // Product Types
 // ---------------------------------------------------------------------------
 
-export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'pack';
+// Aligned with unit_type AS ENUM ('kg', 'gram', 'piece', 'dozen', 'liter',
+// 'ml', 'pack').
+export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'ml' | 'pack';
 
 export interface Product {
   id: string;
@@ -103,9 +110,17 @@ export type OrderStatus =
   | 'cancelled'
   | 'refunded';
 
-export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
-export type PaymentMethod = 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'online';
-export type OrderSource = 'website' | 'customer_app' | 'admin_panel' | 'phone';
+// Aligned with payment_status AS ENUM ('pending', 'completed', 'failed',
+// 'refunded', 'partially_refunded').
+export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded';
+// Aligned with payment_method AS ENUM ('cash_on_delivery', 'card',
+// 'easypaisa', 'jazzcash', 'bank_transfer') — the old 'cod'/'online' literals
+// never existed in the DB enum and had no runtime consumers.
+export type PaymentMethod = 'cash_on_delivery' | 'card' | 'easypaisa' | 'jazzcash' | 'bank_transfer';
+// Aligned with order_source AS ENUM ('app', 'website', 'whatsapp', 'manual',
+// 'phone') — the old 'customer_app'/'admin_panel' literals never existed in
+// the DB enum and had no runtime consumers.
+export type OrderSource = 'app' | 'website' | 'whatsapp' | 'manual' | 'phone';
 
 export interface OrderItem {
   id: string;
@@ -192,7 +207,13 @@ export interface Address {
 // Time Slot Types
 // ---------------------------------------------------------------------------
 
-export type SlotStatus = 'available' | 'booked' | 'unavailable';
+// Aligned with slot_status AS ENUM ('available', 'booked', 'blocked') — the
+// old 'unavailable' literal is NOT in the DB enum.
+// TODO(backend-core): controllers/admin/settings.controller.ts
+// (createTimeSlot/updateTimeSlot) still writes status = 'unavailable' into
+// time_slots.status at runtime, which raises 22P02 (invalid enum value).
+// It must write 'blocked' instead. Owned by fix/backend-core — not fixed here.
+export type SlotStatus = 'available' | 'booked' | 'blocked';
 
 export interface TimeSlot {
   id: string;
@@ -249,7 +270,9 @@ export interface AttaRequest {
 // ---------------------------------------------------------------------------
 
 export type TaskType = 'delivery' | 'pickup' | 'atta_pickup' | 'atta_delivery';
-export type TaskStatus = 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+// Aligned with task_status AS ENUM ('assigned', 'in_progress', 'completed',
+// 'cancelled', 'failed').
+export type TaskStatus = 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'failed';
 
 export interface RiderTask {
   id: string;

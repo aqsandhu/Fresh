@@ -63,6 +63,45 @@ function listMigrationFiles(): string[] {
     .sort(); // filename order: 01-..., 02-..., 08b sorts after 08
 }
 
+/**
+ * Strip top-level `BEGIN;` / `COMMIT;` statements from a migration file.
+ *
+ * Several legacy files (05, 06, 20-29, 34-36, …) carry their own BEGIN/COMMIT
+ * for manual psql runs. Inside the runner's per-file transaction a nested
+ * `BEGIN;` only warns, but the file's `COMMIT;` COMMITS THE RUNNER'S
+ * TRANSACTION EARLY — the tracking-row INSERT then lands in a fresh implicit
+ * transaction, so a crash between the two leaves the migration applied but
+ * untracked (and it re-runs on the next deploy). Removing the top-level
+ * wrappers makes per-file atomicity + the tracking row truly transactional.
+ *
+ * Only standalone BEGIN;/COMMIT; lines OUTSIDE dollar-quoted bodies
+ * (DO $$ ... $$) are removed — plpgsql BEGIN blocks inside functions are
+ * untouched. Files without wrappers are returned unchanged.
+ */
+function stripTopLevelTransactionStatements(sql: string): string {
+  const lines = sql.split('\n');
+  let inDollarQuote = false;
+  const kept: string[] = [];
+
+  for (const line of lines) {
+    // Count unquoted '$$' occurrences on the line to track dollar-quote state
+    // (migration files use plain $$ quoting; tagged $func$ is treated the same
+    // by matching /^\s*\$[A-Za-z_]*\$\s*$/ would be overkill — count all
+    // '$$'-style delimiters instead).
+    const delimiters = line.match(/\$[A-Za-z_0-9]*\$/g);
+    if (delimiters && delimiters.length % 2 === 1) {
+      inDollarQuote = !inDollarQuote;
+    }
+
+    if (!inDollarQuote && /^\s*(BEGIN|COMMIT)\s*;\s*$/i.test(line)) {
+      continue; // drop top-level wrapper — runner owns the transaction
+    }
+    kept.push(line);
+  }
+
+  return kept.join('\n');
+}
+
 async function main(): Promise<void> {
   const baseline = process.argv.includes('--baseline');
   const connectionString = getConnectionString();
@@ -101,7 +140,12 @@ async function main(): Promise<void> {
     }
 
     for (const file of pending) {
-      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+      const rawSql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+      // Remove the file's own top-level BEGIN;/COMMIT; wrappers (legacy psql
+      // style) so the runner's transaction below is the ONLY one — otherwise
+      // the file's COMMIT; would commit early and the tracking-row insert
+      // would not be atomic with the migration.
+      const sql = stripTopLevelTransactionStatements(rawSql);
       const client = await pool.connect();
       try {
         await client.query('BEGIN');

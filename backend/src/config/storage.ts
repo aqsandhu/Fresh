@@ -256,11 +256,11 @@ async function ensureStorageBucketViaDatabase(): Promise<void> {
   try {
     await query(
       `INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-       VALUES ($1, $1, true, 5242880, NULL)
+       VALUES ($1, $1, true, 5242880, ARRAY['image/jpeg','image/png','image/webp'])
        ON CONFLICT (id) DO UPDATE SET
          public = true,
          file_size_limit = GREATEST(storage.buckets.file_size_limit, 5242880),
-         allowed_mime_types = NULL`,
+         allowed_mime_types = ARRAY['image/jpeg','image/png','image/webp']`,
       [STORAGE_BUCKET]
     );
     logger.info(`Storage bucket "${STORAGE_BUCKET}" ensured via database`);
@@ -270,7 +270,14 @@ async function ensureStorageBucketViaDatabase(): Promise<void> {
 }
 
 /**
- * Public read + authenticated insert policies for the uploads bucket.
+ * Storage RLS policies for the uploads bucket:
+ *   - SELECT is public (images are served via public URLs).
+ *   - INSERT/UPDATE/DELETE are granted to service_role ONLY. Writes always go
+ *     through this backend with the service-role key; `authenticated` must NOT
+ *     be able to write (that would let any logged-in Supabase client overwrite
+ *     or delete anyone's files).
+ * Idempotent: each policy is dropped (IF EXISTS) and recreated, so re-runs
+ * also heal policies previously created with the wrong roles.
  */
 async function ensureStoragePoliciesViaDatabase(): Promise<void> {
   const bucket = STORAGE_BUCKET;
@@ -279,6 +286,7 @@ async function ensureStoragePoliciesViaDatabase(): Promise<void> {
     {
       name: 'freshbazar_uploads_public_read',
       sql: `
+        DROP POLICY IF EXISTS freshbazar_uploads_public_read ON storage.objects;
         CREATE POLICY freshbazar_uploads_public_read ON storage.objects
           FOR SELECT TO public
           USING (bucket_id = '${bucket}');
@@ -287,24 +295,27 @@ async function ensureStoragePoliciesViaDatabase(): Promise<void> {
     {
       name: 'freshbazar_uploads_service_insert',
       sql: `
+        DROP POLICY IF EXISTS freshbazar_uploads_service_insert ON storage.objects;
         CREATE POLICY freshbazar_uploads_service_insert ON storage.objects
-          FOR INSERT TO authenticated, service_role
+          FOR INSERT TO service_role
           WITH CHECK (bucket_id = '${bucket}');
       `,
     },
     {
       name: 'freshbazar_uploads_service_update',
       sql: `
+        DROP POLICY IF EXISTS freshbazar_uploads_service_update ON storage.objects;
         CREATE POLICY freshbazar_uploads_service_update ON storage.objects
-          FOR UPDATE TO authenticated, service_role
+          FOR UPDATE TO service_role
           USING (bucket_id = '${bucket}');
       `,
     },
     {
       name: 'freshbazar_uploads_service_delete',
       sql: `
+        DROP POLICY IF EXISTS freshbazar_uploads_service_delete ON storage.objects;
         CREATE POLICY freshbazar_uploads_service_delete ON storage.objects
-          FOR DELETE TO authenticated, service_role
+          FOR DELETE TO service_role
           USING (bucket_id = '${bucket}');
       `,
     },
@@ -312,17 +323,10 @@ async function ensureStoragePoliciesViaDatabase(): Promise<void> {
 
   for (const policy of policies) {
     try {
-      const exists = await query(
-        `SELECT 1 FROM pg_policies
-         WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = $1`,
-        [policy.name]
-      );
-      if (exists.rowCount === 0) {
-        await query(policy.sql);
-        logger.info(`Created storage policy ${policy.name}`);
-      }
+      await query(policy.sql);
+      logger.info(`Ensured storage policy ${policy.name}`);
     } catch (err) {
-      logger.warn(`Could not create storage policy ${policy.name} (non-fatal)`, { err });
+      logger.warn(`Could not ensure storage policy ${policy.name} (non-fatal)`, { err });
     }
   }
 }

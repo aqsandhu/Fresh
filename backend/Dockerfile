@@ -33,6 +33,10 @@ RUN pnpm --filter @freshbazar/backend build
 # ── Stage 2: Production ───────────────────────────────────────────────────
 FROM node:20-alpine AS production
 
+# Run in production mode by default: express error handling, logging and the
+# DB TLS default (dbSsl.ts) all key off NODE_ENV.
+ENV NODE_ENV=production
+
 WORKDIR /app
 
 # Install PostgreSQL client for health checks and migrations

@@ -4,6 +4,13 @@
 // (the runner previously hardcoded rejectUnauthorized:false permanently).
 // ============================================================================
 
+import logger from '../utils/logger';
+import { captureMessage } from './sentry';
+
+// Guard so the production fallback warning/alert fires once per process, not
+// per pool client.
+let warnedProductionFallback = false;
+
 /**
  * TLS options for a Postgres connection.
  *
@@ -22,7 +29,13 @@
  *      connection, port 5432). Supabase: Dashboard → Settings → Database →
  *      "SSL Certificate".
  *   4. DB_SSL_REJECT_UNAUTHORIZED=true       → verify against system CA store.
- *   5. NODE_ENV=production                   → verified TLS by default.
+ *   5. NODE_ENV=production (no DB_SSL_CA)    → encrypted, UNVERIFIED
+ *      ({ rejectUnauthorized: false }) with a loud warning + Sentry alert.
+ *      This matches the documented Supabase reality: the pooler/direct certs
+ *      are self-signed and NOT in the system CA store, so defaulting to
+ *      verified TLS made the very first production deploy fail to boot
+ *      (SELF_SIGNED_CERT_IN_CHAIN). Set DB_SSL_CA to upgrade to pinned,
+ *      verified TLS.
  *   6. default (local/test)                  → encrypted, unverified so a
  *      self-signed development database connects out of the box.
  *
@@ -52,7 +65,23 @@ export function buildSslConfig(
   }
 
   if (process.env.NODE_ENV === 'production') {
-    return { rejectUnauthorized: true };
+    if (!warnedProductionFallback) {
+      warnedProductionFallback = true;
+      logger.warn(
+        'DB TLS: NODE_ENV=production but DB_SSL_CA is not set — falling back to ' +
+        'ENCRYPTED BUT UNVERIFIED TLS (rejectUnauthorized:false). This matches ' +
+        'Supabase\'s self-signed pooler/direct certificates, which are not in the ' +
+        'system CA store (verified TLS would fail with SELF_SIGNED_CERT_IN_CHAIN ' +
+        'and the service would not boot). To close the MITM window, set DB_SSL_CA ' +
+        'to the provider CA cert (Supabase: Dashboard → Settings → Database → SSL ' +
+        'Certificate) — verification is then pinned and enforced.'
+      );
+      captureMessage(
+        'DB TLS running encrypted-but-unverified in production (DB_SSL_CA not set)',
+        'warning'
+      );
+    }
+    return { rejectUnauthorized: false };
   }
   return { rejectUnauthorized: false };
 }

@@ -2,8 +2,14 @@
 -- DESTRUCTIVE: drop everything in the public schema and recreate it empty.
 -- ----------------------------------------------------------------------------
 -- Run this in the Supabase SQL Editor when you want a clean slate.
--- After this script runs successfully, run database/schema.sql to recreate
--- all FreshBazar tables, types, indexes, functions, triggers, and seed data.
+-- After this script runs successfully:
+--   1. run database/schema.sql to recreate the core FreshBazar tables, types,
+--      indexes, functions, triggers, and seed data, THEN
+--   2. run `cd backend && npm run migrate:sql` — REQUIRED. schema.sql is NOT
+--      fully migrated (~29 tables from later migrations exist only in
+--      database/migrations/*.sql); without step 2 the API fails at runtime
+--      with 42P01 (relation does not exist). Do NOT --baseline a fresh
+--      install. See database/README.md.
 --
 -- This drops EVERY table, view, type, function, and sequence in `public`.
 -- Supabase system schemas (auth, storage, realtime, extensions, etc.) are
