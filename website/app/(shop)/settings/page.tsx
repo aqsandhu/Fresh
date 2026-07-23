@@ -1,168 +1,56 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { 
-  Settings, 
-  Bell, 
-  Shield, 
-  Globe, 
-  Moon,
+import Link from 'next/link'
+import {
+  Bell,
+  Shield,
+  Globe,
   Smartphone,
   ChevronRight,
-  Loader2,
-  Check
+  Moon,
+  Lock,
 } from 'lucide-react'
-import toast from 'react-hot-toast'
 import { useAuthStore } from '@/store/cartStore'
 
-interface SettingSection {
-  id: string
-  title: string
-  icon: typeof Settings
-  items: SettingItem[]
-}
+// Non-functional settings (previously wrote only to localStorage without any
+// effect) are shown disabled with a "Coming soon" badge instead of pretending
+// to work. Functional items are real links to real pages.
 
-interface SettingItem {
-  id: string
+function ComingSoonRow({
+  label,
+  description,
+}: {
   label: string
   description?: string
-  type: 'toggle' | 'select' | 'link'
-  value?: boolean | string
-  options?: { value: string; label: string }[]
+}) {
+  return (
+    <div className="p-4 flex items-center justify-between opacity-70">
+      <div className="flex-1">
+        <p className="font-medium text-gray-900">{label}</p>
+        {description && <p className="text-sm text-gray-500">{description}</p>}
+      </div>
+      <span className="ml-3 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">
+        Coming soon
+      </span>
+    </div>
+  )
 }
 
-const SETTINGS_STORAGE_KEY = 'freshbazar-settings'
-
-const DEFAULT_SETTINGS = {
-  notifications: {
-    orderUpdates: true,
-    promotions: true,
-    deliveryAlerts: true,
-    emailNotifications: false,
-  },
-  preferences: {
-    language: 'en',
-    darkMode: false,
-  },
-  privacy: {
-    shareLocation: true,
-    analytics: true,
-  },
+function LinkRow({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center justify-between p-4 hover:bg-gray-50"
+    >
+      <span className="font-medium text-gray-900">{label}</span>
+      <ChevronRight className="w-5 h-5 text-gray-400" />
+    </Link>
+  )
 }
-
-type Settings = typeof DEFAULT_SETTINGS
 
 export default function SettingsPage() {
   const { user } = useAuthStore()
-  const [saving, setSaving] = useState<string | null>(null)
-
-  // Settings state
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS)
-
-  // Load persisted preferences on mount (localStorage is browser-only).
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY)
-      if (!saved) return
-      const parsed = JSON.parse(saved)
-      setSettings((prev) => ({
-        notifications: { ...prev.notifications, ...parsed?.notifications },
-        preferences: { ...prev.preferences, ...parsed?.preferences },
-        privacy: { ...prev.privacy, ...parsed?.privacy },
-      }))
-    } catch {
-      // Corrupted payload — keep defaults.
-    }
-  }, [])
-
-  const persistSettings = (next: Settings) => {
-    setSettings(next)
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(next))
-  }
-
-  const handleToggle = (section: string, key: string) => {
-    const settingId = `${section}.${key}`
-    setSaving(settingId)
-
-    try {
-      const next = {
-        ...settings,
-        [section]: {
-          ...(settings as any)[section],
-          [key]: !(settings as any)[section][key],
-        },
-      }
-      persistSettings(next)
-      toast.success('Setting updated')
-    } catch (error) {
-      toast.error('Failed to update setting')
-    } finally {
-      setSaving(null)
-    }
-  }
-
-  const handleSelect = (section: string, key: string, value: string) => {
-    const settingId = `${section}.${key}`
-    setSaving(settingId)
-
-    try {
-      const next = {
-        ...settings,
-        [section]: {
-          ...settings[section as keyof Settings],
-          [key]: value,
-        },
-      }
-      persistSettings(next)
-      toast.success('Setting updated')
-    } catch (error) {
-      toast.error('Failed to update setting')
-    } finally {
-      setSaving(null)
-    }
-  }
-
-  const settingSections: SettingSection[] = [
-    {
-      id: 'notifications',
-      title: 'Notifications',
-      icon: Bell,
-      items: [
-        { id: 'orderUpdates', label: 'Order Updates', description: 'Get notified about your order status', type: 'toggle', value: settings.notifications.orderUpdates },
-        { id: 'promotions', label: 'Promotions & Offers', description: 'Receive special deals and discounts', type: 'toggle', value: settings.notifications.promotions },
-        { id: 'deliveryAlerts', label: 'Delivery Alerts', description: 'Notifications when delivery is nearby', type: 'toggle', value: settings.notifications.deliveryAlerts },
-        { id: 'emailNotifications', label: 'Email Notifications', description: 'Receive updates via email', type: 'toggle', value: settings.notifications.emailNotifications },
-      ],
-    },
-    {
-      id: 'preferences',
-      title: 'Preferences',
-      icon: Globe,
-      items: [
-        { 
-          id: 'language', 
-          label: 'Language', 
-          type: 'select', 
-          value: settings.preferences.language,
-          options: [
-            { value: 'en', label: 'English' },
-            { value: 'ur', label: 'اردو (Urdu)' },
-          ],
-        },
-        { id: 'darkMode', label: 'Dark Mode', description: 'Use dark theme', type: 'toggle', value: settings.preferences.darkMode },
-      ],
-    },
-    {
-      id: 'privacy',
-      title: 'Privacy & Security',
-      icon: Shield,
-      items: [
-        { id: 'shareLocation', label: 'Share Location', description: 'Allow access to your location for delivery', type: 'toggle', value: settings.privacy.shareLocation },
-        { id: 'analytics', label: 'Analytics', description: 'Help us improve by sharing usage data', type: 'toggle', value: settings.privacy.analytics },
-      ],
-    },
-  ]
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -190,71 +78,96 @@ export default function SettingsPage() {
           </div>
         </motion.div>
 
-        {/* Settings Sections */}
         <div className="space-y-8">
-          {settingSections.map((section, index) => (
-            <motion.div
-              key={section.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-              className="bg-white rounded-xl shadow-sm overflow-hidden"
-            >
-              <div className="p-4 bg-gray-50 border-b border-gray-100">
+          {/* Privacy & Security — includes the PIN Security entry point */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl shadow-sm overflow-hidden"
+          >
+            <div className="p-4 bg-gray-50 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <Shield className="w-5 h-5 text-primary-600" />
+                <h2 className="font-semibold text-gray-900">Privacy & Security</h2>
+              </div>
+            </div>
+            <div className="divide-y divide-gray-100">
+              <Link
+                href="/settings/pin"
+                className="flex items-center justify-between p-4 hover:bg-gray-50"
+              >
                 <div className="flex items-center gap-3">
-                  <section.icon className="w-5 h-5 text-primary-600" />
-                  <h2 className="font-semibold text-gray-900">{section.title}</h2>
-                </div>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {section.items.map((item) => (
-                  <div key={item.id} className="p-4 flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{item.label}</p>
-                      {item.description && (
-                        <p className="text-sm text-gray-500">{item.description}</p>
-                      )}
-                    </div>
-                    
-                    {item.type === 'toggle' && (
-                      <button
-                        onClick={() => handleToggle(section.id, item.id)}
-                        disabled={saving === `${section.id}.${item.id}`}
-                        className={`relative w-12 h-6 rounded-full transition-colors ${
-                          item.value ? 'bg-primary-600' : 'bg-gray-300'
-                        }`}
-                      >
-                        {saving === `${section.id}.${item.id}` ? (
-                          <Loader2 className="w-4 h-4 text-white animate-spin absolute top-1 left-1" />
-                        ) : (
-                          <span
-                            className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                              item.value ? 'left-7' : 'left-1'
-                            }`}
-                          />
-                        )}
-                      </button>
-                    )}
-                    
-                    {item.type === 'select' && item.options && (
-                      <select
-                        value={item.value as string}
-                        onChange={(e) => handleSelect(section.id, item.id, e.target.value)}
-                        disabled={saving === `${section.id}.${item.id}`}
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      >
-                        {item.options.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                  <div className="w-9 h-9 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center">
+                    <Lock className="w-4 h-4" />
                   </div>
-                ))}
+                  <div>
+                    <p className="font-medium text-gray-900">PIN Security</p>
+                    <p className="text-sm text-gray-500">Set or change your 4-digit login PIN</p>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-gray-400" />
+              </Link>
+              <ComingSoonRow
+                label="Share Location"
+                description="Allow access to your location for delivery"
+              />
+              <ComingSoonRow
+                label="Analytics"
+                description="Help us improve by sharing usage data"
+              />
+            </div>
+          </motion.div>
+
+          {/* Notifications (coming soon) */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-xl shadow-sm overflow-hidden"
+          >
+            <div className="p-4 bg-gray-50 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <Bell className="w-5 h-5 text-primary-600" />
+                <h2 className="font-semibold text-gray-900">Notifications</h2>
               </div>
-            </motion.div>
-          ))}
+            </div>
+            <div className="divide-y divide-gray-100">
+              <ComingSoonRow label="Order Updates" description="Get notified about your order status" />
+              <ComingSoonRow label="Promotions & Offers" description="Receive special deals and discounts" />
+              <ComingSoonRow label="Delivery Alerts" description="Notifications when delivery is nearby" />
+              <ComingSoonRow label="Email Notifications" description="Receive updates via email" />
+            </div>
+          </motion.div>
+
+          {/* Preferences (coming soon) */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-xl shadow-sm overflow-hidden"
+          >
+            <div className="p-4 bg-gray-50 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <Globe className="w-5 h-5 text-primary-600" />
+                <h2 className="font-semibold text-gray-900">Preferences</h2>
+              </div>
+            </div>
+            <div className="divide-y divide-gray-100">
+              <ComingSoonRow label="Language" description="English / اردو" />
+              <div className="p-4 flex items-center justify-between opacity-70">
+                <div className="flex items-center gap-3 flex-1">
+                  <Moon className="w-5 h-5 text-gray-400" />
+                  <div>
+                    <p className="font-medium text-gray-900">Dark Mode</p>
+                    <p className="text-sm text-gray-500">Use dark theme</p>
+                  </div>
+                </div>
+                <span className="ml-3 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">
+                  Coming soon
+                </span>
+              </div>
+            </div>
+          </motion.div>
         </div>
 
         {/* App Info */}
@@ -272,14 +185,8 @@ export default function SettingsPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <a href="#" className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-              <span className="text-gray-600">Terms of Service</span>
-              <ChevronRight className="w-5 h-5 text-gray-400" />
-            </a>
-            <a href="#" className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-              <span className="text-gray-600">Privacy Policy</span>
-              <ChevronRight className="w-5 h-5 text-gray-400" />
-            </a>
+            <LinkRow href="/terms" label="Terms of Service" />
+            <LinkRow href="/privacy" label="Privacy Policy" />
           </div>
         </motion.div>
       </div>

@@ -121,7 +121,13 @@ export default function NotificationBell() {
           </div>
         ) : (
           notifications.map((n) => {
-            const href = n.actionUrl || (n.orderId ? `/track/${n.orderId}` : '/orders')
+            // Only trust actionUrl when it's a same-site path (blocks
+            // javascript:/external URLs injected via notification payloads).
+            const safeActionUrl =
+              n.actionUrl && n.actionUrl.startsWith('/') && !n.actionUrl.startsWith('//')
+                ? n.actionUrl
+                : null
+            const href = safeActionUrl || (n.orderId ? `/track/${n.orderId}` : '/orders')
             return (
               <Link
                 key={n.id}

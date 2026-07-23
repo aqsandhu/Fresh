@@ -471,7 +471,7 @@ export default function Header() {
                               >
                                 <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                                   <Image
-                                    src={product.image || '/placeholder-product.jpg'}
+                                    src={product.image || '/placeholder-product.svg'}
                                     alt={product.name}
                                     fill
                                     className="object-cover"

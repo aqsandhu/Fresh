@@ -42,7 +42,7 @@ const RiderTrackingMap = dynamic(() => import('@/components/ui/RiderTrackingMap'
 })
 
 function resolveImg(path: string | null | undefined): string {
-  return resolveImageUrl(path) || '/placeholder-product.jpg'
+  return resolveImageUrl(path) || '/placeholder-product.svg'
 }
 
 function mapStatus(s: string): OrderDisplayStatus {
@@ -351,7 +351,7 @@ export default function TrackOrderPage() {
                   <div key={index} className="flex items-center gap-4">
                     <div className="relative w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                       <Image
-                        src={item.product?.image || item.product?.image_url || '/placeholder-product.png'}
+                        src={item.product?.image || item.product?.image_url || '/placeholder-product.svg'}
                         alt={item.product.name}
                         fill
                         sizes="80px"

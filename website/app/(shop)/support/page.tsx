@@ -243,10 +243,21 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
   const [images, setImages] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
 
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024 // 5 MB per attachment
+
   const addImages = (files: FileList | null) => {
     if (!files) return
     const picked = Array.from(files).filter((f) => f.type.startsWith('image/'))
-    setImages((prev) => [...prev, ...picked].slice(0, 5))
+    const tooBig = picked.filter((f) => f.size > MAX_IMAGE_BYTES)
+    if (tooBig.length > 0) {
+      toast.error(
+        tooBig.length === 1
+          ? `"${tooBig[0].name}" is larger than 5 MB. Please choose a smaller image.`
+          : `${tooBig.length} images are larger than 5 MB. Please choose smaller images.`
+      )
+    }
+    const ok = picked.filter((f) => f.size <= MAX_IMAGE_BYTES)
+    setImages((prev) => [...prev, ...ok].slice(0, 5))
   }
 
   // Load the customer's delivered orders so they can (optionally) attach one.

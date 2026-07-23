@@ -41,6 +41,7 @@ import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
 import { getLastPhone, maskPhone, setLastPhone } from '@/lib/phoneStorage'
+import { sanitizeRedirect } from '@/lib/utils'
 
 type Step = 'phone' | 'pin' | 'otp' | 'register'
 
@@ -99,7 +100,9 @@ export default function CheckoutAuthPanel() {
     if (saved) setPhone(saved)
   }, [])
 
-  const redirectTo = searchParams.get('redirect') || '/checkout'
+  // Sanitize ?redirect= exactly like the login/register pages do — only
+  // same-site absolute paths are allowed (blocks open redirects).
+  const redirectTo = sanitizeRedirect(searchParams.get('redirect') || '/checkout')
 
   // ── reCAPTCHA (Firebase SMS path) ───────────────────────────────────────
   const initRecaptcha = () => {

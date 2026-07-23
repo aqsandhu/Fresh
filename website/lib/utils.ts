@@ -53,9 +53,9 @@ export function formatProductUnitSuffix(unit?: string | null): string {
 
 // Helper to safely get a product image with fallback placeholder.
 export function getProductImage(product: any): string {
-  if (!product) return '/placeholder-product.png'
+  if (!product) return '/placeholder-product.svg'
   const img = product.image || product.image_url || product.primaryImage || ''
-  if (!img) return '/placeholder-product.png'
+  if (!img) return '/placeholder-product.svg'
   return resolveImageUrl(img)
 }
 
