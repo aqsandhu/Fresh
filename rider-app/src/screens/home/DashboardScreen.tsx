@@ -6,11 +6,15 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
+  Linking,
+  TouchableOpacity,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../store/authStore';
 import authService from '../../services/auth.service';
+import { hasBackgroundLocationPermission } from '../../services/location.service';
 import { useTaskStore } from '../../store/taskStore';
 import { useLocationStore } from '../../store/locationStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -20,8 +24,10 @@ import TaskCard from '../../components/TaskCard';
 import Button from '../../components/Button';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../utils/constants';
-import { getTranslation } from '../../utils/helpers';
+import { getTranslation, formatCurrency } from '../../utils/helpers';
 import { Task } from '../../types';
+
+const BG_LOCATION_BANNER_KEY = 'fb_rider_bg_location_banner_dismissed';
 
 interface DashboardScreenProps {
   navigation: any;
@@ -30,6 +36,31 @@ interface DashboardScreenProps {
 const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   const [isToggling, setIsToggling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showBgLocationBanner, setShowBgLocationBanner] = useState(false);
+
+  // One-time banner: background location denied but foreground granted —
+  // tracking works while the app is open; nudge the rider to enable
+  // "Allow all the time" for background delivery tracking.
+  const checkBgLocationBanner = useCallback(async () => {
+    try {
+      const [bgGranted, dismissed] = await Promise.all([
+        hasBackgroundLocationPermission(),
+        AsyncStorage.getItem(BG_LOCATION_BANNER_KEY),
+      ]);
+      setShowBgLocationBanner(!bgGranted && dismissed !== 'yes');
+    } catch {
+      // non-fatal
+    }
+  }, []);
+
+  const dismissBgLocationBanner = useCallback(async () => {
+    setShowBgLocationBanner(false);
+    try {
+      await AsyncStorage.setItem(BG_LOCATION_BANNER_KEY, 'yes');
+    } catch {
+      // non-fatal
+    }
+  }, []);
 
   const { rider, isOnline, setOnline, setRider } = useAuthStore();
   const {
@@ -48,6 +79,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
   // Load data on mount
   useEffect(() => {
     loadData();
+    checkBgLocationBanner();
   }, []);
 
   const loadData = async () => {
@@ -96,6 +128,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
         const trackingStarted = await startTracking(rider?.id || '');
         if (trackingStarted) {
           setOnline(true);
+          checkBgLocationBanner();
         } else {
           // Roll back the backend status if tracking could not start
           authService.updateOnlineStatus(false).catch(() => {});
@@ -193,6 +226,29 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
           isLoading={isToggling}
         />
 
+        {/* Background location banner (one-time) */}
+        {showBgLocationBanner && (
+          <View style={styles.bgBanner}>
+            <MaterialCommunityIcons name="map-marker-off-outline" size={20} color={COLORS.accent} />
+            <Text style={styles.bgBannerText}>
+              {language === 'ur'
+                ? 'بیک گراؤنڈ لوکیشن بند ہے — ایپ بند ہونے پر ٹریکنگ رک جائے گی۔'
+                : 'Background location is off — tracking pauses when the app is closed.'}
+            </Text>
+            <TouchableOpacity
+              onPress={() => Linking.openSettings().catch(() => {})}
+              style={styles.bgBannerButton}
+            >
+              <Text style={styles.bgBannerButtonText}>
+                {language === 'ur' ? 'سیٹنگز' : 'Settings'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={dismissBgLocationBanner} hitSlop={8}>
+              <MaterialCommunityIcons name="close" size={18} color={COLORS.gray500} />
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Today's Stats */}
         <View style={styles.section}>
           <StatsCard
@@ -219,7 +275,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                 <View key={label} style={styles.statsItem}>
                   <Text style={styles.statsLabel}>{label}</Text>
                   <Text style={styles.statsOrderCount}>{data.orders}</Text>
-                  <Text style={styles.statsEarnings}>Rs. {data.earnings.toLocaleString()}</Text>
+                  <Text style={styles.statsEarnings}>{formatCurrency(data.earnings)}</Text>
                 </View>
               ))}
             </View>
@@ -240,7 +296,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                     {language === 'ur' ? 'وصول شدہ' : 'Collected'}
                   </Text>
                   <Text style={[styles.paymentAmount, { color: '#1E40AF' }]}>
-                    Rs. {myStats.payment.totalCollected.toLocaleString()}
+                    {formatCurrency(myStats.payment.totalCollected)}
                   </Text>
                 </View>
                 <View style={[styles.paymentItem, { backgroundColor: '#ECFDF5' }]}>
@@ -249,7 +305,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                     {language === 'ur' ? 'کمائی' : 'Earned'}
                   </Text>
                   <Text style={[styles.paymentAmount, { color: '#065F46' }]}>
-                    Rs. {myStats.payment.totalEarned.toLocaleString()}
+                    {formatCurrency(myStats.payment.totalEarned)}
                   </Text>
                 </View>
               </View>
@@ -273,7 +329,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
                     styles.paymentAmount,
                     { color: myStats.payment.paymentPending > 0 ? '#991B1B' : '#374151' },
                   ]}>
-                    Rs. {myStats.payment.paymentPending.toLocaleString()}
+                    {formatCurrency(myStats.payment.paymentPending)}
                   </Text>
                 </View>
               </View>
@@ -399,6 +455,34 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: SPACING.lg,
+  },
+  bgBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.md,
+    padding: SPACING.sm,
+    backgroundColor: `${COLORS.accent}15`,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: `${COLORS.accent}40`,
+  },
+  bgBannerText: {
+    flex: 1,
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textPrimary,
+  },
+  bgBannerButton: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.accent,
+  },
+  bgBannerButtonText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+    color: COLORS.white,
   },
   sectionHeader: {
     flexDirection: 'row',

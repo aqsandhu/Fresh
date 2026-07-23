@@ -54,7 +54,10 @@ class ApiService {
             return this.client.request(originalRequest);
           }
 
-          this.forceLogout();
+          // Refresh returned null: either a transient failure (network/5xx —
+          // reject and let the caller retry later) or a genuine auth failure,
+          // in which case tokenRefresh's onRefreshFailed already logged out.
+          // Do NOT forceLogout here on a plain null.
         }
 
         return Promise.reject(error);

@@ -7,6 +7,7 @@ import { locationService } from '../services/location.service';
 import socketService from '../services/socket.service';
 import { storeTokens, clearTokens, getStoredToken } from '../lib/secureTokens';
 import { registerSessionHandlers } from '../lib/sessionEvents';
+import { offlineQueue } from '../utils/offlineQueue';
 
 interface AuthState {
   rider: Rider | null;
@@ -45,6 +46,9 @@ export const useAuthStore = create<AuthState>()(
             rider: response.rider,
             token: response.token,
             isAuthenticated: true,
+            // Login response already reflects the backend status; getProfile
+            // below overrides it with the freshest value when available.
+            isOnline: response.rider.isOnline,
             isLoading: false,
             error: null,
           });
@@ -92,8 +96,18 @@ export const useAuthStore = create<AuthState>()(
       },
       
       logout: () => {
-        // Best-effort: tell the backend we are offline before tokens go away
-        authService.updateOnlineStatus(false).catch(() => {});
+        // Drop queued offline actions from this session (stale task actions
+        // must not leak into the next login).
+        offlineQueue.clearQueue().catch(() => {});
+        // Best-effort: tell the backend we are offline before tokens go away.
+        // Retry once; if it still fails, queue it for replay when back online.
+        authService
+          .updateOnlineStatus(false)
+          .catch(() => authService.updateOnlineStatus(false))
+          .catch(() => offlineQueue.addAction('update_status', { status: 'offline' }))
+          .catch(() => {});
+        // Best-effort: revoke the session server-side before clearing tokens
+        authService.logout().catch(() => {});
         // Stop GPS tracking and tear down the socket before clearing tokens
         locationService.stopTracking().catch(() => {});
         socketService.disconnect();

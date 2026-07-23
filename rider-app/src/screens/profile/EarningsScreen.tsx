@@ -19,42 +19,24 @@ interface EarningsScreenProps {
 }
 
 const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
-  const { earnings, fetchEarnings } = useTaskStore();
+  const { earnings, myStats, fetchEarnings, fetchMyStats } = useTaskStore();
   const { language } = useSettingsStore();
   const [refreshing, setRefreshing] = useState(false);
 
-  // Summary is derived from the store's earnings so it always reflects the
-  // freshest fetch (no stale closure). null = amount unknown (backend
-  // returned counts only); known amounts are summed.
+  // Summary cards come from the REAL backend stats endpoint (/rider/stats) —
+  // never derived by filtering today's-only earnings rows (that fabricated
+  // week/month/total figures). null = stats not loaded yet.
   const summary = useMemo(() => {
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split('T')[0];
-    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split('T')[0];
-
-    const sum = (list: Earning[]): number | null => {
-      let total = 0;
-      let known = 0;
-      for (const e of list) {
-        if (e.amount != null) {
-          total += e.amount;
-          known++;
-        }
-      }
-      return known > 0 ? total : null;
-    };
-
+    if (!myStats) {
+      return { today: null, thisWeek: null, thisMonth: null, total: null };
+    }
     return {
-      today: sum(earnings.filter((e) => e.date === today)),
-      thisWeek: sum(earnings.filter((e) => e.date >= weekAgo)),
-      thisMonth: sum(earnings.filter((e) => e.date >= monthAgo)),
-      total: sum(earnings),
+      today: myStats.stats.today.earnings,
+      thisWeek: myStats.stats.thisWeek.earnings,
+      thisMonth: myStats.stats.thisMonth.earnings,
+      total: myStats.payment.totalEarned,
     };
-  }, [earnings]);
+  }, [myStats]);
 
   // Load earnings on mount
   useEffect(() => {
@@ -62,13 +44,8 @@ const EarningsScreen: React.FC<EarningsScreenProps> = ({ navigation }) => {
   }, []);
 
   const loadEarnings = async () => {
-    // Get last 30 days of earnings
-    const endDate = new Date().toISOString().split('T')[0];
-    const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .split('T')[0];
-
-    await fetchEarnings(startDate, endDate);
+    // Details list (today's completed tasks) + real summary stats
+    await Promise.all([fetchEarnings(), fetchMyStats()]);
   };
 
   const onRefresh = useCallback(async () => {

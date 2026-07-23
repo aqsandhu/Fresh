@@ -11,15 +11,23 @@ import PinInput from '@components/auth/PinInput';
 import { useAuthStore } from '@store';
 import { authService } from '@services/auth.service';
 
-type Stage = 'create' | 'confirm';
+type Stage = 'current' | 'create' | 'confirm';
 
 export const ChangePinScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
-  const { markPinVerified } = useAuthStore();
-  const [stage, setStage] = useState<Stage>('create');
+  const { markPinVerified, logout } = useAuthStore();
+  const [stage, setStage] = useState<Stage>('current');
+  const [currentPin, setCurrentPin] = useState('');
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const handleCurrent = (entered: string) => {
+    setCurrentPin(entered);
+    setPin('');
+    setPinConfirm('');
+    setStage('create');
+  };
 
   const handleFirst = (entered: string) => {
     setPin(entered);
@@ -37,13 +45,25 @@ export const ChangePinScreen: React.FC = () => {
     }
     setSaving(true);
     try {
-      await authService.setPin(entered);
+      // Contract C2: changing an existing PIN requires the current PIN and
+      // revokes all sessions on success.
+      const response = await authService.setPin(entered, currentPin);
+      if (response?.data?.sessions_revoked) {
+        Toast.show({
+          type: 'success',
+          text1: 'PIN updated',
+          text2: 'For your security, please log in again.',
+        });
+        await logout();
+        return;
+      }
       markPinVerified();
       Toast.show({ type: 'success', text1: 'PIN updated' });
       navigation.goBack();
     } catch (err: any) {
       Toast.show({ type: 'error', text1: err.message || 'Could not update PIN' });
-      setStage('create');
+      setStage('current');
+      setCurrentPin('');
       setPin('');
       setPinConfirm('');
     } finally {
@@ -66,13 +86,19 @@ export const ChangePinScreen: React.FC = () => {
           <MaterialIcons name="verified-user" size={28} color={COLORS.primary700} />
         </View>
         <Text style={styles.title}>
-          {stage === 'create' ? 'Enter your new 4-digit PIN' : 'Re-enter to confirm'}
+          {stage === 'current'
+            ? 'Enter your current PIN'
+            : stage === 'create'
+            ? 'Enter your new 4-digit PIN'
+            : 'Re-enter to confirm'}
         </Text>
         <PinInput
           key={stage}
-          value={stage === 'create' ? pin : pinConfirm}
-          onChange={stage === 'create' ? setPin : setPinConfirm}
-          onComplete={stage === 'create' ? handleFirst : handleConfirm}
+          value={stage === 'current' ? currentPin : stage === 'create' ? pin : pinConfirm}
+          onChange={stage === 'current' ? setCurrentPin : stage === 'create' ? setPin : setPinConfirm}
+          onComplete={
+            stage === 'current' ? handleCurrent : stage === 'create' ? handleFirst : handleConfirm
+          }
           disabled={saving}
         />
         {saving && <ActivityIndicator color={COLORS.primary600} style={{ marginTop: SPACING.md }} />}

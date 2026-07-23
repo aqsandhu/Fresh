@@ -76,6 +76,12 @@ const showLocationDisclosure = async (): Promise<boolean> => {
   });
 };
 
+/** True when the background ("Allow all the time") permission is granted. */
+export const hasBackgroundLocationPermission = async (): Promise<boolean> => {
+  const { status } = await Location.getBackgroundPermissionsAsync();
+  return status === 'granted';
+};
+
 export const requestLocationPermissions = async (): Promise<boolean> => {
   // Prominent disclosure FIRST (Play policy), then the system dialogs.
   const disclosed = await showLocationDisclosure();
@@ -85,8 +91,14 @@ export const requestLocationPermissions = async (): Promise<boolean> => {
   if (foregroundStatus !== 'granted') {
     return false;
   }
-  const { status: backgroundStatus } = await Location.requestBackgroundPermissionsAsync();
-  return backgroundStatus === 'granted';
+  // Background permission is requested best-effort: riders may go online with
+  // foreground-only tracking (dashboard shows a one-time settings banner).
+  try {
+    await Location.requestBackgroundPermissionsAsync();
+  } catch {
+    /* non-fatal */
+  }
+  return true;
 };
 
 export const startLocationTracking = async (): Promise<void> => {
@@ -94,6 +106,13 @@ export const startLocationTracking = async (): Promise<void> => {
     const hasPermission = await requestLocationPermissions();
     if (!hasPermission) {
       console.warn('Location permissions not granted');
+      return;
+    }
+
+    // Background task requires background permission; without it the
+    // foreground watcher (locationService.startTracking) still streams
+    // socket updates while the app is open.
+    if (!(await hasBackgroundLocationPermission())) {
       return;
     }
 
@@ -252,12 +271,14 @@ export const locationService = {
 
       await startLocationTracking();
 
-      // Foreground watcher for real-time UI + server updates
+      // Foreground watcher: ONE pipeline — socket emit only (via the
+      // callback). REST writes belong exclusively to the background task,
+      // otherwise every fix is written twice through two channels.
       const sub = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.BestForNavigation,
-          timeInterval: 5000,
-          distanceInterval: 3,
+          accuracy: Location.Accuracy.High,
+          timeInterval: 10000,
+          distanceInterval: 10,
         },
         (loc) => {
           const acc = loc.coords.accuracy ?? 9999;
@@ -269,8 +290,6 @@ export const locationService = {
               accuracy: acc,
               timestamp: loc.timestamp,
             });
-            // Also push to server with accuracy so admin panel can show uncertainty radius
-            authService.updateLocation(loc.coords.latitude, loc.coords.longitude, acc).catch(() => {});
           }
         }
       );
@@ -322,4 +341,7 @@ export const locationService = {
   },
 
   requestPermissions: requestLocationPermissions,
+
+  /** True when the background ("Allow all the time") permission is granted. */
+  hasBackgroundPermissions: hasBackgroundLocationPermission,
 };

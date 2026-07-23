@@ -40,7 +40,7 @@ interface TaskState {
     }
   ) => Promise<void>;
   cancelTask: (taskId: string, reason: string) => Promise<void>;
-  requestCustomerCall: (taskId: string) => Promise<void>;
+  requestCustomerCall: (taskId: string) => Promise<string | null>;
   fetchTodayStats: () => Promise<void>;
   fetchMyStats: () => Promise<void>;
   fetchEarnings: (startDate?: string, endDate?: string) => Promise<void>;
@@ -120,7 +120,10 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     try {
       const updatedTask = await taskService.acceptTask(taskId);
       set((state) => ({
-        activeTasks: [...state.activeTasks, updatedTask],
+        // Dedup: never append a task that's already in the active list
+        activeTasks: state.activeTasks.some((t) => t.id === taskId)
+          ? state.activeTasks.map((t) => (t.id === taskId ? updatedTask : t))
+          : [...state.activeTasks, updatedTask],
         tasks: state.tasks.filter((t) => t.id !== taskId),
         isLoading: false,
       }));
@@ -210,7 +213,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
       throw new Error('No order linked to this task');
     }
     try {
-      await taskService.requestCustomerCall(orderId);
+      const result = await taskService.requestCustomerCall(orderId);
+      return result.virtual_number ?? null;
     } catch (error: any) {
       // Queue for offline (network/server failures only, not 4xx)
       if (!isClientError(error)) {

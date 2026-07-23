@@ -8,6 +8,7 @@ import { getStoredToken } from '@/lib/secureTokens';
  */
 class SocketService {
   private socket: Socket | null = null;
+  private connectPromise: Promise<void> | null = null;
   private static instance: SocketService;
 
   static getInstance(): SocketService {
@@ -17,7 +18,20 @@ class SocketService {
     return SocketService.instance;
   }
 
-  async connect() {
+  /** Mutex: parallel connect() calls share one in-flight connection. */
+  async connect(): Promise<void> {
+    if (this.socket?.connected) return;
+    if (this.connectPromise) return this.connectPromise;
+
+    this.connectPromise = this.doConnect();
+    try {
+      await this.connectPromise;
+    } finally {
+      this.connectPromise = null;
+    }
+  }
+
+  private async doConnect(): Promise<void> {
     if (this.socket?.connected) return;
 
     const token = await getStoredToken();
@@ -77,6 +91,18 @@ class SocketService {
     this.socket?.disconnect();
     this.socket = null;
     console.log('[Socket] Disconnected manually');
+  }
+
+  /**
+   * Present a refreshed access token on the live socket and reconnect if the
+   * connection dropped while the token was stale.
+   */
+  updateAuthToken(token: string) {
+    if (!this.socket) return;
+    this.socket.auth = { token };
+    if (!this.socket.connected) {
+      this.socket.connect();
+    }
   }
 
   getSocket(): Socket | null {

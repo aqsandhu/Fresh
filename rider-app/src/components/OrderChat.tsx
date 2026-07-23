@@ -20,6 +20,8 @@ interface Message {
   sender_type: 'customer' | 'rider';
   sender_name: string;
   created_at: string;
+  /** true when the server rejected this (optimistic) message — tap to retry */
+  failed?: boolean;
 }
 
 interface OrderChatProps {
@@ -37,6 +39,8 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, senderType, orderStatus 
   const [isConnected, setIsConnected] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Optimistic (temp) message awaiting server ack via socket
+  const pendingTempIdRef = useRef<string | null>(null);
 
   const isActive = !['delivered', 'cancelled'].includes(orderStatus);
 
@@ -87,7 +91,23 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, senderType, orderStatus 
       }
     };
 
+    // Server rejected our message (rate limit, auth gate, validation) —
+    // mark the pending optimistic bubble as failed so it doesn't hang.
+    const handleChatError = (data: { message?: string }) => {
+      console.warn('[OrderChat] chat:error:', data?.message);
+      const pendingId = pendingTempIdRef.current;
+      if (pendingId) {
+        pendingTempIdRef.current = null;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === pendingId ? { ...m, failed: true } : m))
+        );
+      }
+      setSending(false);
+    };
+
     setupSocket();
+    // Register AFTER connect() so the socket instance exists
+    socketService.on('chat:error', handleChatError);
 
     // Connection status check
     const connectionInterval = setInterval(() => {
@@ -98,6 +118,7 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, senderType, orderStatus 
       socketService.unsubscribeFromOrder(orderId, handleOrderUpdate);
       socketService.offChatMessage(handleIncomingMessage);
       socketService.off('chat:typing', handleTypingEvent);
+      socketService.off('chat:error', handleChatError);
       clearInterval(connectionInterval);
     };
   }, [orderId, fetchMessages]);
@@ -123,6 +144,7 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, senderType, orderStatus 
 
     // Send via socket if connected
     if (socketService.isConnected()) {
+      pendingTempIdRef.current = optimisticMsg.id;
       socketService.sendChatMessage(orderId, text);
       setSending(false);
     } else {
@@ -166,6 +188,33 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, senderType, orderStatus 
     }, 2000);
   };
 
+  // Retry a failed (server-rejected) message — tap on the failed bubble
+  const handleRetry = async (item: Message) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === item.id ? { ...m, failed: false } : m))
+    );
+    if (socketService.isConnected()) {
+      pendingTempIdRef.current = item.id;
+      socketService.sendChatMessage(orderId, item.message);
+      return;
+    }
+    // REST fallback when the socket is down
+    try {
+      const res = await api.post<{ success?: boolean; data?: Message }>(`/chat/${orderId}`, {
+        message: item.message,
+      });
+      if (res?.success && res.data) {
+        setMessages((prev) => prev.map((m) => (m.id === item.id ? res.data! : m)));
+      } else {
+        throw new Error('send failed');
+      }
+    } catch {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === item.id ? { ...m, failed: true } : m))
+      );
+    }
+  };
+
   const formatTime = (dateStr: string) => {
     const d = new Date(dateStr);
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -173,17 +222,37 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, senderType, orderStatus 
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isMe = item.sender_type === senderType;
-    return (
-      <View style={[styles.msgRow, isMe ? styles.msgRowRight : styles.msgRowLeft]}>
-        <View style={[styles.bubble, isMe ? styles.bubbleMine : styles.bubbleTheirs]}>
-          {!isMe && <Text style={styles.senderName}>{item.sender_name}</Text>}
-          <Text style={[styles.msgText, isMe ? styles.msgTextMine : styles.msgTextTheirs]}>
-            {item.message}
-          </Text>
+    const bubble = (
+      <View
+        style={[
+          styles.bubble,
+          isMe ? styles.bubbleMine : styles.bubbleTheirs,
+          item.failed && styles.bubbleFailed,
+        ]}
+      >
+        {!isMe && <Text style={styles.senderName}>{item.sender_name}</Text>}
+        <Text style={[styles.msgText, isMe ? styles.msgTextMine : styles.msgTextTheirs]}>
+          {item.message}
+        </Text>
+        {item.failed ? (
+          <View style={styles.failedRow}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={12} color="#FFCDD2" />
+            <Text style={styles.failedText}>Failed — tap to retry</Text>
+          </View>
+        ) : (
           <Text style={[styles.msgTime, isMe ? styles.msgTimeMine : styles.msgTimeTheirs]}>
             {formatTime(item.created_at)}
           </Text>
-        </View>
+        )}
+      </View>
+    );
+    return (
+      <View style={[styles.msgRow, isMe ? styles.msgRowRight : styles.msgRowLeft]}>
+        {item.failed ? (
+          <TouchableOpacity onPress={() => handleRetry(item)}>{bubble}</TouchableOpacity>
+        ) : (
+          bubble
+        )}
       </View>
     );
   };
@@ -346,6 +415,21 @@ const styles = StyleSheet.create({
   bubbleMine: {
     backgroundColor: COLORS.primary,
     borderBottomRightRadius: 4,
+  },
+  bubbleFailed: {
+    backgroundColor: COLORS.danger,
+  },
+  failedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+    alignSelf: 'flex-end',
+  },
+  failedText: {
+    fontSize: 10,
+    color: '#FFCDD2',
+    fontStyle: 'italic',
   },
   bubbleTheirs: {
     backgroundColor: COLORS.white,

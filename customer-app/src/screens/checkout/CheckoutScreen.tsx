@@ -370,6 +370,18 @@ export const CheckoutScreen: React.FC = () => {
       return;
     }
 
+    // local_* ids exist only on-device (saved during a network outage) — the
+    // backend cannot resolve them. Force the user to re-save the address
+    // online instead of sending a guaranteed-failing order.
+    if (addressIdToUse.startsWith('local_')) {
+      Toast.show({
+        type: 'error',
+        text1:
+          'This address was saved offline. Please re-add it while online, then place your order.',
+      });
+      return;
+    }
+
     setPlacing(true);
     try {
       await syncCartBeforeOrder();

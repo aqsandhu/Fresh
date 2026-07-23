@@ -105,7 +105,7 @@ export const OrderDetailScreen: React.FC = () => {
         <View style={styles.statusCard}>
           <View style={styles.statusHeader}>
             <View>
-              <Text style={styles.orderId}>Order #{order.orderNumber || order.id.slice(0, 8)}</Text>
+              <Text style={styles.orderId}>Order #{order.orderNumber || (order.id || '').slice(0, 8)}</Text>
               <Text style={styles.orderDate}>
                 {formatDateTime(order.createdAt)}
               </Text>

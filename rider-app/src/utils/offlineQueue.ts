@@ -112,6 +112,15 @@ class OfflineQueue {
         await this.removeAction(action.id);
         onSuccess?.(action, result);
       } catch (error) {
+        // 4xx responses are deterministic failures — drop the action
+        // immediately instead of retrying (it can never succeed).
+        const status = (error as any)?.response?.status;
+        if (typeof status === 'number' && status >= 400 && status < 500) {
+          await this.removeAction(action.id);
+          onError?.(action, error);
+          continue;
+        }
+
         await this.incrementRetryCount(action.id);
         onError?.(action, error);
 
