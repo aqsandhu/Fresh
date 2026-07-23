@@ -11,6 +11,7 @@ import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
 import { ensureFinanceTables } from '../../config/financeSchema';
+import { sanitizeLedgerDate } from './expenses.controller';
 import logger from '../../utils/logger';
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return Number.isFinite(n) ? n : NaN; };
@@ -167,7 +168,7 @@ export const payWorker = asyncHandler(async (req: Request, res: Response) => {
   const amount = num(req.body?.amount);
   const kind = ['salary', 'bonus', 'commission', 'other'].includes(req.body?.category) ? req.body.category : 'salary';
   if (!Number.isFinite(amount) || amount <= 0) return errorResponse(res, 'Enter a valid amount.', 400);
-  const incurredAt = typeof req.body?.paid_at === 'string' && req.body.paid_at ? req.body.paid_at : new Date().toISOString();
+  const incurredAt = sanitizeLedgerDate(req.body?.paid_at);
   const r = await query(
     `INSERT INTO expenses (city_id, type, category, amount, comment, ref_type, ref_id, for_month, incurred_at, created_by)
      VALUES ($1, 'worker_payment', $2, $3, $4, 'worker_payment', $5, $6, $7, $8) RETURNING id`,

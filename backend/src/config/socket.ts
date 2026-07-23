@@ -165,6 +165,17 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
           return;
         }
 
+        // Mirror the REST chat gate (chat.controller.ts): no messages on
+        // completed orders — the socket path used to skip this check.
+        const statusRes = await query(
+          `SELECT status FROM orders WHERE id = $1`,
+          [data.orderId]
+        );
+        if (['delivered', 'cancelled'].includes(statusRes.rows[0]?.status)) {
+          socket.emit('chat:error', { message: 'Cannot send messages on completed orders' });
+          return;
+        }
+
         const senderType = mapChatSenderType(role);
         if (!senderType) {
           socket.emit('chat:error', { message: 'Invalid sender role' });
@@ -256,6 +267,22 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
             return;
           }
 
+          // Validate coordinates BEFORE touching the DB — NaN/Infinity or
+          // out-of-range values would corrupt the geography column or throw.
+          const lat = Number(data.latitude);
+          const lng = Number(data.longitude);
+          const acc = data.accuracy === null || data.accuracy === undefined ? null : Number(data.accuracy);
+          if (
+            !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+            !Number.isFinite(lng) || lng < -180 || lng > 180 ||
+            (acc !== null && (!Number.isFinite(acc) || acc < 0 || acc > 10000))
+          ) {
+            logger.warn(`Invalid rider:location payload from user ${userId}`, {
+              latitude: data.latitude, longitude: data.longitude, accuracy: data.accuracy,
+            });
+            return;
+          }
+
           const ownership = await query(
             `SELECT id
                FROM riders
@@ -278,13 +305,13 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
                  location_updated_at = NOW(),
                  updated_at = NOW()
              WHERE id = $3`,
-            [data.longitude, data.latitude, data.riderId, data.accuracy ?? null]
+            [lng, lat, data.riderId, acc]
           );
           const payload = {
             riderId: data.riderId,
-            latitude: data.latitude,
-            longitude: data.longitude,
-            accuracy: data.accuracy ?? null,
+            latitude: lat,
+            longitude: lng,
+            accuracy: acc,
             updatedAt: new Date().toISOString(),
           };
           await emitRiderLocationUpdate(payload);

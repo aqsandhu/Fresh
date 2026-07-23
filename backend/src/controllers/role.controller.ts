@@ -338,8 +338,18 @@ export const createAdminUser = asyncHandler(async (req: Request, res: Response) 
   if (!phone || !password || !full_name) {
     return errorResponse(res, 'Phone, password and full name are required', 400);
   }
-  if (password.length < 6) {
-    return errorResponse(res, 'Password must be at least 6 characters', 400);
+  // Admin accounts hold the keys to the whole operation — enforce the same
+  // strength contract as commonSchemas.password (≥8, upper+lower+digit).
+  if (
+    typeof password !== 'string' ||
+    password.length < 8 ||
+    !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)
+  ) {
+    return errorResponse(
+      res,
+      'Password must be at least 8 characters and contain an uppercase letter, a lowercase letter, and a number',
+      400
+    );
   }
 
   const { normalizePhoneNumber, isValidPakistaniPhone } = await import('../utils/validators');

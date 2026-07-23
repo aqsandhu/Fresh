@@ -89,7 +89,7 @@ export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) =
 
   // Check if user exists (frontend uses this to decide login vs register flow)
   const existingUser = await query(
-    'SELECT id, full_name, status FROM users WHERE phone = $1 AND deleted_at IS NULL',
+    'SELECT id, status FROM users WHERE phone = $1 AND deleted_at IS NULL',
     [normalizedPhone]
   );
 
@@ -99,10 +99,12 @@ export const sendOtpHandler = asyncHandler(async (req: Request, res: Response) =
     return errorResponse(res, 'Account is suspended. Please contact support.', 403);
   }
 
+  // PII/enumeration hardening: `userExists` stays (the website + apps branch
+  // login-vs-register on it), but NEVER leak the account holder's name to an
+  // unauthenticated caller — a phone-number → full-name oracle is a PII leak.
   const baseData = {
     phone: normalizedPhone,
     userExists,
-    userName: userExists ? existingUser.rows[0].full_name : null,
     otpBypass: isOtpBypassEnabled(),
     mode,
   };
@@ -336,6 +338,9 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   );
 
   if (result.rows.length === 0) {
+    // Equalise timing with the wrong-password path (bcrypt cost) so probing
+    // can't tell "no such account" from "wrong password".
+    await bcrypt.compare(password, DUMMY_PIN_HASH).catch(() => undefined);
     // Count a failure so attackers can't probe phone numbers for free.
     await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid phone number or password');
@@ -787,6 +792,11 @@ export const deleteAccount = asyncHandler(async (req: Request, res: Response) =>
 
 const PIN_BCRYPT_ROUNDS = 10;
 
+// Pre-computed bcrypt hash compared against when the target account does NOT
+// exist, so "user not found" costs the same CPU time as "wrong credential"
+// (timing-side-channel account enumeration). Never matched intentionally.
+const DUMMY_PIN_HASH = '$2b$10$C6UzMDM.H6dfI/f/IKcEeO7ZB8m4n6Q8l0t2u4v6w8x0y2a4c6e8g';
+
 /**
  * GET /api/auth/pin-status?phone=+92...
  * Lets the login UI decide whether to show "Enter PIN" or fall through to OTP.
@@ -814,8 +824,11 @@ export const pinStatus = asyncHandler(async (req: Request, res: Response) => {
 
 /**
  * POST /api/auth/set-pin
- * Authenticated. Body: { pin }. Sets / replaces the user's 4-digit PIN.
- * Used right after OTP register and from Settings → Change PIN.
+ * Authenticated. Body: { pin, current_pin? }. Sets / replaces the user's
+ * 4-digit PIN. Used right after OTP register (no current_pin) and from
+ * Settings → Change PIN (current_pin required — proves account possession).
+ * Every successful (re)set revokes all refresh tokens so a stolen session
+ * dies with the old PIN.
  */
 export const setPin = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user?.id) return unauthorizedResponse(res, 'Authentication required');
@@ -823,7 +836,7 @@ export const setPin = asyncHandler(async (req: Request, res: Response) => {
   if (['admin', 'super_admin'].includes(req.user.role)) {
     return errorResponse(res, 'PIN sign-in is not available for admin accounts', 403);
   }
-  const { pin } = req.body as { pin: string };
+  const { pin, current_pin: currentPin } = req.body as { pin: string; current_pin?: string };
 
   const pinReady = await ensurePinColumns();
   if (!pinReady) {
@@ -832,6 +845,25 @@ export const setPin = asyncHandler(async (req: Request, res: Response) => {
       'PIN is not available yet. Database migration pending — please try again in a minute.',
       503
     );
+  }
+
+  // If a PIN already exists, changing it requires the CURRENT pin — otherwise
+  // anyone holding a stolen access token could lock the owner out silently.
+  const existing = await query(
+    'SELECT pin_hash FROM users WHERE id = $1 AND deleted_at IS NULL',
+    [req.user.id]
+  );
+  if (existing.rows.length === 0) return unauthorizedResponse(res, 'User not found');
+  const existingHash: string | null = existing.rows[0].pin_hash ?? null;
+  if (existingHash) {
+    if (!currentPin) {
+      return errorResponse(res, 'Current PIN is required to change your PIN', 400);
+    }
+    const matches = await bcrypt.compare(currentPin, existingHash);
+    if (!matches) {
+      // Generic on purpose — don't confirm that a PIN exists / which part failed.
+      return errorResponse(res, 'Current PIN is incorrect', 403);
+    }
   }
 
   const pinHash = await bcrypt.hash(pin, PIN_BCRYPT_ROUNDS);
@@ -843,8 +875,12 @@ export const setPin = asyncHandler(async (req: Request, res: Response) => {
   );
   if (result.rows.length === 0) return unauthorizedResponse(res, 'User not found');
 
-  logger.info('PIN set', { userId: req.user.id });
-  successResponse(res, { ok: true }, 'PIN saved');
+  // Kill every other live session: the old sessions authenticated with the old
+  // PIN context and must not survive a credential change.
+  await revokeAllUserRefreshTokens(req.user.id);
+
+  logger.info('PIN set', { userId: req.user.id, changed: !!existingHash });
+  successResponse(res, { sessions_revoked: true }, 'PIN saved');
 });
 
 /**
@@ -884,6 +920,9 @@ export const verifyPin = asyncHandler(async (req: Request, res: Response) => {
 
   if (result.rows.length === 0 || !result.rows[0].pin_hash) {
     // Same error for "no user" and "no PIN set" — prevents phone enumeration.
+    // Run a dummy bcrypt compare so the response time doesn't reveal which
+    // case it was (account-status enumeration via timing).
+    await bcrypt.compare(pin, DUMMY_PIN_HASH).catch(() => undefined);
     // We still count a failure so attackers can't probe phones for free.
     await registerPinFailure(normalizedPhone);
     return unauthorizedResponse(res, 'Invalid phone or PIN');

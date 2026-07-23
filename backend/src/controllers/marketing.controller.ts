@@ -37,9 +37,16 @@ export const snapshotCart = asyncHandler(async (req: Request, res: Response) => 
     price: Number(i?.price) || 0,
     quality: i?.quality ? String(i.quality).slice(0, 2) : undefined,
   }));
-  const itemCount = items.reduce((n: number, i: any) => n + (i.quantity || 0), 0);
-  const subtotal = Number(req.body.subtotal) || 0;
-  const phone = req.body.phone ? String(req.body.phone).trim().slice(0, 30) : null;
+  const itemCount = Math.min(
+    items.reduce((n: number, i: any) => n + (i.quantity || 0), 0),
+    500
+  );
+  // Clamp money to a sane range — a crafted body used to persist absurd
+  // subtotals that then polluted the admin abandoned-cart dashboard.
+  const subtotal = Math.min(Math.max(Number(req.body.subtotal) || 0, 0), 10_000_000);
+  // Phone is used for reminder calls — keep only plausible numbers.
+  const rawPhone = req.body.phone ? String(req.body.phone).trim().slice(0, 30) : null;
+  const phone = rawPhone && /^\+?[0-9][0-9\s-]{6,18}$/.test(rawPhone) ? rawPhone : null;
   const userId = req.user?.id || null;
   const cityId = await resolvePublicCityId(req);
 

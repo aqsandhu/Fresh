@@ -225,6 +225,11 @@ export const authSchemas = {
       'string.pattern.base': 'PIN must contain only digits (0-9)',
       'any.required': 'PIN is required',
     }),
+    // Required when the account already has a PIN (change-vs-set proof).
+    current_pin: Joi.string().length(4).pattern(/^\d{4}$/).optional().messages({
+      'string.length': 'Current PIN must be exactly 4 digits',
+      'string.pattern.base': 'Current PIN must contain only digits (0-9)',
+    }),
   }),
 
   // Used both for normal PIN login and for the in-session re-auth at
@@ -512,6 +517,14 @@ export const riderSchemas = {
   }),
 };
 
+// Shareholder portal validation schemas
+export const shareholderSchemas = {
+  login: Joi.object({
+    email: commonSchemas.email.required(),
+    password: Joi.string().min(1).max(128).required(),
+  }),
+};
+
 // Restaurant (B2B) validation schemas
 export const restaurantSchemas = {
   register: Joi.object({
@@ -614,16 +627,33 @@ export const adminSchemas = {
         unit: Joi.string().valid('full', 'half_kg', 'quarter_kg', 'half_dozen').default('full'),
         quality: Joi.string().valid('A', 'B', 'C').default('A'),
         notes: Joi.string().allow('', null),
+        // Complaint-replacement orders may carry an approved per-item price
+        // override (validated ≤ live price + approval in the controller).
+        override_price: Joi.number().min(0).max(999999.99).optional().allow(null),
       })
     ).min(1).required(),
     urgent_delivery: Joi.boolean().default(false),
     time_slot_id: commonSchemas.uuid.optional().allow(null, ''),
     requested_delivery_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional().allow(null, ''),
     admin_notes: Joi.string().allow('', null),
+    // Complaint-replacement flow (controller guards: complaint must match the
+    // order + override prices need approval). Without these keys the Joi
+    // strip-unknown rule silently dropped them and the flow was dead.
+    replacement_for_order_id: commonSchemas.uuid.optional().allow(null, ''),
+    complaint_id: commonSchemas.uuid.optional().allow(null, ''),
   }),
 
   assignHouseNumber: Joi.object({
     house_number: Joi.string().max(50).required(),
+  }),
+
+  updateDeliverySettings: Joi.object({
+    base_charge: Joi.number().min(0).max(1000000).optional(),
+    free_delivery_threshold: Joi.number().min(0).max(100000000).optional(),
+    express_charge: Joi.number().min(0).max(1000000).optional(),
+    urgent_charge: Joi.number().min(0).max(1000000).optional(),
+    urgent_eta: Joi.string().max(100).optional().allow('', null),
+    slot_cutoff_percent: Joi.number().min(0).max(100).optional(),
   }),
 
   bulkUpdateOrderStatus: Joi.object({

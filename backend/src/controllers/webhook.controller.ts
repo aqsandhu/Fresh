@@ -48,6 +48,7 @@ import {
 } from '../utils/orderStatus';
 import { commitOrderSaleOnDelivery } from '../utils/systemStock';
 import { deductOcpStockOnDelivery } from '../utils/ocpStock';
+import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import logger from '../utils/logger';
 
 /**
@@ -375,7 +376,7 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
   try {
     const responseBody = await withTransaction(async (client) => {
       const orderResult = await client.query(
-        `SELECT id, total_amount, payment_status, payment_method, status
+        `SELECT id, total_amount, payment_status, payment_method, status, paid_amount
            FROM orders
           WHERE id = $1 AND deleted_at IS NULL
           FOR UPDATE`,
@@ -459,6 +460,32 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
           `UPDATE orders SET payment_status = 'refunded', updated_at = NOW() WHERE id = $1`,
           [order_id]
         );
+        // Reconcile with the refunds ledger so finance sees the gateway-side
+        // refund. Idempotent: skip when a gateway refund row already exists
+        // for this order (the refunds table has no `source` column, so the
+        // '[gateway-webhook]' note prefix is the dedupe key).
+        if (await hasCatalogV2Columns()) {
+          const existing = await client.query(
+            `SELECT 1 FROM refunds WHERE order_id = $1 AND note LIKE '[gateway-webhook]%' LIMIT 1`,
+            [order_id]
+          );
+          if (existing.rows.length === 0) {
+            const alreadyPaid = Number(order.paid_amount) || 0;
+            const refundAmount = alreadyPaid > 0 ? alreadyPaid : orderTotal;
+            if (refundAmount > 0) {
+              await client.query(
+                `INSERT INTO refunds
+                   (order_id, complaint_id, amount, original_payment_source, note, reason)
+                 VALUES ($1, NULL, $2, 'admin', $3, $3)`,
+                [
+                  order_id,
+                  refundAmount,
+                  `[gateway-webhook] Refund confirmed by payment gateway (transaction ${transaction_id ?? 'n/a'})`,
+                ]
+              );
+            }
+          }
+        }
       }
 
       return { order_id, transaction_id, status };
@@ -600,11 +627,12 @@ const verifyWebhookSignature = (
   signature: string | undefined,
   source: string | string[] | undefined
 ): boolean => {
-  // If no signature provided, check for development mode with source header
+  // If no signature provided, only an explicit opt-in env var allows the
+  // unsigned path (never a blanket NODE_ENV check — production mistakenly
+  // deployed with NODE_ENV=development would accept forged webhooks).
   if (!signature) {
-    // In development, allow webhooks with valid source header
-    if (process.env.NODE_ENV === 'development' && source) {
-      logger.warn('Webhook accepted in development mode without signature');
+    if (process.env.WEBHOOK_ALLOW_UNSIGNED === 'true' && source) {
+      logger.warn('Webhook accepted without signature (WEBHOOK_ALLOW_UNSIGNED=true)');
       return true;
     }
     logger.error('Webhook rejected: No signature provided');

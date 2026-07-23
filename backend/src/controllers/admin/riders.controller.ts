@@ -5,7 +5,7 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '../../config/database';
-import { asyncHandler } from '../../middleware';
+import { asyncHandler, BadRequestError } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
 import { normalizePhoneNumber, parsePagination } from '../../utils/validators';
 import logger from '../../utils/logger';
@@ -674,12 +674,17 @@ export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Re
   await withTransaction(async (client) => {
     for (const item of charges) {
       if (!item.time_slot_id || item.charge_per_order === undefined) continue;
+      // Validate money: a NaN/negative charge would corrupt rider payout math.
+      const charge = parseFloat(String(item.charge_per_order));
+      if (!Number.isFinite(charge) || charge < 0) {
+        throw new BadRequestError('charge_per_order must be a finite number ≥ 0');
+      }
       await client.query(
         `INSERT INTO rider_delivery_charges (rider_id, time_slot_id, charge_per_order, effective_from, created_by)
          VALUES ($1, $2, $3, NOW(), $4)
          ON CONFLICT (rider_id, time_slot_id)
          DO UPDATE SET charge_per_order = $3, effective_from = NOW(), updated_at = NOW()`,
-        [id, item.time_slot_id, item.charge_per_order, req.user?.id]
+        [id, item.time_slot_id, charge, req.user?.id]
       );
     }
   });

@@ -122,12 +122,16 @@ export const generateRefreshToken = (
   );
 };
 
-// Verify access token. Socket-handshake tokens (type: 'socket') are rejected
-// so they can't be replayed against REST endpoints.
+// Verify access token. Socket-handshake tokens (type: 'socket') and the
+// isolated-portal tokens (restaurant/ocp/shareholder) are rejected so they
+// can't be replayed against REST endpoints.
 export const verifyAccessToken = (token: string): JwtPayload => {
   const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
   if (decoded?.type === 'socket') {
     throw new Error('Socket tokens are not valid for REST');
+  }
+  if (decoded?.type && ['restaurant', 'ocp', 'shareholder'].includes(decoded.type)) {
+    throw new Error('Portal tokens are not valid for user/admin REST');
   }
   return decoded;
 };
