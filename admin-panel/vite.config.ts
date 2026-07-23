@@ -4,6 +4,15 @@ import path from 'path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  // Fail fast at build time: never ship a production bundle that silently
+  // points at localhost (src/config/env.ts also throws at runtime as a
+  // second line of defense).
+  if (mode === 'production' && !env.VITE_API_URL) {
+    throw new Error(
+      '[admin-panel] VITE_API_URL is required for production builds. ' +
+        'Set it to the deployed API base URL and rebuild.'
+    )
+  }
   const apiUrl = env.VITE_API_URL || 'http://localhost:3000/api'
 
   return {

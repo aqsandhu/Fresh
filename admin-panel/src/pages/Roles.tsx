@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/Badge';
 import { roleService, type AdminRole, type AdminUser, type Permission } from '@/services/role.service';
 import { api } from '@/services/api';
 import { useAuthContext } from '@/context/AuthContext';
+import { isValidPhone } from '@/utils/validators';
 import toast from 'react-hot-toast';
 
 interface RoleFormState {
@@ -82,7 +83,6 @@ export const Roles: React.FC = () => {
       toast.success('Role created');
       closeModal();
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to create role'),
   });
 
   const updateMutation = useMutation({
@@ -93,7 +93,6 @@ export const Roles: React.FC = () => {
       toast.success('Role updated');
       closeModal();
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to update role'),
   });
 
   const deleteMutation = useMutation({
@@ -102,7 +101,6 @@ export const Roles: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'roles'] });
       toast.success('Role deleted');
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to delete role'),
   });
 
   const createUserMutation = useMutation({
@@ -112,7 +110,6 @@ export const Roles: React.FC = () => {
       toast.success('Admin user created — they can login with phone + password');
       closeUserModal();
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || err?.message || 'Failed to create admin user'),
   });
 
   const updateUserMutation = useMutation({
@@ -123,7 +120,6 @@ export const Roles: React.FC = () => {
       toast.success('Admin user updated');
       closeUserModal();
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to update admin user'),
   });
 
   const deleteUserMutation = useMutation({
@@ -132,7 +128,6 @@ export const Roles: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       toast.success('Admin user deleted');
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to delete admin user'),
   });
 
   const assignRoleMutation = useMutation({
@@ -142,7 +137,6 @@ export const Roles: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
       toast.success('Role updated for admin user');
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to assign role'),
   });
 
   const openCreate = () => {
@@ -526,6 +520,12 @@ export const Roles: React.FC = () => {
                 }
                 if (!userForm.phone.trim() || !userForm.password.trim()) {
                   toast.error('Name, phone and password are required');
+                  return;
+                }
+                // The phone is the login ID — reject anything that isn't a
+                // valid Pakistani number up front instead of failing at login.
+                if (!isValidPhone(userForm.phone)) {
+                  toast.error('Enter a valid Pakistani phone number (e.g. +923001234567 or 03001234567)');
                   return;
                 }
                 if (userForm.password.trim().length < 6) {

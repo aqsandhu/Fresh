@@ -109,16 +109,18 @@ describe('Login Page', () => {
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
   });
 
-  it('renders remember me checkbox', () => {
+  // The non-functional "Remember me" checkbox and "Forgot password?" dead
+  // link (href="#") were removed; re-add with a real flow if they're restored.
+  it('does not render the non-functional remember me checkbox', () => {
     renderLogin();
 
-    expect(screen.getByText('Remember me')).toBeInTheDocument();
+    expect(screen.queryByText('Remember me')).not.toBeInTheDocument();
   });
 
-  it('renders forgot password link', () => {
+  it('does not render the dead forgot password link', () => {
     renderLogin();
 
-    expect(screen.getByText('Forgot password?')).toBeInTheDocument();
+    expect(screen.queryByText('Forgot password?')).not.toBeInTheDocument();
   });
 
   it('shows validation error for empty phone', async () => {

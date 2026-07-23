@@ -151,6 +151,11 @@ export const productService = {
       if (data.restaurantPriceC !== undefined) formData.append('restaurant_price_c', data.restaurantPriceC == null ? '' : String(data.restaurantPriceC));
       appendCatalogV2Fields(formData, data);
 
+      // Contract C1: on edit the form always sends the stored image URLs it
+      // wants to KEEP; the backend merges kept + newly uploaded (kept first).
+      if (data.existingImages !== undefined) {
+        formData.append('existing_images', JSON.stringify(data.existingImages));
+      }
       if (data.images && data.images.length > 0) {
         data.images.forEach((image) => {
           formData.append('images', image);

@@ -93,7 +93,7 @@ export const NotificationBell: React.FC = () => {
               notifications.map((n) => (
                 <Link
                   key={n.id}
-                  to="/admin/orders"
+                  to={n.link || '/admin/orders'}
                   onClick={() => {
                     markAsRead(n.id);
                     setOpen(false);

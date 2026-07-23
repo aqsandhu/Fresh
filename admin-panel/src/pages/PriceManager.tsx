@@ -145,22 +145,40 @@ export const PriceManager: React.FC = () => {
 
   const discard = () => setRows(JSON.parse(JSON.stringify(originals.current)));
 
-  // Validate the Quality-A /unit price of a dirty row. Empty is allowed (the
-  // field is simply left out of the update payload so the stored price is
-  // preserved); a non-empty value must parse to a number > 0.
-  const priceError = (id: string): string | null => {
-    const s = rows[id].price.trim();
+  // Validate one money field of a dirty row. Empty is allowed (a blank
+  // per-unit price is left out of the update payload so the stored price is
+  // preserved; blank ½/¼ prices auto-derive from the per-unit price). A
+  // non-empty value must parse to a finite number > 0 — anything else is
+  // blocked here so a typo can never be sent as NaN or silently clear a price.
+  const fieldError = (id: string, label: string, raw: string): string | null => {
+    const s = raw.trim();
     if (s === '') return null;
     const n = parseFloat(s);
     const name = (productById[id] ?? productCache.current[id])?.nameEn || id;
-    if (!Number.isFinite(n)) return `"${name}": price "${s}" is not a valid number`;
-    if (n <= 0) return `"${name}": price must be greater than 0`;
+    if (!Number.isFinite(n)) return `"${name}": ${label} "${s}" is not a valid number`;
+    if (n <= 0) return `"${name}": ${label} must be greater than 0`;
+    return null;
+  };
+
+  const rowError = (id: string): string | null => {
+    const r = rows[id];
+    const checks: Array<[string, string]> = [
+      ['price', r.price],
+      ['½ kg price', r.halfKgPrice],
+      ['¼ kg price', r.quarterKgPrice],
+    ];
+    if (r.bEnabled) checks.push(['Quality B price', r.priceB]);
+    if (r.cEnabled) checks.push(['Quality C price', r.priceC]);
+    for (const [label, raw] of checks) {
+      const err = fieldError(id, label, raw);
+      if (err) return err;
+    }
     return null;
   };
 
   const save = async () => {
     if (dirtyIds.length === 0) return;
-    const errors = dirtyIds.map(priceError).filter((e): e is string => e !== null);
+    const errors = dirtyIds.map(rowError).filter((e): e is string => e !== null);
     if (errors.length > 0) {
       toast.error(errors[0]);
       return;

@@ -4,7 +4,8 @@ import { CITY_STORAGE_KEY, clearCitySelection } from '@/lib/cityStorage';
 import { API_BASE_URL, AUTH_COOKIES_ENABLED } from '@/config/env';
 
 if (!process.env.VITE_API_URL) {
-  console.warn('[Fresh Bazar Admin] VITE_API_URL is not set. Falling back to localhost:3000. Set this env var in production!');
+  // Dev-only fallback — config/env.ts throws in production before this runs.
+  console.warn('[Fresh Bazar Admin] VITE_API_URL is not set. Falling back to localhost:3000 (development only — production builds fail fast).');
 }
 
 // snake_case <-> camelCase conversion utilities

@@ -402,6 +402,8 @@ export interface CreateProductData {
   unitValue?: number;
   categoryId: string;
   images?: File[];
+  /** Edit-only: raw stored image URLs to KEEP (Contract C1 `existing_images`). */
+  existingImages?: string[];
   isActive?: boolean;
   isFeatured?: boolean;
   isVariableWeight?: boolean;
