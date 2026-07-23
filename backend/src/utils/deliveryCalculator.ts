@@ -18,6 +18,7 @@ import { PoolClient } from 'pg';
 import { query } from '../config/database';
 import { DeliveryChargeResult } from '../types';
 import logger from './logger';
+import { captureMessage } from '../config/sentry';
 import { FRESH_CART_LINE_UNIT_PRICE_SQL, FRESH_CART_SUBTOTAL_SQL } from './unitPricing';
 
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
@@ -158,6 +159,13 @@ export const calculateDeliveryCharge = async (
     };
   } catch (error) {
     logger.error('Error calculating delivery charge:', error);
+    // The fallback silently charges the ENV default — possibly the WRONG price
+    // on every checkout while the DB has a hiccup. Alert so ops notices the
+    // mis-pricing window instead of finding it in reconciliation.
+    captureMessage(
+      'Delivery charge calculation failed — falling back to ENV default charge (fail-open)',
+      'error'
+    );
     return {
       delivery_charge: ENV_DEFAULT_DELIVERY_CHARGE,
       rule_applied: 'STANDARD_DELIVERY',

@@ -39,7 +39,7 @@ const redisKey = (phone: string) => `pinlock:${phone}`;
  * scope prefix keeps password failures from mixing with PIN failures (or with
  * each other) for the same phone number.
  */
-export const passwordLockKey = (scope: 'user' | 'admin' | 'rider', phone: string): string =>
+export const passwordLockKey = (scope: 'user' | 'admin' | 'rider' | 'shareholder', phone: string): string =>
   `pw:${scope}:${phone}`;
 
 // Keep the record alive across the whole escalation-retention horizon so that

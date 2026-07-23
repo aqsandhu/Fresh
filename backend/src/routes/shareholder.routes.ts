@@ -5,13 +5,13 @@
 // ============================================================================
 
 import { Router } from 'express';
-import { authRateLimiter } from '../middleware';
+import { authRateLimiter, validate, shareholderSchemas } from '../middleware';
 import { authenticateShareholder } from '../middleware/shareholderAuth';
 import * as ctrl from '../controllers/shareholder.controller';
 
 const router = Router();
 
-router.post('/login', authRateLimiter, ctrl.loginShareholder);
+router.post('/login', authRateLimiter, validate(shareholderSchemas.login), ctrl.loginShareholder);
 
 router.use(authenticateShareholder);
 router.get('/me', ctrl.getShareholderMe);

@@ -202,6 +202,11 @@ function createOrderClient() {
     if (text.includes('UPDATE cart_items')) {
       return Promise.resolve(ok([]));
     }
+    // Guarded cart conversion: UPDATE carts ... AND status='active' must
+    // affect exactly one row or createOrder rolls back with 409.
+    if (text.includes('UPDATE carts') && text.includes("status = 'active'")) {
+      return Promise.resolve(ok([{ id: 'cart-1' }]));
+    }
     // Per-date slot validation + capacity claim.
     if (text.includes('FROM time_slots ts') && text.includes('disabled')) {
       return Promise.resolve(ok([{ max_orders: 50, disabled: false, past: false, wrong_day: false, passed: false }]));

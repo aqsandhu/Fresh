@@ -20,7 +20,7 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
-import { commitOrderSaleOnDelivery, reserveProductStock } from '../../utils/systemStock';
+import { commitOrderSaleOnDelivery, reserveProductStock, adjustStockForWeightDelta } from '../../utils/systemStock';
 import { deductOcpStockOnDelivery } from '../../utils/ocpStock';
 import { roundMoney } from '../../utils/money';
 import {
@@ -276,7 +276,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   try {
     updatedRow = await withTransaction(async (client) => {
       const orderResult = await client.query(
-        'SELECT id, status, time_slot_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+        'SELECT id, status, time_slot_id, payment_status, paid_amount FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
         [id]
       );
       if (orderResult.rows.length === 0) return null;
@@ -305,6 +305,19 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
 
       // Cancelling releases what the order consumed at creation.
       if (status === 'cancelled' && order.status !== 'cancelled') {
+        // Paid order cancelled → money is owed back. Record a refunds-ledger
+        // row (same shape as the complaint refund insert) so finance can
+        // reconcile; never blocks the cancellation. Runs exactly once thanks
+        // to the FOR UPDATE lock + transition guard above.
+        const paidOut = parseFloat(String(order.paid_amount ?? '0')) || 0;
+        if (order.payment_status === 'completed' && paidOut > 0 && (await hasCatalogV2Columns())) {
+          await client.query(
+            `INSERT INTO refunds
+               (order_id, complaint_id, amount, original_payment_source, note, reason)
+             VALUES ($1, NULL, $2, 'admin', $3, $3)`,
+            [id, roundMoney(paidOut), 'Auto-created on order cancellation — refund due']
+          );
+        }
         await restoreOrderInventory(client, order);
       }
 
@@ -472,7 +485,7 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
   try {
     updatedOrder = await withTransaction(async (client) => {
       const orderRes = await client.query(
-        `SELECT id, user_id, status, delivery_charge, discount_amount, coupon_discount, tax_amount
+        `SELECT id, user_id, status, delivery_charge, discount_amount, coupon_discount, tax_amount, city_id
            FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
         [id]
       );
@@ -487,11 +500,13 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
         );
       }
 
+      const qualityCol = (await hasQualityCatalogColumns()) ? ', oi.quality' : '';
       const itemRes = await client.query(
         `SELECT oi.id, oi.unit_price, oi.product_id, oi.product_name,
                 oi.weight_kg AS prev_weight, oi.total_price AS prev_total,
                 COALESCE(p.unit_value, 1) AS unit_value,
                 COALESCE(p.is_variable_weight, FALSE) AS is_variable_weight
+                ${qualityCol}
            FROM order_items oi
            LEFT JOIN products p ON p.id = oi.product_id
           WHERE oi.id = $1 AND oi.order_id = $2
@@ -522,6 +537,22 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
           WHERE id = $3`,
         [weight, newTotal, itemId]
       );
+
+      // Physical stock must match COGS: the reservation/sale consumed the
+      // ESTIMATED weight; reconcile the (actual − estimated) delta against
+      // on-hand now. Incremental per edit (prev recorded weight → new), so
+      // repeated weigh-ins never double-apply.
+      const prevWeightNum = parseFloat(item.prev_weight);
+      if (item.product_id && Number.isFinite(prevWeightNum) && unitValue > 0 && weight !== prevWeightNum) {
+        await adjustStockForWeightDelta(client, {
+          productId: item.product_id,
+          quality: item.quality ?? 'A',
+          deltaUnits: (weight - prevWeightNum) / unitValue,
+          orderId: id,
+          cityId: order.city_id ?? null,
+          createdBy: req.user?.id ?? null,
+        });
+      }
 
       const sumRes = await client.query(
         `SELECT COALESCE(SUM(total_price), 0) AS subtotal FROM order_items WHERE order_id = $1`,

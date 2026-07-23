@@ -137,6 +137,56 @@ export async function commitProductSale(
 }
 
 /**
+ * Adjust on-hand stock for a variable-weight weigh-in delta (actual −
+ * estimated, in stock units). Positive → extra permanent consumption (deduct);
+ * negative → hand the over-reserved amount back. The order's own reserve /
+ * commit still settles the ESTIMATED amount, so the pair always nets to the
+ * actual packed weight. Incremental per weigh-in (the caller passes the delta
+ * vs the PREVIOUS recorded weight), so repeated edits never double-apply.
+ */
+export async function adjustStockForWeightDelta(
+  client: PoolClient,
+  opts: { productId: string; quality: unknown; deltaUnits: number; orderId?: string | null; cityId?: string | null; createdBy?: string | null }
+): Promise<void> {
+  const { productId, quality, deltaUnits } = opts;
+  if (!Number.isFinite(deltaUnits) || deltaUnits === 0) return;
+  const stockCol = qualityStockColumn(quality);
+  if (deltaUnits > 0) {
+    const statusSet =
+      stockCol === 'stock_quantity'
+        ? `, stock_status = CASE WHEN GREATEST(0, stock_quantity - $1) <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
+        : '';
+    await client.query(
+      `UPDATE products
+          SET ${stockCol} = GREATEST(0, ${stockCol} - $1)${statusSet},
+              updated_at = NOW()
+        WHERE id = $2`,
+      [deltaUnits, productId]
+    );
+  } else {
+    const back = -deltaUnits;
+    const statusSet =
+      stockCol === 'stock_quantity'
+        ? `, stock_status = CASE WHEN stock_quantity + $1 > 0 THEN 'active'::product_status ELSE 'out_of_stock'::product_status END`
+        : '';
+    await client.query(
+      `UPDATE products
+          SET ${stockCol} = ${stockCol} + $1${statusSet},
+              updated_at = NOW()
+        WHERE id = $2`,
+      [back, productId]
+    );
+  }
+  await recordStockMovement(client, {
+    productId, quality, cityId: opts.cityId, delta: -deltaUnits, reason: 'adjust',
+    refOrderId: opts.orderId, createdBy: opts.createdBy,
+    note: `variable-weight delta ${deltaUnits > 0 ? '+' : ''}${round3(deltaUnits)} units`,
+  });
+}
+
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
+
+/**
  * Commit the sale for EVERY line of a delivered order that went through the
  * reservation model. Idempotent + legacy-safe: it first atomically flips
  * orders.stock_reserved TRUE→FALSE and only proceeds if it won the flip, so a

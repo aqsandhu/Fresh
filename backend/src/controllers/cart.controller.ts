@@ -69,13 +69,55 @@ const getOrCreateCart = async (userId: string) => {
   );
 
   if (cartResult.rows.length === 0) {
-    // Create new cart
-    cartResult = await query(
-      `INSERT INTO carts (user_id, status, expires_at)
-       VALUES ($1, 'active', NOW() + INTERVAL '7 days')
-       RETURNING *`,
-      [userId]
-    );
+    // Contract C3: create-if-absent must be race-safe. With the partial unique
+    // index (migration 51) the ON CONFLICT clause makes two concurrent "add
+    // first item" requests collapse into ONE active cart; without the index
+    // PostgreSQL rejects the ON CONFLICT spec (42P10) and we fall back to a
+    // plain insert (a duplicate-key 23505 still lands on the re-select).
+    const selectActive = () =>
+      query(
+        `SELECT * FROM carts
+         WHERE user_id = $1 AND status = 'active'
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [userId]
+      );
+    try {
+      cartResult = await query(
+        `INSERT INTO carts (user_id, status, expires_at)
+         VALUES ($1, 'active', NOW() + INTERVAL '7 days')
+         ON CONFLICT (user_id) WHERE status = 'active' DO NOTHING
+         RETURNING *`,
+        [userId]
+      );
+      if (cartResult.rows.length === 0) {
+        // Lost the race — the winner's cart is now visible; fetch it.
+        cartResult = await selectActive();
+      }
+    } catch (err: any) {
+      if (err?.code === '42P10') {
+        // Index not deployed yet: plain insert; if a concurrent insert beat us
+        // to it (any pre-existing unique constraint), re-select instead.
+        try {
+          cartResult = await query(
+            `INSERT INTO carts (user_id, status, expires_at)
+             VALUES ($1, 'active', NOW() + INTERVAL '7 days')
+             RETURNING *`,
+            [userId]
+          );
+        } catch (inner: any) {
+          if (inner?.code !== '23505') throw inner;
+          cartResult = await selectActive();
+        }
+      } else if (err?.code === '23505') {
+        cartResult = await selectActive();
+      } else {
+        throw err;
+      }
+    }
+    if (cartResult.rows.length === 0) {
+      throw new Error('Could not create or find an active cart');
+    }
   }
 
   return cartResult.rows[0];

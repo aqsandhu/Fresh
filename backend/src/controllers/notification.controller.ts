@@ -33,13 +33,21 @@ export const registerPushToken = asyncHandler(async (req: Request, res: Response
   if (!token) {
     return errorResponse(res, 'Push token is required', 400);
   }
+  // FCM/Expo tokens are well under 512 chars — reject junk rather than
+  // letting the text[] column grow unbounded.
+  if (token.length > 512) {
+    return errorResponse(res, 'Invalid push token', 400);
+  }
 
+  // Dedupe (NOT ANY) + cap at 10 tokens per user (keep the most recent): an
+  // unbounded array turns every notification fan-out into an ever-growing
+  // scan and invites storage abuse.
   const result = await query(
     `UPDATE users
         SET device_tokens = CASE
               WHEN device_tokens IS NULL THEN ARRAY[$2]::text[]
-              WHEN NOT ($2 = ANY(device_tokens)) THEN array_append(device_tokens, $2)
-              ELSE device_tokens
+              WHEN $2 = ANY(device_tokens) THEN device_tokens
+              ELSE (array_append(device_tokens, $2))[GREATEST(1, array_length(array_append(device_tokens, $2), 1) - 9):]
             END,
             updated_at = NOW()
       WHERE id = $1 AND status = 'active' AND deleted_at IS NULL

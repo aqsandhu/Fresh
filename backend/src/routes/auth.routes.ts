@@ -9,6 +9,8 @@ import {
   verifyUserActive,
   authRateLimiter,
   registerRateLimiter,
+  otpRateLimiter,
+  refreshRateLimiter,
   validate,
   authSchemas,
 } from '../middleware';
@@ -18,7 +20,7 @@ const router = Router();
 // ── OTP-based auth (primary flow) ───────────────────────────────────────
 router.post(
   '/send-otp',
-  authRateLimiter,
+  otpRateLimiter, // counts every request (no skipSuccessfulRequests) — anti-enumeration
   validate(authSchemas.sendOtp),
   authController.sendOtpHandler
 );
@@ -54,6 +56,7 @@ router.post(
 
 router.post(
   '/refresh',
+  refreshRateLimiter,
   validate(authSchemas.refresh),
   authController.refreshToken
 );
@@ -63,7 +66,7 @@ router.post(
 // subsequent login + sensitive re-auth. Falls back to OTP if PIN forgotten.
 router.get(
   '/pin-status',
-  authRateLimiter, // prevent phone-number enumeration
+  otpRateLimiter, // prevent phone-number enumeration (counts successful probes too)
   validate(authSchemas.pinStatus, 'query'),
   authController.pinStatus
 );

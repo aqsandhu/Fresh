@@ -411,7 +411,7 @@ router.put('/site-settings/whatsapp-order/bulk', adminController.updateWhatsAppO
 
 // Settings - General, Delivery, Time Slots, Business Hours
 router.get('/settings', adminController.getSettings);
-router.put('/settings/delivery', adminController.updateDeliverySettings);
+router.put('/settings/delivery', validate(adminSchemas.updateDeliverySettings), adminController.updateDeliverySettings);
 router.get('/settings/time-slots', adminController.getTimeSlots);
 router.post('/settings/time-slots', adminController.createTimeSlot);
 router.put('/settings/time-slots/:id', adminController.updateTimeSlot);

@@ -47,6 +47,7 @@ export {
   riderSchemas,
   adminSchemas,
   restaurantSchemas,
+  shareholderSchemas,
 } from './validation';
 
 // Rate limiting
@@ -61,6 +62,8 @@ export {
   orderRateLimiter,
   webhookRateLimiter,
   publicTrackingRateLimiter,
+  otpRateLimiter,
+  refreshRateLimiter,
   createRateLimiter,
 } from './rateLimiter';
 

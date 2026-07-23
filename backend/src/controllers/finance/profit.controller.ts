@@ -20,7 +20,7 @@ import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse, forbiddenResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
 import { ensureFinanceTables } from '../../config/financeSchema';
-import { computeCityProfit, periodFromQuery } from '../../utils/profitCalc';
+import { computeCityProfit, periodFromQuery, periodClause } from '../../utils/profitCalc';
 import logger from '../../utils/logger';
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return Number.isFinite(n) ? n : NaN; };
@@ -311,10 +311,34 @@ export const payShareholder = asyncHandler(async (req: Request, res: Response) =
   const scope = await resolveCityScope(req);
   const amount = num(req.body?.amount);
   if (!Number.isFinite(amount) || amount <= 0) return errorResponse(res, 'Enter a valid amount.', 400);
-  const r = await query(`SELECT id, city_id, status FROM shareholders WHERE id = $1`, [req.params.id]);
+  const r = await query(`SELECT id, city_id, status, share_percent FROM shareholders WHERE id = $1`, [req.params.id]);
   const s = r.rows[0];
   if (!s) return notFoundResponse(res, 'Shareholder not found');
   if (!scope.unrestricted && scope.cityId && s.city_id !== scope.cityId) return notFoundResponse(res, 'Shareholder not found');
+
+  // Cap the payout at the shareholder's CURRENT-PERIOD balance: their share
+  // of the distributable profit minus what they already received or have
+  // pending. Without this an admin could pay out more than the city earned.
+  if (s.city_id) {
+    const period = periodFromQuery(req.query);
+    if (!period.period && !period.date && !period.month) period.period = 'month';
+    const cp = await computeCityProfit(s.city_id, period);
+    const myShare = (cp.distributable * ((parseFloat(s.share_percent) || 0) / 100));
+    const payP = periodClause('created_at', period, 2);
+    const paid = await query(
+      `SELECT COALESCE(SUM(amount),0) AS total FROM shareholder_payouts
+        WHERE shareholder_id = $1 AND status IN ('pending','received')${payP.sql}`,
+      [req.params.id, ...payP.params]
+    );
+    const balance = Math.round((myShare - (parseFloat(paid.rows[0].total) || 0) + Number.EPSILON) * 100) / 100;
+    if (amount > balance + 1e-6) {
+      return errorResponse(
+        res,
+        `Payout exceeds the shareholder's current-period balance (Rs. ${Math.max(0, balance)}).`,
+        400
+      );
+    }
+  }
 
   const ins = await query(
     `INSERT INTO shareholder_payouts (shareholder_id, city_id, amount, note, created_by)

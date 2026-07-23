@@ -13,6 +13,12 @@ import { asyncHandler } from '../middleware';
 import { successResponse, errorResponse, unauthorizedResponse, forbiddenResponse, notFoundResponse } from '../utils/response';
 import { generateShareholderToken } from '../config/jwt';
 import { ensureFinanceTables } from '../config/financeSchema';
+import {
+  getPinLockoutState,
+  registerPinFailure,
+  clearPinFailures,
+  passwordLockKey,
+} from '../config/pinLockout';
 import { computeCityProfit, periodFromQuery, periodClause } from '../utils/profitCalc';
 import logger from '../utils/logger';
 
@@ -29,6 +35,16 @@ export const loginShareholder = asyncHandler(async (req: Request, res: Response)
   const password = String(req.body?.password || '');
   if (!email || !password) return errorResponse(res, 'Enter your email and password.', 400);
 
+  // Per-account brute-force lockout (same store + escalation as the other
+  // password logins) — a per-IP limit alone is trivially rotated by a botnet.
+  const lockKey = passwordLockKey('shareholder', email);
+  const lockState = await getPinLockoutState(lockKey);
+  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+    const retryAfter = Math.ceil((lockState.lockedUntil - Date.now()) / 1000);
+    res.setHeader('Retry-After', String(retryAfter));
+    return errorResponse(res, 'Too many failed login attempts. Please try again later.', 429);
+  }
+
   const r = await query(
     `SELECT s.*, sc.name AS city_name FROM shareholders s
        LEFT JOIN service_cities sc ON sc.id = s.city_id
@@ -36,11 +52,23 @@ export const loginShareholder = asyncHandler(async (req: Request, res: Response)
     [email]
   );
   const s = r.rows[0];
-  if (!s || !s.password_hash) return unauthorizedResponse(res, 'Invalid email or password');
+  if (!s || !s.password_hash) {
+    await registerPinFailure(lockKey);
+    return unauthorizedResponse(res, 'Invalid email or password');
+  }
   if (s.status !== 'active') return forbiddenResponse(res, 'This account is inactive. Please contact the admin.');
   const ok = await bcrypt.compare(password, s.password_hash);
-  if (!ok) return unauthorizedResponse(res, 'Invalid email or password');
+  if (!ok) {
+    const { lockedUntil } = await registerPinFailure(lockKey);
+    if (lockedUntil) {
+      const retryAfter = Math.ceil((lockedUntil - Date.now()) / 1000);
+      res.setHeader('Retry-After', String(retryAfter));
+      return errorResponse(res, 'Too many failed login attempts. Please try again later.', 429);
+    }
+    return unauthorizedResponse(res, 'Invalid email or password');
+  }
 
+  await clearPinFailures(lockKey);
   await query(`UPDATE shareholders SET last_login_at = NOW() WHERE id = $1`, [s.id]);
   const token = generateShareholderToken(s.id, s.email);
   logger.info('Shareholder login', { id: s.id });

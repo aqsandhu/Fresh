@@ -380,12 +380,15 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   await ensureTimeSlotBookings();
 
   const order = await withTransaction(async (client) => {
-    // Get cart
+    // Get cart. FOR UPDATE serialises concurrent checkouts on the same cart so
+    // a double-submit can't pass the 'active' check twice and convert the same
+    // cart into two orders.
     const cartResult = await client.query(
       `SELECT * FROM carts 
        WHERE user_id = $1 AND status = 'active'
        ORDER BY created_at DESC
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [req.user!.id]
     );
 
@@ -876,11 +879,19 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       await client.query('UPDATE orders SET stock_reserved = TRUE WHERE id = $1', [order.id]);
     }
 
-    // Update cart status to converted
-    await client.query(
-      'UPDATE carts SET status = $1, converted_to_order_id = $2 WHERE id = $3',
-      ['converted', order.id, cart.id]
+    // Update cart status to converted. The status='active' guard + rowCount
+    // check is the atomic anti-double-submit gate: even if the FOR UPDATE lock
+    // above were bypassed (e.g. a second active cart row racing), only ONE
+    // checkout can flip this cart. Anything else rolls the whole order back.
+    const cartConversion = await client.query(
+      `UPDATE carts
+          SET status = 'converted', converted_to_order_id = $1
+        WHERE id = $2 AND status = 'active'`,
+      [order.id, cart.id]
     );
+    if ((cartConversion.rowCount ?? 0) !== 1) {
+      throw new ConflictError('Cart was already converted to another order. Please refresh your cart.');
+    }
 
     // Assign house number if not assigned
     if (!address.house_number) {
@@ -898,6 +909,20 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       deliveryDate: requested_delivery_date,
       isUrgent,
     });
+
+    // When no explicit delivery date was requested, the claim above booked a
+    // seat for *today* (Asia/Karachi). Persist that effective date on the
+    // order so a later cancel releases the seat for the SAME day the claim
+    // consumed — otherwise a next-day cancel decrements the wrong date and
+    // the booked day leaks one seat permanently.
+    if (!isUrgent && time_slot_id && !requested_delivery_date) {
+      await client.query(
+        `UPDATE orders
+            SET requested_delivery_date = (NOW() AT TIME ZONE 'Asia/Karachi')::date
+          WHERE id = $1 AND requested_delivery_date IS NULL`,
+        [order.id]
+      );
+    }
 
     return order;
   });
@@ -993,6 +1018,20 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
        WHERE id = $2`,
       [reason, id]
     );
+
+    // Paid order cancelled → money is owed back to the customer. Record a
+    // refunds-ledger row (same shape as complaint.controller's refund insert)
+    // so finance can reconcile the outflow; never blocks the cancellation.
+    // The FOR UPDATE row lock + status check above make this run exactly once.
+    const cancelledPaid = parseFloat(String(order.paid_amount ?? '0')) || 0;
+    if (order.payment_status === 'completed' && cancelledPaid > 0 && (await hasCatalogV2Columns())) {
+      await client.query(
+        `INSERT INTO refunds
+           (order_id, complaint_id, amount, original_payment_source, note, reason)
+         VALUES ($1, NULL, $2, 'admin', $3, $3)`,
+        [id, roundMoney(cancelledPaid), 'Auto-created on order cancellation — refund due']
+      );
+    }
 
     // Restore time-slot seat + stock (shared with admin/webhook cancel paths).
     await restoreOrderInventory(client, order);

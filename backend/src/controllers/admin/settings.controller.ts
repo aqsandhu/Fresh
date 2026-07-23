@@ -551,10 +551,18 @@ export const updateDeliverySettings = asyncHandler(async (req: Request, res: Res
   const userId = req.user?.id;
   const { base_charge, free_delivery_threshold, express_charge, urgent_charge, urgent_eta, slot_cutoff_percent } = req.body;
 
+  // Clamp/validate money fields to finite numbers ≥ 0 — a NaN/negative value
+  // used to persist literally ("NaN" string) and break every downstream
+  // parseFloat consumer (checkout charge calculation included).
+  const money = (v: unknown, fallback: number): string => {
+    const n = parseFloat(String(v));
+    return String(Number.isFinite(n) && n >= 0 ? n : fallback);
+  };
+
   const updates = [
-    { key: 'delivery_base_charge', value: String(base_charge ?? 50) },
-    { key: 'delivery_free_delivery_threshold', value: String(free_delivery_threshold ?? 500) },
-    { key: 'delivery_express_charge', value: String(express_charge ?? 100) },
+    { key: 'delivery_base_charge', value: money(base_charge, 50) },
+    { key: 'delivery_free_delivery_threshold', value: money(free_delivery_threshold, 500) },
+    { key: 'delivery_express_charge', value: money(express_charge, 100) },
   ];
 
   // Slot cutoff % (0–100): how much of a TODAY slot may elapse before it locks.
@@ -626,7 +634,9 @@ export const getTimeSlots = asyncHandler(async (req: Request, res: Response) => 
 export const createTimeSlot = asyncHandler(async (req: Request, res: Response) => {
   const { start_time, end_time, max_orders, is_active, is_free_delivery_slot } = req.body;
   const slotName = `${start_time} - ${end_time}`;
-  const status = is_active !== false ? 'available' : 'unavailable';
+  // slot_status enum is ('available','booked','blocked') — 'unavailable' is
+  // not a member and throws 22P02 at runtime when is_active=false.
+  const status = is_active !== false ? 'available' : 'blocked';
   const audienceReady = await hasRestaurantDeliveryColumns();
   const audience = req.body.audience === 'restaurant' ? 'restaurant' : 'consumer';
 
@@ -658,7 +668,7 @@ export const updateTimeSlot = asyncHandler(async (req: Request, res: Response) =
   const { id } = req.params;
   const { start_time, end_time, max_orders, is_active, is_free_delivery_slot } = req.body;
   const slotName = start_time && end_time ? `${start_time} - ${end_time}` : undefined;
-  const status = is_active !== undefined ? (is_active ? 'available' : 'unavailable') : undefined;
+  const status = is_active !== undefined ? (is_active ? 'available' : 'blocked') : undefined;
 
   const sets: string[] = [];
   const params: any[] = [];
@@ -918,7 +928,12 @@ export const getCities = asyncHandler(async (req: Request, res: Response) => {
  */
 
 export const addCity = asyncHandler(async (req: Request, res: Response) => {
-  const { name, province } = req.body;
+  const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+  const { province } = req.body;
+
+  if (name.length < 1 || name.length > 100) {
+    return errorResponse(res, 'City name must be 1–100 characters', 400);
+  }
 
   const existing = await query(
     `SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1)`,
@@ -958,6 +973,11 @@ export const toggleCity = asyncHandler(async (req: Request, res: Response) => {
  */
 
 export const deleteCity = asyncHandler(async (req: Request, res: Response) => {
+  // Deleting a city cascades through products/orders config — destructive
+  // enough to restrict to super-admin (mirrors importCityCatalog).
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admin can delete a city', 403);
+  }
   const { id } = req.params;
   const result = await query(
     `DELETE FROM service_cities WHERE id = $1 RETURNING id`,

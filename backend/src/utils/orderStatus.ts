@@ -141,6 +141,13 @@ export async function restoreOrderInventory(
     if (!item.product_id) continue;
     const amount = stockUnitsNeeded(item.quantity, item.unit);
 
+    // order_count was incremented at checkout; hand it back so a cancelled
+    // order doesn't keep inflating the popularity counter.
+    await client.query(
+      'UPDATE products SET order_count = GREATEST(0, order_count - $1) WHERE id = $2',
+      [item.quantity, item.product_id]
+    );
+
     if (reserved) {
       await releaseProductReservation(client, {
         productId: item.product_id, quality: item.quality, need: amount, orderId: order.id,

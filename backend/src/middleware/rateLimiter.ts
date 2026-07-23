@@ -76,6 +76,8 @@ const webhookRedisStore = makeStore('webhook');
 const passwordResetRedisStore = makeStore('pwreset');
 const riderLocationRedisStore = makeStore('riderloc');
 const trackingRedisStore = makeStore('tracking');
+const otpRedisStore = makeStore('otp');
+const refreshRedisStore = makeStore('refresh');
 
 function skipInDev(req: Request): boolean {
   if (!isDev) return false;
@@ -268,6 +270,58 @@ export const publicTrackingRateLimiter: RateLimitRequestHandler = rateLimit({
   // Redis down → let the request through (alert already fired) instead of
   // returning 500 on every rate-limited endpoint.
   passOnStoreError: true,
+});
+
+// /send-otp + /pin-status are the account-enumeration surface: the generic
+// auth limiter skips SUCCESSFUL requests, so an attacker probing phone numbers
+// (every probe "succeeds") was never throttled. This dedicated limiter counts
+// every request — 30 per 15 min per IP.
+export const otpRateLimiter: RateLimitRequestHandler = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 1000 : 30,
+  skip: skipInDev,
+  store: otpRedisStore,
+  message: {
+    success: false,
+    message: 'Too many verification requests, please try again after 15 minutes',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
+  handler: (req: Request, res: Response) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many verification requests, please try again after 15 minutes',
+      retryAfter: 15 * 60,
+    });
+  },
+});
+
+// Refresh tokens are long-lived credentials; hammering /refresh should never
+// be unlimited. 60 per 15 min per IP is far above any legitimate client.
+export const refreshRateLimiter: RateLimitRequestHandler = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 1000 : 60,
+  skip: skipInDev,
+  store: refreshRedisStore,
+  message: {
+    success: false,
+    message: 'Too many token refresh attempts, please try again later',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Redis down → let the request through (alert already fired) instead of
+  // returning 500 on every rate-limited endpoint.
+  passOnStoreError: true,
+  handler: (req: Request, res: Response) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many token refresh attempts, please try again later',
+      retryAfter: 15 * 60,
+    });
+  },
 });
 
 export const createRateLimiter = (

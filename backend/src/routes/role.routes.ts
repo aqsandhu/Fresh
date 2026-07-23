@@ -11,6 +11,8 @@ import { Router } from 'express';
 import {
   authenticate,
   requireSuperAdmin,
+  verifyAdminActive,
+  auditLogger,
 } from '../middleware';
 import * as roleController from '../controllers/role.controller';
 
@@ -18,6 +20,11 @@ const router = Router();
 
 router.use(authenticate);
 router.use(requireSuperAdmin);
+// Mirror admin.routes.ts: a suspended/demoted admin's role-management access
+// must end immediately (not at JWT expiry), and every role/user mutation must
+// land in the audit log.
+router.use(verifyAdminActive);
+router.use(auditLogger());
 
 router.get('/permissions', roleController.listPermissions);
 router.get('/', roleController.listRoles);
