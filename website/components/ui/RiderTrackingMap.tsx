@@ -192,7 +192,14 @@ export default function RiderTrackingMap({ orderId, riderName }: RiderMapProps) 
         socket.on('rider:location', handleSocketLocation)
       }
 
-        pollRef.current = setInterval(updateRiderPosition, 5000)
+        // HTTP fallback poll — skipped while the socket subscription is live
+        // (positions already arrive via 'rider:location') and paused when the
+        // tab is hidden.
+        pollRef.current = setInterval(() => {
+          if (typeof document !== 'undefined' && document.hidden) return
+          if (getSocket()?.connected) return
+          updateRiderPosition()
+        }, 5000)
       } catch {
         if (!cancelled) {
           setError('Google Maps could not load')

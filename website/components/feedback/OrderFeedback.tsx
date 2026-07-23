@@ -189,7 +189,7 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
                     {row.image ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={resolveImageUrl(row.image) || '/placeholder-product.jpg'}
+                        src={resolveImageUrl(row.image) || '/placeholder-product.svg'}
                         alt={row.label}
                         className="w-10 h-10 rounded-lg object-cover"
                       />

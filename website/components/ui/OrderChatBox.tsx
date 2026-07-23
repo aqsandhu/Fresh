@@ -37,7 +37,20 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
   const [typingUser, setTypingUser] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Cache the socket handshake token for its lifetime so typing indicators
+  // and sends don't hit /auth/socket-token on every keystroke. Refetch only
+  // when the cache is missing/expired (socket actually needs a new token).
+  const tokenCacheRef = useRef<{ token: string | null; expiresAt: number } | null>(null)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
+  const getSocketTokenCached = useCallback(async (): Promise<string | null> => {
+    const cached = tokenCacheRef.current
+    if (cached && cached.expiresAt > Date.now()) return cached.token
+    const token = await resolveSocketAuthToken()
+    // Server tokens live longer than this; refresh the cache conservatively.
+    tokenCacheRef.current = { token, expiresAt: Date.now() + 5 * 60 * 1000 }
+    return token
+  }, [])
 
   // Fetch initial messages via REST
   const fetchMessages = useCallback(async () => {
@@ -64,6 +77,23 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     const handleIncomingMessage = (data: Message) => {
       setMessages((prev) => {
         if (prev.some((m) => m.id === data.id)) return prev
+        // Server echo of an optimistically-sent message: replace the temp-*
+        // placeholder (matched by text + sender + nearby timestamp) instead
+        // of appending a duplicate.
+        const dataTime = new Date(data.created_at).getTime()
+        const tempIdx = prev.findIndex(
+          (m) =>
+            m.id.startsWith('temp-') &&
+            m.sender_type === data.sender_type &&
+            m.message === data.message &&
+            Number.isFinite(dataTime) &&
+            Math.abs(new Date(m.created_at).getTime() - dataTime) < 30_000
+        )
+        if (tempIdx !== -1) {
+          const next = [...prev]
+          next[tempIdx] = data
+          return next
+        }
         return [...prev, data]
       })
     }
@@ -75,7 +105,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     }
 
     const setupSocket = async () => {
-      const token = await resolveSocketAuthToken()
+      const token = await getSocketTokenCached()
       if (!token || cancelled) return
 
       const socket = connectSocket(token)
@@ -97,7 +127,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
       offChatMessage(handleIncomingMessage)
       if (checkConnection) clearInterval(checkConnection)
     }
-  }, [orderId, fetchMessages, isAuthenticated])
+  }, [orderId, fetchMessages, isAuthenticated, getSocketTokenCached])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -122,7 +152,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     }
     setMessages((prev) => [...prev, optimisticMsg])
 
-    const token = await resolveSocketAuthToken()
+    const token = await getSocketTokenCached()
     const socket = connectSocket(token)
     if (socket.connected) {
       sendChatMessage(orderId, text)
@@ -148,7 +178,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     setNewMessage(text)
 
     const runTyping = async () => {
-      const token = await resolveSocketAuthToken()
+      const token = await getSocketTokenCached()
       const socket = connectSocket(token)
       if (!socket.connected) return
 

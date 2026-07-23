@@ -140,7 +140,7 @@ function GuestCheckout() {
                     <div key={`${item.product.id}::${unit}::${item.quality ?? 'A'}`} className="flex items-center gap-3">
                       <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                         <Image
-                          src={item.product.image || item.product.image_url || '/placeholder-product.png'}
+                          src={item.product.image || item.product.image_url || '/placeholder-product.svg'}
                           alt={item.product.name}
                           fill
                           className="object-cover"
@@ -192,6 +192,9 @@ function CheckoutPage() {
   const [showNewAddress, setShowNewAddress] = useState(false)
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('')
   const [isPlacingOrder, setIsPlacingOrder] = useState(false)
+  // Friendly inline validation error shown above the Place Order button —
+  // avoids a raw 422 from the API when city / slot selection is missing.
+  const [placeOrderError, setPlaceOrderError] = useState('')
   const [orderPlaced, setOrderPlaced] = useState(false)
   const [placedOrder, setPlacedOrder] = useState<{
     id: string
@@ -471,8 +474,13 @@ function CheckoutPage() {
   }
 
   const handlePlaceOrder = async () => {
+    setPlaceOrderError('')
     if (!urgent && !selectedTimeSlot) {
-      toast.error('Please select a delivery time slot')
+      setPlaceOrderError('Please select a delivery slot before placing your order.')
+      return
+    }
+    if (!getSelectedCityId()) {
+      setPlaceOrderError('Please select your city before placing your order.')
       return
     }
 
@@ -980,7 +988,7 @@ function CheckoutPage() {
                     >
                       <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                         <Image
-                          src={item.product.image || item.product.image_url || '/placeholder-product.png'}
+                          src={item.product.image || item.product.image_url || '/placeholder-product.svg'}
                           alt={item.product.name}
                           fill
                           className="object-cover"
@@ -1157,6 +1165,11 @@ function CheckoutPage() {
               </div>
 
               {/* Place Order Button */}
+              {placeOrderError && (
+                <p className="mb-3 rounded-lg bg-red-50 border border-red-100 px-3 py-2 text-sm text-red-700">
+                  {placeOrderError}
+                </p>
+              )}
               <Button
                 onClick={handlePlaceOrder}
                 fullWidth

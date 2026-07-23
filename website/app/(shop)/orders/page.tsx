@@ -28,7 +28,7 @@ import { ordersApi, productsApi } from '@/lib/api'
 import { useAuthStore, useCartStore } from '@/store/cartStore'
 
 function resolveImg(path: string | null | undefined): string {
-  return resolveImageUrl(path) || '/placeholder-product.jpg'
+  return resolveImageUrl(path) || '/placeholder-product.svg'
 }
 
 // Map backend status to website UI status
@@ -71,9 +71,11 @@ export default function OrdersPage() {
   const { addItem } = useCartStore()
   const [orders, setOrders] = useState<MappedOrder[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'completed'>('all')
 
   const loadOrders = useCallback(async () => {
+    setLoadError(false)
     try {
       const res = await ordersApi.getAll()
       const rawOrders = Array.isArray(res) ? res : []
@@ -100,6 +102,10 @@ export default function OrdersPage() {
     } catch (err: any) {
       if (err?.response?.status === 401) {
         router.push('/login?redirect=/orders')
+      } else {
+        // Non-auth failure (network/5xx) — show an error state with retry
+        // instead of silently rendering the "no orders yet" empty state.
+        setLoadError(true)
       }
     } finally {
       setLoading(false)
@@ -171,6 +177,35 @@ export default function OrdersPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12">
+        <div className="container mx-auto px-4 max-w-md">
+          <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+            <XCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">
+              Couldn&apos;t load orders
+            </h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Something went wrong while fetching your orders. Please check your
+              connection and try again.
+            </p>
+            <Button
+              onClick={() => {
+                setLoading(true)
+                loadOrders()
+              }}
+              fullWidth
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Retry
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -256,7 +291,7 @@ export default function OrdersPage() {
                       <div key={idx} className="flex items-center gap-4">
                         <div className="relative w-16 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                           <Image
-                            src={item.image || '/placeholder-product.png'}
+                            src={item.image || '/placeholder-product.svg'}
                             alt={item.name}
                             fill
                             sizes="64px"

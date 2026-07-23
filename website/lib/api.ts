@@ -105,7 +105,7 @@ const BACKEND_URL = ABSOLUTE_API_URL.replace(/\/api\/?$/, '')
 // Resolve a stored image reference to a full URL the browser can load. Returns
 // `undefined` (NOT a fake placeholder path) when there is no image, so cards
 // can render their own visual fallback consistently. Previously this returned
-// a non-existent /placeholder-product.jpg which made some surfaces show a
+// a non-existent /placeholder-product.svg which made some surfaces show a
 // broken-image icon and others show their fallback — confusing UX.
 function resolveImageUrl(path: string | null | undefined): string | undefined {
   if (!path) return undefined
@@ -316,8 +316,11 @@ export const authApi = {
     return response.data?.data || { exists: false, hasPin: false }
   },
 
-  setPin: async (pin: string) => {
-    const response = await api.post('/auth/set-pin', { pin })
+  // Contract C2: users who already have a PIN must prove the current one
+  // before rotating. Backend responds with data.sessions_revoked=true on a
+  // successful change (all refresh tokens revoked → re-login required).
+  setPin: async (pin: string, currentPin?: string) => {
+    const response = await api.post('/auth/set-pin', currentPin ? { pin, current_pin: currentPin } : { pin })
     return response.data
   },
 

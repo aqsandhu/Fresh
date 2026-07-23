@@ -19,8 +19,12 @@ export default function MarketingTracker() {
   const hasHydrated = useCartStore((s) => s.hasHydrated)
   const user = useAuthStore((s) => s.user)
 
-  const fbId = config.fb_pixel_id?.trim()
-  const gaId = config.google_tag_id?.trim()
+  // Validate pixel/tag IDs before interpolating them into inline scripts —
+  // admin-supplied config must never become a script-injection vector.
+  const rawFbId = config.fb_pixel_id?.trim()
+  const rawGaId = config.google_tag_id?.trim()
+  const fbId = rawFbId && /^[\w-]+$/.test(rawFbId) ? rawFbId : undefined
+  const gaId = rawGaId && /^[\w-]+$/.test(rawGaId) ? rawGaId : undefined
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const prevCountRef = useRef<number | null>(null)

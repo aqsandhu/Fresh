@@ -23,6 +23,18 @@ function welcomeText(name: string): string {
 // Finds markdown links, bare product paths, and bare URLs in one pass.
 const TOKEN_RE = /\[([^\]]+)\]\(([^)]+)\)|(\/product\/[A-Za-z0-9_-]+)|(https?:\/\/[^\s)]+)/g
 
+/**
+ * Link scheme allowlist — only same-site paths and http(s) URLs may render
+ * as anchors. Anything else (javascript:, data:, vbscript:, protocol-relative
+ * '//…', etc.) is rendered as plain text so a malicious model/backend reply
+ * cannot inject an executable or off-site link into the chat.
+ */
+function isAllowedLinkUrl(url: string): boolean {
+  const u = url.trim()
+  if (u.startsWith('//')) return false
+  return u.startsWith('/') || u.startsWith('https://') || u.startsWith('http://')
+}
+
 /** Strip stray markdown so no "stars"/symbols leak into the chat. */
 function cleanText(s: string): string {
   return s
@@ -89,6 +101,14 @@ export default function AiChatWidget() {
   // always sits left of the name and the chip never reorders the surrounding
   // Urdu text). Other links stay as plain underlined links.
   const linkNode = (label: string, url: string, key: string) => {
+    // Scheme allowlist: disallowed URLs render as plain text (no <a>/<Link>).
+    if (!isAllowedLinkUrl(url)) {
+      return (
+        <span key={key} className="break-all">
+          {label}
+        </span>
+      )
+    }
     const productPath = productPathFromUrl(url)
     if (productPath) {
       const productLabel = /^https?:\/\//i.test(label) || label === url ? 'View product' : label
