@@ -9,7 +9,7 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
-import { query } from '@/config/database';
+import { query, withTransaction } from '@/config/database';
 import authRoutes from '@/routes/auth.routes';
 import { buildApp, signAccessToken, signRefreshToken } from './helpers';
 
@@ -115,5 +115,59 @@ describe('GET /api/auth/pin-status', () => {
   it('rejects an invalid phone number with 422', async () => {
     const res = await request(app).get('/api/auth/pin-status').query({ phone: 'abc' });
     expect(res.status).toBe(422);
+  });
+});
+
+describe('POST /api/auth/delete-account', () => {
+  const mockWithTransaction = withTransaction as jest.MockedFunction<typeof withTransaction>;
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it('soft-deletes + scrubs addresses instead of hard-deleting them (orders keep a valid address FK)', async () => {
+    routeBySql({
+      'FROM users': () =>
+        ok([{ id: 'user-1', phone: '+923001234567', role: 'customer', status: 'active', full_name: 'Aisha' }]),
+      'UPDATE refresh_tokens': () => ok([], 'UPDATE'),
+    });
+    const client = {
+      query: jest.fn(async (sql: string) =>
+        String(sql).includes('door_picture_url FROM addresses')
+          ? ok([{ door_picture_url: 'https://x.supabase.co/storage/v1/object/public/uploads/addresses/door-pictures/a.jpg' }])
+          : ok([], 'UPDATE')
+      ),
+    };
+    mockWithTransaction.mockImplementationOnce((async (cb: any) => cb(client)) as never);
+
+    const res = await request(app)
+      .post('/api/auth/delete-account')
+      .set('Authorization', `Bearer ${signAccessToken()}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    const sqls = client.query.mock.calls.map((c) => String(c[0]));
+    // A hard DELETE violated orders.address_id (NO ACTION) for anyone who had ordered.
+    expect(sqls.some((s) => /DELETE FROM addresses/i.test(s))).toBe(false);
+    const scrub = sqls.find((s) => /UPDATE addresses SET/i.test(s));
+    expect(scrub).toBeDefined();
+    expect(scrub).toMatch(/deleted_at = NOW\(\)/);
+    expect(scrub).toMatch(/written_address = 'Deleted'/);
+    expect(scrub).toMatch(/door_picture_url = NULL/);
+    expect(scrub).toMatch(/location = NULL/);
+    expect(scrub).toMatch(/delivery_instructions = NULL/);
+    // The user row is anonymised in the same transaction.
+    expect(sqls.some((s) => /UPDATE users SET/i.test(s) && /status = 'deleted'/i.test(s))).toBe(true);
+  });
+
+  it('refuses to delete workforce (non-customer) accounts', async () => {
+    routeBySql({
+      'FROM users': () =>
+        ok([{ id: 'rider-1', phone: '+923001234567', role: 'rider', status: 'active', full_name: 'R' }]),
+    });
+    const res = await request(app)
+      .post('/api/auth/delete-account')
+      .set('Authorization', `Bearer ${signAccessToken({ userId: 'rider-1', role: 'rider' })}`)
+      .send({});
+    expect(res.status).toBe(403);
+    expect(mockWithTransaction).not.toHaveBeenCalled();
   });
 });

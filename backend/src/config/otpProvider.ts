@@ -49,8 +49,13 @@ export const OTP_MAX_SENDS_PER_PHONE_HOUR = parseInt(
   10
 );
 
-/** Anti SMS-pumping: sends allowed per IP per hour. */
+/**
+ * Anti SMS-pumping: sends allowed per IP per hour. Pakistani carriers share one
+ * CGNAT address across thousands of customers, so 15/hour starved legitimate
+ * sign-ups; the per-PHONE cap above is the real cost bound (an attacker needs
+ * a new number for every 5 sends regardless of IP).
+ */
 export const OTP_MAX_SENDS_PER_IP_HOUR = parseInt(
-  process.env.OTP_MAX_SENDS_PER_IP_HOUR || '15',
+  process.env.OTP_MAX_SENDS_PER_IP_HOUR || '60',
   10
 );

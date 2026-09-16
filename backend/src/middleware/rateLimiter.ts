@@ -17,7 +17,16 @@ const WINDOW_MS = parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000');
 // routes retain their much tighter dedicated limiters below.
 const MAX_REQUESTS = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || (isDev ? '10000' : '2000'));
 const AUTH_WINDOW_MS = parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000');
-const AUTH_MAX_REQUESTS = parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || (isDev ? '1000' : '50'));
+// Counts FAILED attempts only (skipSuccessfulRequests) and shares one bucket
+// per CGNAT IP, so 50 wrong PINs across a whole carrier block locked everyone
+// out. The per-ACCOUNT lockout (config/pinLockout.ts) is the real brute-force
+// defence; this stays as a coarse per-IP brake.
+const AUTH_MAX_REQUESTS = parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || (isDev ? '1000' : '150'));
+// Registration / OTP send are per-IP too, but each attempt already burns a
+// per-PHONE OTP quota (otpStore) — the IP caps only need to stop bulk abuse,
+// not throttle a carrier's shared address. Env-tunable for launch traffic.
+const REGISTER_MAX_REQUESTS = parseInt(process.env.REGISTER_RATE_LIMIT_MAX || (isDev ? '100' : '30'));
+const OTP_MAX_REQUESTS = parseInt(process.env.OTP_RATE_LIMIT_MAX || (isDev ? '1000' : '100'));
 
 // maxRetriesPerRequest keeps a Redis outage from hanging every rate-limited
 // request while ioredis retries forever — commands fail after 2 reconnect
@@ -83,6 +92,18 @@ function skipInDev(req: Request): boolean {
   if (!isDev) return false;
   const ip = req.ip || req.socket.remoteAddress || '';
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
+}
+
+/**
+ * Key an AUTHENTICATED limiter by user id, falling back to the client IP.
+ * Pakistani mobile carriers (Jazz/Zong/Telenor) put thousands of unrelated
+ * customers behind one CGNAT address, so an IP-keyed order limiter let six
+ * neighbours on the same carrier lock each other out of checkout. A per-user
+ * key can never be shared between customers; IP remains the fallback for
+ * routes that run before authentication.
+ */
+export function userOrIpKey(req: Request): string {
+  return req.user?.id ? `u:${req.user.id}` : ipKeyGenerator(req.ip ?? '');
 }
 
 export async function initRateLimiterStore(): Promise<void> {
@@ -153,7 +174,11 @@ export const authRateLimiter: RateLimitRequestHandler = rateLimit({
 
 export const registerRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: isDev ? 100 : 3,
+  // Was 3/hour/IP — on a shared carrier IP that blocked sign-ups for everyone
+  // after the third neighbour registered. Every registration still needs an
+  // OTP delivered to a DISTINCT phone (per-phone caps in otpStore), so the IP
+  // cap only guards against bulk automation.
+  max: REGISTER_MAX_REQUESTS,
   skip: skipInDev,
   store: registerRedisStore,
   message: {
@@ -207,7 +232,7 @@ export const riderLocationRateLimiter: RateLimitRequestHandler = rateLimit({
   // Key by the authenticated rider's user id (the route sits behind
   // `authenticate`) so riders sharing a carrier NAT IP don't eat each other's
   // quota; fall back to IP when no identity is available.
-  keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? ''),
+  keyGenerator: userOrIpKey,
   message: {
     success: false,
     message: 'Location updates too frequent',
@@ -219,11 +244,15 @@ export const riderLocationRateLimiter: RateLimitRequestHandler = rateLimit({
   passOnStoreError: true,
 });
 
+// Keyed by the authenticated CUSTOMER (the route sits behind `authenticate`),
+// not by IP: 5 orders/min is generous for one household but was a hard cap
+// for an entire carrier NAT block when keyed by address.
 export const orderRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 60 * 1000,
   max: isDev ? 100 : 5,
   skip: skipInDev,
   store: orderRedisStore,
+  keyGenerator: userOrIpKey,
   message: {
     success: false,
     message: 'Too many order attempts, please try again later',
@@ -278,7 +307,10 @@ export const publicTrackingRateLimiter: RateLimitRequestHandler = rateLimit({
 // every request — 30 per 15 min per IP.
 export const otpRateLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 1000 : 30,
+  // Per-IP anti-enumeration brake only; the per-PHONE cooldown + hourly send
+  // caps (otpStore) are what actually bound SMS cost. 30/15min was too low
+  // for a CGNAT address shared by a whole carrier block.
+  max: OTP_MAX_REQUESTS,
   skip: skipInDev,
   store: otpRedisStore,
   message: {

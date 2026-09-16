@@ -41,6 +41,7 @@ import {
 } from '../config/pinLockout';
 import logger from '../utils/logger';
 import { loadAdminSession } from '../utils/adminSession';
+import { deleteStoragePaths, objectPathFromSupabasePublicUrl } from '../config/storage';
 import {
   setAuthCookies,
   clearAuthCookies,
@@ -750,6 +751,7 @@ export const deleteAccount = asyncHandler(async (req: Request, res: Response) =>
   }
 
   const userId = req.user.userId;
+  let doorPictureUrls: string[] = [];
 
   await withTransaction(async (client) => {
     // Anonymized phone must stay unique and fit VARCHAR(20).
@@ -769,8 +771,46 @@ export const deleteAccount = asyncHandler(async (req: Request, res: Response) =>
        WHERE id = $1`,
       [userId]
     );
-    await client.query(`DELETE FROM addresses WHERE user_id = $1`, [userId]);
+    // Soft-delete + scrub the saved addresses instead of DELETE-ing them. A
+    // hard DELETE violated the orders.address_id FK (NO ACTION) for every
+    // customer who had ever ordered — the whole deletion rolled back with a
+    // 500 — and cascade-deleted their atta_requests (financial records). The
+    // rows stay so orders keep a valid address_id; every identifying field is
+    // wiped. Door pictures are removed from storage after commit (below).
+    const pics = await client.query<{ door_picture_url: string }>(
+      `SELECT door_picture_url FROM addresses
+        WHERE user_id = $1 AND door_picture_url IS NOT NULL AND door_picture_url <> ''`,
+      [userId]
+    );
+    doorPictureUrls = pics.rows.map((r) => r.door_picture_url);
+    await client.query(
+      `UPDATE addresses SET
+         deleted_at = NOW(),
+         is_default = FALSE,
+         written_address = 'Deleted',
+         landmark = NULL,
+         area_name = NULL,
+         postal_code = NULL,
+         location = NULL,
+         location_accuracy = NULL,
+         google_place_id = NULL,
+         door_picture_url = NULL,
+         delivery_instructions = NULL,
+         updated_at = NOW()
+       WHERE user_id = $1 AND deleted_at IS NULL`,
+      [userId]
+    );
   });
+
+  // Best-effort PII cleanup of door photos (never blocks the deletion).
+  const storagePaths = doorPictureUrls
+    .map((u) => objectPathFromSupabasePublicUrl(u))
+    .filter((p): p is string => Boolean(p));
+  if (storagePaths.length > 0) {
+    deleteStoragePaths(storagePaths).catch((err) =>
+      logger.warn('Could not delete door pictures for deleted account', { userId, err })
+    );
+  }
 
   // Kill every session on every device.
   await revokeAllUserRefreshTokens(userId);

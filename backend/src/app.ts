@@ -52,6 +52,7 @@ import { ensureFeatureTables } from './config/featureSchema';
 import { query as dbQuery } from './config/database';
 import { runReconciliation } from './utils/reconciliation';
 import { runAbandonedCartReminders } from './controllers/marketing.controller';
+import { runExclusively } from './utils/leaderLock';
 
 let reconciliationTimer: NodeJS.Timeout | null = null;
 let reconciliationKickoffTimer: NodeJS.Timeout | null = null;
@@ -64,8 +65,9 @@ function startMarketingScheduler(): void {
   if (process.env.NODE_ENV === 'test') return;
   if (marketingTimer) return;
   const HOUR = 60 * 60 * 1000;
+  // Leader-locked: with 2+ instances only one runs the pass (see leaderLock.ts).
   const tick = () =>
-    runAbandonedCartReminders().catch((e) =>
+    runExclusively('scheduler:abandoned-cart-reminders', () => runAbandonedCartReminders()).catch((e) =>
       logger.error('Abandoned-cart reminder tick failed', { error: (e as Error)?.message })
     );
   marketingKickoffTimer = setTimeout(tick, 2 * 60 * 1000); // first pass ~2 min after boot
@@ -79,8 +81,9 @@ function startReconciliationScheduler(): void {
   if (process.env.NODE_ENV === 'test') return;
   if (reconciliationTimer) return; // retry-safe: don't double-start
   const DAY = 24 * 60 * 60 * 1000;
+  // Leader-locked: with 2+ instances only one runs the watchdog (see leaderLock.ts).
   const tick = () =>
-    runReconciliation().catch((e) =>
+    runExclusively('scheduler:reconciliation', () => runReconciliation()).catch((e) =>
       logger.error('Reconciliation tick failed', { error: (e as Error)?.message })
     );
   reconciliationKickoffTimer = setTimeout(async () => {
@@ -403,6 +406,18 @@ const startServer = async () => {
     // This keeps write routes from accepting traffic against a half-migrated
     // schema while preserving degraded startup when the DB is unavailable.
     logOtpBypassWarningIfEnabled();
+    // Unsigned webhooks are only ever honoured outside production (see
+    // webhook.controller.ts verifyWebhookSignature) — say so loudly at boot so
+    // a leftover flag on the dashboard is noticed rather than silently ignored.
+    if (process.env.WEBHOOK_ALLOW_UNSIGNED === 'true') {
+      if (NODE_ENV === 'production') {
+        logger.error(
+          'WEBHOOK_ALLOW_UNSIGNED=true is IGNORED in production — webhooks always require an HMAC signature. Remove the variable.'
+        );
+      } else {
+        logger.warn('WEBHOOK_ALLOW_UNSIGNED=true — unsigned webhooks accepted (non-production only)');
+      }
+    }
     const listen = () => {
       httpServer.listen(PORT, () => {
         logger.info(`=================================`);
