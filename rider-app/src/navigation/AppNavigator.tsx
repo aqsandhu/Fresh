@@ -1,232 +1,202 @@
 import React, { useEffect, useRef } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Text, View, StyleSheet } from 'react-native';
+import { Platform, AppState, AppStateStatus } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { useAuthStore } from '../store/authStore';
-import { useTaskStore } from '../store/taskStore';
-import { startLocationTracking, stopLocationTracking } from '../services/location.service';
-import { taskService } from '../services/task.service';
+import { useTaskStore, processQueuedAction } from '../store/taskStore';
+import { useDutyStore } from '../store/dutyStore';
 import { offlineQueue } from '../utils/offlineQueue';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { QueuedAction } from '../types';
-import { navigationRef, getPendingRedirect, clearPendingRedirect } from './navigationUtils';
+import { notificationService, NotificationTapData } from '../services/notification.service';
+import { socketService } from '../services/socket.service';
+import { useT } from '../i18n';
+import { colors, typography } from '../theme';
+import {
+  navigationRef,
+  getPendingRedirect,
+  clearPendingRedirect,
+  navigateToTask,
+  navigateToChat,
+  navigateToTab,
+} from './navigationUtils';
+import type { RootStackParamList, AuthStackParamList, MainTabParamList } from '../types';
 
-// Screens
 import LoginScreen from '../screens/auth/LoginScreen';
-import DashboardScreen from '../screens/home/DashboardScreen';
+import HomeScreen from '../screens/home/HomeScreen';
 import TasksListScreen from '../screens/tasks/TasksListScreen';
 import TaskDetailScreen from '../screens/tasks/TaskDetailScreen';
-import ProfileNavigator from './ProfileNavigator';
-
-// Types
-export type RootStackParamList = {
-  MainTabs: undefined;
-  TaskDetail: { taskId: string };
-};
-
-export type AuthStackParamList = {
-  Login: undefined;
-};
-
-export type MainTabParamList = {
-  Dashboard: undefined;
-  Tasks: undefined;
-  Profile: undefined;
-};
+import ChatScreen from '../screens/tasks/ChatScreen';
+import EarningsScreen from '../screens/profile/EarningsScreen';
+import ProfileScreen from '../screens/profile/ProfileScreen';
+import SettingsScreen from '../screens/settings/SettingsScreen';
+import HelpScreen from '../screens/settings/HelpScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-// Simple Tab Icon Component
-const TabIcon = ({ name, focused }: { name: string; focused: boolean }) => (
-  <View style={[styles.tabIcon, focused && styles.tabIconActive]}>
-    <Text style={[styles.tabIconText, focused && styles.tabIconTextActive]}>
-      {name}
-    </Text>
-  </View>
-);
+const navTheme = {
+  ...DefaultTheme,
+  colors: { ...DefaultTheme.colors, background: colors.background, primary: colors.primary, card: colors.surface, text: colors.text, border: colors.border },
+};
 
-// Main Tab Navigator
-const MainTabNavigator = () => (
-  <Tab.Navigator
-    id="MainTabs"
-    screenOptions={{
-      headerShown: false,
-      tabBarStyle: styles.tabBar,
-    }}
-  >
-    <Tab.Screen
-      name="Dashboard"
-      component={DashboardScreen}
-      options={{
-        tabBarLabel: () => null,
-        tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon name="D" focused={focused} />,
-      }}
-    />
-    <Tab.Screen
-      name="Tasks"
-      component={TasksListScreen}
-      options={{
-        tabBarLabel: () => null,
-        tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon name="T" focused={focused} />,
-      }}
-    />
-    <Tab.Screen
-      name="Profile"
-      // Nested stack so Earnings/Settings actually resolve (the menu
-      // navigates to them; a bare ProfileScreen left those routes dead).
-      component={ProfileNavigator}
-      options={{
-        tabBarLabel: () => null,
-        tabBarIcon: ({ focused }: { focused: boolean }) => <TabIcon name="P" focused={focused} />,
-      }}
-    />
-  </Tab.Navigator>
-);
+type TabIcon = keyof typeof MaterialCommunityIcons.glyphMap;
+const tabIcons: Record<keyof MainTabParamList, { active: TabIcon; inactive: TabIcon }> = {
+  Home: { active: 'home-variant', inactive: 'home-variant-outline' },
+  Tasks: { active: 'clipboard-list', inactive: 'clipboard-list-outline' },
+  Earnings: { active: 'wallet', inactive: 'wallet-outline' },
+  Profile: { active: 'account-circle', inactive: 'account-circle-outline' },
+};
 
-// Auth Navigator
+const MainTabs = () => {
+  const { t } = useT();
+  const activeCount = useTaskStore((s) => s.activeTasks.length);
+  return (
+    <Tab.Navigator
+      id="MainTabs"
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.tabInactive,
+        tabBarStyle: {
+          backgroundColor: colors.tabBar,
+          borderTopWidth: 0,
+          height: Platform.OS === 'ios' ? 88 : 68,
+          paddingTop: 8,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+        },
+        tabBarLabelStyle: { fontSize: typography.size.xs, fontWeight: typography.weight.semibold },
+        tabBarIcon: ({ focused, color }) => (
+          <MaterialCommunityIcons name={focused ? tabIcons[route.name].active : tabIcons[route.name].inactive} size={26} color={color} />
+        ),
+      })}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: t('tabs.home') }} />
+      <Tab.Screen
+        name="Tasks"
+        component={TasksListScreen}
+        options={{
+          tabBarLabel: t('tabs.tasks'),
+          tabBarBadge: activeCount > 0 ? activeCount : undefined,
+          tabBarBadgeStyle: { backgroundColor: colors.primary, color: colors.white, fontWeight: typography.weight.bold },
+        }}
+      />
+      <Tab.Screen name="Earnings" component={EarningsScreen} options={{ tabBarLabel: t('tabs.earnings') }} />
+      <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarLabel: t('tabs.profile') }} />
+    </Tab.Navigator>
+  );
+};
+
 const AuthNavigator = () => (
   <AuthStack.Navigator id="AuthStack" screenOptions={{ headerShown: false }}>
     <AuthStack.Screen name="Login" component={LoginScreen} />
   </AuthStack.Navigator>
 );
 
-// Replay a queued offline action against the live API
-const processQueuedAction = async (action: QueuedAction): Promise<unknown> => {
-  if (action.type === 'task_action') {
-    const payload = action.payload as any;
-    switch (payload.action) {
-      case 'pickup':
-        return taskService.markPickedUp(payload.taskId, payload.notes);
-      case 'deliver':
-        return taskService.markDelivered(payload.taskId, payload.data || {});
-      case 'call_request':
-        if (!payload.orderId) throw new Error('Queued call request missing orderId');
-        return taskService.requestCustomerCall(payload.orderId);
-      default:
-        throw new Error(`Unknown queued action: ${payload.action}`);
-    }
-  }
-  throw new Error(`Unsupported queued action type: ${action.type}`);
-};
+/** Everything that must run while a rider is signed in. */
+const SessionEffects = () => {
+  const { isOffline } = useOnlineStatus();
+  const wasOffline = useRef<boolean | null>(null);
 
-// Main Navigator with TaskDetail
-const MainNavigator = () => {
-  const isOnline = useAuthStore((state) => state.isOnline);
-  const { isConnected, isInternetReachable } = useOnlineStatus();
-  const wasReachable = useRef(false);
-
-  // Process the offline queue when connectivity returns
+  // Resume duty tracking, open the socket, register push, wire notification taps.
   useEffect(() => {
-    const reachable = isConnected && isInternetReachable === true;
-    if (reachable && !wasReachable.current) {
+    socketService.connect();
+    useDutyStore.getState().resume().catch(() => {});
+    useTaskStore.getState().refreshAll().catch(() => {});
+    useAuthStore.getState().refreshProfile().catch(() => {});
+
+    let detach: (() => void) | null = null;
+    const onTap = (data: NotificationTapData) => {
+      if (data.type === 'chat' && data.orderId) {
+        navigateToChat(data.orderId, data.orderNumber);
+        return;
+      }
+      if (data.taskId) {
+        navigateToTask(data.taskId);
+        return;
+      }
+      navigateToTab('Tasks');
+    };
+    notificationService.bootstrap(onTap).then((unsub) => {
+      detach = unsub;
+    });
+    return () => {
+      detach?.();
+    };
+  }, []);
+
+  // Re-sync when the app returns to the foreground.
+  useEffect(() => {
+    const onChange = (state: AppStateStatus) => {
+      if (state === 'active') {
+        socketService.connect();
+        useTaskStore.getState().fetchActiveTasks().catch(() => {});
+        useDutyStore.getState().refreshPermissions().catch(() => {});
+        notificationService.clearBadge().catch(() => {});
+      }
+    };
+    const sub = AppState.addEventListener('change', onChange);
+    return () => sub.remove();
+  }, []);
+
+  // Replay the offline queue when connectivity returns.
+  useEffect(() => {
+    if (wasOffline.current === true && !isOffline) {
       (async () => {
         try {
           await offlineQueue.processQueue(processQueuedAction);
-          await useTaskStore.getState().refreshTasks();
+          await useTaskStore.getState().refreshAll();
         } catch (error) {
-          console.error('[OfflineQueue] Failed to process queue:', error);
+          console.error('[OfflineQueue] replay failed:', error);
         }
       })();
     }
-    wasReachable.current = reachable;
-  }, [isConnected, isInternetReachable]);
+    wasOffline.current = isOffline;
+  }, [isOffline]);
 
-  useEffect(() => {
-    if (isOnline) {
-      startLocationTracking();
-    } else {
-      stopLocationTracking();
-    }
+  return null;
+};
 
-    return () => {
-      stopLocationTracking();
-    };
-  }, [isOnline]);
-
+const MainNavigator = () => {
+  const { t } = useT();
   return (
-    <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="MainTabs" component={MainTabNavigator} />
-      <Stack.Screen
-        name="TaskDetail"
-        component={TaskDetailScreen}
-        options={{
-          headerShown: true,
-          headerTitle: 'Task Details',
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-        }}
-      />
-    </Stack.Navigator>
+    <>
+      <SessionEffects />
+      <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+        <Stack.Screen name="MainTabs" component={MainTabs} />
+        <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
+        <Stack.Screen name="Chat" component={ChatScreen} options={{ animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: t('settings.title') }} />
+        <Stack.Screen name="Help" component={HelpScreen} options={{ title: t('help.title') }} />
+      </Stack.Navigator>
+    </>
   );
 };
 
-// Root Navigator
 const AppNavigator = () => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const prevAuth = useRef(isAuthenticated);
 
-  // After login, navigate to the page the user was on before being redirected
+  // After re-login, return to the tab the rider was on when the session ended.
   useEffect(() => {
     if (isAuthenticated && !prevAuth.current) {
       const pending = getPendingRedirect();
       if (pending) {
         clearPendingRedirect();
-        setTimeout(() => {
-          if (navigationRef.isReady()) {
-            (navigationRef as any).navigate('MainTabs', { screen: pending });
-          }
-        }, 100);
+        setTimeout(() => navigateToTab(pending), 150);
       }
     }
     prevAuth.current = isAuthenticated;
   }, [isAuthenticated]);
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       {isAuthenticated ? <MainNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );
 };
-
-const styles = StyleSheet.create({
-  tabBar: {
-    height: 70,
-    backgroundColor: '#1F2937',
-    borderTopWidth: 0,
-    paddingBottom: 10,
-    paddingTop: 10,
-  },
-  tabIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#374151',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  tabIconActive: {
-    backgroundColor: '#10B981',
-  },
-  tabIconText: {
-    color: '#9CA3AF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  tabIconTextActive: {
-    color: '#FFFFFF',
-  },
-  header: {
-    backgroundColor: '#10B981',
-  },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-});
 
 export default AppNavigator;

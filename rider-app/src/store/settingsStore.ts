@@ -2,77 +2,53 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppSettings } from '../types';
+import { STORAGE_KEYS } from '../utils/constants';
 
 interface SettingsState extends AppSettings {
-  // Actions
   setLanguage: (language: 'en' | 'ur') => void;
   toggleNotifications: () => void;
   toggleSound: () => void;
   toggleVibration: () => void;
-  toggleAutoAcceptTasks: () => void;
-  toggleDarkMode: () => void;
-  updateSettings: (settings: Partial<AppSettings>) => void;
   resetSettings: () => void;
 }
 
-const defaultSettings: AppSettings = {
+export const defaultSettings: AppSettings = {
   language: 'en',
   notificationsEnabled: true,
   soundEnabled: true,
   vibrationEnabled: true,
-  autoAcceptTasks: false,
-  darkMode: false,
 };
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      // Initial state
       ...defaultSettings,
-
-      // Set language
-      setLanguage: (language) => {
-        set({ language });
-      },
-
-      // Toggle notifications
-      toggleNotifications: () => {
-        set((state) => ({ notificationsEnabled: !state.notificationsEnabled }));
-      },
-
-      // Toggle sound
-      toggleSound: () => {
-        set((state) => ({ soundEnabled: !state.soundEnabled }));
-      },
-
-      // Toggle vibration
-      toggleVibration: () => {
-        set((state) => ({ vibrationEnabled: !state.vibrationEnabled }));
-      },
-
-      // Toggle auto accept tasks
-      toggleAutoAcceptTasks: () => {
-        set((state) => ({ autoAcceptTasks: !state.autoAcceptTasks }));
-      },
-
-      // Toggle dark mode
-      toggleDarkMode: () => {
-        set((state) => ({ darkMode: !state.darkMode }));
-      },
-
-      // Update multiple settings
-      updateSettings: (settings) => {
-        set((state) => ({ ...state, ...settings }));
-      },
-
-      // Reset to defaults
-      resetSettings: () => {
-        set(defaultSettings);
-      },
+      setLanguage: (language) => set({ language }),
+      toggleNotifications: () => set((s) => ({ notificationsEnabled: !s.notificationsEnabled })),
+      toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
+      toggleVibration: () => set((s) => ({ vibrationEnabled: !s.vibrationEnabled })),
+      resetSettings: () => set(defaultSettings),
     }),
     {
-      name: 'settings-storage',
+      name: STORAGE_KEYS.SETTINGS,
       storage: createJSONStorage(() => AsyncStorage),
+      version: 2,
+      // v1 persisted dead toggles (autoAcceptTasks, darkMode) — drop them.
+      migrate: (persisted) => {
+        const p = (persisted ?? {}) as Partial<AppSettings> & Record<string, unknown>;
+        return {
+          language: p.language === 'ur' ? 'ur' : 'en',
+          notificationsEnabled: p.notificationsEnabled !== false,
+          soundEnabled: p.soundEnabled !== false,
+          vibrationEnabled: p.vibrationEnabled !== false,
+        } as SettingsState;
+      },
+      partialize: (state) => ({
+        language: state.language,
+        notificationsEnabled: state.notificationsEnabled,
+        soundEnabled: state.soundEnabled,
+        vibrationEnabled: state.vibrationEnabled,
+      }) as SettingsState,
     }
   )
 );

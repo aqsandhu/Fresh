@@ -1,612 +1,245 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  Alert,
-  Linking,
-  TouchableOpacity,
-} from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Alert, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../../store/authStore';
-import authService from '../../services/auth.service';
-import { hasBackgroundLocationPermission } from '../../services/location.service';
 import { useTaskStore } from '../../store/taskStore';
-import { useLocationStore } from '../../store/locationStore';
-import { useSettingsStore } from '../../store/settingsStore';
-import StatusToggle from '../../components/StatusToggle';
-import StatsCard from '../../components/StatsCard';
+import { useDutyStore } from '../../store/dutyStore';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { useT } from '../../i18n';
+import DutyCard from '../../components/DutyCard';
 import TaskCard from '../../components/TaskCard';
 import Button from '../../components/Button';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS } from '../../utils/constants';
-import { getTranslation, formatCurrency } from '../../utils/helpers';
-import { Task } from '../../types';
+import { Banner, EmptyState, SectionTitle, StatTile } from '../../components/ui';
+import { colors, spacing, typography } from '../../theme';
+import { formatCurrency, getInitials, openNavigation } from '../../utils/helpers';
+import { STORAGE_KEYS } from '../../utils/constants';
+import type { RootStackParamList, Task } from '../../types';
 
-const BG_LOCATION_BANNER_KEY = 'fb_rider_bg_location_banner_dismissed';
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-interface DashboardScreenProps {
-  navigation: any;
-}
-
-const DashboardScreen: React.FC<DashboardScreenProps> = ({ navigation }) => {
-  const [isToggling, setIsToggling] = useState(false);
+const HomeScreen: React.FC = () => {
+  const { t } = useT();
+  const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [showBgLocationBanner, setShowBgLocationBanner] = useState(false);
+  const [bgBannerDismissed, setBgBannerDismissed] = useState(true);
 
-  // One-time banner: background location denied but foreground granted —
-  // tracking works while the app is open; nudge the rider to enable
-  // "Allow all the time" for background delivery tracking.
-  const checkBgLocationBanner = useCallback(async () => {
-    try {
-      const [bgGranted, dismissed] = await Promise.all([
-        hasBackgroundLocationPermission(),
-        AsyncStorage.getItem(BG_LOCATION_BANNER_KEY),
-      ]);
-      setShowBgLocationBanner(!bgGranted && dismissed !== 'yes');
-    } catch {
-      // non-fatal
-    }
-  }, []);
+  const rider = useAuthStore((s) => s.rider);
+  const refreshProfile = useAuthStore((s) => s.refreshProfile);
+  const { activeTasks, todayStats, myStats, refreshAll } = useTaskStore();
+  const duty = useDutyStore();
+  const { isOffline, pendingActions } = useOnlineStatus();
 
-  const dismissBgLocationBanner = useCallback(async () => {
-    setShowBgLocationBanner(false);
-    try {
-      await AsyncStorage.setItem(BG_LOCATION_BANNER_KEY, 'yes');
-    } catch {
-      // non-fatal
-    }
-  }, []);
-
-  const { rider, isOnline, setOnline, setRider } = useAuthStore();
-  const {
-    activeTasks,
-    todayStats,
-    myStats,
-    isLoading,
-    fetchActiveTasks,
-    fetchTodayStats,
-    fetchMyStats,
-    setCurrentTask,
-  } = useTaskStore();
-  const { startTracking, stopTracking, isTracking, requestPermissions } = useLocationStore();
-  const { language } = useSettingsStore();
-
-  // Load data on mount
   useEffect(() => {
-    loadData();
-    checkBgLocationBanner();
+    AsyncStorage.getItem(STORAGE_KEYS.BG_LOCATION_BANNER_DISMISSED)
+      .then((v) => setBgBannerDismissed(v === 'yes'))
+      .catch(() => setBgBannerDismissed(false));
   }, []);
-
-  const loadData = async () => {
-    await Promise.all([fetchActiveTasks(), fetchTodayStats(), fetchMyStats()]);
-    // Refresh the profile so stats (total deliveries, rating, online status)
-    // reflect real backend values — best-effort.
-    try {
-      const profile = await authService.getProfile();
-      setRider(profile);
-      setOnline(profile.isOnline);
-    } catch {
-      // ignore — dashboard data already loaded
-    }
-  };
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadData();
+    await Promise.all([refreshAll(), refreshProfile(), duty.refreshPermissions()]);
     setRefreshing(false);
-  }, []);
+  }, [refreshAll, refreshProfile, duty]);
 
-  // Handle online/offline toggle — syncs with the backend and the auth store
-  const handleStatusToggle = async () => {
-    setIsToggling(true);
-
+  const dismissBgBanner = async () => {
+    setBgBannerDismissed(true);
     try {
-      if (!isOnline) {
-        // Going online
-        const hasPermission = await requestPermissions();
-        if (!hasPermission) {
-          Alert.alert(
-            language === 'ur' ? 'اجازت درکار ہے' : 'Permission Required',
-            language === 'ur'
-              ? 'لوکیشن ٹریکنگ کے لیے اجازت درکار ہے'
-              : 'Location permission is required for tracking',
-            [{ text: 'OK' }]
-          );
-          setIsToggling(false);
-          return;
-        }
-
-        // Tell the backend first so it can start assigning tasks
-        await authService.updateOnlineStatus(true);
-
-        // Start location tracking
-        const trackingStarted = await startTracking(rider?.id || '');
-        if (trackingStarted) {
-          setOnline(true);
-          checkBgLocationBanner();
-        } else {
-          // Roll back the backend status if tracking could not start
-          authService.updateOnlineStatus(false).catch(() => {});
-        }
-      } else {
-        // Going offline
-        await authService.updateOnlineStatus(false);
-        await stopTracking();
-        setOnline(false);
-      }
-    } catch (error) {
-      console.error('Error toggling status:', error);
-      Alert.alert(
-        language === 'ur' ? 'خرابی' : 'Error',
-        language === 'ur'
-          ? 'اسٹیٹس تبدیل نہیں ہو سکا'
-          : 'Failed to update online status'
-      );
-    } finally {
-      setIsToggling(false);
+      await AsyncStorage.setItem(STORAGE_KEYS.BG_LOCATION_BANNER_DISMISSED, 'yes');
+    } catch {
+      /* non-fatal */
     }
   };
 
-  // Handle task press — TaskDetail lives on the root stack
-  const handleTaskPress = (task: Task) => {
-    setCurrentTask(task);
-    navigation.navigate('TaskDetail', { taskId: task.id });
+  const handleToggleDuty = async () => {
+    if (duty.isOnDuty) {
+      const goOff = async () => {
+        await duty.goOffDuty();
+        if (useDutyStore.getState().error) Alert.alert(t('common.error'), t('duty.toggleFailed'));
+      };
+      if (activeTasks.length > 0) {
+        Alert.alert(t('duty.goOff'), t('profile.logoutConfirmBody'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('duty.goOff'), style: 'destructive', onPress: goOff },
+        ]);
+      } else {
+        await goOff();
+      }
+      return;
+    }
+    const outcome = await duty.goOnDuty();
+    if (outcome === 'permission_denied') {
+      Alert.alert(t('duty.permissionTitle'), t('duty.permissionBody'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.openSettings'), onPress: () => Linking.openSettings().catch(() => {}) },
+      ]);
+    } else if (outcome === 'error') {
+      Alert.alert(t('common.error'), useDutyStore.getState().error || t('duty.toggleFailed'));
+    }
   };
 
-  // Handle view all tasks
-  const handleViewTasks = () => {
-    navigation.navigate('Tasks', { screen: 'TasksList' });
-  };
+  const openTask = (task: Task) => navigation.navigate('TaskDetail', { taskId: task.id });
 
-  // Handle view stats
-  const handleViewStats = () => {
-    navigation.navigate('Profile', { screen: 'Earnings' });
-  };
-
-  // Get greeting based on time
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return language === 'ur' ? 'صبح بخیر' : 'Good Morning';
-    if (hour < 17) return language === 'ur' ? 'دوپہر بخیر' : 'Good Afternoon';
-    return language === 'ur' ? 'شام بخیر' : 'Good Evening';
-  };
-
-  if (isLoading && !refreshing) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <LoadingSpinner fullScreen />
-      </SafeAreaView>
-    );
-  }
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? t('home.greeting.morning') : hour < 17 ? t('home.greeting.afternoon') : t('home.greeting.evening');
+  const nextTask = activeTasks[0] ?? null;
+  const otherTasks = activeTasks.slice(1);
+  const showBgBanner = duty.isOnDuty && duty.hasBackgroundPermission === false && !bgBannerDismissed;
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
-          <Text style={styles.riderName}>{rider?.name || 'Rider'}</Text>
-        </View>
-        <View style={styles.locationIndicator}>
-          <MaterialCommunityIcons
-            name={isTracking ? 'crosshairs-gps' : 'crosshairs'}
-            size={20}
-            color={isTracking ? COLORS.primary : COLORS.gray400}
-          />
-          <Text
-            style={[
-              styles.locationText,
-              { color: isTracking ? COLORS.primary : COLORS.gray400 },
-            ]}
-          >
-            {isTracking
-              ? getTranslation('locationSharing', language)
-              : language === 'ur'
-              ? 'لوکیشن بند ہے'
-              : 'Location off'}
+    <View style={styles.container}>
+      {/* Dark header */}
+      <View style={[styles.header, { paddingTop: insets.top + spacing.md }]}>
+        <View style={styles.headerText}>
+          <Text style={styles.greeting}>{greeting}</Text>
+          <Text style={styles.name} numberOfLines={1}>
+            {rider?.name || t('home.rider')}
           </Text>
+        </View>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>{getInitials(rider?.name || 'R')}</Text>
         </View>
       </View>
 
       <ScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Status Toggle */}
-        <StatusToggle
-          isOnline={isOnline}
-          onToggle={handleStatusToggle}
-          isLoading={isToggling}
+        {isOffline ? <Banner tone="warning" icon="wifi-off" message={t('common.offlineBanner')} style={styles.banner} /> : null}
+        {pendingActions > 0 ? (
+          <Banner tone="info" icon="cloud-sync-outline" message={t('common.pendingSync', { count: pendingActions })} style={styles.banner} />
+        ) : null}
+        {duty.error === 'permission_revoked' ? (
+          <Banner tone="danger" icon="map-marker-off-outline" message={t('duty.permissionRevoked')} onDismiss={duty.clearError} style={styles.banner} />
+        ) : null}
+
+        <DutyCard
+          isOnDuty={duty.isOnDuty}
+          isSwitching={duty.isSwitching}
+          isTracking={duty.isTracking}
+          lastFix={duty.lastFix}
+          lastSentAt={duty.lastSentAt}
+          onToggle={handleToggleDuty}
         />
 
-        {/* Background location banner (one-time) */}
-        {showBgLocationBanner && (
-          <View style={styles.bgBanner}>
-            <MaterialCommunityIcons name="map-marker-off-outline" size={20} color={COLORS.accent} />
-            <Text style={styles.bgBannerText}>
-              {language === 'ur'
-                ? 'بیک گراؤنڈ لوکیشن بند ہے — ایپ بند ہونے پر ٹریکنگ رک جائے گی۔'
-                : 'Background location is off — tracking pauses when the app is closed.'}
-            </Text>
-            <TouchableOpacity
-              onPress={() => Linking.openSettings().catch(() => {})}
-              style={styles.bgBannerButton}
-            >
-              <Text style={styles.bgBannerButtonText}>
-                {language === 'ur' ? 'سیٹنگز' : 'Settings'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={dismissBgLocationBanner} hitSlop={8}>
-              <MaterialCommunityIcons name="close" size={18} color={COLORS.gray500} />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Today's Stats */}
-        <View style={styles.section}>
-          <StatsCard
-            deliveries={todayStats?.totalDeliveries || 0}
-            earnings={todayStats?.totalEarnings || 0}
-            distance={todayStats?.totalDistance || 0}
-            onlineHours={todayStats?.onlineHours}
+        {showBgBanner ? (
+          <Banner
+            tone="warning"
+            icon="map-marker-alert-outline"
+            title={t('duty.bgBannerTitle')}
+            message={t('duty.bgBannerBody')}
+            actionLabel={t('common.openSettings')}
+            onAction={() => Linking.openSettings().catch(() => {})}
+            onDismiss={dismissBgBanner}
+            style={[styles.banner, { marginTop: spacing.md }]}
           />
+        ) : null}
+
+        {/* Today */}
+        <View style={styles.section}>
+          <SectionTitle title={t('home.today')} />
+          <View style={styles.tiles}>
+            <StatTile label={t('home.deliveries')} value={String(todayStats?.totalDeliveries ?? 0)} icon="package-variant-closed-check" tone="primary" />
+            <StatTile label={t('home.earned')} value={formatCurrency(todayStats?.totalEarnings ?? 0)} icon="wallet-outline" tone="success" />
+            <StatTile
+              label={t('home.cashInHand')}
+              value={formatCurrency(myStats?.payment.cashInHand ?? 0)}
+              icon="cash"
+              tone={(myStats?.payment.paymentPending ?? 0) > 0 ? 'warning' : 'neutral'}
+              emphasis={(myStats?.payment.paymentPending ?? 0) > 0}
+            />
+          </View>
         </View>
 
-        {/* Weekly / Monthly Stats */}
-        {myStats && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { marginHorizontal: SPACING.md, marginBottom: SPACING.sm }]}>
-              {language === 'ur' ? 'تفصیلی اعداد و شمار' : 'Detailed Stats'}
-            </Text>
-            <View style={styles.statsGrid}>
-              {([
-                [language === 'ur' ? 'اس ہفتے' : 'This Week', myStats.stats.thisWeek],
-                [language === 'ur' ? 'پچھلے ہفتے' : 'Last Week', myStats.stats.lastWeek],
-                [language === 'ur' ? 'اس مہینے' : 'This Month', myStats.stats.thisMonth],
-                [language === 'ur' ? 'پچھلے مہینے' : 'Last Month', myStats.stats.lastMonth],
-              ] as [string, { orders: number; earnings: number }][]).map(([label, data]) => (
-                <View key={label} style={styles.statsItem}>
-                  <Text style={styles.statsLabel}>{label}</Text>
-                  <Text style={styles.statsOrderCount}>{data.orders}</Text>
-                  <Text style={styles.statsEarnings}>{formatCurrency(data.earnings)}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Payment Tracking */}
-        {myStats && (
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { marginHorizontal: SPACING.md, marginBottom: SPACING.sm }]}>
-              {language === 'ur' ? 'ادائیگی کی تفصیلات' : 'Payment Summary'}
-            </Text>
-            <View style={styles.paymentCard}>
-              <View style={styles.paymentRow}>
-                <View style={[styles.paymentItem, { backgroundColor: '#EBF5FF' }]}>
-                  <MaterialCommunityIcons name="cash-multiple" size={20} color="#2563EB" />
-                  <Text style={[styles.paymentLabel, { color: '#2563EB' }]}>
-                    {language === 'ur' ? 'وصول شدہ' : 'Collected'}
-                  </Text>
-                  <Text style={[styles.paymentAmount, { color: '#1E40AF' }]}>
-                    {formatCurrency(myStats.payment.totalCollected)}
-                  </Text>
-                </View>
-                <View style={[styles.paymentItem, { backgroundColor: '#ECFDF5' }]}>
-                  <MaterialCommunityIcons name="wallet-outline" size={20} color="#059669" />
-                  <Text style={[styles.paymentLabel, { color: '#059669' }]}>
-                    {language === 'ur' ? 'کمائی' : 'Earned'}
-                  </Text>
-                  <Text style={[styles.paymentAmount, { color: '#065F46' }]}>
-                    {formatCurrency(myStats.payment.totalEarned)}
-                  </Text>
-                </View>
-              </View>
-              <View style={[
-                styles.pendingPayment,
-                { backgroundColor: myStats.payment.paymentPending > 0 ? '#FEF2F2' : '#F9FAFB' },
-              ]}>
-                <MaterialCommunityIcons
-                  name="clock-outline"
-                  size={20}
-                  color={myStats.payment.paymentPending > 0 ? '#DC2626' : '#6B7280'}
-                />
-                <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-                  <Text style={[
-                    styles.paymentLabel,
-                    { color: myStats.payment.paymentPending > 0 ? '#DC2626' : '#6B7280' },
-                  ]}>
-                    {language === 'ur' ? 'کمپنی کو واجب الادا' : 'Owes to Company'}
-                  </Text>
-                  <Text style={[
-                    styles.paymentAmount,
-                    { color: myStats.payment.paymentPending > 0 ? '#991B1B' : '#374151' },
-                  ]}>
-                    {formatCurrency(myStats.payment.paymentPending)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Active Tasks */}
+        {/* Next task */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              {getTranslation('activeTasks', language)}
-            </Text>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{activeTasks.length}</Text>
-            </View>
-          </View>
-
-          {activeTasks.length > 0 ? (
+          <SectionTitle
+            title={t('home.nextTask')}
+            count={activeTasks.length}
+            actionLabel={activeTasks.length > 0 ? t('common.viewAll') : undefined}
+            onAction={() => navigation.navigate('MainTabs', { screen: 'Tasks', params: { tab: 'active' } })}
+          />
+          {nextTask ? (
             <>
-              {activeTasks.slice(0, 2).map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  onPress={handleTaskPress}
-                  compact
-                />
-              ))}
-              {activeTasks.length > 2 && (
-                <Text style={styles.moreTasks}>
-                  +{activeTasks.length - 2}{' '}
-                  {language === 'ur' ? 'مزید کام' : 'more tasks'}
-                </Text>
-              )}
+              <TaskCard task={nextTask} onPress={openTask} riderPoint={duty.lastFix} />
+              <View style={styles.nextActions}>
+                {nextTask.location ? (
+                  <Button
+                    title={t('home.navigate')}
+                    icon="navigation-variant"
+                    variant="dark"
+                    onPress={() => openNavigation(nextTask.location!, nextTask.address)}
+                    style={styles.nextButton}
+                  />
+                ) : null}
+                <Button title={t('home.openTask')} icon="arrow-right" iconPosition="right" onPress={() => openTask(nextTask)} style={styles.nextButton} />
+              </View>
             </>
           ) : (
-            <View style={styles.emptyState}>
-              <MaterialCommunityIcons
-                name="package-variant-closed"
-                size={48}
-                color={COLORS.gray300}
-              />
-              <Text style={styles.emptyText}>
-                {language === 'ur'
-                  ? 'کوئی فعال کام نہیں'
-                  : 'No active tasks'}
-              </Text>
-              <Text style={styles.emptySubtext}>
-                {language === 'ur'
-                  ? 'آن لائن ہونے پر کام ملیں گے'
-                  : 'Tasks will appear when you go online'}
-              </Text>
-            </View>
+            <EmptyState
+              compact
+              icon={duty.isOnDuty ? 'timer-sand' : 'power-standby'}
+              title={t('home.noActiveTitle')}
+              body={duty.isOnDuty ? t('home.noActiveBodyOn') : t('home.noActiveBodyOff')}
+              style={styles.empty}
+            />
           )}
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {language === 'ur' ? 'فوری عمل' : 'Quick Actions'}
-          </Text>
-          <View style={styles.actionsRow}>
-            <Button
-              title={getTranslation('viewTasks', language)}
-              onPress={handleViewTasks}
-              variant="primary"
-              icon="format-list-bulleted"
-              style={styles.actionButton}
-            />
-            <Button
-              title={getTranslation('myStats', language)}
-              onPress={handleViewStats}
-              variant="secondary"
-              icon="chart-bar"
-              style={styles.actionButton}
-            />
+        {otherTasks.length > 0 ? (
+          <View style={styles.section}>
+            <SectionTitle title={t('home.activeTasks')} count={otherTasks.length} />
+            {otherTasks.map((task) => (
+              <TaskCard key={task.id} task={task} onPress={openTask} riderPoint={duty.lastFix} compact />
+            ))}
           </View>
+        ) : null}
+
+        <View style={styles.footerNote}>
+          <MaterialCommunityIcons name="shield-check-outline" size={14} color={colors.gray400} />
+          <Text style={styles.footerNoteText}>Fresh Bazar Rider</Text>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    backgroundColor: COLORS.card,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
+    backgroundColor: colors.gray900,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xl + spacing.md,
   },
-  greeting: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
-  riderName: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  locationIndicator: {
-    flexDirection: 'row',
+  headerText: { flex: 1 },
+  greeting: { fontSize: typography.size.sm, color: colors.gray400 },
+  name: { fontSize: typography.size.xxl, fontWeight: typography.weight.bold, color: colors.white, marginTop: 2 },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
     alignItems: 'center',
-    backgroundColor: COLORS.gray50,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
+    justifyContent: 'center',
   },
-  locationText: {
-    fontSize: FONT_SIZES.xs,
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  scrollContent: {
-    paddingVertical: SPACING.md,
-  },
-  section: {
-    marginTop: SPACING.lg,
-  },
-  bgBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.md,
-    padding: SPACING.sm,
-    backgroundColor: `${COLORS.accent}15`,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}40`,
-  },
-  bgBannerText: {
-    flex: 1,
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textPrimary,
-  },
-  bgBannerButton: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.sm,
-    backgroundColor: COLORS.accent,
-  },
-  bgBannerButtonText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  badge: {
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.full,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    marginLeft: SPACING.sm,
-  },
-  badgeText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-  },
-  moreTasks: {
-    textAlign: 'center',
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    marginTop: SPACING.sm,
-  },
-  emptyState: {
-    alignItems: 'center',
-    padding: SPACING.xl,
-    backgroundColor: COLORS.gray50,
-    marginHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.md,
-    fontWeight: '500',
-  },
-  emptySubtext: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textMuted,
-    marginTop: SPACING.xs,
-    textAlign: 'center',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginHorizontal: SPACING.md,
-  },
-  actionButton: {
-    flex: 1,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginHorizontal: SPACING.md,
-    gap: SPACING.sm,
-  },
-  statsItem: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: COLORS.card,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  statsLabel: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  statsOrderCount: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  statsEarnings: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.primary,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  paymentCard: {
-    marginHorizontal: SPACING.md,
-    backgroundColor: COLORS.card,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  paymentRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  paymentItem: {
-    flex: 1,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    alignItems: 'center',
-  },
-  paymentLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  paymentAmount: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  pendingPayment: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-  },
+  avatarText: { color: colors.white, fontWeight: typography.weight.bold, fontSize: typography.size.md },
+  content: { paddingBottom: spacing.xxl, marginTop: -spacing.xl },
+  banner: { marginHorizontal: spacing.lg, marginBottom: spacing.md },
+  section: { marginTop: spacing.xl, paddingHorizontal: 0 },
+  tiles: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg },
+  nextActions: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg },
+  nextButton: { flex: 1 },
+  empty: { marginHorizontal: spacing.lg },
+  footerNote: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: spacing.xxl },
+  footerNoteText: { fontSize: typography.size.xs, color: colors.gray400 },
 });
 
-export default DashboardScreen;
+
+export default HomeScreen;

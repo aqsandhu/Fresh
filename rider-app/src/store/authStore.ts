@@ -3,42 +3,70 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Rider, LoginCredentials } from '../types';
 import authService from '../services/auth.service';
-import { locationService } from '../services/location.service';
 import socketService from '../services/socket.service';
 import { storeTokens, clearTokens, getStoredToken } from '../lib/secureTokens';
 import { registerSessionHandlers } from '../lib/sessionEvents';
 import { offlineQueue } from '../utils/offlineQueue';
+import { getApiErrorMessage } from '../services/api';
+import { STORAGE_KEYS } from '../utils/constants';
 
 interface AuthState {
   rider: Rider | null;
   token: string | null;
   isAuthenticated: boolean;
-  isOnline: boolean;
   isLoading: boolean;
+  isHydrated: boolean;
   error: string | null;
+  /** Why the last session ended (shown on Login) — e.g. account deactivated. */
+  sessionEndReason: string | null;
+
   login: (credentials: LoginCredentials) => Promise<void>;
-  clearError: () => void;
+  refreshProfile: () => Promise<Rider | null>;
   setRider: (rider: Rider) => void;
-  setToken: (token: string) => void;
-  setOnline: (online: boolean) => void;
-  updateStats: (deliveries: number, earnings: number) => void;
-  logout: () => void;
+  clearError: () => void;
+  clearSessionEndReason: () => void;
+  /** User-initiated sign out: tells the backend, goes off duty, clears tokens. */
+  logout: () => Promise<void>;
+  /** Session ended by the system (401/403). `reason` is shown on Login. */
+  endSession: (reason: string | null) => void;
   /** Loads the access token from SecureStore into memory on app start. */
   hydrateAuth: () => Promise<void>;
 }
 
+// Lazy to avoid the import cycle authStore → dutyStore → authStore.
+const dutyTeardown = async () => {
+  const { useDutyStore } = require('./dutyStore') as typeof import('./dutyStore');
+  await useDutyStore.getState().teardown();
+};
+
+const clearLocalSession = (set: (partial: Partial<AuthState>) => void, reason: string | null) => {
+  offlineQueue.clearQueue().catch(() => {});
+  socketService.disconnect();
+  clearTokens().catch(() => {});
+  dutyTeardown().catch(() => {});
+  set({
+    rider: null,
+    token: null,
+    isAuthenticated: false,
+    isLoading: false,
+    error: null,
+    sessionEndReason: reason,
+  });
+};
+
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       rider: null,
       token: null,
       isAuthenticated: false,
-      isOnline: false,
       isLoading: false,
+      isHydrated: false,
       error: null,
+      sessionEndReason: null,
 
       login: async (credentials) => {
-        set({ isLoading: true, error: null });
+        set({ isLoading: true, error: null, sessionEndReason: null });
         try {
           const response = await authService.login(credentials);
           await storeTokens(response.token, response.refreshToken);
@@ -46,103 +74,72 @@ export const useAuthStore = create<AuthState>()(
             rider: response.rider,
             token: response.token,
             isAuthenticated: true,
-            // Login response already reflects the backend status; getProfile
-            // below overrides it with the freshest value when available.
-            isOnline: response.rider.isOnline,
             isLoading: false,
             error: null,
           });
-          // Enrich with the real profile (total deliveries, rating, online
-          // status) — best-effort, login already succeeded.
-          try {
-            const profile = await authService.getProfile();
-            set({
-              rider: { ...response.rider, ...profile },
-              isOnline: profile.isOnline,
-            });
-          } catch {
-            // keep the login-mapped rider
-          }
-        } catch (error: any) {
-          const message = error?.response?.data?.message || error?.message || 'Login failed';
-          set({ error: message, isLoading: false });
+          // Enrich with the full profile — best-effort, login already succeeded.
+          get().refreshProfile().catch(() => {});
+        } catch (error) {
+          set({ error: getApiErrorMessage(error, 'Login failed'), isLoading: false });
           throw error;
         }
       },
 
-      clearError: () => set({ error: null }),
+      refreshProfile: async () => {
+        try {
+          const profile = await authService.getProfile();
+          set((state) => ({ rider: { ...(state.rider ?? {}), ...profile } as Rider }));
+          return profile;
+        } catch {
+          return null;
+        }
+      },
 
-      setRider: (rider) => set({ rider, isAuthenticated: true }),
-      
-      setToken: (token) => set({ token }),
-      
-      setOnline: (online) => {
-        set((state) => ({
-          isOnline: online,
-          rider: state.rider ? { ...state.rider, isOnline: online } : null,
-        }));
-      },
-      
-      updateStats: (deliveries, earnings) => {
-        set((state) => ({
-          rider: state.rider
-            ? {
-                ...state.rider,
-                todayDeliveries: deliveries,
-                todayEarnings: earnings,
-              }
-            : null,
-        }));
-      },
-      
-      logout: () => {
-        // Drop queued offline actions from this session (stale task actions
-        // must not leak into the next login).
-        offlineQueue.clearQueue().catch(() => {});
-        // Best-effort: tell the backend we are offline before tokens go away.
-        // Retry once; if it still fails, queue it for replay when back online.
-        authService
-          .updateOnlineStatus(false)
-          .catch(() => authService.updateOnlineStatus(false))
-          .catch(() => offlineQueue.addAction('update_status', { status: 'offline' }))
-          .catch(() => {});
-        // Best-effort: revoke the session server-side before clearing tokens
+      setRider: (rider) => set({ rider }),
+      clearError: () => set({ error: null }),
+      clearSessionEndReason: () => set({ sessionEndReason: null }),
+
+      logout: async () => {
+        // Go off duty on the server first (tokens are still valid here).
+        try {
+          const { useDutyStore } = require('./dutyStore') as typeof import('./dutyStore');
+          if (useDutyStore.getState().isOnDuty) {
+            await useDutyStore.getState().goOffDuty({ silent: true });
+          }
+        } catch {
+          /* best-effort */
+        }
         authService.logout().catch(() => {});
-        // Stop GPS tracking and tear down the socket before clearing tokens
-        locationService.stopTracking().catch(() => {});
-        socketService.disconnect();
-        clearTokens().catch(() => {});
-        set({
-          rider: null,
-          token: null,
-          isAuthenticated: false,
-          isOnline: false,
-          isLoading: false,
-          error: null,
-        });
+        clearLocalSession(set, null);
+      },
+
+      endSession: (reason) => {
+        clearLocalSession(set, reason);
       },
 
       hydrateAuth: async () => {
         const token = await getStoredToken();
         if (token) {
-          set({ token, isAuthenticated: true });
+          set({ token, isAuthenticated: true, isHydrated: true });
+        } else {
+          set({ isAuthenticated: false, isHydrated: true });
         }
       },
     }),
     {
-      name: 'auth-storage',
+      name: STORAGE_KEYS.AUTH,
       storage: createJSONStorage(() => AsyncStorage),
       // Tokens live in SecureStore, not in the AsyncStorage-persisted blob.
       partialize: (state) => ({
         rider: state.rider,
         isAuthenticated: state.isAuthenticated,
-        isOnline: state.isOnline,
+        sessionEndReason: state.sessionEndReason,
       }),
     }
   )
 );
 
 registerSessionHandlers({
-  onClear: () => useAuthStore.getState().logout(),
+  onClear: () => useAuthStore.getState().endSession(null),
   onTokenUpdate: (token) => useAuthStore.setState({ token, isAuthenticated: true }),
 });

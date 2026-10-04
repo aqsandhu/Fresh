@@ -13,9 +13,12 @@ const refreshService = createTokenRefreshService({
   // refresh token). Transient errors return null silently — the caller must
   // NOT log the user out for those.
   onRefreshFailed: () => {
-    // Lazy require avoids the import cycle authStore → auth.service → api → here
-    const { useAuthStore } = require('../store/authStore');
-    useAuthStore.getState().logout();
+    // Lazy require avoids the import cycle authStore → auth.service → api → here.
+    // endSession (not logout): tokens are already invalid, so skip the server
+    // calls and explain on the Login screen why the rider was signed out.
+    const { useAuthStore } = require('../store/authStore') as typeof import('../store/authStore');
+    const { t } = require('../i18n') as typeof import('../i18n');
+    useAuthStore.getState().endSession(t('auth.sessionEnded'));
   },
 });
 

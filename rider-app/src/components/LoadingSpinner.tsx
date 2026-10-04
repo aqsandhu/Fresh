@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING } from '../utils/constants';
+import { colors, spacing, typography } from '../theme';
 
 interface LoadingSpinnerProps {
   message?: string;
@@ -8,26 +8,14 @@ interface LoadingSpinnerProps {
   size?: 'small' | 'large';
 }
 
-const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
-  message,
-  fullScreen = false,
-  size = 'large',
-}) => {
+const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({ message, fullScreen = false, size = 'large' }) => {
   const content = (
     <View style={styles.container}>
-      <ActivityIndicator size={size} color={COLORS.primary} />
-      {message && <Text style={styles.message}>{message}</Text>}
+      <ActivityIndicator size={size} color={colors.primary} />
+      {message ? <Text style={styles.message}>{message}</Text> : null}
     </View>
   );
-
-  if (fullScreen) {
-    return (
-      <View style={styles.fullScreen}>
-        {content}
-      </View>
-    );
-  }
-
+  if (fullScreen) return <View style={styles.fullScreen}>{content}</View>;
   return content;
 };
 
@@ -36,17 +24,17 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   container: {
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.lg,
+    padding: spacing.xl,
   },
   message: {
-    marginTop: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
+    marginTop: spacing.md,
+    fontSize: typography.size.md,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 });

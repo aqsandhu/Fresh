@@ -3,7 +3,7 @@ import {
   formatDistance,
   formatPhoneNumber,
   isValidPhoneNumber,
-  calculateETA,
+  toWhatsAppNumber,
   truncateText,
   getInitials,
   getRatingColor,
@@ -11,6 +11,11 @@ import {
   deepClone,
   isEmptyObject,
   retry,
+  haversineMeters,
+  formatSqlTime,
+  formatSlotRange,
+  toNumber,
+  toNumberOrNull,
 } from '../src/utils/helpers';
 
 describe('formatCurrency', () => {
@@ -32,43 +37,63 @@ describe('formatCurrency', () => {
   });
 });
 
-describe('formatDistance', () => {
+describe('number parsing', () => {
+  it('toNumber falls back, toNumberOrNull preserves absence', () => {
+    expect(toNumber('12.5')).toBe(12.5);
+    expect(toNumber('abc', 7)).toBe(7);
+    expect(toNumber(null)).toBe(0);
+    expect(toNumberOrNull('')).toBeNull();
+    expect(toNumberOrNull(undefined)).toBeNull();
+    expect(toNumberOrNull('0')).toBe(0);
+  });
+});
+
+describe('formatDistance / haversineMeters', () => {
   it('shows meters below 1 km and kilometers above', () => {
     expect(formatDistance(850)).toBe('850 m');
     expect(formatDistance(1000)).toBe('1.0 km');
     expect(formatDistance(12340)).toBe('12.3 km');
   });
+
+  it('computes great-circle distance (Gujrat → Lahore ≈ 120 km)', () => {
+    const d = haversineMeters({ latitude: 32.5742, longitude: 74.0789 }, { latitude: 31.5204, longitude: 74.3587 });
+    expect(d).toBeGreaterThan(115_000);
+    expect(d).toBeLessThan(125_000);
+    expect(haversineMeters({ latitude: 1, longitude: 1 }, { latitude: 1, longitude: 1 })).toBe(0);
+  });
 });
 
-describe('formatPhoneNumber / isValidPhoneNumber', () => {
+describe('time slots', () => {
+  it('formats SQL TIME values and ranges', () => {
+    expect(formatSqlTime('10:00:00')).toBe('10:00 AM');
+    expect(formatSqlTime('14:30:00')).toBe('2:30 PM');
+    expect(formatSqlTime('00:05:00')).toBe('12:05 AM');
+    expect(formatSqlTime(null)).toBe('');
+    expect(formatSlotRange('10:00:00', '14:00:00')).toBe('10:00 AM – 2:00 PM');
+    expect(formatSlotRange(null, '14:00:00')).toBe('2:00 PM');
+  });
+});
+
+describe('phone helpers', () => {
   it('formats local 03xx numbers to +92', () => {
     expect(formatPhoneNumber('03001234567')).toBe('+92 300 1234567');
-  });
-
-  it('formats numbers already carrying the country code', () => {
     expect(formatPhoneNumber('923001234567')).toBe('+92 300 1234567');
     expect(formatPhoneNumber('+92 300 1234567')).toBe('+92 300 1234567');
   });
 
-  it('accepts valid Pakistani mobile numbers', () => {
+  it('accepts valid Pakistani mobile numbers and rejects others', () => {
     expect(isValidPhoneNumber('03001234567')).toBe(true);
     expect(isValidPhoneNumber('923001234567')).toBe(true);
     expect(isValidPhoneNumber('+92-300-1234567')).toBe(true);
-  });
-
-  it('rejects short, foreign, and garbage numbers', () => {
     expect(isValidPhoneNumber('0300123')).toBe(false);
     expect(isValidPhoneNumber('16505551234')).toBe(false);
     expect(isValidPhoneNumber('abc')).toBe(false);
   });
-});
 
-describe('calculateETA', () => {
-  it('reports sub-minute, minutes, and hour ranges', () => {
-    expect(calculateETA(0)).toBe('< 1 min');
-    expect(calculateETA(100)).toBe('1 min'); // ceil rounds any distance up to a whole minute
-    expect(calculateETA(5000)).toBe('12 min'); // 5 km at 25 km/h
-    expect(calculateETA(50000)).toBe('2h 0m'); // 50 km at 25 km/h
+  it('produces wa.me-compatible numbers', () => {
+    expect(toWhatsAppNumber('0300-1234567')).toBe('923001234567');
+    expect(toWhatsAppNumber('+92 300 1234567')).toBe('923001234567');
+    expect(toWhatsAppNumber('3001234567')).toBe('923001234567');
   });
 });
 
@@ -105,9 +130,7 @@ describe('small utilities', () => {
 
 describe('parseErrorMessage', () => {
   it('prefers the backend response message', () => {
-    expect(parseErrorMessage({ response: { data: { message: 'Order already taken' } } })).toBe(
-      'Order already taken'
-    );
+    expect(parseErrorMessage({ response: { data: { message: 'Order already taken' } } })).toBe('Order already taken');
   });
 
   it('falls back to Error.message, plain strings, then a generic message', () => {
@@ -119,18 +142,13 @@ describe('parseErrorMessage', () => {
 
 describe('retry', () => {
   it('resolves once a later attempt succeeds', async () => {
-    const fn = jest
-      .fn()
-      .mockRejectedValueOnce(new Error('first'))
-      .mockResolvedValueOnce('ok');
-
+    const fn = jest.fn().mockRejectedValueOnce(new Error('first')).mockResolvedValueOnce('ok');
     await expect(retry(fn, 3, 1)).resolves.toBe('ok');
     expect(fn).toHaveBeenCalledTimes(2);
   });
 
   it('throws the last error after exhausting retries', async () => {
     const fn = jest.fn().mockRejectedValue(new Error('always down'));
-
     await expect(retry(fn, 2, 1)).rejects.toThrow('always down');
     expect(fn).toHaveBeenCalledTimes(2);
   });

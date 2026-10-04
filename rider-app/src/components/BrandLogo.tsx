@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Image, StyleSheet, View, Text, ImageStyle } from 'react-native';
 import { fetchBrandLogoUrl } from '../services/brand.service';
-import { COLORS } from '../utils/constants';
+import { colors, radius } from '../theme';
 
 interface BrandLogoProps {
   height?: number;
@@ -31,8 +31,8 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ height = 64, imageStyle })
 
   if (!url) {
     return (
-      <View style={styles.fallback}>
-        <Text style={[styles.fallbackText, { fontSize: height * 0.3 }]}>FB</Text>
+      <View style={[styles.fallback, { height, width: height, borderRadius: height / 4 }]}>
+        <Text style={[styles.fallbackText, { fontSize: height * 0.38 }]}>FB</Text>
       </View>
     );
   }
@@ -48,18 +48,10 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({ height = 64, imageStyle })
 };
 
 const styles = StyleSheet.create({
-  img: {
-    alignSelf: 'center',
-    width: undefined,
-    maxWidth: '100%',
-  },
-  placeholder: {
-    alignSelf: 'center',
-    backgroundColor: COLORS.gray100,
-    borderRadius: 8,
-  },
-  fallback: { alignSelf: 'center' },
-  fallbackText: { fontWeight: '800', color: COLORS.primary },
+  img: { alignSelf: 'center', width: undefined, maxWidth: '100%', aspectRatio: 2.5 },
+  placeholder: { alignSelf: 'center', backgroundColor: colors.gray100, borderRadius: radius.md },
+  fallback: { alignSelf: 'center', backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  fallbackText: { fontWeight: '800', color: colors.white },
 });
 
 export default BrandLogo;
