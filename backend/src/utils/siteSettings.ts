@@ -629,7 +629,7 @@ export async function deleteHeroImageFromStorage(
 /** Clear a city's hero image (keeps the global fallback intact). */
 export async function clearHeroImageSettings(
   cityId: string | null,
-  userId?: string
+  _userId?: string
 ): Promise<HeroImageSettings> {
   // DELETE the city rows rather than writing '' — an empty-string city row
   // would win the merge in fetchHeroImageSettings and shadow the global

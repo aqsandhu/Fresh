@@ -20,6 +20,7 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
+import { cancelActiveRiderTasks, notifyRiderTasksCancelled, CancelledRiderTask } from '../../utils/riderTaskEvents';
 import { commitOrderSaleOnDelivery, reserveProductStock, adjustStockForWeightDelta } from '../../utils/systemStock';
 import { deductOcpStockOnDelivery } from '../../utils/ocpStock';
 import { roundMoney } from '../../utils/money';
@@ -273,6 +274,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   // cancel side-effects (stock/slot restore) must be atomic — same contract
   // as the customer-cancel and webhook paths.
   let updatedRow: any = null;
+  let cancelledRiderTasks: CancelledRiderTask[] = [];
   try {
     updatedRow = await withTransaction(async (client) => {
       const orderResult = await client.query(
@@ -303,8 +305,23 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
         [status, reason, id]
       );
 
+      // Admin-confirmed delivery closes the rider's task too (same as the
+      // payment-received fast path) so the rider app stops showing it active.
+      if (status === 'delivered' && order.status !== 'delivered') {
+        await client.query(
+          `UPDATE rider_tasks SET status = 'completed',
+                  completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
+            WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
+          [id]
+        );
+      }
+
       // Cancelling releases what the order consumed at creation.
       if (status === 'cancelled' && order.status !== 'cancelled') {
+        // The rider must not keep driving to a cancelled order.
+        cancelledRiderTasks = await cancelActiveRiderTasks(client, id, {
+          note: reason ? `Order cancelled: ${reason}` : 'Order cancelled by admin',
+        });
         // Paid order cancelled → money is owed back. Record a refunds-ledger
         // row (same shape as the complaint refund insert) so finance can
         // reconcile; never blocks the cancellation. Runs exactly once thanks
@@ -370,6 +387,9 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
     status,
     updatedBy: req.user?.id,
   });
+
+  // Tell the displaced rider (socket + push) — after commit.
+  notifyRiderTasksCancelled(cancelledRiderTasks, { id, order_number: order.order_number }, reason);
 
   successResponse(res, result.rows[0], 'Order status updated successfully');
 });
@@ -1179,6 +1199,7 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
   // Per-order transition validation + cancel side-effects, atomically.
   // Orders whose current status can't legally move to the target are skipped
   // (and reported back) instead of being force-jumped.
+  const cancelledRiderTasksByOrder: { order: any; tasks: CancelledRiderTask[] }[] = [];
   const { updatedRows, skipped } = await withTransaction(async (client) => {
     const lockResult = await client.query(
       `SELECT o.id, o.status, o.time_slot_id FROM orders o
@@ -1216,6 +1237,10 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
       for (const order of allowed) {
         if (order.status !== 'cancelled') {
           await restoreOrderInventory(client, order);
+          const tasks = await cancelActiveRiderTasks(client, order.id, {
+            note: reason ? `Order cancelled: ${reason}` : 'Order cancelled by admin',
+          });
+          if (tasks.length) cancelledRiderTasksByOrder.push({ order, tasks });
         }
       }
     }
@@ -1224,6 +1249,12 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
         if (order.status !== 'delivered') {
           await commitOrderSaleOnDelivery(client, order.id);
           await deductOcpStockOnDelivery(client, order.id);
+          await client.query(
+            `UPDATE rider_tasks SET status = 'completed',
+                    completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
+              WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
+            [order.id]
+          );
         }
       }
     }
@@ -1232,6 +1263,11 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
   });
 
   const result = { rows: updatedRows };
+
+  for (const { order, tasks } of cancelledRiderTasksByOrder) {
+    const row = result.rows.find((r: any) => r.id === order.id) ?? order;
+    notifyRiderTasksCancelled(tasks, { id: order.id, order_number: row.order_number }, reason);
+  }
 
   for (const order of result.rows) {
     emitOrderUpdate(order.id, {

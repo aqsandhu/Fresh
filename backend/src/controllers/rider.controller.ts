@@ -12,7 +12,48 @@ import { deductOcpStockOnDelivery } from '../utils/ocpStock';
 import { commitOrderSaleOnDelivery } from '../utils/systemStock';
 import { emitOrderUpdate, emitToUser, emitToAdmins, emitRiderLocationUpdate } from '../config/socket';
 import { parsePagination } from '../utils/validators';
+import { hasOrderCouponColumns, hasUrgentDeliveryColumns } from '../config/orderSchema';
 import logger from '../utils/logger';
+
+/**
+ * Order / address / slot / atta columns shared by the mobile list endpoints
+ * (active + completed). Kept identical to what the detail endpoint exposes so
+ * the rider app renders cards (COD amount, rider charge, pin, slot, urgent)
+ * without a second round-trip per task.
+ */
+const urgentColumns = (ready: boolean) =>
+  ready
+    ? 'o.is_urgent_delivery, o.urgent_delivery_eta,'
+    : 'FALSE AS is_urgent_delivery, NULL::text AS urgent_delivery_eta,';
+
+const taskListOrderColumns = (urgentReady: boolean) => `
+      o.id as order_id, o.order_number, o.status as order_status,
+      o.total_amount, o.paid_amount, o.payment_method, o.payment_status,
+      o.rider_delivery_charge, ${urgentColumns(urgentReady)}
+      o.requested_delivery_date, o.customer_notes,
+      o.delivery_address_snapshot->>'written_address' as order_delivery_address,
+      o.delivery_address_snapshot->>'landmark' as order_landmark,
+      o.delivery_address_snapshot->>'house_number' as order_house_number,
+      o.delivery_address_snapshot->>'area_name' as order_area,
+      o.delivery_address_snapshot->>'city' as order_city,
+      CASE WHEN o.show_customer_phone = true THEN ou.phone ELSE NULL END as customer_phone,
+      CASE WHEN o.show_customer_phone = true THEN ou.full_name ELSE NULL END as customer_name,
+      o.address_id,
+      CASE WHEN a.location IS NOT NULL THEN true ELSE false END as has_location,
+      a.location_added_by,
+      ST_X(a.location::geometry) as address_longitude,
+      ST_Y(a.location::geometry) as address_latitude,
+      a.door_picture_url,
+      ts.slot_name as time_slot_name, ts.start_time, ts.end_time,
+      ar.id as atta_request_id, ar.request_number as atta_request_number,
+      ar.status as atta_status, ar.wheat_quantity_kg`;
+
+const TASK_LIST_JOINS = `
+    LEFT JOIN orders o ON rt.order_id = o.id
+    LEFT JOIN users ou ON o.user_id = ou.id
+    LEFT JOIN addresses a ON o.address_id = a.id
+    LEFT JOIN time_slots ts ON o.time_slot_id = ts.id
+    LEFT JOIN atta_requests ar ON rt.atta_request_id = ar.id`;
 
 let riderCashTablesReady: boolean | null = null;
 
@@ -222,18 +263,9 @@ export const getActiveTasks = asyncHandler(async (req: Request, res: Response) =
       ST_X(rt.delivery_location::geometry) as delivery_longitude,
       ST_Y(rt.delivery_location::geometry) as delivery_latitude,
       rt.pickup_proof_image, rt.delivery_proof_image, rt.notes,
-      o.id as order_id, o.order_number, o.status as order_status,
-      o.total_amount, o.payment_method, o.payment_status,
-      o.delivery_address_snapshot->>'written_address' as order_delivery_address,
-      o.delivery_address_snapshot->>'landmark' as order_landmark,
-      o.delivery_address_snapshot->>'house_number' as order_house_number,
-      CASE WHEN o.show_customer_phone = true THEN ou.phone ELSE NULL END as customer_phone,
-      CASE WHEN o.show_customer_phone = true THEN ou.full_name ELSE NULL END as customer_name,
-      ar.id as atta_request_id, ar.status as atta_status, ar.wheat_quantity_kg
+      ${taskListOrderColumns(await hasUrgentDeliveryColumns())}
     FROM rider_tasks rt
-    LEFT JOIN orders o ON rt.order_id = o.id
-    LEFT JOIN users ou ON o.user_id = ou.id
-    LEFT JOIN atta_requests ar ON rt.atta_request_id = ar.id
+    ${TASK_LIST_JOINS}
     WHERE rt.rider_id = $1 AND rt.status IN ('assigned', 'in_progress')
     ORDER BY 
       CASE rt.status WHEN 'in_progress' THEN 1 WHEN 'assigned' THEN 2 END,
@@ -268,18 +300,9 @@ export const getCompletedTasks = asyncHandler(async (req: Request, res: Response
       ST_X(rt.delivery_location::geometry) as delivery_longitude,
       ST_Y(rt.delivery_location::geometry) as delivery_latitude,
       rt.pickup_proof_image, rt.delivery_proof_image, rt.notes,
-      o.id as order_id, o.order_number, o.status as order_status,
-      o.total_amount, o.payment_method, o.payment_status,
-      o.delivery_address_snapshot->>'written_address' as order_delivery_address,
-      o.delivery_address_snapshot->>'landmark' as order_landmark,
-      o.delivery_address_snapshot->>'house_number' as order_house_number,
-      CASE WHEN o.show_customer_phone = true THEN ou.phone ELSE NULL END as customer_phone,
-      CASE WHEN o.show_customer_phone = true THEN ou.full_name ELSE NULL END as customer_name,
-      ar.id as atta_request_id, ar.status as atta_status, ar.wheat_quantity_kg
+      ${taskListOrderColumns(await hasUrgentDeliveryColumns())}
     FROM rider_tasks rt
-    LEFT JOIN orders o ON rt.order_id = o.id
-    LEFT JOIN users ou ON o.user_id = ou.id
-    LEFT JOIN atta_requests ar ON rt.atta_request_id = ar.id
+    ${TASK_LIST_JOINS}
     WHERE rt.rider_id = $1 AND rt.status = 'completed'
     ORDER BY rt.completed_at DESC
     LIMIT 50`,
@@ -359,6 +382,9 @@ export const getTaskDetails = asyncHandler(async (req: Request, res: Response) =
       -- Order details
       o.id as order_id, o.order_number, o.status as order_status,
       o.total_amount, o.delivery_charge, o.payment_method, o.payment_status,
+      o.paid_amount, o.rider_delivery_charge, o.subtotal, o.discount_amount,
+      ${(await hasOrderCouponColumns()) ? 'o.coupon_discount,' : '0 AS coupon_discount,'}
+      ${urgentColumns(await hasUrgentDeliveryColumns())}
       o.customer_notes,
       o.delivery_address_snapshot->>'written_address' as order_delivery_address,
       o.delivery_address_snapshot->>'landmark' as order_landmark,
@@ -400,7 +426,8 @@ export const getTaskDetails = asyncHandler(async (req: Request, res: Response) =
   let items: any[] = [];
   if (task.order_id) {
     const itemsResult = await query(
-      `SELECT id, product_name, quantity, unit_price, total_price, special_instructions
+      `SELECT id, product_name, product_image, quantity, unit, quality, weight_kg,
+              unit_price, total_price, special_instructions
        FROM order_items WHERE order_id = $1 ORDER BY created_at`,
       [task.order_id]
     );
