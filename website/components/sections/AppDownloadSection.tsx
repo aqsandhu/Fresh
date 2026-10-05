@@ -5,9 +5,10 @@ import Image from 'next/image'
 import { Apple, PlayCircle, Star, Download, Shield } from 'lucide-react'
 import Button from '@/components/ui/Button'
 
+// Only claims the product actually delivers — no invented ratings/downloads.
 const features = [
-  { icon: Star, text: '4.8 Rating on App Store' },
-  { icon: Download, text: '50K+ Downloads' },
+  { icon: Star, text: 'Order in under 2 minutes' },
+  { icon: Download, text: 'Live rider tracking' },
   { icon: Shield, text: 'Secure & Reliable' },
 ]
 
@@ -53,20 +54,22 @@ export default function AppDownloadSection() {
 
               {/* Download Buttons */}
               <div className="flex flex-col sm:flex-row gap-4">
-                <button className="flex items-center gap-3 bg-black text-white px-6 py-3 rounded-xl hover:bg-gray-900 transition-colors">
+                {/* Store listings are not live yet — honest "coming soon"
+                    badges instead of buttons that did nothing. */}
+                <div className="flex items-center gap-3 bg-black/70 text-white px-6 py-3 rounded-xl" aria-disabled="true">
                   <Apple className="w-8 h-8" />
                   <div className="text-left">
-                    <p className="text-xs text-gray-400">Download on the</p>
-                    <p className="font-semibold">App Store</p>
+                    <p className="text-xs text-gray-400">App Store</p>
+                    <p className="font-semibold">Coming soon</p>
                   </div>
-                </button>
-                <button className="flex items-center gap-3 bg-black text-white px-6 py-3 rounded-xl hover:bg-gray-900 transition-colors">
+                </div>
+                <div className="flex items-center gap-3 bg-black/70 text-white px-6 py-3 rounded-xl" aria-disabled="true">
                   <PlayCircle className="w-8 h-8" />
                   <div className="text-left">
-                    <p className="text-xs text-gray-400">Get it on</p>
-                    <p className="font-semibold">Google Play</p>
+                    <p className="text-xs text-gray-400">Google Play</p>
+                    <p className="font-semibold">Coming soon</p>
                   </div>
-                </button>
+                </div>
               </div>
             </motion.div>
 

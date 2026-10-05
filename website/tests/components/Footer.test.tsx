@@ -70,18 +70,16 @@ describe('Footer', () => {
     expect(screen.getByText(/پاکستان میں تازہ سبزیاں اور پھل آپ کے گھر تک/)).toBeInTheDocument();
   });
 
-  it('renders shop links', () => {
+  it('builds shop links from the live category list (no hard-coded per-city slugs)', () => {
     render(<Footer />);
 
-    for (const label of [
-      'Fresh Vegetables',
-      'Fresh Fruits',
-      'Dry Fruits',
-      'Fresh Chicken',
-      'Atta Chakki',
-    ]) {
-      expect(screen.getByText(label)).toBeInTheDocument();
+    // Category slugs are per-city DB rows; with no categories loaded the
+    // column is empty rather than linking to /category/sabzi etc.
+    for (const label of ['Fresh Vegetables', 'Fresh Fruits', 'Dry Fruits', 'Fresh Chicken']) {
+      expect(screen.queryByText(label)).toBeNull();
     }
+    // Atta Chakki link follows the public feature flag (off by default).
+    expect(screen.queryByText('Atta Chakki')).toBeNull();
   });
 
   it('renders company links', () => {
@@ -100,11 +98,11 @@ describe('Footer', () => {
     }
   });
 
-  it('renders contact information', () => {
+  it('renders contact information without a placeholder phone', () => {
     render(<Footer />);
-    expect(screen.getByText('0300-1234567')).toBeInTheDocument();
+    expect(screen.queryByText('0300-1234567')).toBeNull();
     expect(screen.getByText('support@freshbazar.pk')).toBeInTheDocument();
-    expect(screen.getByText('Gujrat, Pakistan')).toBeInTheDocument();
+    expect(screen.getByText(/Pakistan$/)).toBeInTheDocument();
   });
 
   it('renders copyright notice', () => {

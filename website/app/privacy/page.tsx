@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Shield, Lock, Eye, Database, Share2, Cookie, MapPin, Camera, Trash2 } from 'lucide-react'
+import { SupportPhoneLine } from '@/components/ui/SupportContactLinks'
 
 const sections = [
   {
@@ -165,12 +166,7 @@ export default function PrivacyPage() {
                   privacy@freshbazar.pk
                 </a>
               </p>
-              <p className="text-gray-600">
-                <span className="font-medium">Phone:</span>{' '}
-                <a href="tel:0300-1234567" className="text-primary-600 hover:underline">
-                  0300-1234567
-                </a>
-              </p>
+              <SupportPhoneLine />
               <p className="text-gray-600">
                 <span className="font-medium">Delete your account:</span>{' '}
                 <Link href="/delete-account" className="text-primary-600 hover:underline">

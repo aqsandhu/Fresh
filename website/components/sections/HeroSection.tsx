@@ -10,6 +10,7 @@ import {
   Clock,
   ShieldCheck,
   Phone,
+  type LucideIcon,
 } from 'lucide-react'
 import WhatsAppIcon from '@/components/ui/WhatsAppIcon'
 import { useCityContext } from '@/context/CityContext'
@@ -27,19 +28,34 @@ const STATIC_FEATURES = [
 const HERO_IMAGE =
   'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&h=800&fit=crop'
 
+type HeroFeature = { icon: LucideIcon; key: string; text: string; dialable: boolean }
+
+/** "10:00:00" → "10 AM", "14:30:00" → "2:30 PM" (time_slots.start_time is a SQL TIME). */
+function formatSlotTime(time?: string): string {
+  if (!time) return ''
+  const [h, m] = time.split(':').map((x) => parseInt(x, 10))
+  if (!Number.isFinite(h)) return time
+  const hour12 = h % 12 === 0 ? 12 : h % 12
+  const suffix = h >= 12 ? 'PM' : 'AM'
+  return m ? `${hour12}:${String(m).padStart(2, '0')} ${suffix}` : `${hour12} ${suffix}`
+}
+
 /**
  * Brand band that sits BELOW the products on the home page: the admin-managed
  * hero image becomes a full-width backdrop with the promise + CTAs on top.
  */
 export default function HeroSection() {
   const { selectedCity } = useCityContext()
-  const cityName = selectedCity?.name || 'Gujrat'
+  const cityName = selectedCity?.name || 'your city'
   const selectedCityId = selectedCity?.id
 
-  const [phoneText, setPhoneText] = useState('0300-1234567')
+  // Phone comes only from admin settings — never a placeholder number.
+  const [phoneText, setPhoneText] = useState('')
   const [freeThreshold, setFreeThreshold] = useState(500)
   const [whatsappOrderUrl, setWhatsappOrderUrl] = useState('')
   const [heroImageUrl, setHeroImageUrl] = useState(HERO_IMAGE)
+  // Label of the first admin-configured free-delivery time slot ('' = none).
+  const [freeSlotLabel, setFreeSlotLabel] = useState('')
 
   useEffect(() => {
     if (!selectedCityId) return
@@ -88,22 +104,30 @@ export default function HeroSection() {
         }
       })
       .catch(() => {})
+
+    // The "Free Delivery" ribbon mirrors the admin's real slots instead of a
+    // hard-coded window that could contradict the slot picker on the same page.
+    api
+      .get('/orders/time-slots', { params: { city_id: selectedCityId } })
+      .then((res) => {
+        const slots: Array<{ slot_name?: string; start_time?: string; end_time?: string; is_free_delivery_slot?: boolean }> =
+          res.data?.data || []
+        const free = slots.find((s) => s.is_free_delivery_slot)
+        setFreeSlotLabel(free ? free.slot_name || `${formatSlotTime(free.start_time)} - ${formatSlotTime(free.end_time)}` : '')
+      })
+      .catch(() => setFreeSlotLabel(''))
   }, [selectedCityId])
 
-  const features = useMemo(
+  const features = useMemo<HeroFeature[]>(
     () =>
-      STATIC_FEATURES.map((f) => {
+      STATIC_FEATURES.flatMap((f): HeroFeature[] => {
         if (f.key === 'free-delivery') {
-          return {
-            ...f,
-            text: `Free Delivery on Rs. ${freeThreshold}+ Sabzi/Fruits`,
-            dialable: false,
-          }
+          return [{ icon: f.icon, key: f.key, text: `Free Delivery on Rs. ${freeThreshold}+ Sabzi/Fruits`, dialable: false }]
         }
         if (f.key === 'phone') {
-          return { ...f, text: phoneText, dialable: true }
+          return phoneText ? [{ icon: f.icon, key: f.key, text: phoneText, dialable: true }] : []
         }
-        return { ...f, dialable: false, text: f.text! }
+        return [{ icon: f.icon, key: f.key, dialable: false, text: f.text! }]
       }),
     [freeThreshold, phoneText]
   )
@@ -206,16 +230,18 @@ export default function HeroSection() {
           {/* Mobile-only window where the hero image shows through clearly */}
           <div className="h-40 sm:hidden" aria-hidden />
 
-          {/* Free-delivery ribbon */}
-          <div className="relative sm:absolute sm:bottom-6 sm:right-6 mx-5 mb-5 sm:m-0 flex items-center justify-between gap-3 rounded-2xl bg-white/95 backdrop-blur-sm px-4 py-3 shadow-lg sm:w-auto">
-            <div>
-              <p className="text-xs text-gray-500">Free Delivery</p>
-              <p className="text-base font-bold text-primary-600">10AM - 2PM</p>
+          {/* Free-delivery ribbon — only when the admin has a free slot */}
+          {freeSlotLabel ? (
+            <div className="relative sm:absolute sm:bottom-6 sm:right-6 mx-5 mb-5 sm:m-0 flex items-center justify-between gap-3 rounded-2xl bg-white/95 backdrop-blur-sm px-4 py-3 shadow-lg sm:w-auto">
+              <div>
+                <p className="text-xs text-gray-500">Free Delivery</p>
+                <p className="text-base font-bold text-primary-600">{freeSlotLabel}</p>
+              </div>
+              <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center">
+                <Truck className="w-5 h-5 text-primary-600" />
+              </div>
             </div>
-            <div className="w-9 h-9 bg-primary-100 rounded-full flex items-center justify-center">
-              <Truck className="w-5 h-5 text-primary-600" />
-            </div>
-          </div>
+          ) : null}
         </motion.div>
       </div>
     </section>

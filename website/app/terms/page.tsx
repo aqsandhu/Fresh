@@ -2,6 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { FileText, ShoppingBag, Truck, CreditCard, AlertCircle, Gavel } from 'lucide-react'
+import { SupportPhoneLine } from '@/components/ui/SupportContactLinks'
 
 const sections = [
   {
@@ -160,12 +161,7 @@ export default function TermsPage() {
                   legal@freshbazar.pk
                 </a>
               </p>
-              <p className="text-gray-600">
-                <span className="font-medium">Phone:</span>{' '}
-                <a href="tel:0300-1234567" className="text-primary-600 hover:underline">
-                  0300-1234567
-                </a>
-              </p>
+              <SupportPhoneLine />
             </div>
           </motion.div>
         </div>

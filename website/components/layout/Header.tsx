@@ -77,9 +77,11 @@ export default function Header() {
   ]
 
   // Banner settings from API
+  // Phone + delivery line come ONLY from the admin banner settings — no
+  // placeholder number/hours ever render (and never get dialled).
   const [banner, setBanner] = useState({
-    leftText: '0300-1234567',
-    middleText: 'Free Delivery 10AM-2PM',
+    leftText: '',
+    middleText: '',
     rightTextEn: 'Fresh Sabzi at Your Doorstep',
     rightTextUr: 'تازہ سبزیاں آپ کے دروازے پر',
     tickerItems: [] as string[],
@@ -89,8 +91,8 @@ export default function Header() {
     if (!selectedCityId) return
     bannerApi.getSettings().then((data) => {
       setBanner({
-        leftText: data.banner_left_text || '0300-1234567',
-        middleText: data.banner_middle_text || 'Free Delivery 10AM-2PM',
+        leftText: (data.banner_left_text || '').trim(),
+        middleText: (data.banner_middle_text || '').trim(),
         rightTextEn: data.banner_right_text_en || 'Fresh Sabzi at Your Doorstep',
         rightTextUr: data.banner_right_text_ur || 'تازہ سبزیاں آپ کے دروازے پر',
         tickerItems: parseTickerItems(data.banner_ticker_items),
@@ -101,13 +103,15 @@ export default function Header() {
   }, [selectedCityId])
 
   // Ticker rotation: the four admin texts + any extra admin lines, one at a time.
-  const tickerItems: TickerItem[] = [
-    { text: banner.leftText, kind: 'phone' },
-    { text: banner.middleText, kind: 'delivery' },
-    { text: banner.rightTextEn, kind: 'plain' },
-    { text: banner.rightTextUr, kind: 'plain' },
-    ...banner.tickerItems.map((text) => ({ text, kind: 'plain' as const })),
-  ]
+  const tickerItems: TickerItem[] = (
+    [
+      { text: banner.leftText, kind: 'phone' },
+      { text: banner.middleText, kind: 'delivery' },
+      { text: banner.rightTextEn, kind: 'plain' },
+      { text: banner.rightTextUr, kind: 'plain' },
+      ...banner.tickerItems.map((text) => ({ text, kind: 'plain' as const })),
+    ] as TickerItem[]
+  ).filter((item) => item.text.trim().length > 0)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const searchAreaRef = useRef<HTMLDivElement>(null)
@@ -257,23 +261,27 @@ export default function Header() {
         {/* Desktop: original static layout */}
         <div className="hidden sm:flex container mx-auto px-4 items-center justify-between">
           <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1">
-              <Phone className="w-3 h-3" />
-              {(() => {
-                const tel = phoneToTelHref(banner.leftText)
-                return tel ? (
-                  <a href={tel} className="hover:underline active:opacity-80">
-                    {banner.leftText}
-                  </a>
-                ) : (
-                  banner.leftText
-                )
-              })()}
-            </span>
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              {banner.middleText}
-            </span>
+            {banner.leftText ? (
+              <span className="flex items-center gap-1">
+                <Phone className="w-3 h-3" />
+                {(() => {
+                  const tel = phoneToTelHref(banner.leftText)
+                  return tel ? (
+                    <a href={tel} className="hover:underline active:opacity-80">
+                      {banner.leftText}
+                    </a>
+                  ) : (
+                    banner.leftText
+                  )
+                })()}
+              </span>
+            ) : null}
+            {banner.middleText ? (
+              <span className="flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                {banner.middleText}
+              </span>
+            ) : null}
           </div>
           <div className="flex items-center gap-4">
             <span>{banner.rightTextEn}</span>

@@ -1,5 +1,6 @@
 'use client'
 
+import { SupportActionButtons } from '@/components/ui/SupportContactLinks'
 import { motion } from 'framer-motion'
 import { 
   RotateCcw, 
@@ -214,21 +215,7 @@ export default function ReturnsPage() {
             <p className="text-gray-600 mb-6">
               Contact our customer support team and we&apos;ll help you right away.
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <a
-                href="tel:0300-1234567"
-                className="flex items-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-              >
-                <Phone className="w-5 h-5" />
-                Call 0300-1234567
-              </a>
-              <Link
-                href="/contact"
-                className="flex items-center gap-2 px-6 py-3 border border-primary-600 text-primary-600 rounded-lg hover:bg-primary-50 transition-colors"
-              >
-                Contact Form
-              </Link>
-            </div>
+            <SupportActionButtons />
           </motion.div>
         </div>
       </section>

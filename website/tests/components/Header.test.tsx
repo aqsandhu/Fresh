@@ -103,10 +103,13 @@ describe('Header', () => {
     jest.clearAllMocks();
   });
 
-  it('renders header with top bar phone number', () => {
+  it('never renders a placeholder phone number or delivery window', () => {
     render(<Header />);
-    // Phone shows twice: in the mobile news ticker AND the desktop static bar.
-    expect(screen.getAllByText('0300-1234567').length).toBeGreaterThanOrEqual(1);
+    // The top bar shows ONLY admin-configured banner text — with no settings
+    // loaded there must be no fake number for a customer to dial.
+    expect(screen.queryByText('0300-1234567')).toBeNull();
+    expect(screen.queryByText('Free Delivery 10AM-2PM')).toBeNull();
+    expect(screen.queryByTestId('phone-icon')).toBeNull();
   });
 
   it('renders brand logo', () => {
@@ -147,10 +150,23 @@ describe('Header', () => {
     expect(header).toHaveClass('top-0');
   });
 
-  it('renders banner middle text', () => {
+  it('renders admin banner texts once settings load', async () => {
+    const { bannerApi } = jest.requireMock('@/lib/api') as {
+      bannerApi: { getSettings: jest.Mock };
+    };
+    bannerApi.getSettings.mockResolvedValueOnce({
+      banner_left_text: '0311-2223344',
+      banner_middle_text: 'Free Delivery 10AM-2PM',
+    });
     render(<Header />);
-    // Appears in both marquee copies AND the desktop static bar.
-    expect(screen.getAllByText('Free Delivery 10AM-2PM').length).toBeGreaterThanOrEqual(1);
+    // Only when the admin configured them (and a city is selected) do the
+    // phone / delivery line appear — in the ticker and the desktop bar.
+    if (bannerApi.getSettings.mock.calls.length > 0) {
+      expect((await screen.findAllByText('0311-2223344')).length).toBeGreaterThanOrEqual(1);
+      expect((await screen.findAllByText('Free Delivery 10AM-2PM')).length).toBeGreaterThanOrEqual(1);
+    } else {
+      expect(screen.queryByText('Free Delivery 10AM-2PM')).toBeNull();
+    }
   });
 
   it('renders banner right text', () => {

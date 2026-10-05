@@ -29,7 +29,9 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(true)
   const [showFilters, setShowFilters] = useState(false)
   const [sortBy, setSortBy] = useState('relevance')
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 5000])
+  // Upper bound Infinity = "no cap" — a fixed 5000 default silently hid
+  // expensive items (dry fruit, bulk packs) from every search.
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, Infinity])
 
   useEffect(() => {
     if (!query) {
@@ -80,6 +82,8 @@ export default function SearchPage() {
   const filteredProducts = sortedProducts.filter(
     (p) => p.price >= priceRange[0] && p.price <= priceRange[1]
   )
+  // Slider ceiling follows the dearest result (rounded up to the next 100).
+  const sliderMax = Math.max(1000, Math.ceil(Math.max(0, ...products.map((p) => p.price || 0)) / 100) * 100)
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 pb-20 lg:pb-8">
@@ -157,15 +161,18 @@ export default function SearchPage() {
             <div className="grid md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Price Range: Rs. {priceRange[0]} - Rs. {priceRange[1]}
+                  Price Range: Rs. {priceRange[0]} - {priceRange[1] === Infinity ? 'Any' : `Rs. ${priceRange[1]}`}
                 </label>
                 <input
                   type="range"
                   min="0"
-                  max="5000"
+                  max={sliderMax}
                   step="100"
-                  value={priceRange[1]}
-                  onChange={(e) => setPriceRange([priceRange[0], parseInt(e.target.value)])}
+                  value={Math.min(priceRange[1], sliderMax)}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value)
+                    setPriceRange([priceRange[0], v >= sliderMax ? Infinity : v])
+                  }}
                   className="w-full"
                 />
               </div>

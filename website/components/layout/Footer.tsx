@@ -4,17 +4,16 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import BrandLogo from '@/components/ui/BrandLogo'
-import { settingsApi, bannerApi } from '@/lib/api'
+import { settingsApi, bannerApi, categoriesApi } from '@/lib/api'
 import { useCityContext } from '@/context/CityContext'
 import { phoneToTelHref } from '@/lib/phoneStorage'
+import { buildWhatsAppUrl } from '@/lib/whatsapp'
+import { usePublicConfig } from '@/lib/usePublicConfig'
 import {
   Phone,
   Mail,
   MapPin,
-  Facebook,
-  Instagram,
-  Twitter,
-  Youtube,
+  MessageCircle,
   CreditCard,
   Truck,
   ShieldCheck,
@@ -22,13 +21,6 @@ import {
 } from 'lucide-react'
 
 const footerLinks = {
-  shop: [
-    { label: 'Fresh Vegetables', href: '/category/sabzi' },
-    { label: 'Fresh Fruits', href: '/category/fruit' },
-    { label: 'Dry Fruits', href: '/category/dry-fruit' },
-    { label: 'Fresh Chicken', href: '/category/chicken' },
-    { label: 'Atta Chakki', href: '/atta-chakki' },
-  ],
   company: [
     { label: 'About Us', href: '/about' },
     { label: 'Franchise', href: '/franchise' },
@@ -51,7 +43,7 @@ const footerLinks = {
 
 export default function Footer() {
   const pathname = usePathname()
-  const { selectedCityId } = useCityContext()
+  const { selectedCityId, selectedCity } = useCityContext()
 
   // Live data — same admin sources as the hero/delivery sections.
   const { data: delivery } = useQuery({
@@ -66,6 +58,16 @@ export default function Footer() {
     enabled: !!selectedCityId,
     staleTime: 5 * 60 * 1000,
   })
+  // Category slugs are per-city DB rows — never hard-code them.
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories', selectedCityId],
+    queryFn: categoriesApi.getAll,
+    enabled: !!selectedCityId,
+    staleTime: 5 * 60 * 1000,
+  })
+  const categories = Array.isArray(categoriesData) ? categoriesData : []
+  const { config: publicConfig } = usePublicConfig()
+  const attaEnabled = publicConfig.atta_chakki_enabled
 
   // Early return must come AFTER every hook (rules-of-hooks).
   if (pathname?.startsWith('/select-city') || pathname === '/profile') {
@@ -73,8 +75,16 @@ export default function Footer() {
   }
 
   const threshold = delivery?.free_delivery_threshold || 500
-  const phone = bannerSettings?.banner_left_text || '0300-1234567'
-  const telHref = phoneToTelHref(phone) || `tel:${phone.replace(/\D/g, '')}`
+  // Admin-configured only — no placeholder number is ever rendered.
+  const phone = (bannerSettings?.banner_left_text || '').trim()
+  const telHref = phone ? phoneToTelHref(phone) : ''
+  const whatsappUrl = buildWhatsAppUrl(
+    String(bannerSettings?.whatsapp_order_url || bannerSettings?.whatsappOrderUrl || '').trim() || phone
+  )
+  const shopLinks = [
+    ...categories.map((c) => ({ label: c.name, href: `/category/${c.slug}` })),
+    ...(attaEnabled ? [{ label: 'Atta Chakki', href: '/atta-chakki' }] : []),
+  ]
 
   const features = [
     {
@@ -139,13 +149,15 @@ export default function Footer() {
 
             {/* Contact Info */}
             <div className="space-y-2">
-              <a
-                href={telHref}
-                className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-              >
-                <Phone className="w-4 h-4" />
-                <span className="text-sm">{phone}</span>
-              </a>
+              {phone && telHref ? (
+                <a
+                  href={telHref}
+                  className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  <Phone className="w-4 h-4" />
+                  <span className="text-sm">{phone}</span>
+                </a>
+              ) : null}
               <a
                 href="mailto:support@freshbazar.pk"
                 className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
@@ -155,7 +167,7 @@ export default function Footer() {
               </a>
               <div className="flex items-center gap-2 text-gray-400">
                 <MapPin className="w-4 h-4" />
-                <span className="text-sm">Gujrat, Pakistan</span>
+                <span className="text-sm">{selectedCity?.name ? `${selectedCity.name}, Pakistan` : 'Pakistan'}</span>
               </div>
             </div>
           </div>
@@ -164,7 +176,7 @@ export default function Footer() {
           <div>
             <h3 className="font-semibold mb-4">Shop</h3>
             <ul className="space-y-2">
-              {footerLinks.shop.map((link) => (
+              {shopLinks.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
@@ -220,32 +232,19 @@ export default function Footer() {
             <p className="text-gray-500 text-sm text-center md:text-left">
               © {new Date().getFullYear()} Fresh Bazar Pakistan. All rights reserved.
             </p>
-            <div className="flex items-center gap-4">
+            {/* Social links are rendered only once real profile URLs exist —
+                dead "#" icons were shipped here before. */}
+            {whatsappUrl ? (
               <a
-                href="#"
-                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors"
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm"
               >
-                <Facebook className="w-4 h-4" />
+                <MessageCircle className="w-4 h-4" />
+                WhatsApp us
               </a>
-              <a
-                href="#"
-                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors"
-              >
-                <Instagram className="w-4 h-4" />
-              </a>
-              <a
-                href="#"
-                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors"
-              >
-                <Twitter className="w-4 h-4" />
-              </a>
-              <a
-                href="#"
-                className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center hover:bg-primary-600 transition-colors"
-              >
-                <Youtube className="w-4 h-4" />
-              </a>
-            </div>
+            ) : null}
           </div>
         </div>
       </div>
