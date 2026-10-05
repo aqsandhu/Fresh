@@ -1,157 +1,141 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { QueuedAction } from '../types';
-import { STORAGE_KEYS } from './constants';
+import { QueuedAction, QueuedActionType } from '../types';
+import { STORAGE_KEYS } from '../utils/constants';
 import { generateId } from './helpers';
 
+const MAX_RETRIES = 3;
+const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+type Listener = (size: number) => void;
+
+/**
+ * Durable replay queue for duty-critical writes made while offline.
+ * 4xx responses are deterministic → dropped immediately, never retried.
+ */
 class OfflineQueue {
   private static instance: OfflineQueue;
-  private isProcessing: boolean = false;
+  private isProcessing = false;
+  private listeners = new Set<Listener>();
 
   private constructor() {}
 
   static getInstance(): OfflineQueue {
-    if (!OfflineQueue.instance) {
-      OfflineQueue.instance = new OfflineQueue();
-    }
+    if (!OfflineQueue.instance) OfflineQueue.instance = new OfflineQueue();
     return OfflineQueue.instance;
   }
 
-  // Add action to queue
-  async addAction(type: QueuedAction['type'], payload: any): Promise<string> {
-    try {
-      const action: QueuedAction = {
-        id: generateId(),
-        type,
-        payload,
-        timestamp: Date.now(),
-        retryCount: 0,
-      };
-
-      const queue = await this.getQueue();
-      queue.push(action);
-      await AsyncStorage.setItem(STORAGE_KEYS.OFFLINE_QUEUE, JSON.stringify(queue));
-
-      return action.id;
-    } catch (error) {
-      console.error('Failed to add action to queue:', error);
-      throw error;
-    }
+  /** Subscribe to queue-size changes (banners). Returns unsubscribe. */
+  subscribe(listener: Listener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
-  // Get all queued actions
+  private async notify(): Promise<void> {
+    const size = await this.getQueueSize();
+    this.listeners.forEach((l) => {
+      try {
+        l(size);
+      } catch {
+        /* listener errors never break the queue */
+      }
+    });
+  }
+
+  private async write(queue: QueuedAction[]): Promise<void> {
+    await AsyncStorage.setItem(STORAGE_KEYS.OFFLINE_QUEUE, JSON.stringify(queue));
+  }
+
+  async addAction(type: QueuedActionType, payload: Record<string, unknown>): Promise<string> {
+    const action: QueuedAction = { id: generateId(), type, payload, timestamp: Date.now(), retryCount: 0 };
+    const queue = await this.getQueue();
+    queue.push(action);
+    await this.write(queue);
+    await this.notify();
+    return action.id;
+  }
+
   async getQueue(): Promise<QueuedAction[]> {
     try {
       const data = await AsyncStorage.getItem(STORAGE_KEYS.OFFLINE_QUEUE);
-      return data ? JSON.parse(data) : [];
+      const parsed = data ? JSON.parse(data) : [];
+      return Array.isArray(parsed) ? parsed : [];
     } catch (error) {
-      console.error('Failed to get queue:', error);
+      console.error('[OfflineQueue] read failed:', error);
       return [];
     }
   }
 
-  // Remove action from queue
   async removeAction(actionId: string): Promise<void> {
-    try {
-      const queue = await this.getQueue();
-      const filtered = queue.filter((action) => action.id !== actionId);
-      await AsyncStorage.setItem(STORAGE_KEYS.OFFLINE_QUEUE, JSON.stringify(filtered));
-    } catch (error) {
-      console.error('Failed to remove action from queue:', error);
-    }
+    const queue = await this.getQueue();
+    await this.write(queue.filter((a) => a.id !== actionId));
+    await this.notify();
   }
 
-  // Update action retry count
-  async incrementRetryCount(actionId: string): Promise<void> {
-    try {
-      const queue = await this.getQueue();
-      const action = queue.find((a) => a.id === actionId);
-      if (action) {
-        action.retryCount++;
-        await AsyncStorage.setItem(STORAGE_KEYS.OFFLINE_QUEUE, JSON.stringify(queue));
-      }
-    } catch (error) {
-      console.error('Failed to increment retry count:', error);
-    }
-  }
-
-  // Clear all actions
   async clearQueue(): Promise<void> {
     try {
       await AsyncStorage.removeItem(STORAGE_KEYS.OFFLINE_QUEUE);
     } catch (error) {
-      console.error('Failed to clear queue:', error);
+      console.error('[OfflineQueue] clear failed:', error);
     }
+    await this.notify();
   }
 
-  // Get queue size
   async getQueueSize(): Promise<number> {
-    const queue = await this.getQueue();
-    return queue.length;
+    return (await this.getQueue()).length;
   }
 
-  // Check if queue has pending actions
   async hasPendingActions(): Promise<boolean> {
-    const size = await this.getQueueSize();
-    return size > 0;
+    return (await this.getQueueSize()) > 0;
   }
 
-  // Process queue (to be called when online)
+  /**
+   * Replay every queued action in order. Stops on the first network failure
+   * (we're evidently still offline) so ordering is preserved.
+   */
   async processQueue<T>(
     processor: (action: QueuedAction) => Promise<T>,
     onSuccess?: (action: QueuedAction, result: T) => void,
-    onError?: (action: QueuedAction, error: any) => void
+    onError?: (action: QueuedAction, error: unknown) => void
   ): Promise<void> {
     if (this.isProcessing) return;
-
     this.isProcessing = true;
-    const queue = await this.getQueue();
+    try {
+      const now = Date.now();
+      const queue = (await this.getQueue()).filter((a) => now - a.timestamp <= MAX_AGE_MS);
+      await this.write(queue);
 
-    for (const action of queue) {
-      try {
-        const result = await processor(action);
-        await this.removeAction(action.id);
-        onSuccess?.(action, result);
-      } catch (error) {
-        // 4xx responses are deterministic failures — drop the action
-        // immediately instead of retrying (it can never succeed).
-        const status = (error as any)?.response?.status;
-        if (typeof status === 'number' && status >= 400 && status < 500) {
+      for (const action of queue) {
+        try {
+          const result = await processor(action);
           await this.removeAction(action.id);
+          onSuccess?.(action, result);
+        } catch (error) {
+          const status = (error as { response?: { status?: number } })?.response?.status;
+          const isClient = typeof status === 'number' && status >= 400 && status < 500;
+          if (isClient) {
+            await this.removeAction(action.id);
+            onError?.(action, error);
+            continue;
+          }
+          action.retryCount += 1;
+          if (action.retryCount >= MAX_RETRIES) {
+            await this.removeAction(action.id);
+          } else {
+            const fresh = await this.getQueue();
+            const target = fresh.find((a) => a.id === action.id);
+            if (target) target.retryCount = action.retryCount;
+            await this.write(fresh);
+          }
           onError?.(action, error);
-          continue;
-        }
-
-        await this.incrementRetryCount(action.id);
-        onError?.(action, error);
-
-        // Remove if max retries reached (check the post-increment value)
-        if (action.retryCount + 1 >= 3) {
-          await this.removeAction(action.id);
+          // Still offline — stop and keep order; the next reconnect retries.
+          if (!status) break;
         }
       }
-    }
-
-    this.isProcessing = false;
-  }
-
-  // Get stale actions (older than specified time)
-  async getStaleActions(maxAgeMs: number = 24 * 60 * 60 * 1000): Promise<QueuedAction[]> {
-    const queue = await this.getQueue();
-    const now = Date.now();
-    return queue.filter((action) => now - action.timestamp > maxAgeMs);
-  }
-
-  // Clean up stale actions
-  async cleanupStaleActions(maxAgeMs: number = 24 * 60 * 60 * 1000): Promise<number> {
-    try {
-      const queue = await this.getQueue();
-      const now = Date.now();
-      const fresh = queue.filter((action) => now - action.timestamp <= maxAgeMs);
-      await AsyncStorage.setItem(STORAGE_KEYS.OFFLINE_QUEUE, JSON.stringify(fresh));
-      return queue.length - fresh.length;
-    } catch (error) {
-      console.error('Failed to cleanup stale actions:', error);
-      return 0;
+    } finally {
+      this.isProcessing = false;
+      await this.notify();
     }
   }
 }

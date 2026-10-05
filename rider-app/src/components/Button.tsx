@@ -1,16 +1,10 @@
 import React from 'react';
-import {
-  TouchableOpacity,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  View,
-} from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, View, ViewStyle, TextStyle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../utils/constants';
+import { colors, radius, spacing, typography, TOUCH_TARGET } from '../theme';
 
-type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'outline' | 'ghost';
-type ButtonSize = 'small' | 'medium' | 'large';
+export type ButtonVariant = 'primary' | 'secondary' | 'success' | 'danger' | 'outline' | 'ghost' | 'dark';
+export type ButtonSize = 'small' | 'medium' | 'large';
 
 interface ButtonProps {
   title: string;
@@ -19,11 +13,24 @@ interface ButtonProps {
   size?: ButtonSize;
   disabled?: boolean;
   loading?: boolean;
-  icon?: string;
+  icon?: keyof typeof MaterialCommunityIcons.glyphMap;
   iconPosition?: 'left' | 'right';
   fullWidth?: boolean;
-  style?: any;
+  style?: ViewStyle | ViewStyle[];
+  textStyle?: TextStyle;
+  accessibilityLabel?: string;
+  testID?: string;
 }
+
+const palette: Record<ButtonVariant, { bg: string; fg: string; border: string }> = {
+  primary: { bg: colors.primary, fg: colors.white, border: 'transparent' },
+  secondary: { bg: colors.info, fg: colors.white, border: 'transparent' },
+  success: { bg: colors.success, fg: colors.white, border: 'transparent' },
+  danger: { bg: colors.danger, fg: colors.white, border: 'transparent' },
+  dark: { bg: colors.gray900, fg: colors.white, border: 'transparent' },
+  outline: { bg: 'transparent', fg: colors.primaryDark, border: colors.primary },
+  ghost: { bg: 'transparent', fg: colors.textSecondary, border: 'transparent' },
+};
 
 const Button: React.FC<ButtonProps> = ({
   title,
@@ -36,147 +43,78 @@ const Button: React.FC<ButtonProps> = ({
   iconPosition = 'left',
   fullWidth = false,
   style,
+  textStyle,
+  accessibilityLabel,
+  testID,
 }) => {
-  const getBackgroundColor = () => {
-    if (disabled) return COLORS.gray300;
-    switch (variant) {
-      case 'primary':
-        return COLORS.primary;
-      case 'secondary':
-        return COLORS.secondary;
-      case 'success':
-        return COLORS.success;
-      case 'danger':
-        return COLORS.danger;
-      case 'outline':
-      case 'ghost':
-        return 'transparent';
-      default:
-        return COLORS.primary;
-    }
-  };
+  const { bg, fg, border } = palette[variant];
+  const isDisabled = disabled || loading;
+  const height = size === 'small' ? 40 : size === 'large' ? 56 : TOUCH_TARGET;
+  const fontSize = size === 'small' ? typography.size.sm : size === 'large' ? typography.size.lg : typography.size.md;
+  const iconSize = size === 'small' ? 16 : size === 'large' ? 24 : 20;
+  const textColor = isDisabled && variant !== 'outline' && variant !== 'ghost' ? colors.gray500 : fg;
 
-  const getTextColor = () => {
-    if (disabled) return COLORS.gray500;
-    switch (variant) {
-      case 'outline':
-        return COLORS.primary;
-      case 'ghost':
-        return COLORS.textSecondary;
-      default:
-        return COLORS.white;
-    }
-  };
-
-  const getBorderColor = () => {
-    if (disabled) return COLORS.gray300;
-    if (variant === 'outline') return COLORS.primary;
-    return 'transparent';
-  };
-
-  const getPadding = () => {
-    switch (size) {
-      case 'small':
-        return { paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md };
-      case 'large':
-        return { paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl };
-      default:
-        return { paddingVertical: 12, paddingHorizontal: SPACING.lg };
-    }
-  };
-
-  const getFontSize = () => {
-    switch (size) {
-      case 'small':
-        return FONT_SIZES.sm;
-      case 'large':
-        return FONT_SIZES.lg;
-      default:
-        return FONT_SIZES.md;
-    }
-  };
-
-  const renderIcon = () => {
-    if (!icon || loading) return null;
-    return (
-      <MaterialCommunityIcons
-        name={icon as any}
-        size={size === 'small' ? 16 : size === 'large' ? 24 : 20}
-        color={getTextColor()}
-        style={iconPosition === 'left' ? styles.iconLeft : styles.iconRight}
-      />
-    );
-  };
-
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={getTextColor()} />
-          <Text style={[styles.text, { color: getTextColor(), fontSize: getFontSize() }]}>
-            {title}
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <>
-        {iconPosition === 'left' && renderIcon()}
-        <Text style={[styles.text, { color: getTextColor(), fontSize: getFontSize() }]}>
-          {title}
-        </Text>
-        {iconPosition === 'right' && renderIcon()}
-      </>
-    );
-  };
+  const iconNode = icon && !loading ? (
+    <MaterialCommunityIcons
+      name={icon}
+      size={iconSize}
+      color={textColor}
+      style={iconPosition === 'left' ? styles.iconLeft : styles.iconRight}
+    />
+  ) : null;
 
   return (
     <TouchableOpacity
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={isDisabled}
       activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel || title}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
+      testID={testID}
       style={[
         styles.button,
         {
-          backgroundColor: getBackgroundColor(),
-          borderColor: getBorderColor(),
+          height,
+          backgroundColor: isDisabled && bg !== 'transparent' ? colors.gray200 : bg,
+          borderColor: isDisabled ? colors.gray300 : border,
           borderWidth: variant === 'outline' ? 2 : 0,
-          ...getPadding(),
+          paddingHorizontal: size === 'small' ? spacing.md : spacing.xl,
+          opacity: isDisabled && (variant === 'outline' || variant === 'ghost') ? 0.5 : 1,
         },
         fullWidth && styles.fullWidth,
         style,
       ]}
     >
-      {renderContent()}
+      {loading ? (
+        <View style={styles.row}>
+          <ActivityIndicator size="small" color={textColor} />
+          <Text style={[styles.text, { color: textColor, fontSize }, textStyle]}>{title}</Text>
+        </View>
+      ) : (
+        <View style={styles.row}>
+          {iconPosition === 'left' && iconNode}
+          <Text style={[styles.text, { color: textColor, fontSize }, textStyle]} numberOfLines={1}>
+            {title}
+          </Text>
+          {iconPosition === 'right' && iconNode}
+        </View>
+      )}
     </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   button: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: radius.md,
   },
-  fullWidth: {
-    width: '100%',
-  },
-  text: {
-    fontWeight: '600',
-  },
-  iconLeft: {
-    marginRight: SPACING.sm,
-  },
-  iconRight: {
-    marginLeft: SPACING.sm,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
+  fullWidth: { width: '100%' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  text: { fontWeight: typography.weight.bold, letterSpacing: 0.2 },
+  iconLeft: { marginRight: 0 },
+  iconRight: { marginLeft: 0 },
 });
 
 export default Button;

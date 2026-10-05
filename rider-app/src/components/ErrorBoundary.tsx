@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { colors, radius, spacing, typography } from '../theme';
 
 interface Props {
   children: ReactNode;
@@ -12,40 +13,17 @@ interface State {
   errorInfo: ErrorInfo | null;
 }
 
-// Colors for Rider App error boundary
-const COLORS = {
-  primary: '#10B981',
-  error: '#EF4444',
-  white: '#FFFFFF',
-  gray100: '#F3F4F6',
-  gray600: '#4B5563',
-  gray700: '#374151',
-  gray900: '#111827',
-  gray500: '#6B7280',
-};
-
-/**
- * Fresh Bazar Rider App - Global Error Boundary
- * Catches JavaScript errors anywhere in the child component tree,
- * logs those errors, and displays a fallback UI instead of crashing.
- */
+/** Global error boundary — keeps a crash from blanking the rider's screen mid-delivery. */
 export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-    errorInfo: null,
-  };
+  public state: State = { hasError: false, error: null, errorInfo: null };
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error, errorInfo: null };
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('[Fresh Bazar Rider ErrorBoundary] Caught an error:', error, errorInfo);
+    console.error('[Rider ErrorBoundary]', error, errorInfo);
     this.setState({ error, errorInfo });
-
-    // In production, send to error tracking service
-    // if ((window as any).Sentry) { (window as any).Sentry.captureException(error); }
   }
 
   private handleRestart = () => {
@@ -53,127 +31,83 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   public render() {
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
-      }
+    if (!this.state.hasError) return this.props.children;
+    if (this.props.fallback) return this.props.fallback;
 
-      return (
-        <View style={styles.container}>
-          <ScrollView contentContainerStyle={styles.scrollContent}>
-            <View style={styles.iconContainer}>
-              <Text style={styles.iconText}>⚠️</Text>
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          <View style={styles.iconContainer}>
+            <Text style={styles.iconText}>⚠️</Text>
+          </View>
+          <Text style={styles.title}>Something went wrong</Text>
+          <Text style={styles.message}>
+            The app hit an unexpected error. Tap below to continue — your duty status and tasks are safe on the server.
+          </Text>
+          {__DEV__ && this.state.error ? (
+            <View style={styles.debugContainer}>
+              <Text style={styles.debugTitle}>Error details (dev only)</Text>
+              <Text style={styles.debugText}>{this.state.error.toString()}</Text>
+              {this.state.errorInfo ? <Text style={styles.debugStack}>{this.state.errorInfo.componentStack}</Text> : null}
             </View>
-
-            <Text style={styles.title}>Something Went Wrong</Text>
-            <Text style={styles.message}>
-              We apologize for the inconvenience. An unexpected error has occurred in Fresh Bazar Rider.
-            </Text>
-
-            {__DEV__ && this.state.error && (
-              <View style={styles.debugContainer}>
-                <Text style={styles.debugTitle}>Error Details (Dev Only):</Text>
-                <Text style={styles.debugText}>{this.state.error.toString()}</Text>
-                {this.state.errorInfo && (
-                  <Text style={styles.debugStack}>{this.state.errorInfo.componentStack}</Text>
-                )}
-              </View>
-            )}
-
-            <TouchableOpacity style={styles.restartButton} onPress={this.handleRestart}>
-              <Text style={styles.restartButtonText}>Try Again</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.footerText}>
-              If the problem persists, please contact Fresh Bazar support.
-            </Text>
-          </ScrollView>
-        </View>
-      );
-    }
-
-    return this.props.children;
+          ) : null}
+          <TouchableOpacity style={styles.restartButton} onPress={this.handleRestart} accessibilityRole="button">
+            <Text style={styles.restartButtonText}>Try again</Text>
+          </TouchableOpacity>
+          <Text style={styles.footerText}>If this keeps happening, contact your Fresh Bazar admin.</Text>
+        </ScrollView>
+      </View>
+    );
   }
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.white,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
+  container: { flex: 1, backgroundColor: colors.surface },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xxl },
   iconContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: colors.dangerSoft,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
-  iconText: {
-    fontSize: 40,
-  },
+  iconText: { fontSize: 40 },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: COLORS.gray900,
-    marginBottom: 8,
+    fontSize: typography.size.xxl,
+    fontWeight: typography.weight.bold,
+    color: colors.text,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   message: {
-    fontSize: 14,
-    color: COLORS.gray600,
+    fontSize: typography.size.md,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
+    marginBottom: spacing.xl,
+    lineHeight: typography.size.md * typography.lineHeight.relaxed,
   },
   debugContainer: {
     width: '100%',
-    backgroundColor: COLORS.gray100,
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 24,
+    backgroundColor: colors.gray100,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    marginBottom: spacing.xl,
   },
-  debugTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.gray700,
-    marginBottom: 8,
-  },
-  debugText: {
-    fontSize: 12,
-    color: COLORS.error,
-  },
-  debugStack: {
-    fontSize: 10,
-    color: COLORS.gray600,
-    marginTop: 8,
-  },
+  debugTitle: { fontSize: typography.size.xs, fontWeight: typography.weight.bold, color: colors.gray700, marginBottom: spacing.sm },
+  debugText: { fontSize: typography.size.xs, color: colors.danger },
+  debugStack: { fontSize: 10, color: colors.gray600, marginTop: spacing.sm },
   restartButton: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 10,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: radius.md,
     minWidth: 200,
     alignItems: 'center',
   },
-  restartButtonText: {
-    color: COLORS.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  footerText: {
-    fontSize: 12,
-    color: COLORS.gray500,
-    marginTop: 24,
-    textAlign: 'center',
-  },
+  restartButtonText: { color: colors.white, fontSize: typography.size.lg, fontWeight: typography.weight.bold },
+  footerText: { fontSize: typography.size.xs, color: colors.textMuted, marginTop: spacing.xl, textAlign: 'center' },
 });
 
 export default ErrorBoundary;

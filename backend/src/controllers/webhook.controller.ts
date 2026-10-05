@@ -627,12 +627,19 @@ const verifyWebhookSignature = (
   signature: string | undefined,
   source: string | string[] | undefined
 ): boolean => {
-  // If no signature provided, only an explicit opt-in env var allows the
-  // unsigned path (never a blanket NODE_ENV check — production mistakenly
-  // deployed with NODE_ENV=development would accept forged webhooks).
+  // Unsigned webhooks are a LOCAL/STAGING convenience only. BOTH gates must
+  // hold — the explicit opt-in env var AND a non-production NODE_ENV — so a
+  // stray WEBHOOK_ALLOW_UNSIGNED=true on the production dashboard can never
+  // let an anonymous caller mark orders delivered/paid with nothing but an
+  // x-webhook-source header. (Neither gate alone is enough: an env typo or a
+  // wrong NODE_ENV would each open the door on their own.)
   if (!signature) {
-    if (process.env.WEBHOOK_ALLOW_UNSIGNED === 'true' && source) {
-      logger.warn('Webhook accepted without signature (WEBHOOK_ALLOW_UNSIGNED=true)');
+    if (
+      process.env.WEBHOOK_ALLOW_UNSIGNED === 'true' &&
+      process.env.NODE_ENV !== 'production' &&
+      source
+    ) {
+      logger.warn('Webhook accepted without signature (WEBHOOK_ALLOW_UNSIGNED=true, non-production)');
       return true;
     }
     logger.error('Webhook rejected: No signature provided');

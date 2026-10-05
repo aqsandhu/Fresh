@@ -34,6 +34,7 @@ import {
 } from '../utils/coupons';
 import { hasUserCouponsTable } from '../utils/autoCoupons';
 import { restoreOrderInventory } from '../utils/orderStatus';
+import { cancelActiveRiderTasks, notifyRiderTasksCancelled, CancelledRiderTask } from '../utils/riderTaskEvents';
 import { ensureTimeSlotBookings, hasTimeSlotBookings } from '../config/timeSlotSchema';
 import { validateAndClaimTimeSlot } from '../utils/timeSlots';
 
@@ -975,6 +976,7 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     req.body?.reason ?? req.body?.cancellation_reason ?? null;
 
   let cancelledOrder: any;
+  let cancelledRiderTasks: CancelledRiderTask[] = [];
 
   await withTransaction(async (client) => {
     // Check if order exists and belongs to user. FOR UPDATE so two concurrent
@@ -1036,8 +1038,16 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     // Restore time-slot seat + stock (shared with admin/webhook cancel paths).
     await restoreOrderInventory(client, order);
 
+    // Defensive: no rider task should be active here (out_for_delivery can't be
+    // cancelled), but if the rule ever loosens the rider must be told.
+    cancelledRiderTasks = await cancelActiveRiderTasks(client, id, {
+      note: reason ? `Order cancelled by customer: ${reason}` : 'Order cancelled by customer',
+    });
+
     cancelledOrder = order;
   });
+
+  notifyRiderTasksCancelled(cancelledRiderTasks, { id, order_number: cancelledOrder.order_number }, reason);
 
   // Emit real-time cancellation events
   emitOrderUpdate(id, {

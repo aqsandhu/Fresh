@@ -56,6 +56,12 @@ services:
         value: "false"
       - key: RATE_LIMIT_MAX_REQUESTS
         value: "2000"
+      # Proxy hops in front of the app. Render alone = 1 (the code default).
+      # If api.freshbazar.pk is proxied through Cloudflare (orange cloud) set
+      # this to 2 — otherwise req.ip is Cloudflare's address and EVERY customer
+      # shares one rate-limit bucket (the whole site throttles together).
+      - key: TRUST_PROXY
+        sync: false
       - key: CORS_ORIGIN
         value: "https://freshbazar.pk,https://www.freshbazar.pk,https://freshbazar-admin.vercel.app,https://admin.freshbazar.pk"
       - key: CORS_CREDENTIALS

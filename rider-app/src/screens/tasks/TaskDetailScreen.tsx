@@ -1,1173 +1,705 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Alert,
-  Image,
-  Linking,
-  Platform,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Alert, Image, TouchableOpacity, TextInput, Linking } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as ImagePicker from 'expo-image-picker';
-import * as Location from 'expo-location';
-import { getAccurateLocation, MAX_ACCURACY_FOR_PIN } from '../../services/location.service';
-import { useTaskStore } from '../../store/taskStore';
-import { useSettingsStore } from '../../store/settingsStore';
-import { useAuthStore } from '../../store/authStore';
-import MapPreview from '../../components/MapPreview';
-import Button from '../../components/Button';
-import OrderChat from '../../components/OrderChat';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../utils/constants';
-import {
-  getTaskTypeLabel,
-  getTaskStatusLabel,
-  formatCurrency,
-  getTranslation,
-} from '../../utils/helpers';
+import { useTaskStore, QueuedOfflineError } from '../../store/taskStore';
+import { useDutyStore } from '../../store/dutyStore';
+import { useT, tEnum } from '../../i18n';
 import { socketService } from '../../services/socket.service';
-import { Task } from '../../types';
+import { getApiErrorMessage } from '../../services/api';
+import { getAccurateLocation, requestLocationPermissions, MAX_ACCURACY_FOR_PIN } from '../../services/location.service';
+import Button from '../../components/Button';
+import MapPreview from '../../components/MapPreview';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import { ScreenHeader, Card, Badge, Banner, BottomActionBar, SectionTitle, InfoRow, Sheet, EmptyState } from '../../components/ui';
+import { BOTTOM_BAR_CONTENT_PADDING } from '../../components/ui/BottomActionBar';
+import { colors, radius, spacing, typography } from '../../theme';
+import { formatCurrency, formatDate, formatSlotRange, formatDateTime, openNavigation, openDialer, openWhatsApp } from '../../utils/helpers';
+import { taskStatusTone, taskStatusIcon, isAttaTask, primaryActionFor } from '../../utils/taskMeta';
+import { RootStackParamList, Task, GeoPoint, PROBLEM_REASONS, ProblemReason, taskReference, isTerminalTaskStatus } from '../../types';
 
-interface TaskDetailScreenProps {
-  navigation: any;
-  route: any;
-}
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const TaskDetailScreen: React.FC<TaskDetailScreenProps> = ({ navigation, route }) => {
-  const { taskId } = route.params;
-  const [task, setTask] = useState<Task | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+const TaskDetailScreen: React.FC = () => {
+  const { t, language } = useT();
+  const navigation = useNavigation<Nav>();
+  const { taskId } = useRoute<RouteProp<RootStackParamList, 'TaskDetail'>>().params;
+
+  const storeTask = useTaskStore((s) => [...s.activeTasks, ...s.completedTasks].find((x) => x.id === taskId) ?? null);
+  const { fetchTaskById, markPickedUp, markDelivered, failTask, requestCustomerCall, pinLocation, uploadDoorPicture, pendingTaskIds } = useTaskStore();
+  const lastFix = useDutyStore((s) => s.lastFix);
+
+  const [task, setTask] = useState<Task | null>(storeTask);
+  const [loading, setLoading] = useState(!storeTask);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [isCalling, setIsCalling] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isPinningLocation, setIsPinningLocation] = useState(false);
-  const [isUploadingDoorPic, setIsUploadingDoorPic] = useState(false);
-  const [adjustedLocation, setAdjustedLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [isPinning, setIsPinning] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [adjusted, setAdjusted] = useState<GeoPoint | null>(null);
+  const [deliverOpen, setDeliverOpen] = useState(false);
+  const [problemOpen, setProblemOpen] = useState(false);
 
-  const {
-    fetchTaskById,
-    markPickedUp,
-    markDelivered,
-    cancelTask,
-    requestCustomerCall,
-    uploadDoorPicture,
-    pinLocation,
-  } = useTaskStore();
+  const busy = pendingTaskIds.includes(taskId);
 
-  const { language } = useSettingsStore();
-
-  const loadTask = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
-      setIsLoading(true);
-      const taskData = await fetchTaskById(taskId);
-      setTask(taskData);
+      setLoadError(null);
+      const fresh = await fetchTaskById(taskId);
+      setTask(fresh);
     } catch (error) {
-      console.error('Error loading task:', error);
-      Alert.alert(
-        language === 'ur' ? 'خرابی' : 'Error',
-        language === 'ur' ? 'کام لوڈ نہیں ہو سکا' : 'Failed to load task'
-      );
+      setLoadError(getApiErrorMessage(error, t('detail.loadFailed')));
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [taskId, fetchTaskById, language]);
+  }, [taskId, fetchTaskById, t]);
 
   useEffect(() => {
-    loadTask();
-  }, [loadTask]);
+    load();
+  }, [load]);
 
+  // Keep in sync with store updates (socket refresh, offline replay).
   useEffect(() => {
-    if (!task?.orderId) return;
+    if (storeTask) setTask(storeTask);
+  }, [storeTask]);
 
-    const orderId = task.orderId;
-    const handleOrderUpdate = (data: unknown) => {
-      console.log('[TaskDetail] Order update:', data);
-      loadTask();
-    };
-    const handleNewAssignment = (data: unknown) => {
-      console.log('[TaskDetail] New assignment:', data);
-      loadTask();
-    };
-
+  // Live order updates (admin cancel, etc.).
+  useEffect(() => {
+    const orderId = task?.orderId;
+    if (!orderId) return;
     socketService.connect();
-    socketService.subscribeToOrder(orderId, handleOrderUpdate);
-    socketService.onNewAssignment(handleNewAssignment);
-
-    return () => {
-      socketService.unsubscribeFromOrder(orderId, handleOrderUpdate);
-      socketService.off('rider:new_assignment', handleNewAssignment);
+    socketService.subscribeToOrder(orderId);
+    const onUpdate = (data: { orderId?: string }) => {
+      if (!data?.orderId || data.orderId === orderId) load();
     };
-  }, [task?.orderId, loadTask]);
+    socketService.on('order:update', onUpdate);
+    return () => {
+      socketService.off('order:update', onUpdate);
+      socketService.unsubscribeFromOrder(orderId);
+    };
+  }, [task?.orderId, load]);
 
-  // Handle navigate to location
-  const handleNavigate = useCallback(() => {
-    if (task) {
-      const url = Platform.select({
-        ios: `maps://app?daddr=${task.latitude},${task.longitude}`,
-        android: `google.navigation:q=${task.latitude},${task.longitude}`,
-      });
-      if (url) {
-        Linking.openURL(url);
-      }
-    }
-  }, [task]);
+  const atta = task ? isAttaTask(task) : false;
+  const terminal = task ? isTerminalTaskStatus(task.status) : true;
+  const primary = task ? primaryActionFor(task.status) : null;
+  const displayPoint = adjusted ?? task?.location ?? null;
 
-  // Handle pin location for address — waits for accurate GPS fix
-  const handlePinLocation = async () => {
+  // ── Actions ─────────────────────────────────────────────────────────────
+  const handleNavigate = () => {
+    if (task?.location) openNavigation(task.location, task.address).catch(() => {});
+  };
+
+  const handlePickup = () => {
     if (!task) return;
+    Alert.alert(t('action.pickupConfirmTitle'), t('action.pickupConfirmBody', { orderNumber: taskReference(task) }), [
+      { text: t('common.no'), style: 'cancel' },
+      {
+        text: t('common.yes'),
+        onPress: async () => {
+          try {
+            const updated = await markPickedUp(task.id);
+            setTask(updated);
+          } catch (error) {
+            if (error instanceof QueuedOfflineError) {
+              Alert.alert(t('action.pickedUp'), t('action.pickupQueued'));
+              return;
+            }
+            Alert.alert(t('action.pickupFailed'), getApiErrorMessage(error));
+          }
+        },
+      },
+    ]);
+  };
 
-    setIsPinningLocation(true);
+  const handleDeliver = async (notes: string) => {
+    if (!task) return;
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          language === 'ur' ? 'اجازت درکار' : 'Permission Required',
-          language === 'ur'
-            ? 'مقام کی اجازت درکار ہے'
-            : 'Location permission is required to pin the delivery location'
-        );
-        setIsPinningLocation(false);
-        return;
-      }
-
-      // Wait for GPS lock with required customer-pin accuracy.
-      const location = await getAccurateLocation(MAX_ACCURACY_FOR_PIN);
-
-      if (!location) {
-        Alert.alert(
-          language === 'ur' ? 'GPS سگنل نہیں ملا' : 'No GPS Signal',
-          language === 'ur'
-            ? 'GPS سگنل نہیں مل سکا۔ کھلی جگہ میں جا کر دوبارہ کوشش کریں۔'
-            : `Could not lock GPS within ${MAX_ACCURACY_FOR_PIN}m. Move to an open area and try again.`
-        );
-        setIsPinningLocation(false);
-        return;
-      }
-
-      const accuracy = location.coords.accuracy ?? 0;
-
-      await pinLocation(task.id, location.coords.latitude, location.coords.longitude);
-
-      const accText = accuracy < 1 ? '< 1m' : `~${Math.round(accuracy)}m`;
-      Alert.alert(
-        language === 'ur' ? 'مقام محفوظ' : 'Location Saved',
-        language === 'ur'
-          ? `مقام محفوظ ہو گیا (درستگی: ${accText})۔ اگلی بار خودکار استعمال ہوگا۔`
-          : `Location saved (accuracy: ${accText}). Will be used automatically for future orders.`,
-        [{ text: 'OK', onPress: loadTask }]
-      );
+      await markDelivered(task.id, notes || undefined);
+      setDeliverOpen(false);
+      Alert.alert(t('action.delivered'), t('action.deliverDone'), [{ text: t('common.ok'), onPress: () => navigation.goBack() }]);
     } catch (error) {
-      Alert.alert(
-        language === 'ur' ? 'خرابی' : 'Error',
-        language === 'ur'
-          ? 'مقام محفوظ نہیں ہو سکا'
-          : 'Failed to save location. Please try again.'
-      );
-    } finally {
-      setIsPinningLocation(false);
+      if (error instanceof QueuedOfflineError) {
+        setDeliverOpen(false);
+        Alert.alert(t('action.delivered'), t('action.deliverQueued'), [{ text: t('common.ok'), onPress: () => navigation.goBack() }]);
+        return;
+      }
+      Alert.alert(t('action.deliverFailed'), getApiErrorMessage(error));
     }
   };
 
-  // Handle upload or update door picture
-  const handleUploadDoorPicture = async () => {
+  const handleProblem = async (reason: ProblemReason, details: string) => {
     if (!task) return;
-
+    // Stored in rider_tasks.notes — English label keeps it readable for admins.
+    const label = tEnumReason(reason);
+    const note = details.trim() ? `${label}: ${details.trim()}` : label;
     try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        allowsEditing: false,
-        quality: 0.7,
-      });
-
-      if (result.canceled || !result.assets[0]) return;
-
-      setIsUploadingDoorPic(true);
-      const url = await uploadDoorPicture(task.id, result.assets[0].uri);
-      setTask((prev) => prev ? { ...prev, gateImage: url } : prev);
-
-      Alert.alert(
-        language === 'ur' ? 'تصویر محفوظ' : 'Picture Saved',
-        language === 'ur'
-          ? 'دروازے کی تصویر کامیابی سے محفوظ ہو گئی۔ یہ تصویر اس پتے کے ساتھ ہر جگہ اپ ڈیٹ ہو جائے گی۔'
-          : 'Door picture saved successfully. It will be updated everywhere for this address.'
-      );
+      await failTask(task.id, note);
+      setProblemOpen(false);
+      Alert.alert(t('action.reportProblem'), t('action.problemDone'), [{ text: t('common.ok'), onPress: () => navigation.goBack() }]);
     } catch (error) {
-      Alert.alert(
-        language === 'ur' ? 'خرابی' : 'Error',
-        language === 'ur'
-          ? 'تصویر محفوظ نہیں ہو سکی'
-          : 'Failed to save door picture'
-      );
-    } finally {
-      setIsUploadingDoorPic(false);
+      Alert.alert(t('action.problemFailed'), getApiErrorMessage(error));
     }
   };
 
-  // Handle call customer (privacy feature)
-  const handleCallCustomer = async () => {
+  const handleCall = async () => {
     if (!task) return;
-
+    if (task.phoneVisible && task.customerPhone) {
+      openDialer(task.customerPhone).catch(() => {});
+      return;
+    }
+    if (!task.orderId) return;
     setIsCalling(true);
     try {
-      const virtualNumber = await requestCustomerCall(task.id);
-      if (virtualNumber) {
-        // Backend hands us the (masked) number to dial — place the call.
-        Linking.openURL(`tel:${virtualNumber}`).catch(() => {});
-      } else {
-        Alert.alert(
-          language === 'ur' ? 'کال کی درخواست' : 'Call Request',
-          language === 'ur'
-            ? 'کال کی درخواست رجسٹر ہو گئی ہے، لیکن کوئی نمبر دستیاب نہیں۔'
-            : 'Call request registered, but no contact number is available for this order.',
-          [{ text: 'OK' }]
-        );
-      }
+      const number = await requestCustomerCall(task.orderId);
+      if (number) openDialer(number).catch(() => {});
+      else Alert.alert(t('detail.call'), t('detail.callNoNumber'));
     } catch (error) {
-      Alert.alert(
-        language === 'ur' ? 'خرابی' : 'Error',
-        language === 'ur'
-          ? 'کال کی درخواست نہیں بھیج سکے'
-          : 'Failed to send call request'
-      );
+      // 403 carries the admin-facing explanation — show it verbatim.
+      Alert.alert(t('detail.callFailed'), getApiErrorMessage(error));
     } finally {
       setIsCalling(false);
     }
   };
 
-  // Handle mark picked up
-  const handleReportProblem = () => {
-    if (!task) return;
-
-    Alert.alert(
-      language === 'ur' ? 'مسئلہ رپورٹ کریں' : 'Report Problem',
-      language === 'ur'
-        ? 'کیا آپ یہ ٹاسک ناکام (fail) کرنا چاہتے ہیں؟ ایڈمن کو مطلع کر دیا جائے گا۔'
-        : 'Do you want to fail this task? The admin will be notified.',
-      [
-        { text: language === 'ur' ? 'نہیں' : 'No', style: 'cancel' },
-        {
-          text: language === 'ur' ? 'ہاں' : 'Yes',
-          style: 'destructive',
-          onPress: async () => {
-            setIsProcessing(true);
-            try {
-              await cancelTask(task.id, 'Reported by rider');
-              Alert.alert(
-                language === 'ur' ? 'رپورٹ ہو گئی' : 'Reported',
-                language === 'ur' ? 'ٹاسک ناکام کر دیا گیا ہے' : 'Task has been failed',
-                [{ text: 'OK', onPress: () => navigation.goBack() }]
-              );
-            } catch (error) {
-              Alert.alert(
-                language === 'ur' ? 'خرابی' : 'Error',
-                language === 'ur' ? 'رپورٹ ناکام ہو گئی' : 'Failed to report the problem'
-              );
-            } finally {
-              setIsProcessing(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleWhatsApp = () => {
+    if (!task?.customerPhone) return;
+    openWhatsApp(task.customerPhone, t('detail.whatsappMessage', { orderNumber: taskReference(task) })).catch(() => {});
   };
 
-  const handleMarkPickedUp = async () => {
+  const savePin = async (point: GeoPoint, accuracy?: number) => {
     if (!task) return;
-
-    Alert.alert(
-      language === 'ur' ? 'پک اپ تصدیق کریں' : 'Confirm Pickup',
-      language === 'ur'
-        ? 'کیا آپ نے آرڈر اٹھا لیا ہے؟'
-        : 'Have you picked up the order?',
-      [
-        { text: language === 'ur' ? 'نہیں' : 'No', style: 'cancel' },
-        {
-          text: language === 'ur' ? 'ہاں' : 'Yes',
-          onPress: async () => {
-            setIsProcessing(true);
-            try {
-              await markPickedUp(task.id);
-              Alert.alert(
-                language === 'ur' ? 'تصدیق شدہ' : 'Confirmed',
-                language === 'ur' ? 'پک اپ تصدیق شدہ' : 'Pickup confirmed',
-                [{ text: 'OK', onPress: loadTask }]
-              );
-            } catch (error) {
-              Alert.alert(
-                language === 'ur' ? 'خرابی' : 'Error',
-                language === 'ur'
-                  ? 'پک اپ تصدیق نہیں ہو سکی'
-                  : 'Failed to confirm pickup'
-              );
-            } finally {
-              setIsProcessing(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // Handle mark delivered - Cash on Delivery, no photo needed
-  const handleMarkDelivered = async () => {
-    if (!task) return;
-
-    Alert.alert(
-      language === 'ur' ? 'ڈیلیوری تصدیق کریں' : 'Confirm Delivery',
-      language === 'ur'
-        ? 'کیا آپ نے آرڈر صارف کو پہنچا دیا ہے؟'
-        : 'Have you delivered the order to the customer?',
-      [
-        { text: language === 'ur' ? 'نہیں' : 'No', style: 'cancel' },
-        {
-          text: language === 'ur' ? 'ہاں' : 'Yes',
-          onPress: async () => {
-            setIsProcessing(true);
-            try {
-              await markDelivered(task.id, {
-                notes: 'Delivered successfully - COD',
-              });
-
-              Alert.alert(
-                language === 'ur' ? 'تصدیق شدہ' : 'Confirmed',
-                language === 'ur' ? 'ڈیلیوری تصدیق شدہ' : 'Delivery confirmed',
-                [
-                  {
-                    text: 'OK',
-                    onPress: () => navigation.goBack(),
-                  },
-                ]
-              );
-            } catch (error) {
-              Alert.alert(
-                language === 'ur' ? 'خرابی' : 'Error',
-                language === 'ur'
-                  ? 'ڈیلیوری تصدیق نہیں ہو سکی'
-                  : 'Failed to confirm delivery'
-              );
-            } finally {
-              setIsProcessing(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // Get action buttons based on task status
-  const getActionButtons = () => {
-    if (!task) return null;
-
-    switch (task.status) {
-      case 'assigned':
-        // Pickup ALWAYS comes first — even delivery tasks must be picked up
-        // before they can be delivered (skipping pickup breaks the backend
-        // task lifecycle).
-        return (
-          <Button
-            title={language === 'ur' ? 'پک اپ کا نشان لگائیں' : 'Mark Picked Up'}
-            onPress={handleMarkPickedUp}
-            variant="primary"
-            size="large"
-            fullWidth
-            icon="package-variant-closed-check"
-            loading={isProcessing}
-          />
-        );
-      case 'picked_up':
-      case 'in_transit':
-      case 'in_progress':
-        return (
-          <Button
-            title={language === 'ur' ? 'ڈیلیورڈ کا نشان لگائیں' : 'Mark Delivered'}
-            onPress={handleMarkDelivered}
-            variant="success"
-            size="large"
-            fullWidth
-            icon="check-circle"
-            loading={isProcessing}
-          />
-        );
-      case 'delivered':
-        return (
-          <View style={styles.completedBadge}>
-            <MaterialCommunityIcons name="check-circle" size={24} color={COLORS.success} />
-            <Text style={styles.completedText}>
-              {language === 'ur' ? 'مکمل شدہ' : 'Completed'}
-            </Text>
-          </View>
-        );
-      default:
-        return null;
+    setIsPinning(true);
+    try {
+      await pinLocation(task.id, point.latitude, point.longitude);
+      setAdjusted(null);
+      setTask((prev) => (prev ? { ...prev, location: point, hasPin: true, pinnedBy: 'rider' } : prev));
+      const acc = accuracy === undefined ? '' : accuracy < 1 ? '< 1 m' : `~${Math.round(accuracy)} m`;
+      Alert.alert(t('common.save'), accuracy === undefined ? t('detail.adjustedSaved') : t('detail.pinSaved', { acc }));
+    } catch (error) {
+      Alert.alert(t('detail.pinFailed'), getApiErrorMessage(error));
+    } finally {
+      setIsPinning(false);
     }
   };
 
-  if (isLoading) {
+  const handlePinHere = async () => {
+    setIsPinning(true);
+    try {
+      const permission = await requestLocationPermissions();
+      if (permission === 'denied') {
+        Alert.alert(t('duty.permissionTitle'), t('duty.permissionBody'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('common.openSettings'), onPress: () => Linking.openSettings().catch(() => {}) },
+        ]);
+        return;
+      }
+      const fix = await getAccurateLocation(MAX_ACCURACY_FOR_PIN);
+      if (!fix) {
+        Alert.alert(t('detail.pinNow'), t('detail.pinNoGps', { m: MAX_ACCURACY_FOR_PIN }));
+        return;
+      }
+      await savePin({ latitude: fix.latitude, longitude: fix.longitude }, fix.accuracy ?? 0);
+    } finally {
+      setIsPinning(false);
+    }
+  };
+
+  const handlePhoto = async () => {
+    if (!task) return;
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert(t('detail.doorPhoto'), t('detail.cameraDenied'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('common.openSettings'), onPress: () => Linking.openSettings().catch(() => {}) },
+        ]);
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7, allowsEditing: false });
+      if (result.canceled || !result.assets?.[0]) return;
+      setIsUploading(true);
+      const url = await uploadDoorPicture(task.id, result.assets[0].uri);
+      setTask((prev) => (prev ? { ...prev, doorPictureUrl: url } : prev));
+      Alert.alert(t('detail.doorPhoto'), t('detail.photoSaved'));
+    } catch (error) {
+      Alert.alert(t('detail.photoFailed'), getApiErrorMessage(error));
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const tEnumReason = (reason: ProblemReason) => tEnumProblem(reason);
+
+  // ── Render ──────────────────────────────────────────────────────────────
+  if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <LoadingSpinner
-          message={language === 'ur' ? 'لوڈ ہو رہا ہے...' : 'Loading...'}
-          fullScreen
-        />
-      </SafeAreaView>
+      <View style={styles.container}>
+        <ScreenHeader title={t('detail.title')} onBack={() => navigation.goBack()} />
+        <LoadingSpinner fullScreen message={t('common.loading')} />
+      </View>
     );
   }
 
   if (!task) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <MaterialCommunityIcons name="alert-circle" size={64} color={COLORS.danger} />
-          <Text style={styles.errorText}>
-            {language === 'ur' ? 'کام نہیں ملا' : 'Task not found'}
-          </Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.container}>
+        <ScreenHeader title={t('detail.title')} onBack={() => navigation.goBack()} />
+        <EmptyState
+          icon="clipboard-off-outline"
+          title={t('detail.notFound')}
+          body={loadError ?? undefined}
+          action={<Button title={t('common.retry')} onPress={() => { setLoading(true); load(); }} variant="outline" />}
+        />
+      </View>
     );
   }
 
+  const schedule = task.isUrgent
+    ? t('detail.urgentEta', { eta: task.urgentEta || '—' })
+    : [task.requestedDate ? formatDate(task.requestedDate) : null, task.timeSlotName, formatSlotRange(task.slotStart, task.slotEnd)]
+        .filter(Boolean)
+        .join(' · ');
+
+  // Atta Chakki tasks use their own wording: wheat is collected from the
+  // customer and dropped at the mill; flour is collected from the mill and
+  // delivered back.
+  const pickupLabel =
+    task.type === 'atta_pickup' ? t('action.wheatCollected') : task.type === 'atta_delivery' ? t('action.flourCollected') : t('action.pickedUp');
+  const deliverLabel = task.type === 'atta_pickup' ? t('action.droppedAtMill') : t('action.delivered');
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} nestedScrollEnabled>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.typeBadge}>
-            <MaterialCommunityIcons
-              name={
-                task.type === 'delivery'
-                  ? 'truck-delivery'
-                  : task.type === 'pickup'
-                  ? 'package-variant'
-                  : 'grain'
-              }
-              size={20}
-              color={COLORS.primary}
-            />
-            <Text style={styles.typeText}>{getTaskTypeLabel(task.type ?? '', language)}</Text>
-          </View>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: `${COLORS.primary}15` },
-            ]}
-          >
-            <Text style={[styles.statusText, { color: COLORS.primary }]}>
-              {getTaskStatusLabel(task.status, language)}
-            </Text>
-          </View>
-        </View>
+    <View style={styles.container}>
+      <ScreenHeader
+        title={`${t(atta ? 'tasks.request' : 'tasks.order')} #${taskReference(task)}`}
+        subtitle={tEnum(language, 'taskType', task.type)}
+        onBack={() => navigation.goBack()}
+        right={<Badge label={tEnum(language, 'taskStatus', task.status)} tone={taskStatusTone[task.status]} icon={taskStatusIcon[task.status]} size="lg" />}
+      />
 
-        {/* Order ID */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>
-            {language === 'ur' ? 'آرڈر نمبر' : 'Order Number'}
-          </Text>
-          <Text style={styles.orderId}>
-            #{task.orderNumber || task.attaRequestNumber || task.orderId || task.attaRequestId}
-          </Text>
-        </View>
+      <ScrollView contentContainerStyle={[styles.content, !terminal && { paddingBottom: BOTTOM_BAR_CONTENT_PADDING }]} showsVerticalScrollIndicator={false}>
+        {loadError ? <Banner tone="warning" icon="alert-circle-outline" message={loadError} actionLabel={t('common.retry')} onAction={load} style={styles.block} /> : null}
+        {task.isUrgent ? <Banner tone="danger" icon="lightning-bolt" title={t('tasks.urgent')} message={t('detail.urgentEta', { eta: task.urgentEta || '—' })} style={styles.block} /> : null}
 
-        {/* Map Preview */}
-        {task.latitude && task.longitude ? (
-          <>
-            <MapPreview
-              latitude={adjustedLocation?.latitude ?? task.latitude}
-              longitude={adjustedLocation?.longitude ?? task.longitude}
-              title={task.customerAddress}
-              onNavigate={handleNavigate}
-              height={250}
-              draggable={task.status !== 'delivered' && task.status !== 'cancelled'}
-              onMarkerDragEnd={(lat, lng) => setAdjustedLocation({ latitude: lat, longitude: lng })}
-            />
-            {adjustedLocation && task.status !== 'delivered' && task.status !== 'cancelled' && (
-              <View style={styles.adjustedLocationBar}>
-                <Button
-                  title={language === 'ur' ? '📍 نئی جگہ محفوظ کریں' : '📍 Save Adjusted Location'}
-                  onPress={async () => {
-                    setIsPinningLocation(true);
-                    try {
-                      await pinLocation(task.id, adjustedLocation.latitude, adjustedLocation.longitude);
-                      setAdjustedLocation(null);
-                      Alert.alert(
-                        language === 'ur' ? 'مقام محفوظ' : 'Location Saved',
-                        language === 'ur'
-                          ? 'ایڈجسٹ شدہ مقام محفوظ ہو گیا۔'
-                          : 'Adjusted location saved successfully.',
-                        [{ text: 'OK', onPress: loadTask }]
-                      );
-                    } catch (error) {
-                      Alert.alert(
-                        language === 'ur' ? 'خرابی' : 'Error',
-                        language === 'ur' ? 'مقام محفوظ نہیں ہو سکا' : 'Failed to save location.'
-                      );
-                    } finally {
-                      setIsPinningLocation(false);
-                    }
-                  }}
-                  variant="primary"
-                  size="small"
-                  loading={isPinningLocation}
-                  style={{ flex: 1 }}
-                />
-                <Button
-                  title={language === 'ur' ? 'واپس' : 'Reset'}
-                  onPress={() => setAdjustedLocation(null)}
-                  variant="outline"
-                  size="small"
-                  style={{ marginLeft: SPACING.sm }}
-                />
+        {/* Deliver to */}
+        <View style={styles.block}>
+          <SectionTitle title={t(task.type === 'pickup' || task.type === 'atta_pickup' ? 'detail.pickupFrom' : 'detail.deliverTo')} />
+          <Card padded={false}>
+            {displayPoint ? (
+              <MapPreview
+                point={displayPoint}
+                riderPoint={lastFix}
+                title={task.address}
+                onNavigate={task.location ? handleNavigate : undefined}
+                draggable={!terminal}
+                onMarkerDragEnd={(p) => setAdjusted(p)}
+                height={230}
+              />
+            ) : (
+              <View style={styles.noMap}>
+                <MaterialCommunityIcons name="map-marker-off-outline" size={28} color={colors.gray400} />
+                <Text style={styles.noMapText}>{t('detail.noMapPin')}</Text>
               </View>
             )}
-          </>
-        ) : (
-          <View style={[styles.addressCard, { justifyContent: 'center', alignItems: 'center', height: 100 }]}>
-            <MaterialCommunityIcons name="map-marker-off" size={32} color={COLORS.gray400} />
-            <Text style={[styles.landmarkText, { marginTop: SPACING.xs }]}>
-              {language === 'ur' ? 'نقشے کا مقام دستیاب نہیں' : 'Map location not available'}
-            </Text>
-          </View>
-        )}
-
-        {/* Address Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>
-            {getTranslation('customerAddress', language)}
-          </Text>
-          <View style={styles.addressCard}>
-            <MaterialCommunityIcons name="map-marker" size={24} color={COLORS.danger} />
-            <View style={styles.addressContent}>
-              <Text style={styles.addressText}>{task.customerAddress}</Text>
-              {task.houseNumber && (
-                <View style={styles.houseNumberRow}>
-                  <MaterialCommunityIcons name="home" size={16} color={COLORS.primary} />
-                  <Text style={styles.houseNumberText}>
-                    {language === 'ur' ? 'گھر نمبر: ' : 'House #:'} {task.houseNumber}
-                  </Text>
-                </View>
-              )}
-              {task.landmark && (
-                <Text style={styles.landmarkText}>
-                  {language === 'ur' ? 'نزدیک: ' : 'Near: '} {task.landmark}
-                </Text>
-              )}
-              {(task.area || task.city) && (
-                <Text style={styles.landmarkText}>
-                  {[task.area, task.city].filter(Boolean).join(', ')}
-                </Text>
-              )}
-            </View>
-          </View>
-
-          {/* Pin Location Button - show when address has no map location or allow update */}
-          {task.status !== 'delivered' && task.status !== 'cancelled' && (
-            <>
-              {!task.has_location ? (
-                <View style={styles.pinLocationCard}>
-                  <MaterialCommunityIcons name="map-marker-plus" size={20} color={COLORS.accent} />
-                  <Text style={styles.pinLocationText}>
-                    {language === 'ur'
-                      ? 'اس پتے کا مقام محفوظ نہیں ہے۔ اپنے موجودہ مقام سے محفوظ کریں۔'
-                      : 'No map location saved for this address. Pin your current location.'}
-                  </Text>
-                  <Button
-                    title={language === 'ur' ? '📍 مقام محفوظ کریں' : '📍 Pin My Location'}
-                    onPress={handlePinLocation}
-                    variant="primary"
-                    size="small"
-                    loading={isPinningLocation}
-                  />
-                </View>
-              ) : (
-                <View style={styles.locationSavedBadge}>
-                  <MaterialCommunityIcons name="check-circle" size={16} color={COLORS.success} />
-                  <Text style={styles.locationSavedText}>
-                    {language === 'ur'
-                      ? `مقام ${task.location_added_by === 'rider' ? 'رائیڈر' : 'صارف'} نے محفوظ کیا`
-                      : `Location pinned by ${task.location_added_by || 'user'}`}
-                  </Text>
-                  <Button
-                    title={language === 'ur' ? '📍 مقام اپ ڈیٹ کریں' : '📍 Update Location'}
-                    onPress={handlePinLocation}
-                    variant="outline"
-                    size="small"
-                    loading={isPinningLocation}
-                    style={styles.updateLocationBtn}
-                  />
-                </View>
-              )}
-            </>
-          )}
-        </View>
-
-        {/* Gate/Door Image with upload/update */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>
-            {language === 'ur' ? 'گیٹ/دروازہ کی تصویر' : 'Gate/Door Image'}
-          </Text>
-          {task.gateImage ? (
-            <View>
-              <Image source={{ uri: task.gateImage }} style={styles.gateImage} />
-              {task.status !== 'delivered' && task.status !== 'cancelled' && (
-                <Button
-                  title={language === 'ur' ? '📷 تصویر اپ ڈیٹ کریں' : '📷 Update Picture'}
-                  onPress={handleUploadDoorPicture}
-                  variant="outline"
-                  size="small"
-                  loading={isUploadingDoorPic}
-                  style={styles.doorPicButton}
-                />
-              )}
-            </View>
-          ) : (
-            task.status !== 'delivered' && task.status !== 'cancelled' && (
-              <View style={styles.pinLocationCard}>
-                <MaterialCommunityIcons name="camera-plus" size={20} color={COLORS.accent} />
-                <Text style={styles.pinLocationText}>
-                  {language === 'ur'
-                    ? 'اس پتے کی دروازے/گیٹ کی تصویر نہیں ہے۔ تصویر شامل کریں تاکہ اگلی بار آسانی ہو۔'
-                    : 'No door/gate picture for this address. Add one to help with future deliveries.'}
-                </Text>
-                <Button
-                  title={language === 'ur' ? '📷 تصویر شامل کریں' : '📷 Add Picture'}
-                  onPress={handleUploadDoorPicture}
-                  variant="primary"
-                  size="small"
-                  loading={isUploadingDoorPic}
-                />
+            {adjusted && !terminal ? (
+              <View style={styles.adjustRow}>
+                <Button title={t('detail.adjustedSave')} onPress={() => savePin(adjusted)} size="small" loading={isPinning} style={styles.flex} />
+                <Button title={t('detail.adjustedReset')} onPress={() => setAdjusted(null)} size="small" variant="ghost" />
               </View>
-            )
-          )}
-        </View>
+            ) : null}
 
-        {/* Time Window */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>
-            {getTranslation('timeWindow', language)}
-          </Text>
-          <View style={styles.infoRow}>
-            <MaterialCommunityIcons name="clock-outline" size={18} color={COLORS.gray500} />
-            <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-              {task.requestedDeliveryDate && (
-                <Text style={{ fontSize: FONT_SIZES.md, fontWeight: '600', color: COLORS.textPrimary, marginBottom: 2 }}>
-                  {new Date(task.requestedDeliveryDate).toLocaleDateString(undefined, {
-                    weekday: 'short',
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </Text>
-              )}
-              <Text style={{ fontSize: FONT_SIZES.md, color: COLORS.textPrimary }}>{task.timeWindow}</Text>
+            <View style={styles.addressBox}>
+              <View style={styles.addressRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.addressText}>{task.address || '—'}</Text>
+                  {task.landmark ? <Text style={styles.addressMeta}>{t('tasks.near')} {task.landmark}</Text> : null}
+                  {task.area || task.city ? <Text style={styles.addressMeta}>{[task.area, task.city].filter(Boolean).join(', ')}</Text> : null}
+                </View>
+                {task.houseNumber ? (
+                  <View style={styles.houseBlock}>
+                    <Text style={styles.houseLabel}>{t('tasks.house')}</Text>
+                    <Text style={styles.houseValue} adjustsFontSizeToFit numberOfLines={1}>{task.houseNumber}</Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {!terminal ? (
+                task.hasPin ? (
+                  <View style={styles.pinRow}>
+                    <MaterialCommunityIcons name="map-marker-check" size={16} color={colors.success} />
+                    <Text style={styles.pinText}>
+                      {t('detail.pinnedBy', { who: task.pinnedBy === 'rider' ? t('detail.pinnedByRider') : t('detail.pinnedByCustomer') })}
+                    </Text>
+                    <TouchableOpacity onPress={handlePinHere} disabled={isPinning} hitSlop={8}>
+                      <Text style={styles.pinLink}>{isPinning ? t('common.loading') : t('detail.pinUpdate')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.pinPrompt}>
+                    <Text style={styles.pinPromptText}>{t('detail.pinPrompt')}</Text>
+                    <Button title={t('detail.pinNow')} icon="crosshairs-gps" onPress={handlePinHere} size="small" loading={isPinning} />
+                  </View>
+                )
+              ) : null}
             </View>
-          </View>
+          </Card>
         </View>
 
-        {/* Order Items */}
-        {task.items && task.items.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>
-              {language === 'ur' ? 'آرڈر اشیاء' : 'Order Items'}
-            </Text>
-            <View style={styles.itemsCard}>
+        {/* Door photo */}
+        {!atta ? (
+          <View style={styles.block}>
+            <SectionTitle title={t('detail.doorPhoto')} />
+            <Card padded={false}>
+              {task.doorPictureUrl ? <Image source={{ uri: task.doorPictureUrl }} style={styles.doorImage} resizeMode="cover" /> : null}
+              {!terminal ? (
+                <View style={styles.photoRow}>
+                  {!task.doorPictureUrl ? <Text style={styles.pinPromptText}>{t('detail.doorPhotoPrompt')}</Text> : null}
+                  <Button
+                    title={task.doorPictureUrl ? t('detail.updatePhoto') : t('detail.addPhoto')}
+                    icon="camera-outline"
+                    variant={task.doorPictureUrl ? 'outline' : 'primary'}
+                    size="small"
+                    onPress={handlePhoto}
+                    loading={isUploading}
+                  />
+                </View>
+              ) : null}
+            </Card>
+          </View>
+        ) : null}
+
+        {/* Schedule */}
+        {schedule ? (
+          <View style={styles.block}>
+            <Card>
+              <InfoRow icon={task.isUrgent ? 'lightning-bolt' : 'calendar-clock'} iconColor={task.isUrgent ? colors.danger : colors.gray500} label={t('detail.schedule')} value={schedule} />
+            </Card>
+          </View>
+        ) : null}
+
+        {/* Atta */}
+        {atta ? (
+          <View style={styles.block}>
+            <SectionTitle title={t('detail.atta')} />
+            <Card>
+              <InfoRow icon="grain" label={t('detail.attaRequest', { number: task.attaRequestNumber || '—' })} value={task.wheatKg ? t('detail.attaWheat', { kg: task.wheatKg }) : '—'} right={task.attaStatus ? <Badge label={tEnum(language, 'attaStatus', task.attaStatus)} tone="warning" /> : null} />
+            </Card>
+          </View>
+        ) : null}
+
+        {/* Items */}
+        {task.items && task.items.length > 0 ? (
+          <View style={styles.block}>
+            <SectionTitle title={t('detail.items')} count={task.items.length} />
+            <Card>
               {task.items.map((item, index) => (
-                <View key={item.id} style={styles.itemRow}>
-                  <View style={styles.itemNumber}>
-                    <Text style={styles.itemNumberText}>{index + 1}</Text>
-                  </View>
-                  <View style={styles.itemDetails}>
+                <View key={item.id} style={[styles.itemRow, index > 0 && styles.itemRowBorder]}>
+                  {item.image ? <Image source={{ uri: item.image }} style={styles.itemImage} /> : <View style={[styles.itemImage, styles.itemImageFallback]}><MaterialCommunityIcons name="basket-outline" size={18} color={colors.gray400} /></View>}
+                  <View style={styles.flex}>
                     <Text style={styles.itemName}>{item.name}</Text>
-                    {item.nameUrdu && (
-                      <Text style={styles.itemNameUrdu}>{item.nameUrdu}</Text>
-                    )}
+                    <Text style={styles.itemMeta}>
+                      {item.quantity} × {tEnum(language, 'unit', item.unit) || '1'}
+                      {item.quality ? `  ·  ${t('unit.quality', { q: item.quality })}` : ''}
+                      {item.weightKg ? `  ·  ${item.weightKg} kg` : ''}
+                    </Text>
+                    {item.instructions ? <Text style={styles.itemNote}>{item.instructions}</Text> : null}
                   </View>
-                  <Text style={styles.itemQuantity}>
-                    {item.quantity} {item.unit}
-                  </Text>
+                  <Text style={styles.itemPrice}>{formatCurrency(item.totalPrice)}</Text>
                 </View>
               ))}
-              {task.totalAmount && (
-                <View style={styles.totalRow}>
-                  <Text style={styles.totalLabel}>
-                    {language === 'ur' ? 'کل رقم:' : 'Total:'}
-                  </Text>
-                  <Text style={styles.totalAmount}>
-                    {formatCurrency(task.totalAmount)}
-                  </Text>
-                </View>
-              )}
-              {task.deliveryFee && (
-                <View style={[styles.totalRow, { borderTopWidth: 0, marginTop: 0, paddingTop: SPACING.xs }]}>
-                  <Text style={styles.landmarkText}>
-                    {language === 'ur' ? 'ڈیلیوری چارجز:' : 'Delivery Fee:'}
-                  </Text>
-                  <Text style={styles.landmarkText}>
-                    {formatCurrency(task.deliveryFee)}
-                  </Text>
-                </View>
-              )}
-            </View>
+              <View style={styles.totals}>
+                {task.subtotal !== undefined ? <TotalRow label={t('detail.subtotal')} value={formatCurrency(task.subtotal)} /> : null}
+                {task.discount ? <TotalRow label={t('detail.discount')} value={`− ${formatCurrency(task.discount)}`} /> : null}
+                {task.deliveryFee !== undefined ? <TotalRow label={t('detail.deliveryFee')} value={formatCurrency(task.deliveryFee)} /> : null}
+                {task.totalAmount !== undefined ? <TotalRow label={t('detail.total')} value={formatCurrency(task.totalAmount)} bold /> : null}
+              </View>
+            </Card>
           </View>
-        )}
+        ) : null}
 
-        {/* Payment Info */}
-        {task.paymentMethod && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>
-              {language === 'ur' ? 'ادائیگی' : 'Payment'}
-            </Text>
-            <View style={styles.infoRow}>
-              <MaterialCommunityIcons
-                name={task.paymentMethod === 'cash_on_delivery' ? 'cash' : 'credit-card'}
-                size={18}
-                color={COLORS.gray500}
-              />
-              <Text style={styles.infoText}>
-                {task.paymentMethod === 'cash_on_delivery'
-                  ? (language === 'ur' ? 'کیش آن ڈیلیوری' : 'Cash on Delivery')
-                  : task.paymentMethod}
-              </Text>
-              {task.paymentStatus && (
-                <View style={[
-                  styles.paymentStatusBadge,
-                  { backgroundColor: task.paymentStatus === 'completed' ? `${COLORS.success}20` : `${COLORS.accent}20` }
-                ]}>
-                  <Text style={[
-                    styles.paymentStatusText,
-                    { color: task.paymentStatus === 'completed' ? COLORS.success : COLORS.accent }
-                  ]}>
-                    {task.paymentStatus === 'completed'
-                      ? (language === 'ur' ? 'مکمل' : 'Paid')
-                      : (language === 'ur' ? 'زیر التوا' : 'Pending')}
-                  </Text>
+        {/* Payment */}
+        {task.paymentMethod ? (
+          <View style={styles.block}>
+            <SectionTitle title={t('detail.payment')} />
+            {task.codAmount !== null && task.codAmount > 0 && task.status !== 'completed' ? (
+              <View style={styles.codCard}>
+                <MaterialCommunityIcons name="cash-multiple" size={28} color={colors.warning} />
+                <View style={styles.flex}>
+                  <Text style={styles.codLabel}>{t('detail.collectCash')}</Text>
+                  <Text style={styles.codAmount}>{formatCurrency(task.codAmount)}</Text>
+                  <Text style={styles.codMeta}>{tEnum(language, 'detail.paymentMethod', task.paymentMethod)}</Text>
                 </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {/* Special Instructions */}
-        {task.specialInstructions && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>
-              {getTranslation('specialInstructions', language)}
-            </Text>
-            <View style={styles.instructionsCard}>
-              <MaterialCommunityIcons
-                name="information-outline"
-                size={20}
-                color={COLORS.accent}
-              />
-              <Text style={styles.instructionsText}>{task.specialInstructions}</Text>
-            </View>
-          </View>
-        )}
-
-        {/* Customer Contact */}
-        {task.status !== 'delivered' && task.status !== 'cancelled' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>
-              {language === 'ur' ? 'صارف سے رابطہ' : 'Customer Contact'}
-            </Text>
-            {(task.customerPhone || (task as any).customer_phone) ? (
-              <>
-                <View style={styles.addressCard}>
-                  <MaterialCommunityIcons name="account" size={24} color={COLORS.primary} />
-                  <View style={styles.addressContent}>
-                    {(task.customerName || (task as any).customer_name) && (
-                      <Text style={styles.addressText}>{task.customerName || (task as any).customer_name}</Text>
-                    )}
-                    <Text style={styles.landmarkText}>{task.customerPhone || (task as any).customer_phone}</Text>
-                  </View>
-                </View>
-                <View style={styles.contactButtons}>
-                  <Button
-                    title={language === 'ur' ? 'کال کریں' : 'Call'}
-                    onPress={() => {
-                      const phone = task.customerPhone || (task as any).customer_phone;
-                      const url = Platform.OS === 'ios'
-                        ? `telprompt:${phone}`
-                        : `tel:${phone}`;
-                      Linking.openURL(url);
-                    }}
-                    variant="outline"
-                    size="large"
-                    icon="phone"
-                    style={styles.contactBtn}
-                  />
-                  <Button
-                    title={language === 'ur' ? 'واٹس ایپ' : 'WhatsApp'}
-                    onPress={() => {
-                      const phone = (task.customerPhone || (task as any).customer_phone || '').replace(/[^0-9]/g, '');
-                      const msg = language === 'ur'
-                        ? `السلام علیکم! میں FreshBazar رائیڈر ہوں۔ آپ کا آرڈر #${task.orderId || ''} لے کر آ رہا ہوں۔`
-                        : `Hi! I'm your FreshBazar rider. I'm on my way with your order #${task.orderId || ''}.`;
-                      Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
-                    }}
-                    variant="primary"
-                    size="large"
-                    icon="whatsapp"
-                    style={styles.contactBtn}
-                  />
-                </View>
-              </>
+              </View>
             ) : (
-              <>
-                <View style={styles.contactButtons}>
-                  <Button
-                    title={
-                      isCalling
-                        ? getTranslation('ringing', language)
-                        : (language === 'ur' ? 'کال کریں' : 'Call')
-                    }
-                    onPress={handleCallCustomer}
-                    variant="outline"
-                    size="large"
-                    icon={isCalling ? 'phone-ring' : 'phone'}
-                    loading={isCalling}
-                    style={styles.contactBtn}
-                  />
-                </View>
-              </>
+              <Card>
+                <InfoRow
+                  icon={task.paymentMethod === 'cash_on_delivery' ? 'cash' : 'credit-card-outline'}
+                  iconColor={colors.success}
+                  label={tEnum(language, 'detail.paymentMethod', task.paymentMethod)}
+                  value={task.status === 'completed' && task.codAmount ? `${t('earnings.collectedAmount', { amount: formatCurrency(task.codAmount) })}` : t('detail.alreadyPaid')}
+                  right={<Badge label={t('tasks.paid')} tone="success" icon="check" />}
+                />
+              </Card>
             )}
           </View>
-        )}
+        ) : null}
 
-        {/* Chat with Customer */}
-        {task.orderId && task.status !== 'delivered' && task.status !== 'cancelled' && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>
-              {language === 'ur' ? 'صارف سے چیٹ' : 'Chat with Customer'}
-            </Text>
-            <OrderChat orderId={task.orderId} senderType="rider" orderStatus={task.status} />
+        {/* Customer notes */}
+        {task.customerNotes ? (
+          <View style={styles.block}>
+            <Banner tone="warning" icon="note-text-outline" title={t('detail.customerNotes')} message={task.customerNotes} />
           </View>
-        )}
+        ) : null}
 
-        {/* Action Buttons */}
-        <View style={styles.section}>{getActionButtons()}</View>
-
-        {/* Report Problem / Fail Task */}
-        {['assigned', 'picked_up', 'in_transit'].includes(task.status) && (
-          <View style={styles.section}>
-            <Button
-              title={language === 'ur' ? 'مسئلہ رپورٹ کریں' : 'Report Problem'}
-              onPress={handleReportProblem}
-              variant="danger"
-              size="large"
-              fullWidth
-              icon="alert-circle-outline"
-              loading={isProcessing}
-            />
+        {/* Contact */}
+        {!terminal ? (
+          <View style={styles.block}>
+            <SectionTitle title={t('detail.contact')} />
+            <Card>
+              {task.phoneVisible && task.customerPhone ? (
+                <>
+                  <InfoRow icon="account-outline" label={t('detail.customer')} value={`${task.customerName || t('detail.customer')}\n${task.customerPhone}`} />
+                  <View style={styles.contactRow}>
+                    <Button title={t('detail.call')} icon="phone" variant="dark" onPress={handleCall} style={styles.flex} />
+                    <Button title={t('detail.whatsapp')} icon="whatsapp" variant="success" onPress={handleWhatsApp} style={styles.flex} />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.hiddenHint}>{t('detail.callHiddenHint')}</Text>
+                  <Button title={isCalling ? t('detail.calling') : t('detail.callViaApp')} icon="phone-in-talk" variant="dark" onPress={handleCall} loading={isCalling} fullWidth />
+                </>
+              )}
+              {task.orderId ? (
+                <Button
+                  title={t('detail.chat')}
+                  icon="chat-outline"
+                  variant="outline"
+                  onPress={() => navigation.navigate('Chat', { orderId: task.orderId!, orderNumber: taskReference(task), orderStatus: task.orderStatus })}
+                  fullWidth
+                  style={{ marginTop: spacing.sm }}
+                />
+              ) : null}
+            </Card>
           </View>
-        )}
+        ) : null}
+
+        {/* Timeline / notes */}
+        <View style={styles.block}>
+          <Card>
+            {task.assignedAt ? <InfoRow icon="clock-plus-outline" value={t('detail.assignedAt', { when: formatDateTime(task.assignedAt) })} /> : null}
+            {task.status === 'completed' && task.completedAt ? <InfoRow icon="check-circle-outline" iconColor={colors.success} value={t('action.completedAt', { when: formatDateTime(task.completedAt) })} /> : null}
+            {task.status === 'failed' && task.completedAt ? <InfoRow icon="alert-circle-outline" iconColor={colors.danger} value={t('action.failedAt', { when: formatDateTime(task.completedAt) })} /> : null}
+            {task.status === 'cancelled' && task.completedAt ? <InfoRow icon="cancel" value={t('action.cancelledAt', { when: formatDateTime(task.completedAt) })} /> : null}
+            {task.notes ? <InfoRow icon="note-outline" label={t('detail.notes')} value={task.notes} /> : null}
+          </Card>
+        </View>
       </ScrollView>
-    </SafeAreaView>
+
+      {/* Sticky actions */}
+      {!terminal ? (
+        <BottomActionBar>
+          {primary === 'pickup' ? (
+            <Button title={pickupLabel} icon="package-variant-closed-check" size="large" fullWidth onPress={handlePickup} loading={busy} testID="action-pickup" />
+          ) : null}
+          {primary === 'deliver' ? (
+            <Button title={deliverLabel} icon="check-decagram" variant="success" size="large" fullWidth onPress={() => setDeliverOpen(true)} loading={busy} testID="action-deliver" />
+          ) : null}
+          <Button title={t('action.reportProblem')} icon="alert-circle-outline" variant="ghost" size="small" fullWidth onPress={() => setProblemOpen(true)} disabled={busy} textStyle={{ color: colors.danger }} />
+        </BottomActionBar>
+      ) : null}
+
+      <DeliverSheet visible={deliverOpen} task={task} busy={busy} title={deliverLabel} onClose={() => setDeliverOpen(false)} onSubmit={handleDeliver} />
+      <ProblemSheet visible={problemOpen} busy={busy} onClose={() => setProblemOpen(false)} onSubmit={handleProblem} />
+    </View>
+  );
+};
+
+// ── Sub-components ─────────────────────────────────────────────────────────
+
+const TotalRow: React.FC<{ label: string; value: string; bold?: boolean }> = ({ label, value, bold }) => (
+  <View style={styles.totalRow}>
+    <Text style={[styles.totalLabel, bold && styles.totalBold]}>{label}</Text>
+    <Text style={[styles.totalValue, bold && styles.totalBoldValue]}>{value}</Text>
+  </View>
+);
+
+const tEnumProblem = (reason: ProblemReason): string =>
+  ({
+    customer_unreachable: 'Customer not reachable',
+    wrong_address: 'Wrong or incomplete address',
+    customer_refused: 'Customer refused the order',
+    damaged_items: 'Items damaged or missing',
+    vehicle_issue: 'Vehicle / personal emergency',
+    other: 'Other',
+  })[reason];
+
+const DeliverSheet: React.FC<{
+  visible: boolean;
+  task: Task;
+  busy: boolean;
+  title: string;
+  onClose: () => void;
+  onSubmit: (notes: string) => void;
+}> = ({ visible, task, busy, title, onClose, onSubmit }) => {
+  const { t } = useT();
+  const [cashConfirmed, setCashConfirmed] = useState(false);
+  const [notes, setNotes] = useState('');
+  const needsCash = task.codAmount !== null && task.codAmount > 0;
+  const atta = isAttaTask(task);
+
+  useEffect(() => {
+    if (visible) {
+      setCashConfirmed(false);
+      setNotes('');
+    }
+  }, [visible]);
+
+  const submit = () => {
+    if (needsCash && !cashConfirmed) {
+      Alert.alert(t('action.deliverTitle'), t('action.deliverCashRequired'));
+      return;
+    }
+    onSubmit(notes);
+  };
+
+  return (
+    <Sheet
+      visible={visible}
+      title={title}
+      onClose={onClose}
+      footer={<Button title={atta ? title : t('action.deliverSubmit')} icon="check-decagram" variant="success" size="large" fullWidth onPress={submit} loading={busy} testID="deliver-submit" />}
+    >
+      {atta ? null : needsCash ? (
+        <>
+          <View style={styles.sheetCash}>
+            <Text style={styles.sheetCashLabel}>{t('action.deliverCashLabel')}</Text>
+            <Text style={styles.sheetCashAmount}>{formatCurrency(task.codAmount)}</Text>
+          </View>
+          <TouchableOpacity style={[styles.checkRow, cashConfirmed && styles.checkRowOn]} onPress={() => setCashConfirmed((v) => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: cashConfirmed }} testID="deliver-cash-check">
+            <MaterialCommunityIcons name={cashConfirmed ? 'checkbox-marked' : 'checkbox-blank-outline'} size={28} color={cashConfirmed ? colors.success : colors.gray500} />
+            <Text style={styles.checkText}>{t('action.deliverCashConfirm', { amount: formatCurrency(task.codAmount) })}</Text>
+          </TouchableOpacity>
+        </>
+      ) : (
+        <Banner tone="success" icon="check-circle-outline" message={t('action.deliverPaidNote')} />
+      )}
+      <Text style={styles.inputLabel}>{t('action.deliverNoteLabel')}</Text>
+      <TextInput style={styles.textArea} value={notes} onChangeText={setNotes} placeholder={t('action.deliverNotePlaceholder')} placeholderTextColor={colors.gray400} multiline maxLength={300} />
+    </Sheet>
+  );
+};
+
+const ProblemSheet: React.FC<{
+  visible: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (reason: ProblemReason, details: string) => void;
+}> = ({ visible, busy, onClose, onSubmit }) => {
+  const { t } = useT();
+  const [reason, setReason] = useState<ProblemReason | null>(null);
+  const [details, setDetails] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setReason(null);
+      setDetails('');
+    }
+  }, [visible]);
+
+  const detailsRequired = reason === 'other';
+  const canSubmit = useMemo(() => !!reason && (!detailsRequired || details.trim().length >= 5), [reason, detailsRequired, details]);
+
+  const submit = () => {
+    if (!reason) return;
+    if (detailsRequired && details.trim().length < 5) {
+      Alert.alert(t('action.problemTitle'), t('action.problemDetailsRequired'));
+      return;
+    }
+    Alert.alert(t('action.problemTitle'), t('action.problemBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('action.problemSubmit'), style: 'destructive', onPress: () => onSubmit(reason, details) },
+    ]);
+  };
+
+  return (
+    <Sheet
+      visible={visible}
+      title={t('action.problemTitle')}
+      onClose={onClose}
+      footer={<Button title={t('action.problemSubmit')} icon="alert-circle-outline" variant="danger" size="large" fullWidth onPress={submit} loading={busy} disabled={!canSubmit} testID="problem-submit" />}
+    >
+      <Text style={styles.sheetBody}>{t('action.problemBody')}</Text>
+      {PROBLEM_REASONS.map((r) => {
+        const on = reason === r;
+        return (
+          <TouchableOpacity key={r} style={[styles.radioRow, on && styles.radioRowOn]} onPress={() => setReason(r)} accessibilityRole="radio" accessibilityState={{ selected: on }}>
+            <MaterialCommunityIcons name={on ? 'radiobox-marked' : 'radiobox-blank'} size={24} color={on ? colors.danger : colors.gray500} />
+            <Text style={[styles.radioText, on && styles.radioTextOn]}>{t(`action.problem.${r}` as const)}</Text>
+          </TouchableOpacity>
+        );
+      })}
+      <Text style={styles.inputLabel}>{t('action.problemDetails')}{detailsRequired ? ' *' : ''}</Text>
+      <TextInput style={styles.textArea} value={details} onChangeText={setDetails} placeholder={t('action.problemDetailsPlaceholder')} placeholderTextColor={colors.gray400} multiline maxLength={400} />
+    </Sheet>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollContent: {
-    padding: SPACING.md,
-    paddingBottom: SPACING.xxl,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  typeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: `${COLORS.primary}15`,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
-    gap: SPACING.xs,
-  },
-  typeText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
-  statusBadge: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  statusText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-  },
-  section: {
-    marginBottom: SPACING.lg,
-  },
-  sectionLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  orderId: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  addressCard: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    shadowColor: COLORS.gray900,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  addressContent: {
-    flex: 1,
-    marginLeft: SPACING.sm,
-  },
-  addressText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textPrimary,
-    lineHeight: 22,
-  },
-  houseNumberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.sm,
-    backgroundColor: `${COLORS.primary}10`,
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  houseNumberText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.primary,
-    marginLeft: SPACING.xs,
-  },
-  landmarkText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-    fontStyle: 'italic',
-  },
-  pinLocationCard: {
-    marginTop: SPACING.md,
-    backgroundColor: `${COLORS.accent}10`,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    alignItems: 'center',
-    gap: SPACING.sm,
-    borderWidth: 1,
-    borderColor: `${COLORS.accent}30`,
-    borderStyle: 'dashed',
-  },
-  adjustedLocationBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.sm,
-  },
-  pinLocationText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  locationSavedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.sm,
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
-  },
-  locationSavedText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.success,
-    fontWeight: '500',
-  },
-  gateImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: BORDER_RADIUS.lg,
-    resizeMode: 'cover',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  infoText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textPrimary,
-    marginLeft: SPACING.sm,
-  },
-  itemsCard: {
-    backgroundColor: COLORS.card,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    shadowColor: COLORS.gray900,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.borderLight,
-  },
-  itemNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  itemNumberText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-  },
-  itemDetails: {
-    flex: 1,
-    marginLeft: SPACING.sm,
-  },
-  itemName: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textPrimary,
-  },
-  itemNameUrdu: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  itemQuantity: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
-    borderTopWidth: 2,
-    borderTopColor: COLORS.border,
-  },
-  totalLabel: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-  },
-  totalAmount: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  instructionsCard: {
-    flexDirection: 'row',
-    backgroundColor: `${COLORS.accent}10`,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.accent,
-  },
-  instructionsText: {
-    flex: 1,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textPrimary,
-    marginLeft: SPACING.sm,
-    lineHeight: 22,
-  },
-  privacyNote: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginTop: SPACING.sm,
-  },
-  actionButtons: {
-    gap: SPACING.md,
-  },
-  photoPreview: {
-    alignItems: 'center',
-  },
-  photoImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: BORDER_RADIUS.lg,
-    marginBottom: SPACING.sm,
-  },
-  retakeButton: {
-    alignSelf: 'center',
-  },
-  deliverButton: {
-    marginTop: SPACING.sm,
-  },
-  completedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: `${COLORS.success}15`,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    gap: SPACING.sm,
-  },
-  completedText: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: COLORS.success,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING.xl,
-  },
-  errorText: {
-    fontSize: FONT_SIZES.lg,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.md,
-  },
-  updateLocationBtn: {
-    marginLeft: 'auto' as any,
-  },
-  doorPicButton: {
-    marginTop: SPACING.sm,
-    alignSelf: 'center' as any,
-  },
-  contactButtons: {
-    flexDirection: 'row' as any,
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-  },
-  contactBtn: {
-    flex: 1,
-  },
-  paymentStatusBadge: {
-    marginLeft: 'auto' as any,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  paymentStatusText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '600' as any,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  block: { marginBottom: spacing.lg },
+  flex: { flex: 1 },
+  noMap: { height: 110, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.gray100, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
+  noMapText: { marginTop: spacing.xs, fontSize: typography.size.sm, color: colors.textMuted },
+  adjustRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  addressBox: { padding: spacing.lg },
+  addressRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  addressText: { fontSize: typography.size.lg, fontWeight: typography.weight.semibold, color: colors.text, lineHeight: typography.size.lg * 1.35 },
+  addressMeta: { fontSize: typography.size.sm, color: colors.textSecondary, marginTop: 4 },
+  houseBlock: { marginLeft: spacing.md, minWidth: 72, maxWidth: 120, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.md, backgroundColor: colors.gray900, alignItems: 'center' },
+  houseLabel: { fontSize: 10, color: colors.gray400, textTransform: 'uppercase', letterSpacing: 0.8 },
+  houseValue: { fontSize: typography.size.xxl, fontWeight: typography.weight.heavy, color: colors.white },
+  pinRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.md },
+  pinText: { flex: 1, fontSize: typography.size.sm, color: colors.success, fontWeight: typography.weight.semibold },
+  pinLink: { fontSize: typography.size.sm, color: colors.primaryDark, fontWeight: typography.weight.bold, textDecorationLine: 'underline' },
+  pinPrompt: { marginTop: spacing.md, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.warningSoft, gap: spacing.sm },
+  pinPromptText: { fontSize: typography.size.sm, color: colors.text, lineHeight: typography.size.sm * 1.5 },
+  doorImage: { width: '100%', height: 220, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg },
+  photoRow: { padding: spacing.lg, gap: spacing.sm },
+  itemRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, gap: spacing.md },
+  itemRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  itemImage: { width: 44, height: 44, borderRadius: radius.sm, backgroundColor: colors.gray100 },
+  itemImageFallback: { alignItems: 'center', justifyContent: 'center' },
+  itemName: { fontSize: typography.size.md, fontWeight: typography.weight.semibold, color: colors.text },
+  itemMeta: { fontSize: typography.size.sm, color: colors.textSecondary, marginTop: 2 },
+  itemNote: { fontSize: typography.size.sm, color: colors.warning, marginTop: 2, fontStyle: 'italic' },
+  itemPrice: { fontSize: typography.size.md, fontWeight: typography.weight.semibold, color: colors.text },
+  totals: { marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, gap: 4 },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  totalLabel: { fontSize: typography.size.sm, color: colors.textSecondary },
+  totalValue: { fontSize: typography.size.sm, color: colors.text },
+  totalBold: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.text, marginTop: 4 },
+  totalBoldValue: { fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.text, marginTop: 4 },
+  codCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, backgroundColor: colors.gray900, borderRadius: radius.lg, padding: spacing.lg },
+  codLabel: { fontSize: typography.size.xs, color: colors.gray400, textTransform: 'uppercase', letterSpacing: 0.8 },
+  codAmount: { fontSize: typography.size.display, fontWeight: typography.weight.heavy, color: colors.white, marginTop: 2 },
+  codMeta: { fontSize: typography.size.sm, color: colors.gray300, marginTop: 2 },
+  contactRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  hiddenHint: { fontSize: typography.size.sm, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: typography.size.sm * 1.5 },
+  sheetBody: { fontSize: typography.size.sm, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: typography.size.sm * 1.5 },
+  sheetCash: { alignItems: 'center', paddingVertical: spacing.lg, backgroundColor: colors.gray900, borderRadius: radius.lg, marginBottom: spacing.md },
+  sheetCashLabel: { fontSize: typography.size.xs, color: colors.gray400, textTransform: 'uppercase', letterSpacing: 0.8 },
+  sheetCashAmount: { fontSize: typography.size.hero, fontWeight: typography.weight.heavy, color: colors.white },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderRadius: radius.md, borderWidth: 1.5, borderColor: colors.border },
+  checkRowOn: { borderColor: colors.success, backgroundColor: colors.successSoft },
+  checkText: { flex: 1, fontSize: typography.size.md, fontWeight: typography.weight.semibold, color: colors.text },
+  inputLabel: { fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.text, marginTop: spacing.lg, marginBottom: spacing.xs },
+  textArea: { minHeight: 80, borderWidth: 1.5, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, fontSize: typography.size.md, color: colors.text, textAlignVertical: 'top', backgroundColor: colors.gray50 },
+  radioRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.sm, borderRadius: radius.md },
+  radioRowOn: { backgroundColor: colors.dangerSoft },
+  radioText: { fontSize: typography.size.md, color: colors.text },
+  radioTextOn: { fontWeight: typography.weight.bold, color: colors.danger },
 });
 
 export default TaskDetailScreen;

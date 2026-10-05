@@ -92,3 +92,53 @@ describe('POST /api/webhooks/order-status', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('WEBHOOK_ALLOW_UNSIGNED is a non-production convenience only', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    process.env.NODE_ENV = originalNodeEnv;
+    delete process.env.WEBHOOK_ALLOW_UNSIGNED;
+  });
+
+  it('still rejects unsigned webhooks in production even when the flag is set', async () => {
+    process.env.WEBHOOK_ALLOW_UNSIGNED = 'true';
+    process.env.NODE_ENV = 'production';
+
+    const res = await request(app)
+      .post('/api/webhooks/sms')
+      .set('x-webhook-source', 'sms_gateway')
+      .send({ message_id: 'msg-1', status: 'delivered' });
+
+    expect(res.status).toBe(401);
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('accepts unsigned webhooks outside production when explicitly opted in', async () => {
+    process.env.WEBHOOK_ALLOW_UNSIGNED = 'true';
+    process.env.NODE_ENV = 'test';
+    mockQuery
+      .mockResolvedValueOnce(ok([{ id: 'log-1' }], 'INSERT'))
+      .mockResolvedValueOnce(ok([], 'UPDATE'))
+      .mockResolvedValueOnce(ok([], 'UPDATE'));
+
+    const res = await request(app)
+      .post('/api/webhooks/sms')
+      .set('x-webhook-source', 'sms_gateway')
+      .send({ message_id: 'msg-1', status: 'delivered' });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('never accepts an unsigned webhook without the explicit opt-in, even outside production', async () => {
+    process.env.NODE_ENV = 'test';
+
+    const res = await request(app)
+      .post('/api/webhooks/sms')
+      .set('x-webhook-source', 'sms_gateway')
+      .send({ message_id: 'msg-1', status: 'delivered' });
+
+    expect(res.status).toBe(401);
+  });
+});

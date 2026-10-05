@@ -2424,6 +2424,11 @@ BEGIN
         v_zone_code := 'UNK';
     END IF;
 
+    -- Serialise concurrent assignments within this zone (migration 54): two
+    -- checkouts reading the same MAX() used to get the same house number.
+    -- Transaction-scoped, so it is released automatically at COMMIT/ROLLBACK.
+    PERFORM pg_advisory_xact_lock(hashtext('assign_house_number'), hashtext(v_zone_code));
+
     -- Generate sequence for this zone (numeric suffix after the LAST '-')
     SELECT COALESCE(MAX(
         CAST(regexp_replace(house_number, '^.*-', '') AS INTEGER)

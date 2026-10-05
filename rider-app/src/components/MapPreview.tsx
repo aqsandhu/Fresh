@@ -1,189 +1,144 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../utils/constants';
+import { colors, radius, spacing, typography, shadow } from '../theme';
+import { MAP_CONFIG } from '../utils/constants';
+import { useT } from '../i18n';
+import type { GeoPoint } from '../types';
 
 interface MapPreviewProps {
-  latitude: number;
-  longitude: number;
+  point: GeoPoint;
+  /** Rider's own position — drawn as a second marker when available. */
+  riderPoint?: GeoPoint | null;
   title?: string;
   onNavigate?: () => void;
   height?: number;
-  showMarker?: boolean;
-  interactive?: boolean;
   draggable?: boolean;
-  onMarkerDragEnd?: (latitude: number, longitude: number) => void;
+  onMarkerDragEnd?: (point: GeoPoint) => void;
 }
 
-const { width: screenWidth } = Dimensions.get('window');
-const MAP_DELTA = 0.0025;
-
 const MapPreview: React.FC<MapPreviewProps> = ({
-  latitude,
-  longitude,
+  point,
+  riderPoint,
   title,
   onNavigate,
-  height = 200,
-  showMarker = true,
-  interactive = true,
+  height = 220,
   draggable = false,
   onMarkerDragEnd,
 }) => {
+  const { t } = useT();
   const mapRef = useRef<MapView>(null);
-  const initialRegion = {
-    latitude,
-    longitude,
-    latitudeDelta: MAP_DELTA,
-    longitudeDelta: MAP_DELTA,
-  };
 
   useEffect(() => {
-    mapRef.current?.animateToRegion(
-      {
-        latitude,
-        longitude,
-        latitudeDelta: MAP_DELTA,
-        longitudeDelta: MAP_DELTA,
-      },
-      400
-    );
-  }, [latitude, longitude]);
+    if (riderPoint) {
+      mapRef.current?.fitToCoordinates([point, riderPoint], {
+        edgePadding: { top: 40, bottom: 40, left: 40, right: 40 },
+        animated: true,
+      });
+    } else {
+      mapRef.current?.animateToRegion(
+        { ...point, latitudeDelta: MAP_CONFIG.delta, longitudeDelta: MAP_CONFIG.delta },
+        400
+      );
+    }
+  }, [point, riderPoint]);
 
   return (
-    <View
-      style={[styles.container, { height }]}
-      onStartShouldSetResponder={() => interactive}
-      onMoveShouldSetResponder={() => interactive}
-    >
+    <View style={[styles.container, { height }]}>
       <MapView
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
-        mapType="standard"
         style={styles.map}
-        showsScale
-        showsCompass
-        loadingEnabled
+        initialRegion={{ ...point, latitudeDelta: MAP_CONFIG.delta, longitudeDelta: MAP_CONFIG.delta }}
+        showsCompass={false}
         toolbarEnabled={false}
-        minZoomLevel={12}
-        maxZoomLevel={20}
-        initialRegion={initialRegion}
-        scrollEnabled={interactive}
-        zoomEnabled={interactive}
+        loadingEnabled
         rotateEnabled={false}
         pitchEnabled={false}
+        minZoomLevel={11}
+        maxZoomLevel={20}
       >
-        {showMarker && (
-          <Marker
-            coordinate={{ latitude, longitude }}
-            title={title}
-            draggable={draggable}
-            onDragEnd={(e) => {
-              if (onMarkerDragEnd) {
-                const { latitude: lat, longitude: lng } = e.nativeEvent.coordinate;
-                onMarkerDragEnd(lat, lng);
-              }
-            }}
-          >
-            <View style={styles.markerContainer}>
-              <View style={styles.marker}>
-                <MaterialCommunityIcons name="map-marker" size={28} color={COLORS.danger} />
-              </View>
+        <Marker
+          coordinate={point}
+          title={title}
+          draggable={draggable}
+          onDragEnd={(e) => onMarkerDragEnd?.(e.nativeEvent.coordinate)}
+          anchor={{ x: 0.5, y: 1 }}
+        >
+          <MaterialCommunityIcons name="map-marker" size={40} color={colors.danger} />
+        </Marker>
+        {riderPoint ? (
+          <Marker coordinate={riderPoint} anchor={{ x: 0.5, y: 0.5 }}>
+            <View style={styles.riderDot}>
+              <MaterialCommunityIcons name="motorbike" size={16} color={colors.white} />
             </View>
           </Marker>
-        )}
+        ) : null}
       </MapView>
 
-      {/* Navigate Button */}
-      {onNavigate && (
-        <TouchableOpacity
-          style={styles.navigateButton}
-          onPress={onNavigate}
-          activeOpacity={0.8}
-        >
-          <MaterialCommunityIcons name="navigation" size={20} color={COLORS.white} />
-          <Text style={styles.navigateText}>Navigate</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Map Overlay */}
-      <View style={styles.overlay} pointerEvents="none">
-        <View style={styles.coordinatesContainer}>
-          <MaterialCommunityIcons name="crosshairs-gps" size={14} color={COLORS.white} />
-          <Text style={styles.coordinatesText}>
-            {latitude.toFixed(4)}, {longitude.toFixed(4)}
-          </Text>
+      {draggable ? (
+        <View style={styles.hint} pointerEvents="none">
+          <MaterialCommunityIcons name="gesture-tap-hold" size={14} color={colors.white} />
+          <Text style={styles.hintText}>Hold & drag the pin to adjust</Text>
         </View>
-      </View>
+      ) : null}
+
+      {onNavigate ? (
+        <TouchableOpacity style={styles.navigateButton} onPress={onNavigate} activeOpacity={0.85} accessibilityRole="button">
+          <MaterialCommunityIcons name="navigation-variant" size={20} color={colors.white} />
+          <Text style={styles.navigateText}>{t('home.navigate')}</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    width: screenWidth - SPACING.md * 2,
-    marginHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: radius.lg,
     overflow: 'hidden',
-    backgroundColor: COLORS.gray200,
+    backgroundColor: colors.gray200,
   },
-  map: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  markerContainer: {
+  map: { ...StyleSheet.absoluteFillObject },
+  riderDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.info,
+    borderWidth: 3,
+    borderColor: colors.white,
     alignItems: 'center',
+    justifyContent: 'center',
+    ...shadow.card,
   },
-  marker: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.full,
-    padding: 4,
-    shadowColor: COLORS.gray900,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+  hint: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(17,24,39,0.7)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.sm,
   },
+  hintText: { color: colors.white, fontSize: typography.size.xs },
   navigateButton: {
     position: 'absolute',
-    bottom: SPACING.md,
-    right: SPACING.md,
+    bottom: spacing.md,
+    right: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.full,
-    shadowColor: COLORS.gray900,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
+    gap: spacing.xs,
+    backgroundColor: colors.gray900,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    ...shadow.raised,
   },
-  navigateText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '600',
-    marginLeft: SPACING.xs,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-start',
-    alignItems: 'flex-start',
-    padding: SPACING.sm,
-  },
-  coordinatesContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  coordinatesText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.xs,
-    marginLeft: 4,
-  },
+  navigateText: { color: colors.white, fontSize: typography.size.md, fontWeight: typography.weight.bold },
 });
 
 export default MapPreview;

@@ -1,242 +1,187 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { authService } from './auth.service';
 import { NOTIFICATION_CHANNELS } from '../utils/constants';
+import { useSettingsStore } from '../store/settingsStore';
+import { t } from '../i18n';
 
-// Configure notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
+    shouldPlaySound: useSettingsStore.getState().soundEnabled,
+    shouldSetBadge: false,
     shouldShowBanner: true,
     shouldShowList: true,
   }),
 });
 
-class NotificationService {
-  private isInitialized: boolean = false;
+export interface NotificationTapData {
+  type?: 'new_task' | 'task_cancelled' | 'chat' | string;
+  taskId?: string;
+  orderId?: string;
+  orderNumber?: string;
+}
 
-  // Initialize notifications
+class NotificationService {
+  private isInitialized = false;
+
+  /** Permissions + Android channels. Safe to call repeatedly. */
   async initialize(): Promise<boolean> {
     if (this.isInitialized) return true;
-
     try {
-      // Request permissions
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      if (existingStatus !== 'granted') {
+      const { status: existing } = await Notifications.getPermissionsAsync();
+      let finalStatus = existing;
+      if (existing !== 'granted') {
         const { status } = await Notifications.requestPermissionsAsync();
         finalStatus = status;
       }
-
-      if (finalStatus !== 'granted') {
-        console.log('Notification permissions not granted');
-        return false;
-      }
-
-      // Set up notification channels for Android
-      if (Platform.OS === 'android') {
-        await this.setupNotificationChannels();
-      }
-
+      if (finalStatus !== 'granted') return false;
+      if (Platform.OS === 'android') await this.setupChannels();
       this.isInitialized = true;
       return true;
     } catch (error) {
-      console.error('Error initializing notifications:', error);
+      console.error('[Notifications] initialize:', error);
       return false;
     }
   }
 
-  // Set up Android notification channels
-  private async setupNotificationChannels(): Promise<void> {
-    // New Task Channel
+  async hasPermission(): Promise<boolean> {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      return status === 'granted';
+    } catch {
+      return false;
+    }
+  }
+
+  private async setupChannels(): Promise<void> {
+    const { vibrationEnabled } = useSettingsStore.getState();
+    const vibrate = (pattern: number[]) => (vibrationEnabled ? pattern : [0]);
     await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.NEW_TASK, {
-      name: 'New Tasks',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
+      name: 'New tasks',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: vibrate([0, 400, 200, 400]),
       lightColor: '#10B981',
-      sound: 'notification-sound.wav',
+      bypassDnd: true,
     });
-
-    // Task Update Channel
     await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.TASK_UPDATE, {
-      name: 'Task Updates',
-      importance: Notifications.AndroidImportance.DEFAULT,
-      vibrationPattern: [0, 100],
-      lightColor: '#3B82F6',
-    });
-
-    // Call Request Channel
-    await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.CALL_REQUEST, {
-      name: 'Call Requests',
+      name: 'Task updates',
       importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 500, 200, 500],
+      vibrationPattern: vibrate([0, 250]),
       lightColor: '#F59E0B',
-      sound: 'notification-sound.wav',
     });
-
-    // Admin Message Channel
-    await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.ADMIN_MESSAGE, {
-      name: 'Admin Messages',
+    await Notifications.setNotificationChannelAsync(NOTIFICATION_CHANNELS.CHAT, {
+      name: 'Customer messages',
       importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#8B5CF6',
+      vibrationPattern: vibrate([0, 150]),
+      lightColor: '#2563EB',
     });
   }
 
-  // Get push token
+  /** Re-create channels when sound/vibration preferences change. */
+  async refreshChannels(): Promise<void> {
+    if (Platform.OS === 'android') await this.setupChannels().catch(() => {});
+  }
+
   async getPushToken(): Promise<string | null> {
     try {
-      if (!Device.isDevice) {
-        console.log('Must use physical device for push notifications');
-        return null;
-      }
-
-      const token = (await Notifications.getExpoPushTokenAsync()).data;
-      return token;
+      if (!Device.isDevice) return null;
+      const projectId: string | undefined = (Constants.expoConfig as any)?.extra?.eas?.projectId;
+      const token = (await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined)).data;
+      return token || null;
     } catch (error) {
-      console.error('Error getting push token:', error);
+      console.warn('[Notifications] push token unavailable:', error);
       return null;
     }
   }
 
-  // Register push token with backend
   async registerPushToken(): Promise<void> {
     try {
       const token = await this.getPushToken();
-      if (token) {
-        await authService.updateFCMToken(token);
-      }
+      if (token) await authService.registerPushToken(token);
     } catch (error) {
-      console.error('Error registering push token:', error);
+      console.warn('[Notifications] register token failed:', error);
     }
   }
 
-  // Schedule local notification
-  async scheduleNotification(
+  /** Permissions → channels → token upload → listeners. Call after sign-in / hydrate. */
+  async bootstrap(onTap: (data: NotificationTapData) => void): Promise<() => void> {
+    const ok = await this.initialize();
+    if (!ok) return () => {};
+    this.registerPushToken().catch(() => {});
+    return this.addTapListener(onTap);
+  }
+
+  addTapListener(handler: (data: NotificationTapData) => void): () => void {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response?.notification?.request?.content?.data;
+      if (data && typeof data === 'object') handler(data as NotificationTapData);
+    });
+    // Cold start from a tapped notification.
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        const data = response?.notification?.request?.content?.data;
+        if (data && typeof data === 'object') handler(data as NotificationTapData);
+      })
+      .catch(() => {});
+    return () => sub.remove();
+  }
+
+  private async show(
     title: string,
     body: string,
-    data?: Record<string, any>,
-    trigger?: Notifications.NotificationTriggerInput
-  ): Promise<string> {
-    const identifier = await Notifications.scheduleNotificationAsync({
+    data: NotificationTapData,
+    channelId: string
+  ): Promise<void> {
+    if (!useSettingsStore.getState().notificationsEnabled) return;
+    if (!(await this.initialize())) return;
+    await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
         data,
-        sound: true,
-        badge: 1,
-      },
-      trigger: trigger || null,
+        sound: useSettingsStore.getState().soundEnabled ? 'default' : undefined,
+        ...(Platform.OS === 'android' ? { channelId } : {}),
+      } as Notifications.NotificationContentInput,
+      trigger: null,
     });
-    return identifier;
   }
 
-  // Show immediate notification
-  async showNotification(
-    title: string,
-    body: string,
-    data?: Record<string, any>
-  ): Promise<void> {
-    await this.scheduleNotification(title, body, data, null);
+  notifyNewTask(d: { orderId?: string; orderNumber?: string; taskId?: string }): Promise<void> {
+    return this.show(
+      t('notif.newTaskTitle'),
+      t('notif.newTaskBody', { orderNumber: d.orderNumber || '—' }),
+      { type: 'new_task', ...d },
+      NOTIFICATION_CHANNELS.NEW_TASK
+    );
   }
 
-  // Cancel scheduled notification
-  async cancelNotification(identifier: string): Promise<void> {
-    await Notifications.cancelScheduledNotificationAsync(identifier);
+  notifyTaskCancelled(d: { orderId?: string; orderNumber?: string; taskId?: string }): Promise<void> {
+    return this.show(
+      t('notif.taskCancelledTitle'),
+      t('notif.taskCancelledBody', { orderNumber: d.orderNumber || '—' }),
+      { type: 'task_cancelled', ...d },
+      NOTIFICATION_CHANNELS.TASK_UPDATE
+    );
   }
 
-  // Cancel all notifications
-  async cancelAllNotifications(): Promise<void> {
-    await Notifications.cancelAllScheduledNotificationsAsync();
+  notifyChat(d: { orderId?: string; senderName?: string; message?: string }): Promise<void> {
+    return this.show(
+      d.senderName ? `${t('notif.chatTitle')} · ${d.senderName}` : t('notif.chatTitle'),
+      d.message || '',
+      { type: 'chat', orderId: d.orderId },
+      NOTIFICATION_CHANNELS.CHAT
+    );
   }
 
-  // Clear badge
   async clearBadge(): Promise<void> {
-    await Notifications.setBadgeCountAsync(0);
-  }
-
-  // Get pending notifications
-  async getPendingNotifications(): Promise<Notifications.NotificationRequest[]> {
-    return await Notifications.getAllScheduledNotificationsAsync();
-  }
-
-  // Set up notification listeners
-  setupNotificationListeners(
-    onNotificationReceived?: (notification: Notifications.Notification) => void,
-    onNotificationResponse?: (response: Notifications.NotificationResponse) => void
-  ): { remove: () => void } {
-    // Received while app is foregrounded
-    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
-      console.log('Notification received:', notification);
-      onNotificationReceived?.(notification);
-    });
-
-    // User tapped notification
-    const responseSubscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        console.log('Notification response:', response);
-        onNotificationResponse?.(response);
-      }
-    );
-
-    return {
-      remove: () => {
-        receivedSubscription.remove();
-        responseSubscription.remove();
-      },
-    };
-  }
-
-  // Show new task notification
-  async showNewTaskNotification(taskId: string, taskType: string): Promise<void> {
-    await this.showNotification(
-      'New Task Assigned!',
-      `You have a new ${taskType} task. Tap to view details.`,
-      { type: 'new_task', taskId }
-    );
-  }
-
-  // Show task cancelled notification
-  async showTaskCancelledNotification(taskId: string, reason?: string): Promise<void> {
-    await this.showNotification(
-      'Task Cancelled',
-      reason || 'A task has been cancelled.',
-      { type: 'task_cancelled', taskId }
-    );
-  }
-
-  // Show call request notification
-  async showCallRequestNotification(taskId: string): Promise<void> {
-    await this.showNotification(
-      'Customer Call Request',
-      'A customer is trying to reach you.',
-      { type: 'call_request', taskId }
-    );
-  }
-
-  // Show admin message notification
-  async showAdminMessageNotification(message: string): Promise<void> {
-    await this.showNotification(
-      'Message from Admin',
-      message,
-      { type: 'admin_message' }
-    );
-  }
-
-  // Parse notification data
-  parseNotificationData(notification: Notifications.Notification): {
-    type: string;
-    data: Record<string, any>;
-  } {
-    const data = (notification.request.content.data || {}) as Record<string, unknown>;
-    return {
-      type: typeof data.type === 'string' ? data.type : 'unknown',
-      data,
-    };
+    try {
+      await Notifications.setBadgeCountAsync(0);
+    } catch {
+      /* ignore */
+    }
   }
 }
 

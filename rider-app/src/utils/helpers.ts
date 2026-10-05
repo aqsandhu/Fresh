@@ -1,9 +1,9 @@
-import { format, formatDistanceToNow, parseISO } from 'date-fns';
-import { TASK_TYPE_LABELS, TASK_STATUS_LABELS, TRANSLATIONS } from './constants';
+import { Linking, Platform } from 'react-native';
+import { format, formatDistanceToNow, parseISO, isValid } from 'date-fns';
+import type { GeoPoint } from '../types';
 
-// Format currency in PKR.
-// Hermes in some RN builds silently returns empty string from toLocaleString('en-PK'),
-// which leaves "Rs. " with no figure next to it. Format manually so it always renders.
+// ── Money ──────────────────────────────────────────────────────────────────
+// Hermes in some RN builds returns '' from toLocaleString('en-PK'); format by hand.
 export const formatCurrency = (amount: number | string | null | undefined): string => {
   const n = typeof amount === 'number' ? amount : parseFloat(String(amount ?? 0));
   const safe = Number.isFinite(n) ? n : 0;
@@ -14,186 +14,186 @@ export const formatCurrency = (amount: number | string | null | undefined): stri
   return `Rs. ${sign}${body}`;
 };
 
-// Format distance
+export const toNumber = (v: unknown, fallback = 0): number => {
+  if (v === null || v === undefined || v === '') return fallback;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : fallback;
+};
+
+export const toNumberOrNull = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : null;
+};
+
+// ── Distance ───────────────────────────────────────────────────────────────
 export const formatDistance = (meters: number): string => {
-  if (meters < 1000) {
-    return `${Math.round(meters)} m`;
-  }
+  if (meters < 1000) return `${Math.round(meters)} m`;
   return `${(meters / 1000).toFixed(1)} km`;
 };
 
-// Format time
-export const formatTime = (date: string | Date): string => {
+/** Great-circle distance in meters. */
+export const haversineMeters = (a: GeoPoint, b: GeoPoint): number => {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+
+// ── Dates ──────────────────────────────────────────────────────────────────
+const toDate = (date: string | Date | null | undefined): Date | null => {
+  if (!date) return null;
   const d = typeof date === 'string' ? parseISO(date) : date;
-  return format(d, 'h:mm a');
+  return isValid(d) ? d : null;
 };
 
-// Format date
-export const formatDate = (date: string | Date): string => {
-  const d = typeof date === 'string' ? parseISO(date) : date;
-  return format(d, 'MMM d, yyyy');
+export const formatTime = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  return d ? format(d, 'h:mm a') : '';
 };
 
-// Format relative time
-export const formatRelativeTime = (date: string | Date): string => {
-  const d = typeof date === 'string' ? parseISO(date) : date;
-  return formatDistanceToNow(d, { addSuffix: true });
+export const formatDate = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  return d ? format(d, 'EEE, d MMM yyyy') : '';
 };
 
-// Get task type label
-export const getTaskTypeLabel = (type: string, language: 'en' | 'ur' = 'en'): string => {
-  return TASK_TYPE_LABELS[type]?.[language] || type;
+export const formatDateTime = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  return d ? format(d, 'd MMM, h:mm a') : '';
 };
 
-// Get task status label
-export const getTaskStatusLabel = (status: string, language: 'en' | 'ur' = 'en'): string => {
-  return TASK_STATUS_LABELS[status]?.[language] || status;
+export const formatRelativeTime = (date: string | Date | null | undefined): string => {
+  const d = toDate(date);
+  return d ? formatDistanceToNow(d, { addSuffix: true }) : '';
 };
 
-// Get translation
-export const getTranslation = (key: string, language: 'en' | 'ur' = 'en'): string => {
-  const translations = TRANSLATIONS[language];
-  return (translations as Record<string, string>)[key] || key;
+/** "10:00:00" → "10:00 AM" (time_slots.start_time is a SQL TIME). */
+export const formatSqlTime = (time: string | null | undefined): string => {
+  if (!time) return '';
+  const [h, m] = time.split(':').map((x) => parseInt(x, 10));
+  if (!Number.isFinite(h)) return time;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(Number.isFinite(m) ? m : 0).padStart(2, '0')} ${suffix}`;
 };
 
-// Format phone number (Pakistani format)
-export const formatPhoneNumber = (phone: string): string => {
-  // Remove all non-digits
-  const cleaned = phone.replace(/\D/g, '');
-  
-  // If starts with 0, remove it
-  const withoutZero = cleaned.startsWith('0') ? cleaned.slice(1) : cleaned;
-  
-  // If starts with 92, format as +92 XXX XXXXXXX
-  if (withoutZero.startsWith('92')) {
-    const rest = withoutZero.slice(2);
-    return `+92 ${rest.slice(0, 3)} ${rest.slice(3)}`;
-  }
-  
-  // Otherwise assume it's a local number without country code
-  return `+92 ${withoutZero.slice(0, 3)} ${withoutZero.slice(3)}`;
+export const formatSlotRange = (start?: string | null, end?: string | null): string => {
+  const s = formatSqlTime(start);
+  const e = formatSqlTime(end);
+  if (s && e) return `${s} – ${e}`;
+  return s || e || '';
 };
 
-// Validate phone number (Pakistani)
+// ── Phone ──────────────────────────────────────────────────────────────────
+/** Pakistani mobile: 03XXXXXXXXX or 92XXXXXXXXXX (with/without +). */
 export const isValidPhoneNumber = (phone: string): boolean => {
   const cleaned = phone.replace(/\D/g, '');
-  // Pakistani numbers: 11 digits starting with 03
-  const regex = /^(03\d{9}|92\d{10})$/;
-  return regex.test(cleaned);
+  return /^(03\d{9}|923\d{9})$/.test(cleaned);
 };
 
-// Calculate estimated time
-export const calculateETA = (distanceInMeters: number, speedKmh: number = 25): string => {
-  const timeInHours = distanceInMeters / 1000 / speedKmh;
-  const timeInMinutes = Math.ceil(timeInHours * 60);
-  
-  if (timeInMinutes < 1) {
-    return '< 1 min';
-  } else if (timeInMinutes < 60) {
-    return `${timeInMinutes} min`;
-  } else {
-    const hours = Math.floor(timeInMinutes / 60);
-    const mins = timeInMinutes % 60;
-    return `${hours}h ${mins}m`;
-  }
+export const formatPhoneNumber = (phone: string): string => {
+  const cleaned = phone.replace(/\D/g, '');
+  const withoutZero = cleaned.startsWith('0') ? cleaned.slice(1) : cleaned;
+  const rest = withoutZero.startsWith('92') ? withoutZero.slice(2) : withoutZero;
+  return `+92 ${rest.slice(0, 3)} ${rest.slice(3)}`;
 };
 
-// Generate unique ID
-export const generateId = (): string => {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+/** Digits only with country code, for wa.me links. */
+export const toWhatsAppNumber = (phone: string): string => {
+  const cleaned = phone.replace(/\D/g, '');
+  if (cleaned.startsWith('92')) return cleaned;
+  if (cleaned.startsWith('0')) return `92${cleaned.slice(1)}`;
+  return `92${cleaned}`;
 };
 
-// Debounce function
-export const debounce = <T extends (...args: any[]) => void>(
-  func: T,
-  wait: number
-): ((...args: Parameters<T>) => void) => {
-  let timeout: ReturnType<typeof setTimeout>;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func(...args), wait);
-  };
-};
-
-// Throttle function
-export const throttle = <T extends (...args: any[]) => void>(
-  func: T,
-  limit: number
-): ((...args: Parameters<T>) => void) => {
-  let inThrottle = false;
-  return (...args: Parameters<T>) => {
-    if (!inThrottle) {
-      func(...args);
-      inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
+// ── Navigation / external apps ─────────────────────────────────────────────
+/** Open turn-by-turn navigation. Prefers Google Maps; falls back to platform maps. */
+export const openNavigation = async (point: GeoPoint, label?: string): Promise<void> => {
+  const { latitude, longitude } = point;
+  const candidates =
+    Platform.OS === 'ios'
+      ? [
+          `comgooglemaps://?daddr=${latitude},${longitude}&directionsmode=driving`,
+          `maps://app?daddr=${latitude},${longitude}`,
+          `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
+        ]
+      : [
+          `google.navigation:q=${latitude},${longitude}`,
+          `geo:${latitude},${longitude}?q=${latitude},${longitude}${label ? `(${encodeURIComponent(label)})` : ''}`,
+          `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`,
+        ];
+  for (const url of candidates) {
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+        return;
+      }
+    } catch {
+      /* try next */
     }
-  };
+  }
+  // Last resort — web URL opens in the browser.
+  await Linking.openURL(candidates[candidates.length - 1]);
 };
 
-// Deep clone
-export const deepClone = <T>(obj: T): T => {
-  return JSON.parse(JSON.stringify(obj));
-};
+export const openDialer = (phone: string): Promise<void> =>
+  Linking.openURL(Platform.OS === 'ios' ? `telprompt:${phone}` : `tel:${phone}`);
 
-// Check if object is empty
-export const isEmptyObject = (obj: object): boolean => {
-  return Object.keys(obj).length === 0;
-};
+export const openWhatsApp = (phone: string, message: string): Promise<void> =>
+  Linking.openURL(`https://wa.me/${toWhatsAppNumber(phone)}?text=${encodeURIComponent(message)}`);
 
-// Truncate text
-export const truncateText = (text: string, maxLength: number): string => {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + '...';
-};
+// ── Misc ───────────────────────────────────────────────────────────────────
+export const generateId = (): string =>
+  `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
-// Get initials from name
-export const getInitials = (name: string): string => {
-  return name
-    .split(' ')
+export const getInitials = (name: string): string =>
+  name
+    .trim()
+    .split(/\s+/)
     .map((n) => n[0])
     .join('')
     .toUpperCase()
     .slice(0, 2);
-};
 
-// Get color based on rating
 export const getRatingColor = (rating: number): string => {
-  if (rating >= 4.5) return '#10B981'; // Green
-  if (rating >= 3.5) return '#F59E0B'; // Amber
-  return '#EF4444'; // Red
+  if (rating >= 4.5) return '#10B981';
+  if (rating >= 3.5) return '#F59E0B';
+  return '#EF4444';
 };
 
-// Sleep function for delays
-export const sleep = (ms: number): Promise<void> => {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-};
+export const truncateText = (text: string, maxLength: number): string =>
+  text.length <= maxLength ? text : `${text.slice(0, maxLength)}...`;
 
-// Retry function with exponential backoff
-export const retry = async <T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  delay: number = 1000
-): Promise<T> => {
-  let lastError: Error;
-  
+export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+export const retry = async <T>(fn: () => Promise<T>, maxRetries = 3, delay = 1000): Promise<T> => {
+  let lastError: unknown;
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn();
     } catch (error) {
-      lastError = error as Error;
-      if (i < maxRetries - 1) {
-        await sleep(delay * Math.pow(2, i));
-      }
+      lastError = error;
+      if (i < maxRetries - 1) await sleep(delay * 2 ** i);
     }
   }
-  
-  throw lastError!;
+  throw lastError;
 };
 
-// Parse error message
-export const parseErrorMessage = (error: any): string => {
+/** Prefer the backend's message, then Error.message, then a generic fallback. */
+export const parseErrorMessage = (error: unknown, fallback = 'An unknown error occurred'): string => {
   if (typeof error === 'string') return error;
-  if (error?.response?.data?.message) return error.response.data.message;
-  if (error?.message) return error.message;
-  return 'An unknown error occurred';
+  const e = error as { response?: { data?: { message?: string } }; message?: string } | null;
+  if (e?.response?.data?.message) return e.response.data.message;
+  if (e?.message) return e.message;
+  return fallback;
 };
+
+export const isEmptyObject = (obj: object): boolean => Object.keys(obj).length === 0;
+
+export const deepClone = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));

@@ -10,6 +10,8 @@ import { withTransaction } from '../config/database';
 import { emitOrderUpdate, emitToUser } from '../config/socket';
 import logger from './logger';
 import { isValidOrderTransition } from './orderStatus';
+import { cancelActiveRiderTasks, notifyRiderTasksCancelled, pushNewAssignment } from './riderTaskEvents';
+import { sendExpoPushToUsers } from './expoPush';
 
 export interface AssignRiderResult {
   order: any;
@@ -81,21 +83,21 @@ export async function assignRiderToOrder(
       [riderId, orderId, riderCharge]
     );
     await client.query("UPDATE riders SET status = 'busy', updated_at = NOW() WHERE id = $1", [riderId]);
-    await client.query(
-      `UPDATE rider_tasks SET status = 'cancelled', completed_at = NOW()
-        WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
-      [orderId]
-    );
-    await client.query(
+    // Close any previous task on this order (reassignment). The displaced
+    // rider is told after commit — before this, they drove to an order that
+    // was no longer theirs.
+    const displaced = await cancelActiveRiderTasks(client, orderId, { note: 'Reassigned by admin' });
+    const task = await client.query(
       `INSERT INTO rider_tasks (rider_id, task_type, order_id, status, assigned_at)
-       VALUES ($1, 'delivery', $2, 'assigned', NOW())`,
+       VALUES ($1, 'delivery', $2, 'assigned', NOW())
+       RETURNING id`,
       [riderId, orderId]
     );
-    return { order: upd.rows[0], rider };
+    return { order: upd.rows[0], rider, displaced, taskId: task.rows[0]?.id as string | undefined };
   });
 
   if (!assignment?.order) throw Object.assign(new Error('Order not found'), { http: 404 });
-  const { order: updated, rider } = assignment;
+  const { order: updated, rider, displaced, taskId } = assignment;
 
   logger.info('Rider assigned to order', { orderId, riderId, assignedBy });
 
@@ -114,14 +116,28 @@ export async function assignRiderToOrder(
       status: 'out_for_delivery',
       message: `Rider ${rider.full_name} is on the way with your order #${updated.order_number}!`,
     });
+    sendExpoPushToUsers([updated.user_id], {
+      title: 'Your order is on the way',
+      body: `Rider ${rider.full_name} is bringing order #${updated.order_number}.`,
+      data: { type: 'rider_assigned', orderId, orderNumber: updated.order_number },
+    }).catch(() => {});
   }
   if (rider.user_id) {
     emitToUser(rider.user_id, 'rider:new_assignment', {
       orderId,
       orderNumber: updated.order_number,
+      taskId: taskId ?? null,
       message: `New delivery assignment: Order #${updated.order_number}`,
     });
+    // Backgrounded phones only hear about this via push.
+    pushNewAssignment(rider.user_id, { id: orderId, order_number: updated.order_number }, taskId);
   }
+  // A different rider previously held this order — tell them it's gone.
+  notifyRiderTasksCancelled(
+    displaced.filter((d) => d.riderId !== riderId),
+    { id: orderId, order_number: updated.order_number },
+    'Reassigned to another rider'
+  );
 
   return { order: updated, rider: { id: rider.id, name: rider.full_name } };
 }

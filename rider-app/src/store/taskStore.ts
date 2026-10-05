@@ -1,308 +1,256 @@
 import { create } from 'zustand';
-import { Task, TaskStatus, DailyStats, Earning, RiderStatsData } from '../types';
+import { Task, DailyStats, RiderStatsData, QueuedAction } from '../types';
 import { taskService } from '../services/task.service';
 import { offlineQueue } from '../utils/offlineQueue';
+import { isNetworkError, getApiErrorMessage } from '../services/api';
+import authService from '../services/auth.service';
 
-// 4xx responses are deterministic failures — never queue them for offline retry.
-const isClientError = (error: any): boolean => {
-  const status = error?.response?.status;
-  return typeof status === 'number' && status >= 400 && status < 500;
-};
+export class QueuedOfflineError extends Error {
+  constructor() {
+    super('queued_offline');
+    this.name = 'QueuedOfflineError';
+  }
+}
 
 interface TaskState {
-  // State
-  tasks: Task[];
   activeTasks: Task[];
   completedTasks: Task[];
-  currentTask: Task | null;
   todayStats: DailyStats | null;
   myStats: RiderStatsData | null;
-  earnings: Earning[];
-  isLoading: boolean;
-  error: string | null;
-  hasMoreTasks: boolean;
 
-  // Actions
-  fetchTasks: (status?: TaskStatus) => Promise<void>;
+  isLoadingActive: boolean;
+  isLoadingCompleted: boolean;
+  hasLoadedActive: boolean;
+  hasLoadedCompleted: boolean;
+  /** Task ids with an in-flight mutation (button spinners stay local). */
+  pendingTaskIds: string[];
+  lastError: string | null;
+
   fetchActiveTasks: () => Promise<void>;
   fetchCompletedTasks: () => Promise<void>;
   fetchTaskById: (taskId: string) => Promise<Task>;
-  setCurrentTask: (task: Task | null) => void;
-  acceptTask: (taskId: string) => Promise<void>;
-  markPickedUp: (taskId: string, notes?: string) => Promise<void>;
-  markDelivered: (
-    taskId: string,
-    data: {
-      signature?: string;
-      photoProof?: string;
-      notes?: string;
-      customerName?: string;
-    }
-  ) => Promise<void>;
-  cancelTask: (taskId: string, reason: string) => Promise<void>;
-  requestCustomerCall: (taskId: string) => Promise<string | null>;
   fetchTodayStats: () => Promise<void>;
   fetchMyStats: () => Promise<void>;
-  fetchEarnings: (startDate?: string, endDate?: string) => Promise<void>;
-  uploadDoorPicture: (taskId: string, imageUri: string) => Promise<string>;
+  refreshAll: () => Promise<void>;
+
+  markPickedUp: (taskId: string, notes?: string) => Promise<Task>;
+  markDelivered: (taskId: string, notes?: string) => Promise<Task>;
+  failTask: (taskId: string, reason: string) => Promise<Task>;
+  requestCustomerCall: (orderId: string) => Promise<string | null>;
   pinLocation: (taskId: string, latitude: number, longitude: number) => Promise<void>;
+  uploadDoorPicture: (taskId: string, imageUri: string) => Promise<string>;
+
+  /** Merge a fresh task into the lists (used by detail screen + socket). */
+  upsertTask: (task: Task) => void;
+  removeTask: (taskId: string) => void;
   clearError: () => void;
-  refreshTasks: () => Promise<void>;
+  reset: () => void;
 }
 
-export const useTaskStore = create<TaskState>((set, get) => ({
-  // Initial state
-  tasks: [],
-  activeTasks: [],
-  completedTasks: [],
-  currentTask: null,
-  todayStats: null,
-  myStats: null,
-  earnings: [],
-  isLoading: false,
-  error: null,
-  hasMoreTasks: true,
+const sortActive = (tasks: Task[]): Task[] =>
+  [...tasks].sort((a, b) => {
+    if (a.status !== b.status) return a.status === 'in_progress' ? -1 : 1;
+    if ((a.sequence ?? 0) !== (b.sequence ?? 0)) return (a.sequence ?? 0) - (b.sequence ?? 0);
+    return (b.assignedAt || '').localeCompare(a.assignedAt || '');
+  });
 
-  // Fetch all tasks
-  fetchTasks: async (status) => {
-    set({ isLoading: true, error: null });
-    try {
-      const tasks = await taskService.getTasks(status);
-      set({ tasks, isLoading: false });
-    } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-    }
-  },
+const initial = {
+  activeTasks: [] as Task[],
+  completedTasks: [] as Task[],
+  todayStats: null as DailyStats | null,
+  myStats: null as RiderStatsData | null,
+  isLoadingActive: false,
+  isLoadingCompleted: false,
+  hasLoadedActive: false,
+  hasLoadedCompleted: false,
+  pendingTaskIds: [] as string[],
+  lastError: null as string | null,
+};
 
-  // Fetch active tasks
-  fetchActiveTasks: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const activeTasks = await taskService.getActiveTasks();
-      set({ activeTasks, isLoading: false });
-    } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-    }
-  },
+export const useTaskStore = create<TaskState>((set, get) => {
+  const setPending = (taskId: string, pending: boolean) =>
+    set((s) => ({
+      pendingTaskIds: pending
+        ? s.pendingTaskIds.includes(taskId)
+          ? s.pendingTaskIds
+          : [...s.pendingTaskIds, taskId]
+        : s.pendingTaskIds.filter((id) => id !== taskId),
+    }));
 
-  // Fetch completed tasks
-  fetchCompletedTasks: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const completedTasks = await taskService.getCompletedTasks();
-      set({ completedTasks, isLoading: false });
-    } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-    }
-  },
+  const applyTask = (task: Task) => {
+    set((s) => {
+      const isActive = task.status === 'assigned' || task.status === 'in_progress';
+      const active = s.activeTasks.filter((t) => t.id !== task.id);
+      const completed = s.completedTasks.filter((t) => t.id !== task.id);
+      if (isActive) active.push(task);
+      else if (task.status === 'completed') completed.unshift(task);
+      return { activeTasks: sortActive(active), completedTasks: completed };
+    });
+  };
 
-  // Fetch task by ID
-  fetchTaskById: async (taskId) => {
-    set({ isLoading: true, error: null });
-    try {
+  return {
+    ...initial,
+
+    fetchActiveTasks: async () => {
+      set({ isLoadingActive: true });
+      try {
+        const activeTasks = await taskService.getActiveTasks();
+        set({ activeTasks: sortActive(activeTasks), hasLoadedActive: true, lastError: null });
+      } catch (error) {
+        set({ lastError: getApiErrorMessage(error) });
+      } finally {
+        set({ isLoadingActive: false });
+      }
+    },
+
+    fetchCompletedTasks: async () => {
+      set({ isLoadingCompleted: true });
+      try {
+        const completedTasks = await taskService.getCompletedTasks();
+        set({ completedTasks, hasLoadedCompleted: true, lastError: null });
+      } catch (error) {
+        set({ lastError: getApiErrorMessage(error) });
+      } finally {
+        set({ isLoadingCompleted: false });
+      }
+    },
+
+    fetchTaskById: async (taskId) => {
       const task = await taskService.getTaskById(taskId);
-      set({ currentTask: task, isLoading: false });
+      applyTask(task);
       return task;
-    } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-      throw error;
-    }
-  },
+    },
 
-  // Set current task
-  setCurrentTask: (task) => {
-    set({ currentTask: task });
-  },
-
-  // Accept task
-  acceptTask: async (taskId) => {
-    set({ isLoading: true, error: null });
-    try {
-      const updatedTask = await taskService.acceptTask(taskId);
-      set((state) => ({
-        // Dedup: never append a task that's already in the active list
-        activeTasks: state.activeTasks.some((t) => t.id === taskId)
-          ? state.activeTasks.map((t) => (t.id === taskId ? updatedTask : t))
-          : [...state.activeTasks, updatedTask],
-        tasks: state.tasks.filter((t) => t.id !== taskId),
-        isLoading: false,
-      }));
-    } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-      throw error;
-    }
-  },
-
-  // Mark task as picked up
-  markPickedUp: async (taskId, notes) => {
-    set({ isLoading: true, error: null });
-    try {
-      const updatedTask = await taskService.markPickedUp(taskId, notes);
-      set((state) => ({
-        activeTasks: state.activeTasks.map((t) => (t.id === taskId ? updatedTask : t)),
-        currentTask: updatedTask,
-        isLoading: false,
-      }));
-    } catch (error: any) {
-      // Queue for offline (network/server failures only, not 4xx)
-      if (!isClientError(error)) {
-        await offlineQueue.addAction('task_action', {
-          action: 'pickup',
-          taskId,
-          notes,
-        });
+    fetchTodayStats: async () => {
+      try {
+        set({ todayStats: await taskService.getTodayStats() });
+      } catch (error) {
+        console.warn('[TaskStore] today stats:', getApiErrorMessage(error));
       }
-      set({ error: error.message, isLoading: false });
-      throw error;
-    }
-  },
+    },
 
-  // Mark task as delivered
-  markDelivered: async (taskId, data) => {
-    set({ isLoading: true, error: null });
-    try {
-      const updatedTask = await taskService.markDelivered(taskId, data);
-      set((state) => ({
-        activeTasks: state.activeTasks.filter((t) => t.id !== taskId),
-        completedTasks: [updatedTask, ...state.completedTasks],
-        currentTask: updatedTask,
-        isLoading: false,
-      }));
-      // Refresh stats
-      get().fetchTodayStats();
-    } catch (error: any) {
-      // Queue for offline (network/server failures only, not 4xx)
-      if (!isClientError(error)) {
-        await offlineQueue.addAction('task_action', {
-          action: 'deliver',
-          taskId,
-          data,
-        });
+    fetchMyStats: async () => {
+      try {
+        set({ myStats: await taskService.getMyStats() });
+      } catch (error) {
+        console.warn('[TaskStore] stats:', getApiErrorMessage(error));
       }
-      set({ error: error.message, isLoading: false });
-      throw error;
-    }
-  },
+    },
 
-  // Cancel task
-  cancelTask: async (taskId, reason) => {
-    set({ isLoading: true, error: null });
-    try {
-      const updatedTask = await taskService.cancelTask(taskId, reason);
-      set((state) => ({
-        activeTasks: state.activeTasks.filter((t) => t.id !== taskId),
-        currentTask: updatedTask,
-        isLoading: false,
-      }));
-    } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-      throw error;
-    }
-  },
+    refreshAll: async () => {
+      await Promise.all([get().fetchActiveTasks(), get().fetchCompletedTasks(), get().fetchTodayStats(), get().fetchMyStats()]);
+    },
 
-  // Request customer call (privacy feature)
-  requestCustomerCall: async (taskId) => {
-    // Backend expects the ORDER id; resolve it from the task we have in state
-    const state = get();
-    const task =
-      (state.currentTask?.id === taskId ? state.currentTask : null) ||
-      [...state.activeTasks, ...state.tasks].find((t) => t.id === taskId) ||
-      null;
-    const orderId = task?.orderId;
-    if (!orderId) {
-      throw new Error('No order linked to this task');
-    }
-    try {
+    markPickedUp: async (taskId, notes) => {
+      setPending(taskId, true);
+      try {
+        const task = await taskService.markPickedUp(taskId, notes);
+        applyTask(task);
+        return task;
+      } catch (error) {
+        if (isNetworkError(error)) {
+          await offlineQueue.addAction('task_action', { action: 'pickup', taskId, notes });
+          // Optimistic local flip so the rider can keep working.
+          const local = get().activeTasks.find((t) => t.id === taskId);
+          if (local) applyTask({ ...local, status: 'in_progress', startedAt: new Date().toISOString() });
+          throw new QueuedOfflineError();
+        }
+        throw error;
+      } finally {
+        setPending(taskId, false);
+      }
+    },
+
+    markDelivered: async (taskId, notes) => {
+      setPending(taskId, true);
+      try {
+        const task = await taskService.markDelivered(taskId, notes);
+        applyTask(task);
+        get().fetchTodayStats();
+        get().fetchMyStats();
+        return task;
+      } catch (error) {
+        if (isNetworkError(error)) {
+          await offlineQueue.addAction('task_action', { action: 'deliver', taskId, notes });
+          const local = get().activeTasks.find((t) => t.id === taskId);
+          if (local) applyTask({ ...local, status: 'completed', completedAt: new Date().toISOString() });
+          throw new QueuedOfflineError();
+        }
+        throw error;
+      } finally {
+        setPending(taskId, false);
+      }
+    },
+
+    failTask: async (taskId, reason) => {
+      setPending(taskId, true);
+      try {
+        const task = await taskService.failTask(taskId, reason);
+        applyTask(task);
+        return task;
+      } finally {
+        setPending(taskId, false);
+      }
+    },
+
+    requestCustomerCall: async (orderId) => {
       const result = await taskService.requestCustomerCall(orderId);
-      return result.virtual_number ?? null;
-    } catch (error: any) {
-      // Queue for offline (network/server failures only, not 4xx)
-      if (!isClientError(error)) {
-        await offlineQueue.addAction('task_action', {
-          action: 'call_request',
-          taskId,
-          orderId,
-        });
-      }
-      throw error;
-    }
-  },
+      return result.number;
+    },
 
-  // Fetch today's stats
-  fetchTodayStats: async () => {
-    try {
-      const todayStats = await taskService.getTodayStats();
-      set({ todayStats });
-    } catch (error: any) {
-      console.error('Failed to fetch today stats:', error);
-    }
-  },
-
-  // Fetch full rider stats (weekly/monthly + payments)
-  fetchMyStats: async () => {
-    try {
-      const myStats = await taskService.getMyStats();
-      set({ myStats });
-    } catch (error: any) {
-      console.error('Failed to fetch rider stats:', error);
-    }
-  },
-
-  // Fetch earnings
-  fetchEarnings: async (startDate, endDate) => {
-    set({ isLoading: true, error: null });
-    try {
-      const earnings = await taskService.getEarnings(startDate, endDate);
-      set({ earnings, isLoading: false });
-    } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-    }
-  },
-
-  // Upload door picture for address
-  uploadDoorPicture: async (taskId, imageUri) => {
-    try {
-      const result = await taskService.uploadDoorPicture(taskId, imageUri);
-      // Update the current task to reflect new door picture
-      const currentTask = get().currentTask;
-      if (currentTask && currentTask.id === taskId) {
-        set({ currentTask: { ...currentTask, gateImage: result.url } });
-      }
-      return result.url;
-    } catch (error: any) {
-      set({ error: error.message });
-      throw error;
-    }
-  },
-
-  // Pin location for address
-  pinLocation: async (taskId, latitude, longitude) => {
-    try {
+    pinLocation: async (taskId, latitude, longitude) => {
       await taskService.pinLocation(taskId, latitude, longitude);
-      // Update the current task to reflect location was pinned
-      const currentTask = get().currentTask;
-      if (currentTask && currentTask.id === taskId) {
-        set({ currentTask: { ...currentTask, has_location: true, location_added_by: 'rider' } });
-      }
-    } catch (error: any) {
-      set({ error: error.message });
-      throw error;
+      set((s) => {
+        const patch = (t: Task) =>
+          t.id === taskId ? { ...t, location: { latitude, longitude }, hasPin: true, pinnedBy: 'rider' } : t;
+        return { activeTasks: s.activeTasks.map(patch), completedTasks: s.completedTasks.map(patch) };
+      });
+    },
+
+    uploadDoorPicture: async (taskId, imageUri) => {
+      const url = await taskService.uploadDoorPicture(taskId, imageUri);
+      set((s) => {
+        const patch = (t: Task) => (t.id === taskId ? { ...t, doorPictureUrl: url } : t);
+        return { activeTasks: s.activeTasks.map(patch), completedTasks: s.completedTasks.map(patch) };
+      });
+      return url;
+    },
+
+    upsertTask: applyTask,
+
+    removeTask: (taskId) =>
+      set((s) => ({
+        activeTasks: s.activeTasks.filter((t) => t.id !== taskId),
+        completedTasks: s.completedTasks.filter((t) => t.id !== taskId),
+      })),
+
+    clearError: () => set({ lastError: null }),
+    reset: () => set({ ...initial }),
+  };
+});
+
+/**
+ * Replay a queued offline action against the live API. Used by the
+ * connectivity watcher in the navigator.
+ */
+export const processQueuedAction = async (action: QueuedAction): Promise<unknown> => {
+  if (action.type === 'update_status') {
+    const status = String(action.payload.status || 'offline');
+    return authService.updateDutyStatus(status === 'available');
+  }
+  if (action.type === 'task_action') {
+    const payload = action.payload as { action?: string; taskId?: string; notes?: string };
+    if (!payload.taskId) throw Object.assign(new Error('Queued task action missing taskId'), { response: { status: 400 } });
+    switch (payload.action) {
+      case 'pickup':
+        return taskService.markPickedUp(payload.taskId, payload.notes);
+      case 'deliver':
+        return taskService.markDelivered(payload.taskId, payload.notes);
+      default:
+        throw Object.assign(new Error(`Unknown queued action: ${payload.action}`), { response: { status: 400 } });
     }
-  },
-
-  // Clear error
-  clearError: () => {
-    set({ error: null });
-  },
-
-  // Refresh all tasks
-  refreshTasks: async () => {
-    await Promise.all([
-      get().fetchActiveTasks(),
-      get().fetchCompletedTasks(),
-      get().fetchTodayStats(),
-    ]);
-  },
-}));
+  }
+  throw Object.assign(new Error(`Unsupported queued action type: ${action.type}`), { response: { status: 400 } });
+};
 
 export default useTaskStore;

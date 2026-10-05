@@ -1,384 +1,152 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, RefreshControl } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '../../store/authStore';
 import { useTaskStore } from '../../store/taskStore';
-import { useSettingsStore } from '../../store/settingsStore';
+import { useDutyStore } from '../../store/dutyStore';
+import { useT, tEnum } from '../../i18n';
 import Button from '../../components/Button';
-import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../../utils/constants';
-import { getInitials, formatCurrency, getRatingColor } from '../../utils/helpers';
+import { ScreenHeader, Card, Badge, StatTile } from '../../components/ui';
+import { colors, radius, spacing, typography } from '../../theme';
+import { formatCurrency, getInitials, getRatingColor } from '../../utils/helpers';
+import { APP_VERSION } from '../../utils/constants';
+import type { RootStackParamList } from '../../types';
 
-interface ProfileScreenProps {
-  navigation: any;
-}
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-const ProfileScreen: React.FC<ProfileScreenProps> = ({ navigation }) => {
-  const { rider, logout } = useAuthStore();
-  const { todayStats } = useTaskStore();
-  const { language } = useSettingsStore();
+const vehicleIcon = (type?: string): keyof typeof MaterialCommunityIcons.glyphMap => {
+  switch (type) {
+    case 'cycle':
+      return 'bicycle';
+    case 'car':
+      return 'car';
+    case 'van':
+      return 'van-utility';
+    default:
+      return 'motorbike';
+  }
+};
+
+const ProfileScreen: React.FC = () => {
+  const { t, language } = useT();
+  const navigation = useNavigation<Nav>();
+  const [refreshing, setRefreshing] = useState(false);
+  const { rider, logout, refreshProfile } = useAuthStore();
+  const myStats = useTaskStore((s) => s.myStats);
+  const isOnDuty = useDutyStore((s) => s.isOnDuty);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refreshProfile();
+    setRefreshing(false);
+  }, [refreshProfile]);
 
   const handleLogout = () => {
-    Alert.alert(
-      language === 'ur' ? 'لاگ آؤٹ' : 'Logout',
-      language === 'ur' ? 'کیا آپ واقعی لاگ آؤٹ کرنا چاہتے ہیں؟' : 'Are you sure you want to logout?',
-      [
-        { text: language === 'ur' ? 'نہیں' : 'No', style: 'cancel' },
-        {
-          text: language === 'ur' ? 'ہاں' : 'Yes',
-          onPress: async () => {
-            try {
-              await logout();
-            } catch (error) {
-              console.error('Logout error:', error);
-            }
-          },
-        },
-      ]
-    );
+    Alert.alert(t('profile.logoutConfirmTitle'), t('profile.logoutConfirmBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('profile.logout'), style: 'destructive', onPress: () => logout().catch(() => {}) },
+    ]);
   };
 
-  const menuItems = [
-    {
-      icon: 'cash',
-      title: language === 'ur' ? 'میری کمائی' : 'My Earnings',
-      subtitle: language === 'ur' ? 'کمائی کی تاریخ دیکھیں' : 'View earnings history',
-      onPress: () => navigation.navigate('Earnings'),
-      color: COLORS.success,
-    },
-    {
-      icon: 'history',
-      title: language === 'ur' ? 'ٹاسک ہسٹری' : 'Task History',
-      subtitle: language === 'ur' ? 'ماضی کے کام دیکھیں' : 'View past tasks',
-      onPress: () => navigation.navigate('Tasks', { screen: 'TasksList' }),
-      color: COLORS.secondary,
-    },
-    {
-      icon: 'cog',
-      title: language === 'ur' ? 'ترتیبات' : 'Settings',
-      subtitle: language === 'ur' ? 'ایپ کی ترتیبات تبدیل کریں' : 'Change app settings',
-      onPress: () => navigation.navigate('Settings'),
-      color: COLORS.gray500,
-    },
-  ];
+  const rating = rider?.rating ?? 0;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Profile Header */}
-        <View style={styles.profileHeader}>
-          <View style={styles.avatarContainer}>
-            {rider?.avatar ? (
-              <Image source={{ uri: rider.avatar }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {getInitials(rider?.name || 'R')}
-                </Text>
+    <View style={styles.container}>
+      <ScreenHeader title={t('profile.title')} />
+      <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />} showsVerticalScrollIndicator={false}>
+        <Card style={styles.identity}>
+          <View style={styles.avatarWrap}>
+            {rider?.avatarUrl ? <Image source={{ uri: rider.avatarUrl }} style={styles.avatar} /> : <View style={styles.avatarFallback}><Text style={styles.avatarText}>{getInitials(rider?.name || 'R')}</Text></View>}
+            <View style={[styles.statusDot, { backgroundColor: isOnDuty ? colors.success : colors.gray400 }]} />
+          </View>
+          <Text style={styles.name}>{rider?.name || t('home.rider')}</Text>
+          <Text style={styles.phone}>{rider?.phone}</Text>
+          <View style={styles.badges}>
+            <Badge label={isOnDuty ? t('profile.statusOnline') : t('profile.statusOffline')} tone={isOnDuty ? 'success' : 'neutral'} icon={isOnDuty ? 'power' : 'power-standby'} />
+            {rider?.rating !== undefined ? (
+              <View style={styles.rating}>
+                <MaterialCommunityIcons name="star" size={16} color={colors.warning} />
+                <Text style={[styles.ratingText, { color: getRatingColor(rating) }]}>{rating.toFixed(1)}</Text>
+                {rider.ratingCount ? <Text style={styles.ratingCount}>{t('profile.ratingCount', { count: rider.ratingCount })}</Text> : null}
               </View>
-            )}
-            <View
-              style={[
-                styles.statusIndicator,
-                {
-                  backgroundColor:
-                    rider?.status === 'online'
-                      ? COLORS.success
-                      : rider?.status === 'busy'
-                      ? COLORS.warning
-                      : COLORS.gray400,
-                },
-              ]}
-            />
+            ) : null}
           </View>
-
-          <Text style={styles.riderName}>{rider?.name}</Text>
-          <Text style={styles.riderPhone}>{rider?.phone}</Text>
-
-          {/* Rating */}
-          <View style={styles.ratingContainer}>
-            <MaterialCommunityIcons name="star" size={18} color={COLORS.accent} />
-            <Text
-              style={[
-                styles.ratingText,
-                { color: getRatingColor(rider?.rating || 0) },
-              ]}
-            >
-              {rider?.rating?.toFixed(1) || '0.0'}
-            </Text>
-          </View>
-
-          {/* Vehicle Info */}
-          {rider?.vehicleType && (
-            <View style={styles.vehicleInfo}>
-              <MaterialCommunityIcons
-                name={
-                  rider.vehicleType === 'bike'
-                    ? 'motorbike'
-                    : rider.vehicleType === 'cycle'
-                    ? 'bicycle'
-                    : 'truck'
-                }
-                size={16}
-                color={COLORS.textSecondary}
-              />
+          {rider?.vehicleType ? (
+            <View style={styles.vehicle}>
+              <MaterialCommunityIcons name={vehicleIcon(rider.vehicleType)} size={18} color={colors.textSecondary} />
               <Text style={styles.vehicleText}>
-                {rider.vehicleType.charAt(0).toUpperCase() + rider.vehicleType.slice(1)}
-                {rider.vehicleNumber && ` - ${rider.vehicleNumber}`}
+                {tEnum(language, 'profile.vehicle', rider.vehicleType)}
+                {rider.vehicleNumber ? `  ·  ${rider.vehicleNumber}` : ''}
               </Text>
             </View>
-          )}
+          ) : null}
+          {rider?.cnic ? (
+            <View style={styles.vehicle}>
+              <MaterialCommunityIcons name="card-account-details-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.vehicleText}>{t('profile.cnic')}  ·  {rider.cnic}</Text>
+            </View>
+          ) : null}
+        </Card>
+
+        <View style={styles.tiles}>
+          <StatTile label={t('profile.totalDeliveries')} value={String(rider?.totalDeliveries ?? 0)} icon="motorbike" tone="primary" />
+          <StatTile label={t('profile.totalEarned')} value={formatCurrency(myStats?.payment.totalEarned ?? rider?.totalEarnings ?? 0)} icon="wallet-outline" tone="success" />
         </View>
 
-        {/* Stats Section */}
-        <View style={styles.statsSection}>
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{todayStats?.totalDeliveries || 0}</Text>
-            <Text style={styles.statLabel}>
-              {language === 'ur' ? 'آج کی ڈیلیوریز' : "Today's Deliveries"}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {formatCurrency(todayStats?.totalEarnings || 0)}
-            </Text>
-            <Text style={styles.statLabel}>
-              {language === 'ur' ? 'آج کی کمائی' : "Today's Earnings"}
-            </Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>{rider?.totalDeliveries || 0}</Text>
-            <Text style={styles.statLabel}>
-              {language === 'ur' ? 'کل ڈیلیوریز' : 'Total Deliveries'}
-            </Text>
-          </View>
-        </View>
+        <Card padded={false} style={styles.menu}>
+          <MenuItem icon="cog-outline" title={t('profile.settings')} subtitle={t('profile.settingsHint')} onPress={() => navigation.navigate('Settings')} />
+          <MenuItem icon="help-circle-outline" title={t('profile.help')} subtitle={t('profile.helpHint')} onPress={() => navigation.navigate('Help')} last />
+        </Card>
 
-        {/* Menu Items */}
-        <View style={styles.menuSection}>
-          {menuItems.map((item, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.menuItem}
-              onPress={item.onPress}
-              activeOpacity={0.8}
-            >
-              <View
-                style={[
-                  styles.menuIconContainer,
-                  { backgroundColor: `${item.color}15` },
-                ]}
-              >
-                <MaterialCommunityIcons
-                  name={item.icon as any}
-                  size={24}
-                  color={item.color}
-                />
-              </View>
-              <View style={styles.menuContent}>
-                <Text style={styles.menuTitle}>{item.title}</Text>
-                <Text style={styles.menuSubtitle}>{item.subtitle}</Text>
-              </View>
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={24}
-                color={COLORS.gray400}
-              />
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        {/* Logout Button */}
-        <View style={styles.logoutSection}>
-          <Button
-            title={language === 'ur' ? 'لاگ آؤٹ' : 'Logout'}
-            onPress={handleLogout}
-            variant="danger"
-            size="large"
-            fullWidth
-            icon="logout"
-          />
-        </View>
-
-        {/* App Version */}
-        <Text style={styles.versionText}>Rider App v1.0.0</Text>
+        <Button title={t('profile.logout')} icon="logout" variant="outline" size="large" fullWidth onPress={handleLogout} style={styles.logout} textStyle={{ color: colors.danger }} />
+        <Text style={styles.version}>{t('common.version', { version: APP_VERSION })}</Text>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
-// Need to import Image
-import { Image } from 'react-native';
+const MenuItem: React.FC<{ icon: keyof typeof MaterialCommunityIcons.glyphMap; title: string; subtitle: string; onPress: () => void; last?: boolean }> = ({ icon, title, subtitle, onPress, last }) => (
+  <TouchableOpacity style={[styles.menuItem, !last && styles.menuItemBorder]} onPress={onPress} activeOpacity={0.8} accessibilityRole="button">
+    <View style={styles.menuIcon}>
+      <MaterialCommunityIcons name={icon} size={22} color={colors.primaryDark} />
+    </View>
+    <View style={styles.flex}>
+      <Text style={styles.menuTitle}>{title}</Text>
+      <Text style={styles.menuSubtitle}>{subtitle}</Text>
+    </View>
+    <MaterialCommunityIcons name="chevron-right" size={24} color={colors.gray400} />
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  scrollContent: {
-    paddingBottom: SPACING.xl,
-  },
-  profileHeader: {
-    alignItems: 'center',
-    padding: SPACING.xl,
-    backgroundColor: COLORS.card,
-  },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: SPACING.md,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: FONT_SIZES.xxxl,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  statusIndicator: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 20,
-    height: 20,
-    borderRadius: BORDER_RADIUS.full,
-    borderWidth: 3,
-    borderColor: COLORS.card,
-  },
-  riderName: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  riderPhone: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.sm,
-    backgroundColor: COLORS.gray50,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  ratingText: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    marginLeft: SPACING.xs,
-  },
-  vehicleInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.sm,
-  },
-  vehicleText: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginLeft: SPACING.xs,
-  },
-  statsSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    marginTop: SPACING.md,
-    marginHorizontal: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    shadowColor: COLORS.gray900,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  statLabel: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: COLORS.border,
-  },
-  menuSection: {
-    marginTop: SPACING.lg,
-    marginHorizontal: SPACING.md,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    marginBottom: SPACING.md,
-    shadowColor: COLORS.gray900,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  menuIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: BORDER_RADIUS.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  menuContent: {
-    flex: 1,
-    marginLeft: SPACING.md,
-  },
-  menuTitle: {
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-  },
-  menuSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-    marginTop: 2,
-  },
-  logoutSection: {
-    marginTop: SPACING.lg,
-    marginHorizontal: SPACING.md,
-  },
-  versionText: {
-    textAlign: 'center',
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textMuted,
-    marginTop: SPACING.xl,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
+  content: { padding: spacing.lg, paddingBottom: spacing.xxl },
+  identity: { alignItems: 'center' },
+  avatarWrap: { marginBottom: spacing.md },
+  avatar: { width: 88, height: 88, borderRadius: 44 },
+  avatarFallback: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: typography.size.display, fontWeight: typography.weight.bold, color: colors.white },
+  statusDot: { position: 'absolute', right: 2, bottom: 2, width: 20, height: 20, borderRadius: 10, borderWidth: 3, borderColor: colors.surface },
+  name: { fontSize: typography.size.xxl, fontWeight: typography.weight.bold, color: colors.text },
+  phone: { fontSize: typography.size.md, color: colors.textSecondary, marginTop: 2 },
+  badges: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
+  rating: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.gray100, paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.pill },
+  ratingText: { fontSize: typography.size.sm, fontWeight: typography.weight.bold },
+  ratingCount: { fontSize: typography.size.xs, color: colors.textMuted },
+  vehicle: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm },
+  vehicleText: { fontSize: typography.size.sm, color: colors.textSecondary },
+  tiles: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  menu: { marginTop: spacing.lg },
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.lg },
+  menuItemBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  menuIcon: { width: 42, height: 42, borderRadius: radius.md, backgroundColor: colors.primaryTint, alignItems: 'center', justifyContent: 'center' },
+  menuTitle: { fontSize: typography.size.md, fontWeight: typography.weight.semibold, color: colors.text },
+  menuSubtitle: { fontSize: typography.size.sm, color: colors.textMuted, marginTop: 2 },
+  logout: { marginTop: spacing.xl, borderColor: colors.dangerSoft },
+  version: { textAlign: 'center', fontSize: typography.size.xs, color: colors.textMuted, marginTop: spacing.lg },
 });
 
 export default ProfileScreen;
