@@ -3,8 +3,10 @@
 import { motion } from 'framer-motion'
 import { FileText, ShoppingBag, Truck, CreditCard, AlertCircle, Gavel } from 'lucide-react'
 import { SupportPhoneLine } from '@/components/ui/SupportContactLinks'
+import { useDeliveryTerms, type DeliveryTerms } from '@/lib/useDeliveryTerms'
 
-const sections = [
+/** Delivery/payment terms quote the live admin settings for the selected city. */
+const buildSections = (t: DeliveryTerms) => [
   {
     icon: ShoppingBag,
     title: 'Orders and Acceptance',
@@ -19,9 +21,9 @@ const sections = [
     icon: Truck,
     title: 'Delivery',
     content: [
-      'We deliver within Gujrat city limits.',
+      `We deliver within the service cities listed on our website (currently selected: ${t.cityName}); addresses outside a city's delivery zone cannot be served.`,
       'Delivery times are estimates and may vary based on conditions.',
-      'Free delivery when your vegetables + fruits subtotal is Rs. 500 or more, or when you choose a free-delivery time slot.',
+      `Free delivery when your vegetables + fruits subtotal is Rs. ${t.freeDeliveryThreshold} or more, or when you choose a free-delivery time slot; otherwise a flat Rs. ${t.baseCharge} delivery charge applies.`,
       'You must be available to receive the order at the specified address.',
     ],
   },
@@ -29,8 +31,8 @@ const sections = [
     icon: CreditCard,
     title: 'Payment',
     content: [
-      'We accept Cash on Delivery (COD) and online payments.',
-      'Payment must be made in full at the time of delivery or checkout.',
+      'We accept Cash on Delivery (COD). Online payment options will be announced when they become available.',
+      'Payment must be made in full to the rider at the time of delivery.',
       'All prices are in Pakistani Rupees (PKR).',
       'Prices include applicable taxes unless stated otherwise.',
     ],
@@ -58,6 +60,7 @@ const sections = [
 ]
 
 export default function TermsPage() {
+  const sections = buildSections(useDeliveryTerms())
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}

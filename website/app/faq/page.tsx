@@ -1,24 +1,45 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Search, HelpCircle } from 'lucide-react'
+import { attaChakkiApi, type AttaCharges } from '@/lib/api'
+import { usePublicConfig } from '@/lib/usePublicConfig'
+import { useDeliveryTerms, listSlots, type DeliveryTerms } from '@/lib/useDeliveryTerms'
 
-const faqCategories = [
+/**
+ * FAQ answers are built from the live delivery settings, time slots and atta
+ * charges for the selected city so they never contradict the checkout.
+ */
+function buildFaqCategories(t: DeliveryTerms, attaEnabled: boolean, atta: AttaCharges | null) {
+  const slotText = t.slots.length
+    ? `In ${t.cityName} we currently offer ${t.slots.length} delivery time slot${t.slots.length === 1 ? '' : 's'}: ${listSlots(t.slots)}.${
+        t.freeSlot ? ` The ${t.freeSlot.window} slot is a free-delivery slot.` : ''
+      } Slots that have already passed for today are hidden at checkout.`
+    : 'Time slots are set per city and shown at checkout. Slots that have already passed for today are hidden.'
+  const attaCost = atta
+    ? `Milling costs Rs. ${atta.millingChargePerKg} per kg${atta.serviceCharge > 0 ? ` plus a Rs. ${atta.serviceCharge} service charge per request` : ''}. Pickup and delivery ${
+        atta.deliveryCharge > 0
+          ? `cost Rs. ${atta.deliveryCharge}${atta.freeDeliveryThresholdKg > 0 ? ` (free for ${atta.freeDeliveryThresholdKg} kg or more)` : ''}`
+          : 'are free'
+      }. The exact total is shown before you confirm a request.`
+    : 'Current charges are shown on the Atta Chakki page before you confirm a request.'
+  return [
   {
     name: 'Orders',
     faqs: [
       {
         question: 'How do I place an order?',
-        answer: 'You can place an order by browsing our products, adding items to your cart, and proceeding to checkout. You will need to provide your delivery address and select a payment method.',
+        answer: 'You can place an order by browsing our products, adding items to your cart, and proceeding to checkout. You will need to provide your delivery address and choose a delivery time slot; payment is Cash on Delivery.',
       },
       {
         question: 'Can I modify or cancel my order?',
-        answer: 'You can modify or cancel your order within 15 minutes of placing it. After that, the order goes into processing and cannot be changed.',
+        answer: 'You can cancel an order from "My Orders" while it is still pending, or within 30 minutes of placing it. Once it is out for delivery it can no longer be cancelled. To change items, cancel and re-order, or contact support.',
       },
       {
         question: 'What is the minimum order value?',
-        answer: 'There is no minimum order value. However, we offer free delivery once your vegetables + fruits subtotal crosses Rs. 500 (or when you pick a free-delivery time slot).',
+        answer: `There is no minimum order value. However, we offer free delivery once your vegetables + fruits subtotal reaches Rs. ${t.freeDeliveryThreshold} (or when you pick a free-delivery time slot).`,
       },
     ],
   },
@@ -27,19 +48,19 @@ const faqCategories = [
     faqs: [
       {
         question: 'What are the delivery time slots?',
-        answer: 'We offer three delivery time slots: 10AM-2PM (Free if ordered before 10AM), 2PM-6PM, and 6PM-9PM.',
+        answer: slotText,
       },
       {
         question: 'How much is the delivery charge?',
-        answer: 'Delivery is FREE when your vegetables + fruits subtotal is Rs. 500 or more, or when you select a free-delivery time slot at checkout. Otherwise a flat delivery charge of Rs. 100 applies — chicken/meat/grocery alone never qualify for free delivery.',
+        answer: `Delivery is FREE when your vegetables + fruits subtotal is Rs. ${t.freeDeliveryThreshold} or more, or when you select a free-delivery time slot at checkout. Otherwise a flat delivery charge of Rs. ${t.baseCharge} applies — chicken/meat/grocery alone never qualify for free delivery.`,
       },
       {
         question: 'Do you deliver to my area?',
-        answer: 'We currently deliver throughout Gujrat. We are expanding to other cities soon.',
+        answer: `We currently deliver within ${t.cityName}. Use the city switcher at the top of the page to see the other cities we serve; your address must be inside the city's delivery zone.`,
       },
       {
         question: 'Can I track my order?',
-        answer: 'Yes! Once your order is out for delivery, you can track it in real-time through our app or website.',
+        answer: 'Yes! Open "My Orders" — every order has a live tracking page, and once a rider is assigned you can follow them and chat with them there.',
       },
     ],
   },
@@ -55,8 +76,8 @@ const faqCategories = [
         answer: 'If you receive a damaged or unsatisfactory product, please contact our support within 24 hours for a replacement or refund.',
       },
       {
-        question: 'Are your products organic?',
-        answer: 'We offer both regular and organic products. Organic products are clearly labeled in our app and website.',
+        question: 'What are the A / B / C quality grades?',
+        answer: 'Many products are offered in up to three quality grades — A (premium), B and C — each priced separately. Pick the grade that suits your budget on the product page; the grade is printed on your order.',
       },
     ],
   },
@@ -73,24 +94,29 @@ const faqCategories = [
       },
     ],
   },
-  {
-    name: 'Atta Chakki Service',
-    faqs: [
-      {
-        question: 'How does the Atta Chakki service work?',
-        answer: 'Simply place a request with the amount of wheat you want ground, and we will pick it up, grind it at our facility, and deliver fresh atta to your doorstep.',
-      },
-      {
-        question: 'What is the minimum order for Atta Chakki?',
-        answer: 'The minimum order for Atta Chakki service is 5 kg of wheat.',
-      },
-      {
-        question: 'How much does Atta Chakki service cost?',
-        answer: 'We charge Rs. 10 per kg for grinding. Pickup and delivery are free within Gujrat.',
-      },
-    ],
-  },
-]
+  ...(attaEnabled
+    ? [
+        {
+          name: 'Atta Chakki Service',
+          faqs: [
+            {
+              question: 'How does the Atta Chakki service work?',
+              answer: 'Place a request with the amount of wheat you want ground and a pickup address. We collect the wheat, mill it, and deliver fresh atta back to your doorstep. You can follow each request under Atta Chakki → My requests.',
+            },
+            {
+              question: 'Is there a minimum quantity for Atta Chakki?',
+              answer: 'There is no fixed minimum — enter the quantity you need (up to 1,000 kg per request).',
+            },
+            {
+              question: 'How much does Atta Chakki service cost?',
+              answer: attaCost,
+            },
+          ],
+        },
+      ]
+    : []),
+  ]
+}
 
 function FAQItem({ question, answer }: { question: string; answer: string }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -127,6 +153,19 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
 export default function FAQPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
+  const terms = useDeliveryTerms()
+  const { config } = usePublicConfig()
+  const { data: atta } = useQuery({
+    queryKey: ['atta-charges'],
+    queryFn: attaChakkiApi.getCharges,
+    enabled: config.atta_chakki_enabled,
+    staleTime: 5 * 60 * 1000,
+  })
+  const faqCategories = useMemo(
+    () => buildFaqCategories(terms, config.atta_chakki_enabled, atta ?? null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- terms is a fresh object each render; key on its fields
+    [terms.cityName, terms.freeDeliveryThreshold, terms.baseCharge, terms.slots, config.atta_chakki_enabled, atta]
+  )
 
   const filteredCategories = faqCategories
     .map((category) => ({

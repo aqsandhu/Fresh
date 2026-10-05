@@ -12,7 +12,12 @@ import {
   type ReviewTargetType,
 } from '@/services/feedback.service';
 import { useCityContext } from '@/context/CityContext';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 import { formatDateTime } from '@/utils/formatters';
+
+/** Backend accepts review moderation for either of these codes. */
+const REVIEW_MANAGE_CODES = ['reviews.manage', 'orders.update'];
 
 const TABS: { value: ReviewTargetType | ''; label: string }[] = [
   { value: '', label: 'All' },
@@ -99,6 +104,8 @@ function targetTitle(r: AdminReview): string {
 
 function ReviewCard({ review }: { review: AdminReview }) {
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  const canManage = hasPermission(user?.permissions, REVIEW_MANAGE_CODES);
   const [reply, setReply] = useState(review.adminReply || '');
   const [showReply, setShowReply] = useState(false);
 
@@ -146,7 +153,8 @@ function ReviewCard({ review }: { review: AdminReview }) {
           variant="outline"
           size="sm"
           onClick={() => mutation.mutate({ isPublished: !review.isPublished })}
-          disabled={mutation.isPending}
+          disabled={mutation.isPending || !canManage}
+          title={canManage ? undefined : 'You do not have permission to moderate reviews'}
         >
           {review.isPublished ? (
             <>
@@ -158,7 +166,7 @@ function ReviewCard({ review }: { review: AdminReview }) {
             </>
           )}
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setShowReply((v) => !v)}>
+        <Button variant="outline" size="sm" disabled={!canManage} title={canManage ? undefined : 'No permission'} onClick={() => setShowReply((v) => !v)}>
           <MessageSquare className="w-4 h-4 mr-1" /> {review.adminReply ? 'Edit reply' : 'Reply'}
         </Button>
       </div>

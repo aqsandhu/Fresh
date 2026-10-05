@@ -73,13 +73,20 @@ export interface RedemptionsResult {
   redemptions: CouponRedemption[];
   totalDiscount: number;
   count: number;
+  page: number;
+  totalPages: number;
 }
+
+export const REDEMPTIONS_PAGE_SIZE = 50;
 
 // The api layer converts camelCase <-> snake_case both ways, so we work in
 // camelCase here and the backend receives snake_case.
 export const couponService = {
-  listRedemptions: async (filters: RedemptionFilters = {}): Promise<RedemptionsResult> => {
-    const params: Record<string, string> = {};
+  listRedemptions: async (filters: RedemptionFilters = {}, page = 1): Promise<RedemptionsResult> => {
+    const params: Record<string, string> = {
+      page: String(page),
+      limit: String(REDEMPTIONS_PAGE_SIZE),
+    };
     if (filters.dateFrom) params.dateFrom = filters.dateFrom;
     if (filters.dateTo) params.dateTo = filters.dateTo;
     if (filters.discountType) params.discountType = filters.discountType;
@@ -93,6 +100,8 @@ export const couponService = {
       redemptions: data.redemptions || [],
       totalDiscount: Number(data.totalDiscount) || 0,
       count: Number(data.count) || 0,
+      page: Number(data.page) || page,
+      totalPages: Math.max(1, Number(data.totalPages) || 1),
     };
   },
 

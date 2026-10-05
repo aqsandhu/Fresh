@@ -213,7 +213,9 @@ function SendStockModal({ ocp, onClose }: { ocp: Ocp; onClose: () => void }) {
   const debouncedSearch = useDebounce(search.trim());
   const { data, isLoading } = useQuery({
     queryKey: ['products', 'ocp-stock', debouncedSearch],
-    queryFn: () => productService.getProducts({ limit: 500, categoryId: undefined, search: debouncedSearch || undefined }),
+    // The API caps a page at 100; asking for 500 silently returned 100 and hid
+    // the rest. Search narrows the list, so 100 is the honest page size.
+    queryFn: () => productService.getProducts({ limit: 100, categoryId: undefined, search: debouncedSearch || undefined }),
   });
   const products = useMemo(() => data?.products || [], [data]);
 

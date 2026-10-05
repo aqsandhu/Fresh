@@ -14,7 +14,12 @@ import {
   type ComplaintStatus,
 } from '@/services/feedback.service';
 import { useCityContext } from '@/context/CityContext';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 import { formatDateTime, resolveImageUrl } from '@/utils/formatters';
+
+/** Backend accepts complaint mutations for either of these codes. */
+const COMPLAINT_MANAGE_CODES = ['complaints.manage', 'orders.update'];
 
 const money = (n: number) => `Rs. ${(Math.round((n + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
 
@@ -119,6 +124,8 @@ function ComplaintCard({
   onToggle: () => void;
 }) {
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  const canManage = hasPermission(user?.permissions, COMPLAINT_MANAGE_CODES);
   const [response, setResponse] = useState(complaint.adminResponse || '');
   const [status, setStatus] = useState<ComplaintStatus>(complaint.status);
 
@@ -208,7 +215,8 @@ function ComplaintCard({
               onClick={() =>
                 mutation.mutate({ status, adminResponse: response.trim() || null })
               }
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || !canManage}
+              title={canManage ? undefined : 'You do not have permission to update complaints'}
             >
               {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
             </Button>
@@ -230,6 +238,8 @@ function ComplaintCard({
 function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  const canManage = hasPermission(user?.permissions, COMPLAINT_MANAGE_CODES);
   const [refundOpen, setRefundOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [source, setSource] = useState<'admin' | 'ocp'>('admin');
@@ -261,10 +271,10 @@ function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) 
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" disabled={!order || order.refundable <= 0} onClick={() => { setAmount(String(order?.refundable ?? '')); setRefundOpen(true); }}>
+        <Button size="sm" variant="outline" disabled={!canManage || !order || order.refundable <= 0} title={canManage ? undefined : 'No permission'} onClick={() => { setAmount(String(order?.refundable ?? '')); setRefundOpen(true); }}>
           <Wallet className="w-4 h-4 mr-1 inline" /> Refund
         </Button>
-        <Button size="sm" variant="outline" onClick={() => navigate(`/admin/whatsapp-orders?replacementFor=${complaint.orderId}&complaintId=${complaint.id}`)}>
+        <Button size="sm" variant="outline" disabled={!canManage} title={canManage ? undefined : 'No permission'} onClick={() => navigate(`/admin/whatsapp-orders?replacementFor=${complaint.orderId}&complaintId=${complaint.id}`)}>
           <PackagePlus className="w-4 h-4 mr-1 inline" /> Send replacement
         </Button>
       </div>

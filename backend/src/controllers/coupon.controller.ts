@@ -14,6 +14,7 @@ import {
   errorResponse,
 } from '../utils/response';
 import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
+import { parsePagination } from '../utils/validators';
 import { buildCouponSummary, CouponRow, DiscountType, TriggerType } from '../utils/coupons';
 import { evaluateAutoCoupons, hasUserCouponsTable } from '../utils/autoCoupons';
 import logger from '../utils/logger';
@@ -182,6 +183,10 @@ export const listCouponRedemptions = asyncHandler(async (req: Request, res: Resp
 
   const whereSql = where.join(' AND ');
 
+  // Paged (was a hard LIMIT 1000 with no way to see older redemptions).
+  const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, { defaultLimit: 50 });
+  const rowParams = [...params, limit, offset];
+
   const [rowsResult, totalResult] = await Promise.all([
     query(
       `SELECT cr.id, cr.discount_amount, cr.created_at,
@@ -196,8 +201,8 @@ export const listCouponRedemptions = asyncHandler(async (req: Request, res: Resp
          LEFT JOIN orders o ON o.id = cr.order_id
         WHERE ${whereSql}
         ORDER BY cr.created_at DESC
-        LIMIT 1000`,
-      params
+        LIMIT $${rowParams.length - 1} OFFSET $${rowParams.length}`,
+      rowParams
     ),
     query(
       `SELECT COALESCE(SUM(cr.discount_amount), 0) AS total_discount, COUNT(*) AS count
@@ -214,6 +219,9 @@ export const listCouponRedemptions = asyncHandler(async (req: Request, res: Resp
       redemptions: rowsResult.rows,
       total_discount: parseFloat(totalResult.rows[0]?.total_discount || '0'),
       count: parseInt(totalResult.rows[0]?.count || '0', 10),
+      page,
+      limit,
+      total_pages: Math.max(1, Math.ceil(parseInt(totalResult.rows[0]?.count || '0', 10) / limit)),
     },
     'Coupon redemptions retrieved'
   );

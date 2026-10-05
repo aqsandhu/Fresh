@@ -99,8 +99,11 @@ export default function WishlistPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               Your Wishlist is Empty
             </h2>
-            <p className="text-gray-600 mb-8 max-w-md mx-auto">
+            <p className="text-gray-600 mb-2 max-w-md mx-auto">
               Save your favorite items to your wishlist and easily find them later.
+            </p>
+            <p className="text-gray-400 text-sm mb-8 max-w-md mx-auto">
+              Your wishlist is saved on this device only — it is not synced to your account.
             </p>
             <Link href="/">
               <Button size="lg">
@@ -118,9 +121,12 @@ export default function WishlistPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-            My Wishlist ({wishlistItems.length})
-          </h1>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
+              My Wishlist ({wishlistItems.length})
+            </h1>
+            <p className="text-sm text-gray-500 mt-1">Saved on this device only — not synced to your account.</p>
+          </div>
           <button
             onClick={clearWishlist}
             className="text-red-600 hover:text-red-700 flex items-center gap-2"

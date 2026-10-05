@@ -41,10 +41,12 @@ export const CouponsUsed: React.FC = () => {
     queryFn: () => couponService.list(),
   });
 
+  const [page, setPage] = useState(1);
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['coupon-redemptions', selectedCityId, filters],
-    queryFn: () => couponService.listRedemptions(filters),
+    queryKey: ['coupon-redemptions', selectedCityId, filters, page],
+    queryFn: () => couponService.listRedemptions(filters, page),
   });
+  const totalPages = data?.totalPages ?? 1;
 
   const redemptions = data?.redemptions ?? [];
   const totalDiscount = data?.totalDiscount ?? 0;
@@ -59,11 +61,15 @@ export const CouponsUsed: React.FC = () => {
     [coupons]
   );
 
-  const set = <K extends keyof RedemptionFilters>(key: K, value: RedemptionFilters[K]) =>
+  const set = <K extends keyof RedemptionFilters>(key: K, value: RedemptionFilters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
+    setPage(1);
+  };
 
-  const reset = () =>
+  const reset = () => {
     setFilters({ dateFrom: '', dateTo: '', discountType: '', couponId: '' });
+    setPage(1);
+  };
 
   const hasFilters = Boolean(
     filters.dateFrom || filters.dateTo || filters.discountType || filters.couponId
@@ -204,6 +210,32 @@ export const CouponsUsed: React.FC = () => {
             </table>
             {isFetching && (
               <p className="text-xs text-gray-400 mt-3 text-center">Updating…</p>
+            )}
+            {totalPages > 1 && (
+              <div className="pt-4 mt-2 border-t flex items-center justify-between">
+                <span className="text-sm text-gray-500">
+                  Showing {redemptions.length} of {count} redemptions
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => p - 1)}
+                    className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-gray-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-3 py-1 text-sm">
+                    Page {page} of {totalPages}
+                  </span>
+                  <button
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                    className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-gray-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )}

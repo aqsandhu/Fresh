@@ -12,55 +12,47 @@ import {
   Phone
 } from 'lucide-react'
 import Link from 'next/link'
+import { useDeliveryTerms, listSlots, type DeliveryTerms } from '@/lib/useDeliveryTerms'
 
-const deliveryInfo = [
-  {
-    icon: MapPin,
-    title: 'Delivery Areas',
-    description: 'We currently deliver to all areas within Gujrat city limits. Enter your address at checkout to confirm delivery availability.',
-  },
-  {
-    icon: Clock,
-    title: 'Delivery Time Slots',
-    description: 'Choose from three convenient time slots: Morning (9AM-12PM), Afternoon (12PM-3PM), and Evening (3PM-6PM).',
-  },
-  {
-    icon: CreditCard,
-    title: 'Delivery Charges',
-    description: 'FREE delivery when your vegetables + fruits subtotal is Rs. 500+ or when you pick a free-delivery time slot. Otherwise a flat Rs. 100 delivery charge applies.',
-  },
-  {
-    icon: Package,
-    title: 'Order Processing',
-    description: 'Orders placed before 10AM are eligible for same-day delivery in the morning slot. All other orders are delivered next day.',
-  },
-]
+/** Everything quoted here comes from the admin settings + live slot table. */
+function buildDeliveryInfo(t: DeliveryTerms) {
+  return [
+    {
+      icon: MapPin,
+      title: 'Delivery Areas',
+      description: `We currently deliver within ${t.cityName}. Pin your address at checkout to confirm it is inside the delivery zone; use the city switcher at the top of the page for other cities.`,
+    },
+    {
+      icon: Clock,
+      title: 'Delivery Time Slots',
+      description: t.slots.length
+        ? `Choose from ${t.slots.length} slot${t.slots.length === 1 ? '' : 's'}: ${listSlots(t.slots)}.`
+        : 'Time slots are configured per city and shown at checkout.',
+    },
+    {
+      icon: CreditCard,
+      title: 'Delivery Charges',
+      description: `FREE delivery when your vegetables + fruits subtotal is Rs. ${t.freeDeliveryThreshold}+ or when you pick a free-delivery time slot. Otherwise a flat Rs. ${t.baseCharge} delivery charge applies.`,
+    },
+    {
+      icon: Package,
+      title: 'Order Processing',
+      description: `Each slot closes for same-day delivery once ${t.slotCutoffPercent}% of its window has passed; after that the next available slot is offered at checkout.`,
+    },
+  ]
+}
 
-const timeSlots = [
-  {
-    slot: '10AM - 2PM',
-    label: 'Morning',
-    charge: 'FREE',
-    condition: 'If ordered before 10AM',
-    color: 'green',
-  },
-  {
-    slot: '2PM - 6PM',
-    label: 'Afternoon',
-    charge: 'Rs. 100',
-    condition: 'Free with Rs. 500+ vegetables/fruits',
-    color: 'blue',
-  },
-  {
-    slot: '6PM - 9PM',
-    label: 'Evening',
-    charge: 'Rs. 100',
-    condition: 'Free with Rs. 500+ vegetables/fruits',
-    color: 'purple',
-  },
+// Static class names so Tailwind keeps them (template-built names are purged).
+const SLOT_PALETTE = [
+  { border: 'border-green-200', bg: 'bg-green-100', text: 'text-green-600' },
+  { border: 'border-blue-200', bg: 'bg-blue-100', text: 'text-blue-600' },
+  { border: 'border-purple-200', bg: 'bg-purple-100', text: 'text-purple-600' },
+  { border: 'border-amber-200', bg: 'bg-amber-100', text: 'text-amber-600' },
 ]
 
 export default function ShippingPage() {
+  const terms = useDeliveryTerms()
+  const deliveryInfo = buildDeliveryInfo(terms)
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
@@ -116,22 +108,36 @@ export default function ShippingPage() {
             <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">
               Delivery Time Slots
             </h2>
-            <div className="grid md:grid-cols-3 gap-6">
-              {timeSlots.map((slot, index) => (
-                <div
-                  key={slot.slot}
-                  className={`border-2 border-${slot.color}-200 rounded-xl p-6 text-center`}
-                >
-                  <div className={`w-12 h-12 bg-${slot.color}-100 rounded-full flex items-center justify-center mx-auto mb-4`}>
-                    <Clock className={`w-6 h-6 text-${slot.color}-600`} />
-                  </div>
-                  <h3 className="font-semibold text-gray-900 mb-1">{slot.label}</h3>
-                  <p className="text-2xl font-bold text-gray-900 mb-2">{slot.slot}</p>
-                  <p className={`text-${slot.color}-600 font-medium mb-1`}>{slot.charge}</p>
-                  <p className="text-gray-500 text-sm">{slot.condition}</p>
-                </div>
-              ))}
-            </div>
+            {terms.slots.length === 0 ? (
+              <p className="text-center text-gray-500">
+                {terms.isLoading
+                  ? 'Loading time slots…'
+                  : `No delivery slots are configured for ${terms.cityName} right now. Available slots always appear at checkout.`}
+              </p>
+            ) : (
+              <div className="grid md:grid-cols-3 gap-6">
+                {terms.slots.map((slot, index) => {
+                  const c = SLOT_PALETTE[index % SLOT_PALETTE.length]
+                  return (
+                    <div key={slot.id} className={`border-2 ${c.border} rounded-xl p-6 text-center`}>
+                      <div className={`w-12 h-12 ${c.bg} rounded-full flex items-center justify-center mx-auto mb-4`}>
+                        <Clock className={`w-6 h-6 ${c.text}`} />
+                      </div>
+                      <h3 className="font-semibold text-gray-900 mb-1">{slot.name}</h3>
+                      <p className="text-2xl font-bold text-gray-900 mb-2">{slot.window}</p>
+                      <p className={`${c.text} font-medium mb-1`}>
+                        {slot.isFreeDelivery ? 'FREE delivery slot' : `Rs. ${terms.baseCharge} delivery`}
+                      </p>
+                      <p className="text-gray-500 text-sm">
+                        {slot.isFreeDelivery
+                          ? 'No delivery charge in this slot'
+                          : `Free with Rs. ${terms.freeDeliveryThreshold}+ vegetables/fruits`}
+                      </p>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </motion.div>
 
           {/* Delivery Process */}
@@ -179,14 +185,28 @@ export default function ShippingPage() {
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
                   <CheckCircle className="w-6 h-6 text-green-600" />
                 </div>
-                <h2 className="text-xl font-bold text-gray-900">Express Delivery</h2>
+                <h2 className="text-xl font-bold text-gray-900">Urgent Delivery</h2>
               </div>
-              <p className="text-gray-600 mb-4">
-                Need your order urgently? We offer express delivery within 2 hours for select areas.
-              </p>
-              <p className="text-gray-500 text-sm">
-                Additional charges apply. Contact us for availability.
-              </p>
+              {terms.urgentEnabled ? (
+                <>
+                  <p className="text-gray-600 mb-4">
+                    Need it now? Pick &ldquo;Urgent delivery&rdquo; at checkout instead of a time slot
+                    {terms.urgentEta ? ` — estimated arrival ${terms.urgentEta}` : ''}.
+                  </p>
+                  <p className="text-gray-500 text-sm">
+                    Urgent delivery charge: Rs. {terms.urgentCharge} (free-delivery rules do not apply).
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-gray-600 mb-4">
+                    Urgent (on-demand) delivery is not available in {terms.cityName} at the moment.
+                  </p>
+                  <p className="text-gray-500 text-sm">
+                    Choose the earliest open time slot at checkout for the fastest delivery.
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="bg-white rounded-2xl p-8 shadow-sm">

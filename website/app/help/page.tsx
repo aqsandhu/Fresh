@@ -15,23 +15,34 @@ import {
   Mail
 } from 'lucide-react'
 import Link from 'next/link'
+import { useDeliveryTerms, listSlots, type DeliveryTerms } from '@/lib/useDeliveryTerms'
 
-const faqCategories = [
+/**
+ * Help copy is built from the live delivery settings + time slots for the
+ * selected city, so it can never contradict the checkout.
+ */
+function buildFaqCategories(t: DeliveryTerms) {
+  const slotText = t.slots.length
+    ? `In ${t.cityName} we currently offer ${t.slots.length} delivery time slot${t.slots.length === 1 ? '' : 's'}: ${listSlots(t.slots)}.${
+        t.freeSlot ? ` The ${t.freeSlot.window} slot is a free-delivery slot.` : ''
+      } Slots that have already passed for today are hidden at checkout.`
+    : 'Time slots are set per city and shown at checkout. Slots that have already passed for today are hidden.'
+  return [
   {
     icon: Package,
     title: 'Orders',
     faqs: [
       {
         question: 'How do I place an order?',
-        answer: 'Browse our products, add items to your cart, and proceed to checkout. You can pay via Cash on Delivery or online payment methods.',
+        answer: 'Browse our products, add items to your cart, and proceed to checkout. Payment is Cash on Delivery — you pay the rider when your order arrives.',
       },
       {
-        question: 'Can I modify my order after placing it?',
-        answer: 'Orders can be modified within 30 minutes of placing them. Please contact our customer support for assistance.',
+        question: 'Can I modify or cancel my order after placing it?',
+        answer: 'You can cancel an order from "My Orders" while it is still pending, or within 30 minutes of placing it. Once it is out for delivery it can no longer be cancelled. To change items, cancel and re-order, or contact support.',
       },
       {
         question: 'How do I track my order?',
-        answer: 'You can track your order by going to "My Orders" in your profile or using the tracking link sent via SMS.',
+        answer: 'Open "My Orders" in your profile — every order has a live tracking page, and you can chat with the rider once one is assigned.',
       },
     ],
   },
@@ -41,15 +52,15 @@ const faqCategories = [
     faqs: [
       {
         question: 'What are the delivery charges?',
-        answer: 'Delivery is FREE when your vegetables + fruits subtotal is Rs. 500 or more, or when you choose a free-delivery time slot at checkout. Otherwise a flat Rs. 100 delivery charge applies.',
+        answer: `Delivery is FREE when your vegetables + fruits subtotal is Rs. ${t.freeDeliveryThreshold} or more, or when you choose a free-delivery time slot at checkout. Otherwise a flat Rs. ${t.baseCharge} delivery charge applies.`,
       },
       {
         question: 'What are the delivery time slots?',
-        answer: 'We offer three time slots: 10AM-2PM (FREE if ordered before 10AM), 2PM-6PM, and 6PM-9PM.',
+        answer: slotText,
       },
       {
         question: 'Which areas do you deliver to?',
-        answer: 'We currently deliver to all areas within Gujrat city limits.',
+        answer: `We currently deliver within ${t.cityName}. Use the city switcher at the top of the page to see the other cities we serve.`,
       },
     ],
   },
@@ -59,11 +70,11 @@ const faqCategories = [
     faqs: [
       {
         question: 'What payment methods do you accept?',
-        answer: 'We accept Cash on Delivery (COD), credit/debit cards, and mobile wallet payments.',
+        answer: 'We currently accept Cash on Delivery (COD) only. Online payment options will be announced when they are available.',
       },
       {
         question: 'Is my payment information secure?',
-        answer: 'Yes, all payments are processed through secure, PCI-compliant payment gateways.',
+        answer: 'We never ask for card or wallet details — you simply pay the rider in cash when your order arrives.',
       },
       {
         question: 'Can I get a refund?',
@@ -80,8 +91,8 @@ const faqCategories = [
         answer: 'Click on "Login/Register" and follow the simple registration process using your phone number.',
       },
       {
-        question: 'How do I reset my password?',
-        answer: 'Go to the login page and click "Forgot Password" to receive a reset link via SMS.',
+        question: 'I forgot my PIN — how do I sign in?',
+        answer: 'There is no password. You sign in with your phone number and a one-time code (OTP), and can set a 4-digit PIN for faster sign-in. If you forget the PIN, tap "Forgot PIN? Sign in with OTP" on the login page and set a new PIN.',
       },
       {
         question: 'Can I have multiple delivery addresses?',
@@ -89,7 +100,8 @@ const faqCategories = [
       },
     ],
   },
-]
+  ]
+}
 
 function FAQItem({ question, answer }: { question: string; answer: string }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -124,6 +136,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
 }
 
 export default function HelpPage() {
+  const faqCategories = buildFaqCategories(useDeliveryTerms())
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}

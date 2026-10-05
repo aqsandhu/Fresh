@@ -58,10 +58,21 @@ describe('couponService', () => {
       data: { redemptions: [{ id: 'r1' }], totalDiscount: '150.5', count: '1' },
     });
 
-    const result = await couponService.listRedemptions({ dateFrom: '2026-07-01' });
+    const result = await couponService.listRedemptions({ dateFrom: '2026-07-01' }, 2);
 
-    expect(mockApi.get).toHaveBeenCalledWith('/admin/coupons/redemptions', { dateFrom: '2026-07-01' });
-    expect(result).toEqual({ redemptions: [{ id: 'r1' }], totalDiscount: 150.5, count: 1 });
+    // Always paged (50/page) so the report can walk past the old 1000-row cap.
+    expect(mockApi.get).toHaveBeenCalledWith('/admin/coupons/redemptions', {
+      dateFrom: '2026-07-01',
+      page: '2',
+      limit: '50',
+    });
+    expect(result).toEqual({
+      redemptions: [{ id: 'r1' }],
+      totalDiscount: 150.5,
+      count: 1,
+      page: 2, // backend omitted page → falls back to the requested one
+      totalPages: 1,
+    });
   });
 
   it('listRedemptions returns safe defaults when the payload is empty', async () => {
@@ -71,6 +82,8 @@ describe('couponService', () => {
       redemptions: [],
       totalDiscount: 0,
       count: 0,
+      page: 1,
+      totalPages: 1,
     });
   });
 });

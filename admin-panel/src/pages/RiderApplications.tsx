@@ -12,6 +12,11 @@ import {
   type WorkAsRiderContent,
 } from '@/services/riderApplication.service';
 import { formatDateTime } from '@/utils/formatters';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
+
+/** Backend accepts application / page-content mutations for either code. */
+const RIDER_APP_MANAGE_CODES = ['rider_applications.manage', 'riders.manage'];
 
 const STATUS_TABS = [
   { value: '', label: 'All' },
@@ -88,6 +93,8 @@ export const RiderApplications: React.FC = () => {
 
 function ContentEditor() {
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  const canManage = hasPermission(user?.permissions, RIDER_APP_MANAGE_CODES);
   const [content, setContent] = useState<WorkAsRiderContent>({ intro: '', benefits: '', hours: '', terms: '' });
   const [open, setOpen] = useState(false);
 
@@ -131,7 +138,7 @@ function ContentEditor() {
           {field('Benefits', 'benefits', 4, 'One per line')}
           {field('Working hours', 'hours', 2)}
           {field('Terms & conditions', 'terms', 4, 'One per line')}
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !canManage} title={canManage ? undefined : 'No permission'}>
             {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4 mr-1" /> Save content</>}
           </Button>
         </div>
@@ -142,6 +149,8 @@ function ContentEditor() {
 
 function ApplicationCard({ app }: { app: RiderApplication }) {
   const queryClient = useQueryClient();
+  const { user } = useAuthContext();
+  const canManage = hasPermission(user?.permissions, RIDER_APP_MANAGE_CODES);
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState(app.status);
   const [notes, setNotes] = useState(app.adminNotes || '');
@@ -201,7 +210,7 @@ function ApplicationCard({ app }: { app: RiderApplication }) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
             />
           </div>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !canManage} title={canManage ? undefined : 'No permission'}>
             {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
           </Button>
         </div>

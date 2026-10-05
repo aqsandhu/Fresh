@@ -10,12 +10,15 @@ import {
   CheckCircle,
   Heart
 } from 'lucide-react'
+import { useDeliveryTerms } from '@/lib/useDeliveryTerms'
 
+// Only claims we can stand behind — no invented customer counts or delivery
+// averages (the old "30min avg delivery" contradicted the time-slot model).
 const stats = [
-  { value: '50K+', label: 'Happy Customers' },
-  { value: '100+', label: 'Products' },
-  { value: '24/7', label: 'Support' },
-  { value: '30min', label: 'Avg Delivery' },
+  { value: 'Daily', label: 'Fresh Sourcing' },
+  { value: 'A/B/C', label: 'Quality Grades' },
+  { value: 'COD', label: 'Pay on Delivery' },
+  { value: 'Slots', label: 'Pick Your Time' },
 ]
 
 const values = [
@@ -42,6 +45,7 @@ const values = [
 ]
 
 export default function AboutPage() {
+  const terms = useDeliveryTerms()
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
@@ -193,10 +197,10 @@ export default function AboutPage() {
                 {[
                   'Fresh products sourced directly from farms',
                   'Same-day delivery with flexible time slots',
-                  'Free delivery on Rs. 500+ vegetables/fruits or free time slots',
+                  `Free delivery on Rs. ${terms.freeDeliveryThreshold}+ vegetables/fruits or free time slots`,
                   'Easy returns and refunds',
-                  '24/7 customer support',
-                  'Secure payment options',
+                  'Customer support on WhatsApp and phone',
+                  'Cash on Delivery — pay when your order arrives',
                 ].map((item, index) => (
                   <div key={index} className="flex items-center gap-3">
                     <CheckCircle className="w-5 h-5 text-primary-600 flex-shrink-0" />
