@@ -83,6 +83,106 @@ export function notifyRiderTasksCancelled(
   }
 }
 
+export type AttaTaskType = 'atta_pickup' | 'atta_delivery';
+
+/**
+ * Create the rider_tasks row for an Atta Chakki pickup/delivery assignment
+ * (admin sets pickup_rider_id / delivery_rider_id). Any previous active task of
+ * the same type on the request is cancelled first (reassignment). Returns the
+ * new task id + the rider's user id so the caller can notify after commit.
+ */
+export async function createAttaRiderTask(
+  client: PoolClient,
+  attaRequestId: string,
+  riderId: string,
+  taskType: AttaTaskType
+): Promise<{ taskId: string; riderUserId: string | null; displaced: CancelledRiderTask[] }> {
+  const displacedRes = await client.query(
+    `UPDATE rider_tasks rt
+        SET status = 'cancelled', completed_at = NOW(), notes = COALESCE(rt.notes, 'Reassigned by admin'), updated_at = NOW()
+       FROM riders r
+      WHERE rt.rider_id = r.id
+        AND rt.atta_request_id = $1
+        AND rt.task_type = $2
+        AND rt.status IN ('assigned', 'in_progress')
+        AND rt.rider_id <> $3
+      RETURNING rt.id AS task_id, rt.rider_id, r.user_id AS rider_user_id`,
+    [attaRequestId, taskType, riderId]
+  );
+  const displaced = displacedRes.rows.map((row) => ({
+    taskId: row.task_id,
+    riderId: row.rider_id,
+    riderUserId: row.rider_user_id ?? null,
+  }));
+
+  // Same rider already holds an active task of this type → keep it.
+  const existing = await client.query(
+    `SELECT id FROM rider_tasks
+      WHERE atta_request_id = $1 AND task_type = $2 AND rider_id = $3 AND status IN ('assigned', 'in_progress')
+      LIMIT 1`,
+    [attaRequestId, taskType, riderId]
+  );
+  const riderUser = await client.query('SELECT user_id FROM riders WHERE id = $1', [riderId]);
+  const riderUserId: string | null = riderUser.rows[0]?.user_id ?? null;
+  if (existing.rows.length > 0) {
+    return { taskId: existing.rows[0].id, riderUserId, displaced };
+  }
+
+  // Customer's address is the pickup point (wheat) and the delivery point (flour).
+  const addr = await client.query(
+    `SELECT a.written_address, ST_X(a.location::geometry) AS lng, ST_Y(a.location::geometry) AS lat
+       FROM atta_requests ar
+       LEFT JOIN addresses a ON a.id = ar.address_id
+      WHERE ar.id = $1`,
+    [attaRequestId]
+  );
+  const address = addr.rows[0]?.written_address ?? null;
+  const lng = addr.rows[0]?.lng ?? null;
+  const lat = addr.rows[0]?.lat ?? null;
+  const locationSql = lng !== null && lat !== null ? 'ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography' : 'NULL';
+  const params: unknown[] = [riderId, taskType, attaRequestId, address];
+  if (lng !== null && lat !== null) params.push(lng, lat);
+
+  const inserted = await client.query(
+    `INSERT INTO rider_tasks (rider_id, task_type, atta_request_id, status, assigned_at,
+                              pickup_address, delivery_address, pickup_location, delivery_location)
+     VALUES ($1, $2, $3, 'assigned', NOW(),
+             CASE WHEN $2 = 'atta_pickup' THEN $4 ELSE NULL END,
+             CASE WHEN $2 = 'atta_delivery' THEN $4 ELSE NULL END,
+             CASE WHEN $2 = 'atta_pickup' THEN ${locationSql} ELSE NULL END,
+             CASE WHEN $2 = 'atta_delivery' THEN ${locationSql} ELSE NULL END)
+     RETURNING id`,
+    params
+  );
+  await client.query("UPDATE riders SET status = 'busy', updated_at = NOW() WHERE id = $1 AND status = 'available'", [riderId]);
+  return { taskId: inserted.rows[0].id, riderUserId, displaced };
+}
+
+/** Socket + push for a new Atta Chakki task. Call AFTER commit. */
+export function notifyAttaAssignment(
+  riderUserId: string | null,
+  request: { id: string; request_number?: string | null },
+  taskType: AttaTaskType,
+  taskId: string
+): void {
+  if (!riderUserId) return;
+  const label = taskType === 'atta_pickup' ? 'Atta pickup' : 'Atta delivery';
+  const payload = {
+    taskId,
+    attaRequestId: request.id,
+    orderNumber: request.request_number ?? null,
+    taskType,
+    message: `${label}: request #${request.request_number ?? ''}`,
+  };
+  emitToUser(riderUserId, 'rider:new_assignment', payload);
+  sendExpoPushToUsers([riderUserId], {
+    title: `New ${label.toLowerCase()} assigned`,
+    body: `Request #${request.request_number ?? ''} is ready for you.`,
+    data: { type: 'new_task', ...payload },
+    channelId: 'new-task',
+  }).catch(() => {});
+}
+
 /** Push for a brand-new assignment (socket emit stays in assignRiderToOrder). */
 export function pushNewAssignment(
   riderUserId: string | null | undefined,

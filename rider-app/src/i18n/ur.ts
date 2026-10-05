@@ -212,6 +212,9 @@ const ur: Record<TranslationKey, string> = {
 
   'action.pickedUp': 'اٹھا لیا',
   'action.delivered': 'پہنچا دیا',
+  'action.droppedAtMill': 'چکی پر پہنچا دیا',
+  'action.flourCollected': 'آٹا لے لیا',
+  'action.wheatCollected': 'گندم لے لی',
   'action.reportProblem': 'مسئلہ رپورٹ کریں',
   'action.completedAt': 'مکمل {when}',
   'action.failedAt': 'ناکام {when}',

@@ -221,6 +221,9 @@ const en = {
   // Actions
   'action.pickedUp': 'Picked up',
   'action.delivered': 'Delivered',
+  'action.droppedAtMill': 'Dropped at mill',
+  'action.flourCollected': 'Flour collected',
+  'action.wheatCollected': 'Wheat collected',
   'action.reportProblem': 'Report a problem',
   'action.completedAt': 'Completed {when}',
   'action.failedAt': 'Marked failed {when}',

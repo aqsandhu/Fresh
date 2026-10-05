@@ -11,6 +11,7 @@ import { emitOrderUpdate, emitToUser } from '../config/socket';
 import logger from './logger';
 import { isValidOrderTransition } from './orderStatus';
 import { cancelActiveRiderTasks, notifyRiderTasksCancelled, pushNewAssignment } from './riderTaskEvents';
+import { sendExpoPushToUsers } from './expoPush';
 
 export interface AssignRiderResult {
   order: any;
@@ -115,6 +116,11 @@ export async function assignRiderToOrder(
       status: 'out_for_delivery',
       message: `Rider ${rider.full_name} is on the way with your order #${updated.order_number}!`,
     });
+    sendExpoPushToUsers([updated.user_id], {
+      title: 'Your order is on the way',
+      body: `Rider ${rider.full_name} is bringing order #${updated.order_number}.`,
+      data: { type: 'rider_assigned', orderId, orderNumber: updated.order_number },
+    }).catch(() => {});
   }
   if (rider.user_id) {
     emitToUser(rider.user_id, 'rider:new_assignment', {

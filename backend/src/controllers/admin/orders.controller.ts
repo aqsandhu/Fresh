@@ -20,7 +20,14 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
-import { cancelActiveRiderTasks, notifyRiderTasksCancelled, CancelledRiderTask } from '../../utils/riderTaskEvents';
+import {
+  cancelActiveRiderTasks,
+  notifyRiderTasksCancelled,
+  createAttaRiderTask,
+  notifyAttaAssignment,
+  CancelledRiderTask,
+  AttaTaskType,
+} from '../../utils/riderTaskEvents';
 import { commitOrderSaleOnDelivery, reserveProductStock, adjustStockForWeightDelta } from '../../utils/systemStock';
 import { deductOcpStockOnDelivery } from '../../utils/ocpStock';
 import { roundMoney } from '../../utils/money';
@@ -1453,11 +1460,16 @@ export const updateAttaStatus = asyncHandler(async (req: Request, res: Response)
     delivered: ['out_for_delivery'],
   };
   if (update.riderColumn && rider_id) {
+    // riders.status is available/busy/offline/on_leave — the old `= 'active'`
+    // check matched nothing, so every rider assignment on an atta request
+    // failed with "Active rider not found".
     const rider = await query(
-      `SELECT id FROM riders WHERE id = $1 AND status = 'active' AND deleted_at IS NULL`,
+      `SELECT id FROM riders
+        WHERE id = $1 AND deleted_at IS NULL AND verification_status = 'verified'
+          AND status NOT IN ('offline', 'on_leave')`,
       [rider_id]
     );
-    if (rider.rows.length === 0) return errorResponse(res, 'Active rider not found', 400);
+    if (rider.rows.length === 0) return errorResponse(res, 'Rider not found, not verified, or off duty', 400);
   }
 
   let sql = `UPDATE atta_requests SET status = $1, ${update.column} = COALESCE(${update.column}, NOW())`;
@@ -1480,6 +1492,19 @@ export const updateAttaStatus = asyncHandler(async (req: Request, res: Response)
       return errorResponse(res, `Invalid atta status transition: ${exists.rows[0].status} → ${status}`, 409);
     }
     return notFoundResponse(res, 'Atta request not found');
+  }
+
+  // A rider assignment creates the rider_tasks row the rider app works from
+  // (previously the rider column was set but no task ever reached the app).
+  if (update.riderColumn && rider_id) {
+    const taskType: AttaTaskType = update.riderColumn === 'pickup_rider_id' ? 'atta_pickup' : 'atta_delivery';
+    try {
+      const created = await withTransaction((client) => createAttaRiderTask(client, id, rider_id, taskType));
+      notifyAttaAssignment(created.riderUserId, { id, request_number: result.rows[0].request_number }, taskType, created.taskId);
+      notifyRiderTasksCancelled(created.displaced, { id, order_number: result.rows[0].request_number }, 'Reassigned to another rider');
+    } catch (err) {
+      logger.error('Failed to create atta rider task', { attaRequestId: id, riderId: rider_id, err });
+    }
   }
 
   successResponse(res, result.rows[0], 'Atta request status updated successfully');

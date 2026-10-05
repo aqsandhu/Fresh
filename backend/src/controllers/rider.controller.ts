@@ -13,6 +13,7 @@ import { commitOrderSaleOnDelivery } from '../utils/systemStock';
 import { emitOrderUpdate, emitToUser, emitToAdmins, emitRiderLocationUpdate } from '../config/socket';
 import { parsePagination } from '../utils/validators';
 import { hasOrderCouponColumns, hasUrgentDeliveryColumns } from '../config/orderSchema';
+import { sendExpoPushToUsers } from '../utils/expoPush';
 import logger from '../utils/logger';
 
 /**
@@ -557,12 +558,23 @@ export const confirmPickup = asyncHandler(async (req: Request, res: Response) =>
           );
         }
       } else if (task.atta_request_id) {
-        await client.query(
-          `UPDATE atta_requests
-           SET status = 'picked_up', picked_up_at = COALESCE(picked_up_at, NOW()), updated_at = NOW()
-           WHERE id = $1`,
-          [task.atta_request_id]
-        );
+        // atta_pickup: wheat collected from the customer → picked_up.
+        // atta_delivery: flour collected from the mill → out_for_delivery.
+        if (task.task_type === 'atta_delivery') {
+          await client.query(
+            `UPDATE atta_requests
+             SET status = 'out_for_delivery', delivery_scheduled_at = COALESCE(delivery_scheduled_at, NOW()), updated_at = NOW()
+             WHERE id = $1 AND status IN ('ready_for_delivery', 'out_for_delivery')`,
+            [task.atta_request_id]
+          );
+        } else {
+          await client.query(
+            `UPDATE atta_requests
+             SET status = 'picked_up', picked_up_at = COALESCE(picked_up_at, NOW()), updated_at = NOW()
+             WHERE id = $1 AND status IN ('pending_pickup', 'picked_up')`,
+            [task.atta_request_id]
+          );
+        }
       }
     });
   } catch (err: any) {
@@ -663,11 +675,29 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
           [riderId]
         );
       } else if (task.atta_request_id) {
+        // atta_pickup completes when the wheat is dropped at the mill;
+        // atta_delivery completes when the flour reaches the customer.
+        if (task.task_type === 'atta_pickup') {
+          await client.query(
+            `UPDATE atta_requests
+             SET status = 'at_mill', milling_started_at = COALESCE(milling_started_at, NOW()), updated_at = NOW()
+             WHERE id = $1 AND status IN ('pending_pickup', 'picked_up')`,
+            [task.atta_request_id]
+          );
+        } else {
+          await client.query(
+            `UPDATE atta_requests
+             SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW()
+             WHERE id = $1 AND status <> 'cancelled'`,
+            [task.atta_request_id]
+          );
+        }
         await client.query(
-          `UPDATE atta_requests
-           SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW()
+          `UPDATE riders
+           SET total_deliveries = total_deliveries + CASE WHEN $2 = 'atta_delivery' THEN 1 ELSE 0 END,
+               status = 'available', updated_at = NOW()
            WHERE id = $1`,
-          [task.atta_request_id]
+          [riderId, task.task_type]
         );
       }
 
@@ -696,6 +726,11 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
       orderNumber: order.order_number,
       message: `Your order #${order.order_number} has been delivered!`,
     });
+    sendExpoPushToUsers([order.user_id], {
+      title: 'Order delivered',
+      body: `Your order #${order.order_number} has been delivered. Enjoy your fresh groceries!`,
+      data: { type: 'order_delivered', orderId: order.id, orderNumber: order.order_number },
+    }).catch(() => {});
   }
 
   successResponse(res, null, 'Delivery confirmed successfully');

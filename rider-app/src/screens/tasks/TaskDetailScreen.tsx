@@ -261,6 +261,13 @@ const TaskDetailScreen: React.FC = () => {
         .filter(Boolean)
         .join(' · ');
 
+  // Atta Chakki tasks use their own wording: wheat is collected from the
+  // customer and dropped at the mill; flour is collected from the mill and
+  // delivered back.
+  const pickupLabel =
+    task.type === 'atta_pickup' ? t('action.wheatCollected') : task.type === 'atta_delivery' ? t('action.flourCollected') : t('action.pickedUp');
+  const deliverLabel = task.type === 'atta_pickup' ? t('action.droppedAtMill') : t('action.delivered');
+
   return (
     <View style={styles.container}>
       <ScreenHeader
@@ -493,16 +500,16 @@ const TaskDetailScreen: React.FC = () => {
       {!terminal ? (
         <BottomActionBar>
           {primary === 'pickup' ? (
-            <Button title={t('action.pickedUp')} icon="package-variant-closed-check" size="large" fullWidth onPress={handlePickup} loading={busy} testID="action-pickup" />
+            <Button title={pickupLabel} icon="package-variant-closed-check" size="large" fullWidth onPress={handlePickup} loading={busy} testID="action-pickup" />
           ) : null}
           {primary === 'deliver' ? (
-            <Button title={t('action.delivered')} icon="check-decagram" variant="success" size="large" fullWidth onPress={() => setDeliverOpen(true)} loading={busy} testID="action-deliver" />
+            <Button title={deliverLabel} icon="check-decagram" variant="success" size="large" fullWidth onPress={() => setDeliverOpen(true)} loading={busy} testID="action-deliver" />
           ) : null}
           <Button title={t('action.reportProblem')} icon="alert-circle-outline" variant="ghost" size="small" fullWidth onPress={() => setProblemOpen(true)} disabled={busy} textStyle={{ color: colors.danger }} />
         </BottomActionBar>
       ) : null}
 
-      <DeliverSheet visible={deliverOpen} task={task} busy={busy} onClose={() => setDeliverOpen(false)} onSubmit={handleDeliver} />
+      <DeliverSheet visible={deliverOpen} task={task} busy={busy} title={deliverLabel} onClose={() => setDeliverOpen(false)} onSubmit={handleDeliver} />
       <ProblemSheet visible={problemOpen} busy={busy} onClose={() => setProblemOpen(false)} onSubmit={handleProblem} />
     </View>
   );
@@ -531,13 +538,15 @@ const DeliverSheet: React.FC<{
   visible: boolean;
   task: Task;
   busy: boolean;
+  title: string;
   onClose: () => void;
   onSubmit: (notes: string) => void;
-}> = ({ visible, task, busy, onClose, onSubmit }) => {
+}> = ({ visible, task, busy, title, onClose, onSubmit }) => {
   const { t } = useT();
   const [cashConfirmed, setCashConfirmed] = useState(false);
   const [notes, setNotes] = useState('');
   const needsCash = task.codAmount !== null && task.codAmount > 0;
+  const atta = isAttaTask(task);
 
   useEffect(() => {
     if (visible) {
@@ -557,11 +566,11 @@ const DeliverSheet: React.FC<{
   return (
     <Sheet
       visible={visible}
-      title={t('action.deliverTitle')}
+      title={title}
       onClose={onClose}
-      footer={<Button title={t('action.deliverSubmit')} icon="check-decagram" variant="success" size="large" fullWidth onPress={submit} loading={busy} testID="deliver-submit" />}
+      footer={<Button title={atta ? title : t('action.deliverSubmit')} icon="check-decagram" variant="success" size="large" fullWidth onPress={submit} loading={busy} testID="deliver-submit" />}
     >
-      {needsCash ? (
+      {atta ? null : needsCash ? (
         <>
           <View style={styles.sheetCash}>
             <Text style={styles.sheetCashLabel}>{t('action.deliverCashLabel')}</Text>
