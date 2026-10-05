@@ -83,7 +83,8 @@ export const snapshotCart = asyncHandler(async (req: Request, res: Response) => 
  * GET /api/admin/marketing/abandoned-carts
  */
 export const listAbandonedCarts = asyncHandler(async (req: Request, res: Response) => {
-  const olderThanHours = Number(req.query.olderThanHours);
+  // Admin panel sends snake_case (older_than_hours); accept both spellings.
+  const olderThanHours = Number(req.query.olderThanHours ?? req.query.older_than_hours);
   const scope = req.cityScope;
   const conditions = [`ac.status = 'active'`, `ac.item_count > 0`];
   const params: any[] = [];

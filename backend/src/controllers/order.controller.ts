@@ -82,12 +82,15 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
   const couponCols = (await hasOrderCouponColumns())
     ? 'o.coupon_discount, o.coupon_code,'
     : '';
+  const urgentCols = (await hasUrgentDeliveryColumns())
+    ? 'o.is_urgent_delivery, o.urgent_delivery_eta,'
+    : 'FALSE AS is_urgent_delivery, NULL::text AS urgent_delivery_eta,';
 
   // Get orders
   const ordersSql = `
     SELECT
       o.id, o.order_number, o.status, o.source,
-      o.subtotal, o.discount_amount, ${couponCols} o.delivery_charge, o.tax_amount, o.total_amount,
+      o.subtotal, o.discount_amount, ${couponCols} ${urgentCols} o.delivery_charge, o.tax_amount, o.total_amount,
       o.payment_method, o.payment_status, o.paid_amount,
       o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
       o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
@@ -121,7 +124,7 @@ export const getOrders = asyncHandler(async (req: Request, res: Response) => {
       `SELECT
         oi.id, oi.order_id, oi.product_id, oi.product_name, oi.product_image,
         oi.product_sku, oi.unit_price, oi.quantity, oi.total_price,
-        oi.weight_kg, oi.status, oi.unit
+        oi.weight_kg, oi.status, oi.unit, oi.quality
       FROM order_items oi
       WHERE oi.order_id IN (${placeholders})
       ORDER BY oi.created_at ASC`,
@@ -168,11 +171,14 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
   const couponCols = (await hasOrderCouponColumns())
     ? 'o.coupon_discount, o.coupon_code,'
     : '';
+  const urgentCols = (await hasUrgentDeliveryColumns())
+    ? 'o.is_urgent_delivery, o.urgent_delivery_eta,'
+    : 'FALSE AS is_urgent_delivery, NULL::text AS urgent_delivery_eta,';
 
   const result = await query(
     `SELECT
       o.id, o.order_number, o.status, o.source,
-      o.subtotal, o.discount_amount, ${couponCols} o.delivery_charge, o.tax_amount, o.total_amount,
+      o.subtotal, o.discount_amount, ${couponCols} ${urgentCols} o.delivery_charge, o.tax_amount, o.total_amount,
       o.payment_method, o.payment_status, o.paid_amount,
       o.placed_at, o.confirmed_at, o.preparing_at, o.ready_at, 
       o.out_for_delivery_at, o.delivered_at, o.cancelled_at,
@@ -202,7 +208,7 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
     `SELECT
       oi.id, oi.product_id, oi.product_name, oi.product_image, oi.product_sku,
       oi.unit_price, oi.quantity, oi.total_price, oi.weight_kg, oi.final_weight_kg, oi.status,
-      oi.special_instructions, oi.unit
+      oi.special_instructions, oi.unit, oi.quality
     FROM order_items oi
     WHERE oi.order_id = $1`,
     [id]
@@ -993,7 +999,8 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     const order = orderResult.rows[0];
 
     // Check if order can be cancelled based on status
-    if (['delivered', 'cancelled', 'out_for_delivery'].includes(order.status)) {
+    // refunded is terminal too — cancelling it would re-run the inventory restore.
+    if (['delivered', 'cancelled', 'refunded', 'out_for_delivery'].includes(order.status)) {
       throw new ConflictError(`Order cannot be cancelled in ${order.status} status`);
     }
 

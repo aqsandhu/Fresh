@@ -413,7 +413,8 @@ export const listReviewsAdmin = asyncHandler(async (req: Request, res: Response)
     where.push(`(r.city_id = $${params.length} OR r.city_id IS NULL)`);
   }
 
-  const targetType = req.query.targetType;
+  // The admin panel's interceptor snake_cases query keys (target_type).
+  const targetType = req.query.targetType ?? req.query.target_type;
   if (typeof targetType === 'string' && VALID_TARGETS.includes(targetType as TargetType)) {
     params.push(targetType);
     where.push(`r.target_type = $${params.length}`);

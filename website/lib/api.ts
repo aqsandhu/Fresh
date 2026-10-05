@@ -63,8 +63,13 @@ api.interceptors.response.use(
       const isRefreshCall = original.url?.includes('/auth/refresh')
       // A 401 from an auth endpoint (bad PIN, bad credentials) is an expected
       // failure of the inline login/sign-up flow — don't yank the user away
-      // to /login (e.g. mid-checkout).
-      const isAuthEndpoint = original.url?.includes('/auth/')
+      // to /login (e.g. mid-checkout). The B2B portals (restaurant / OCP /
+      // shareholder) have their own login pages and sessions; a wrong PIN
+      // there must never wipe the customer session.
+      const url = original.url || ''
+      const isAuthEndpoint =
+        url.includes('/auth/') ||
+        /\/(restaurant|ocp|shareholder)\/(login|register)\b/.test(url)
       if (isRefreshCall) {
         if (typeof window !== 'undefined') {
           redirectToLogin()
@@ -200,6 +205,19 @@ function mapBackendCategory(raw: any): Category {
 // ============================================================================
 // API FUNCTIONS
 // ============================================================================
+
+/** Page size for product listings — below the backend's 100-per-page cap. */
+export const PRODUCTS_PAGE_SIZE = 48
+
+/** `getNextPageParam` helper for product listings (backend `meta` → next page or undefined). */
+export function nextProductPage(meta: { page?: number | string; totalPages?: number | string; total?: number | string; limit?: number | string } | undefined): number | undefined {
+  if (!meta) return undefined
+  const page = Number(meta.page) || 1
+  const limit = Number(meta.limit) || PRODUCTS_PAGE_SIZE
+  const total = Number(meta.total) || 0
+  const totalPages = Number(meta.totalPages) || Math.ceil(total / limit)
+  return page < totalPages ? page + 1 : undefined
+}
 
 // Products API
 export const productsApi = {

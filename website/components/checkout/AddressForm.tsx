@@ -249,6 +249,11 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
         baseFields.latitude = mapLocation.lat
         baseFields.longitude = mapLocation.lng
         if (mapAccuracy != null) baseFields.location_accuracy = mapAccuracy
+      } else if (isEdit && !doorPicture) {
+        // "Remove pin" on an existing address: explicit nulls tell the backend
+        // to clear the stored location (omitting the fields keeps the old pin).
+        ;(baseFields as Record<string, unknown>).latitude = null
+        ;(baseFields as Record<string, unknown>).longitude = null
       }
 
       let saved: SavedAddress

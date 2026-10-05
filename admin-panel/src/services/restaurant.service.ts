@@ -128,7 +128,9 @@ export const restaurantService = {
     isActive?: boolean;
     isFreeDeliverySlot?: boolean;
   }): Promise<any> => {
-    const res = await api.post<ApiResponse<any>>('/admin/settings/time-slots', {
+    // `?audience=restaurant` on every call lets the backend permission map
+    // grant these to `restaurants.manage` admins without Settings rights.
+    const res = await api.post<ApiResponse<any>>('/admin/settings/time-slots?audience=restaurant', {
       start_time: data.startTime,
       end_time: data.endTime,
       max_orders: data.maxOrders ?? 50,
@@ -139,10 +141,10 @@ export const restaurantService = {
     return unwrap(res);
   },
   updateTimeSlot: async (id: string, data: Record<string, any>): Promise<any> => {
-    const res = await api.put<ApiResponse<any>>(`/admin/settings/time-slots/${id}`, data);
+    const res = await api.put<ApiResponse<any>>(`/admin/settings/time-slots/${id}?audience=restaurant`, data);
     return unwrap(res);
   },
   deleteTimeSlot: async (id: string): Promise<void> => {
-    await api.delete(`/admin/settings/time-slots/${id}`);
+    await api.delete(`/admin/settings/time-slots/${id}?audience=restaurant`);
   },
 };

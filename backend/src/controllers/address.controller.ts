@@ -336,6 +336,13 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
 
   const trackLocationSource = await hasLocationAddedByColumn();
 
+  // Explicit nulls = "remove the pin" (website AddressForm "Remove" button).
+  // Previously the branch below simply skipped and the stale pin survived.
+  if (latitude === null && longitude === null) {
+    updates.push('location = NULL', 'location_accuracy = NULL', 'zone_id = NULL');
+    if (trackLocationSource) updates.push('location_added_by = NULL');
+  }
+
   // Update location if lat/lng provided
   if (latitude != null && longitude != null) {
     if (

@@ -4,10 +4,10 @@ import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Filter, Loader2 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import ProductCard from '@/components/ui/ProductCard'
 import Button from '@/components/ui/Button'
-import { categoriesApi, productsApi } from '@/lib/api'
+import { categoriesApi, productsApi, nextProductPage, PRODUCTS_PAGE_SIZE } from '@/lib/api'
 import { Product } from '@/types'
 
 type SortOption = 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc'
@@ -38,13 +38,23 @@ export default function CategoryPage() {
   }
 
   // Fetch products for this category from the database
-  const { data: productsData, isLoading } = useQuery({
+  // Backend caps a page at 100 — page through with "Load more" so large
+  // categories are never silently truncated.
+  const {
+    data: productsData,
+    isLoading: productsLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: ['category-products', category?.id, sortBy, minPrice, maxPrice, inStockOnly],
-    queryFn: () => {
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => {
       const sort = sortMap[sortBy]
       return productsApi.getAll({
         category: category!.id,
-        limit: 2000,
+        page: pageParam,
+        limit: PRODUCTS_PAGE_SIZE,
         sortBy: sort.sortBy,
         sortOrder: sort.sortOrder,
         ...(minPrice ? { minPrice: parseInt(minPrice) } : {}),
@@ -52,10 +62,16 @@ export default function CategoryPage() {
         ...(inStockOnly ? { inStock: 'true' } : {}),
       })
     },
+    getNextPageParam: (lastPage) => nextProductPage(lastPage.meta),
     enabled: !!category?.id,
   })
 
-  const products: Product[] = productsData?.products || []
+  const products: Product[] = productsData?.pages.flatMap((p) => p.products) ?? []
+  const totalProducts = Number(productsData?.pages[0]?.meta?.total) || products.length
+  // While the category itself is still resolving, the products query is
+  // disabled (TanStack v5 reports isLoading=false then) — treat that as loading
+  // so the page never flashes "Showing 0 products / No products yet".
+  const isLoading = categoryLoading || (!!category?.id && productsLoading)
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -167,7 +183,7 @@ export default function CategoryPage() {
 
         {/* Results Count */}
         <p className="text-sm text-gray-500 mb-4">
-          {isLoading ? 'Loading...' : `Showing ${products.length} products`}
+          {isLoading ? 'Loading...' : `Showing ${products.length} of ${totalProducts} products`}
         </p>
 
         {/* Products Grid */}
@@ -176,18 +192,27 @@ export default function CategoryPage() {
             <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
           </div>
         ) : products.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-            {products.map((product, index) => (
-              <motion.div
-                key={product.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.05, 0.4) }}
-              >
-                <ProductCard product={product} />
-              </motion.div>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {products.map((product, index) => (
+                <motion.div
+                  key={product.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min((index % PRODUCTS_PAGE_SIZE) * 0.05, 0.4) }}
+                >
+                  <ProductCard product={product} />
+                </motion.div>
+              ))}
+            </div>
+            {hasNextPage && (
+              <div className="flex justify-center mt-8">
+                <Button variant="outline" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+                  {isFetchingNextPage ? 'Loading…' : `Load more (${totalProducts - products.length} left)`}
+                </Button>
+              </div>
+            )}
+          </>
         ) : categoryError ? (
           <div className="text-center py-12">
             <p className="text-gray-700 font-medium mb-2">Category not found</p>

@@ -339,10 +339,16 @@ export default function CheckoutAuthPanel() {
       toast.success('Account ready — you are signed in!')
       if (redirectTo && redirectTo !== '/checkout') router.push(redirectTo)
     } catch (err: any) {
+      const status: number | undefined = err?.response?.status
       const msg = err?.response?.data?.message || 'Could not finish sign-up. Please try again.'
       toast.error(msg)
       if (typeof msg === 'string' && (msg.includes('expired') || msg.includes('not found'))) {
         setStep('phone')
+      } else if (status === 401 || (status === 400 && /otp|code/i.test(String(msg)))) {
+        // Wrong code (backend-OTP mode) → back to the code step.
+        verifiedOtpCodeRef.current = ''
+        setOtp(['', '', '', '', '', ''])
+        setStep('otp')
       }
     } finally {
       setIsLoading(false)

@@ -9,10 +9,10 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Filter, Loader2 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import ProductCard from '@/components/ui/ProductCard'
 import Button from '@/components/ui/Button'
-import { productsApi } from '@/lib/api'
+import { productsApi, nextProductPage, PRODUCTS_PAGE_SIZE } from '@/lib/api'
 import { Product } from '@/types'
 
 type SortOption = 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc'
@@ -31,12 +31,17 @@ export default function AllProductsPage() {
   const [maxPrice, setMaxPrice] = useState('')
   const [inStockOnly, setInStockOnly] = useState(false)
 
-  const { data, isLoading } = useQuery({
+  // The backend caps a page at 100 (parsePagination) — a single `limit: 2000`
+  // request silently hid everything past the first 100 products. Page through
+  // with "Load more" instead.
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['all-products', sortBy, minPrice, maxPrice, inStockOnly],
-    queryFn: () => {
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => {
       const sort = sortMap[sortBy]
       return productsApi.getAll({
-        limit: 2000,
+        page: pageParam,
+        limit: PRODUCTS_PAGE_SIZE,
         sortBy: sort.sortBy,
         sortOrder: sort.sortOrder,
         ...(minPrice ? { minPrice: parseInt(minPrice) } : {}),
@@ -44,9 +49,11 @@ export default function AllProductsPage() {
         ...(inStockOnly ? { inStock: 'true' } : {}),
       })
     },
+    getNextPageParam: (lastPage) => nextProductPage(lastPage.meta),
   })
 
-  const products: Product[] = data?.products || []
+  const products: Product[] = data?.pages.flatMap((p) => p.products) ?? []
+  const totalProducts = Number(data?.pages[0]?.meta?.total) || products.length
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -149,7 +156,7 @@ export default function AllProductsPage() {
 
         {/* Results Count */}
         <p className="text-sm text-gray-500 mb-4">
-          {isLoading ? 'Loading...' : `Showing ${products.length} products`}
+          {isLoading ? 'Loading...' : `Showing ${products.length} of ${totalProducts} products`}
         </p>
 
         {/* Grid */}
@@ -158,19 +165,28 @@ export default function AllProductsPage() {
             <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
           </div>
         ) : products.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-            {products.map((product, index) => (
-              <motion.div
-                key={product.id}
-                className="min-w-0"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: Math.min(index * 0.03, 0.4) }}
-              >
-                <ProductCard product={product} />
-              </motion.div>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {products.map((product, index) => (
+                <motion.div
+                  key={product.id}
+                  className="min-w-0"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min((index % PRODUCTS_PAGE_SIZE) * 0.03, 0.4) }}
+                >
+                  <ProductCard product={product} />
+                </motion.div>
+              ))}
+            </div>
+            {hasNextPage && (
+              <div className="flex justify-center mt-8">
+                <Button variant="outline" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
+                  {isFetchingNextPage ? 'Loading…' : `Load more (${totalProducts - products.length} left)`}
+                </Button>
+              </div>
+            )}
+          </>
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-700 font-medium mb-2">No products yet</p>

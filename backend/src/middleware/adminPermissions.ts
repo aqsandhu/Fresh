@@ -189,6 +189,11 @@ function resolveRequiredPermissions(
     if (p.includes('/shortages')) return ['ocp.shortages.manage', 'ocp.manage'];
     if (p.includes('/stock')) return ['ocp.stock.send', 'ocp.manage'];
     if (p.includes('/settlements')) return ['ocp.settlements.receive', 'ocp.manage'];
+    // Listing the points is a prerequisite for every sub-permission (you
+    // cannot send stock to / settle with a point you cannot see).
+    if (m === 'GET') {
+      return ['ocp.manage', 'ocp.stock.send', 'ocp.settlements.receive', 'ocp.shortages.manage'];
+    }
     return ['ocp.manage'];
   }
   if (p.startsWith('/addresses')) return m === 'GET' ? ['addresses.view'] : ['addresses.update'];
@@ -210,6 +215,9 @@ function resolveRequiredPermissions(
       : ['settings.delivery.update', 'settings.update'];
   }
   if (p.startsWith('/settings/time-slots')) {
+    // Restaurant-audience slots are managed from the Restaurants page by
+    // restaurant admins who may hold no Settings permissions at all.
+    const restaurantAudience = /[?&]audience=restaurant\b/.test(path);
     if (m === 'GET') {
       return [
         'settings.timeslots.view',
@@ -219,9 +227,13 @@ function resolveRequiredPermissions(
         'riders.manage',
         'orders.view',
         'orders.assign_rider',
+        'restaurants.view',
+        'restaurants.manage',
       ];
     }
-    return ['settings.timeslots.manage', 'settings.update'];
+    return restaurantAudience
+      ? ['settings.timeslots.manage', 'settings.update', 'restaurants.manage']
+      : ['settings.timeslots.manage', 'settings.update'];
   }
   if (p.startsWith('/settings/business-hours')) {
     return m === 'GET'

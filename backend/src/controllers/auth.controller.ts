@@ -915,12 +915,17 @@ export const setPin = asyncHandler(async (req: Request, res: Response) => {
   );
   if (result.rows.length === 0) return unauthorizedResponse(res, 'User not found');
 
-  // Kill every other live session: the old sessions authenticated with the old
-  // PIN context and must not survive a credential change.
-  await revokeAllUserRefreshTokens(req.user.id);
+  // CHANGING a PIN kills every other live session (they authenticated under
+  // the old credential). The FIRST set happens seconds after registration —
+  // revoking there logged brand-new users out as soon as their 15-minute
+  // access token expired (website register + checkout sign-up).
+  const sessionsRevoked = !!existingHash;
+  if (sessionsRevoked) {
+    await revokeAllUserRefreshTokens(req.user.id);
+  }
 
   logger.info('PIN set', { userId: req.user.id, changed: !!existingHash });
-  successResponse(res, { sessions_revoked: true }, 'PIN saved');
+  successResponse(res, { sessions_revoked: sessionsRevoked }, 'PIN saved');
 });
 
 /**

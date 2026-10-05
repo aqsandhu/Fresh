@@ -262,10 +262,19 @@ export default function RegisterPage() {
       setPinConfirm('')
       setStep('pin')
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Registration failed. Please try again.'
+      const status: number | undefined = err?.response?.status
+      const msg: string = err?.response?.data?.message || 'Registration failed. Please try again.'
       toast.error(msg)
       if (msg.includes('expired') || msg.includes('not found')) {
         setStep('phone')
+      } else if (status === 401 || (status === 400 && /otp|code/i.test(msg))) {
+        // Backend-OTP mode validates the code only here: a wrong code must
+        // send the user back to the code step instead of leaving them stuck
+        // re-submitting the same bad code from the Name step.
+        setVerifiedOtpCode('')
+        setOtp(['', '', '', '', '', ''])
+        setStep('otp')
+        setTimeout(() => document.getElementById('rotp-0')?.focus(), 100)
       }
     } finally {
       setIsLoading(false)
