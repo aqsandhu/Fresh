@@ -101,7 +101,7 @@ export default function AddressesPage() {
       address_type: addr.address_type || 'home',
       written_address: addr.written_address || '',
       area_name: addr.area_name || '',
-      city: addr.city || selectedCity?.name || 'Gujrat',
+      city: addr.city || selectedCity?.name || '',
       landmark: addr.landmark || '',
       latitude: addr.latitude ?? null,
       longitude: addr.longitude ?? null,

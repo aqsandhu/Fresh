@@ -160,11 +160,23 @@ export default function ProductDetailPage() {
 
   const handleShare = async () => {
     if (!product) return
+    const url = window.location.href
+    // Desktop browsers mostly lack the Web Share API — fall back to copying
+    // the link so the button always does something visible.
+    if (typeof navigator.share !== 'function') {
+      try {
+        await navigator.clipboard.writeText(url)
+        toast.success('Link copied to clipboard')
+      } catch {
+        toast.error('Could not copy the link')
+      }
+      return
+    }
     try {
-      await navigator.share?.({
+      await navigator.share({
         title: product.name,
         text: `Check out ${product.name} on Fresh Bazar!`,
-        url: window.location.href,
+        url,
       })
     } catch {
       /* cancelled */

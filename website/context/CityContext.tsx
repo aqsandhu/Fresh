@@ -9,7 +9,7 @@ import React, {
   useState,
   type ReactNode,
 } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import {
@@ -56,6 +56,7 @@ async function fetchCities(): Promise<ServiceCity[]> {
 
 export function CityProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
+  const pathname = usePathname()
   const queryClient = useQueryClient()
   const switchCartCity = useCartStore((s) => s.switchCity)
 
@@ -116,9 +117,11 @@ export function CityProvider({ children }: { children: ReactNode }) {
       setSelectedCityState(next)
       switchCartCity(next.id)
       queryClient.invalidateQueries()
-      router.push('/')
+      // Stay on the page the customer is reading (its queries are keyed on
+      // the city and refetch); only the city picker itself sends them home.
+      if (pathname === '/select-city') router.push('/')
     },
-    [queryClient, router, switchCartCity]
+    [queryClient, router, switchCartCity, pathname]
   )
 
   const value = useMemo(

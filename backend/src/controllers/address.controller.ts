@@ -8,6 +8,21 @@ import { ensureAddressColumns, hasLocationAddedByColumn } from '../config/addres
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
 import logger from '../utils/logger';
+import { resolvePublicCityId } from '../utils/cityScope';
+
+/**
+ * City name for a new address when the client did not send one: the selected
+ * service city (?city_id / ?city), else the first active city. Never a
+ * hard-coded town — that silently filed every omitted-city address under
+ * Gujrat for customers in other cities.
+ */
+async function resolveAddressCityName(req: Request): Promise<string> {
+  const cityId = await resolvePublicCityId(req);
+  const row = cityId
+    ? await query('SELECT name FROM service_cities WHERE id = $1 LIMIT 1', [cityId])
+    : await query('SELECT name FROM service_cities WHERE is_active = TRUE ORDER BY created_at ASC LIMIT 1');
+  return row.rows[0]?.name || '';
+}
 
 /**
  * Get all addresses for user
@@ -88,13 +103,14 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
     latitude,
     longitude,
     area_name = 'N/A',
-    city = 'Gujrat',
+    city: rawCity,
     province = 'Punjab',
     postal_code,
     is_default = false,
     delivery_instructions,
     location_accuracy,
   } = req.body;
+  const city: string = String(rawCity || '').trim() || (await resolveAddressCityName(req));
 
   const parsedLat =
     latitude != null && latitude !== '' ? parseFloat(String(latitude)) : null;

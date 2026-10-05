@@ -114,7 +114,9 @@ export default function ProfilePage() {
   const handleSaveProfile = async () => {
     setSaving(true)
     try {
-      await authApi.updateProfile({ full_name: editName, email: editEmail || undefined })
+      // Empty string clears the email on the server (undefined would leave the
+      // old address in place, so "remove my email" never worked).
+      await authApi.updateProfile({ full_name: editName, email: editEmail.trim() })
       setUser(prev => prev ? { ...prev, name: editName, email: editEmail } : prev)
       setIsEditing(false)
       toast.success('Profile updated successfully!')

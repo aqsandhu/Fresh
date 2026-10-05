@@ -620,17 +620,28 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
   }
 
   if (email !== undefined) {
-    // Email uniqueness must ignore soft-deleted users so a recycled address
-    // doesn't appear to be taken forever.
-    const existingEmail = await query(
-      'SELECT id FROM users WHERE email = $1 AND id != $2 AND deleted_at IS NULL',
-      [email.toLowerCase(), req.user.userId]
-    );
-    if (existingEmail.rows.length > 0) {
-      return conflictResponse(res, 'Email already in use');
+    const trimmed = email === null ? '' : String(email).trim().toLowerCase();
+    if (trimmed === '') {
+      // Empty / null clears the email (the profile page offers "remove").
+      updates.push(`email = $${paramIndex++}`);
+      values.push(null);
+    } else {
+      // This route has no Joi schema, so validate the shape here.
+      if (trimmed.length > 255 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        return errorResponse(res, 'Enter a valid email address', 400);
+      }
+      // Email uniqueness must ignore soft-deleted users so a recycled address
+      // doesn't appear to be taken forever.
+      const existingEmail = await query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2 AND deleted_at IS NULL',
+        [trimmed, req.user.userId]
+      );
+      if (existingEmail.rows.length > 0) {
+        return conflictResponse(res, 'Email already in use');
+      }
+      updates.push(`email = $${paramIndex++}`);
+      values.push(trimmed);
     }
-    updates.push(`email = $${paramIndex++}`);
-    values.push(email.toLowerCase());
   }
 
   if (preferred_language !== undefined) {

@@ -22,7 +22,8 @@ export default function FeaturedProductsSection() {
   const { selectedCityId } = useCityContext()
   const { data: featuredProducts, isLoading } = useQuery({
     queryKey: ['featured-products', selectedCityId],
-    queryFn: () => productsApi.getFeatured(500),
+    // The API caps a page at 100; asking for 500 just returned 100 silently.
+    queryFn: () => productsApi.getFeatured(100),
     enabled: !!selectedCityId,
   })
 

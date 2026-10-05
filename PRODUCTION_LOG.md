@@ -57,10 +57,11 @@ Legend: TODO · WIP · DONE · DEFERRED
 | 2.14 | website+backend | W-M12 cancel refunded | DONE | both sides |
 | 2.15 | website | W-M13 settings toggles | DONE | real `notification_enabled` + `preferred_language`; dead rows removed |
 | 2.16 | website | W-M14/L13 OCP/shareholder session handling | DONE (M14) · L13 polish TODO | `handlePortalAuthFailure` |
-| 2.17 | website | WS-M4 ribbon ✅, WS-M6 app section ✅, WS-M7 search cap ✅, WS-M8/M9 footer ✅, WS-M11 dead links ✅; WS-M10 copy, WS-M12 wishlist label, WS-L14..L21, W-L1..L11 | PARTIAL | |
+| 2.17 | website | WS-M4 ribbon ✅, WS-M6 app section ✅, WS-M7 search cap ✅, WS-M8/M9 footer ✅, WS-M11 dead links ✅, WS-M10 copy ✅, WS-M12 wishlist label ✅, WS-L14..L21 ✅ (breadcrumb, share fallback, featured 100, franchise city, socket logs, setCity stays on page; "basket image host"/"stale comment" not reproducible from the summary row), W-L: profile email clear ✅, hard-coded Gujrat (products header, AddressForm/addresses fallbacks, backend address default) ✅ | DONE | remaining W-L phrases without file:line (cancelled timeline, date formatting, dead address badges, cart CTA, restaurant phone/front image/snapshot, OCP modal/mark-collected, shareholder year) were in the agent report that died; re-covered by the session-4 customer-app/admin sweeps where applicable |
 | 3.1 | admin+backend | A-H1/H2/H3 camel/snake mismatches | DONE | |
 | 3.2 | admin | A-M4..M10 | DONE | |
-| 3.3 | admin+backend | A-L11..L14 | PARTIAL | L11 registry ✅, L14 OCP buttons ✅; L12 (OCP stock modal limit), L13 (coupons-used paging), L14 Complaints/Reviews/RiderApplications buttons TODO |
+| 3.3 | admin+backend | A-L11..L14 | DONE | L11 registry ✅, L12 OCP stock modal 100 ✅, L13 coupons-used paged (backend page/limit) ✅, L14 OCP + Complaints/Reviews/RiderApplications buttons permission-gated ✅ |
+| 4.2 | customer-app + admin | re-run the two dead audit sweeps | WIP | two read-only agents launched (session 4); findings → fix → log |
 | 4.1 | backend | re-verify the 28 prior-audit items (agent died) | DONE | verified by reading code, not by trusting the old report. **Still open → fixed now (B-1..B-16, §5 2026-10-05 session 4).** Already fixed earlier (confirmed): cancel double-refund, markPaymentReceived reviving cancelled orders, customers/lookup address scoping, refresh limiter, cart unit whitelist, admin login requires `admins` row. Not a defect: `rider_delivery_charges` has rider+slot unique key. |
 
 ## 2. Baseline (before this work) — 2026-10-05
@@ -112,6 +113,14 @@ Each item: WHAT was wrong → WHY it matters → HOW fixed (file).
 - **B-16 audit log stored PINs/OTPs in clear.** Redaction list gained `otp`, `bank_account` and exact-match PIN keys (substring "pin" would have redacted `shipping_address`). Regression test added (`middleware/auditLogger.ts`, `__tests__/middleware/auditLogger.test.ts`).
 - **B-17 no money sanity constraints.** Migration 56 adds `NOT VALID` CHECKs: orders money columns ≥ 0, `order_items.unit_price` ≥ 0, `rider_delivery_charge` ≥ 0 (legacy rows untouched, new writes enforced).
 - Gates: backend typecheck ✅ lint ✅ unit 7/7 ✅; admin typecheck ✅ lint ✅.
+
+### 2026-10-05 — Session 4 (cont.): admin low items + website static copy + low items
+- **A-L12/L13/L14** (admin): OCP stock modal asks 100 (API cap); Coupons Used paged 50/page end-to-end (`GET /admin/coupons/redemptions?page&limit` → `page/total_pages`); Complaints (Save/Refund/Replacement), Reviews (Hide/Show/Reply), RiderApplications (Save, page content) disabled without the backend's accepted codes. Service test updated.
+- **WS-M10** (website): new `lib/useDeliveryTerms.ts` (city name, `free_delivery_threshold`, `base_charge`, urgent charge/ETA, slot cutoff %, live slots). FAQ/Help/Shipping/Terms/About now quote it. Removed: "Gujrat", "Rs. 500/100", invented 3-slot tables, "cancel within 15 minutes" (real rule: pending any time, else 30 min, never once out for delivery), "credit/debit cards & wallets", "PCI gateways", "Forgot Password reset link" (real: OTP + PIN, "Forgot PIN? Sign in with OTP"), "Rs. 10/kg atta" (live `GET /atta-requests/charges`), "minimum 5 kg" (no minimum, max 1,000 kg), "organic labelled" (→ A/B/C grades), "24/7 support", "30min avg delivery", "50K+ customers", "express within 2 hours" (→ real urgent-delivery setting or honest "not available in <city>"). Shipping slot cards use static Tailwind classes (template-built classes were purged → unstyled cards).
+- **WS-M12**: wishlist labelled "saved on this device only".
+- **WS-L14..L21**: featured 500→100; socket connect/disconnect logs dev-only; `setCity` no longer yanks the customer to `/` from every page (only from `/select-city`); franchise form requires city; category breadcrumb shows "…" while loading instead of the slug; product Share falls back to copy-link + toast when Web Share is unavailable.
+- **W-L (hard-coded Gujrat / email clear)**: products header uses the selected city; AddressForm/addresses fallbacks no longer invent "Gujrat"; backend `POST /addresses` without `city` now derives it from `?city_id`/`?city` or the first active city (Joi default removed); `PUT /auth/profile` accepts `''`/`null` to clear the email and validates the format (route had no Joi schema).
+- Gates: backend typecheck ✅ lint ✅ unit 7/7 ✅ · admin typecheck ✅ lint ✅ tests 197/197 ✅ · website typecheck ✅ lint ✅ tests 65/65 ✅.
 
 ### 2026-10-05 — Session 3 start
 - Branch created; baseline gates run (§2). Full `pnpm install` started (website/admin node_modules were incomplete).

@@ -107,7 +107,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 
   const [addressType, setAddressType] = useState(initial?.address_type || 'home')
   const [areaName, setAreaName] = useState(initial?.area_name || '')
-  const [city, setCity] = useState(initial?.city || availableCities[0]?.name || 'Gujrat')
+  const [city, setCity] = useState(initial?.city || availableCities[0]?.name || '')
   const [writtenAddress, setWrittenAddress] = useState(initial?.written_address || '')
   const [landmark, setLandmark] = useState(initial?.landmark || '')
   const [cityChangeHint, setCityChangeHint] = useState(false)

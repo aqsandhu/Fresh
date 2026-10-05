@@ -47,12 +47,15 @@ export const connectSocket = (token?: string | null): Socket => {
     reconnectionDelay: 1000,
   });
 
+  // Connection chatter is useful in development only; production consoles
+  // should stay clean (and not leak socket ids).
+  const debug = process.env.NODE_ENV !== 'production';
   socket.on('connect', () => {
-    console.log('[Socket] Connected:', socket?.id);
+    if (debug) console.log('[Socket] Connected:', socket?.id);
   });
 
   socket.on('disconnect', (reason) => {
-    console.log('[Socket] Disconnected:', reason);
+    if (debug) console.log('[Socket] Disconnected:', reason);
   });
 
   socket.on('connect_error', (err) => {

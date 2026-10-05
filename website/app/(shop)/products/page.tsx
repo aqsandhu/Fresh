@@ -14,6 +14,7 @@ import ProductCard from '@/components/ui/ProductCard'
 import Button from '@/components/ui/Button'
 import { productsApi, nextProductPage, PRODUCTS_PAGE_SIZE } from '@/lib/api'
 import { Product } from '@/types'
+import { useOptionalCityName } from '@/context/CityContext'
 
 type SortOption = 'price-asc' | 'price-desc' | 'name-asc' | 'name-desc'
 
@@ -25,6 +26,7 @@ const sortMap: Record<SortOption, { sortBy: string; sortOrder: string }> = {
 }
 
 export default function AllProductsPage() {
+  const cityName = useOptionalCityName()
   const [sortBy, setSortBy] = useState<SortOption>('name-asc')
   const [showFilters, setShowFilters] = useState(false)
   const [minPrice, setMinPrice] = useState('')
@@ -67,7 +69,7 @@ export default function AllProductsPage() {
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
             Shop All Products
           </h1>
-          <p className="text-gray-600">Fresh groceries delivered across Gujrat</p>
+          <p className="text-gray-600">Fresh groceries delivered across {cityName}</p>
         </motion.div>
 
         {/* Filters & Sort */}

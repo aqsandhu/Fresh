@@ -48,13 +48,14 @@ export default function FranchisePage() {
     e.preventDefault()
     if (form.name.trim().length < 2) return toast.error('Please enter your name')
     if (!/^\+?[0-9\-\s]{10,20}$/.test(form.phone.trim())) return toast.error('Enter a valid phone number')
+    if (form.city.trim().length < 2) return toast.error('Please tell us which city you are applying for')
     setSubmitting(true)
     try {
       await franchiseApi.submitInquiry({
         name: form.name.trim(),
         phone: form.phone.trim(),
         email: form.email.trim() || undefined,
-        city: form.city.trim() || undefined,
+        city: form.city.trim(),
         message: form.message.trim() || undefined,
       })
       setDone(true)
@@ -189,6 +190,7 @@ export default function FranchisePage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
                       <input
                         value={form.city}
+                        required
                         onChange={(e) => setForm({ ...form, city: e.target.value })}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                         placeholder="Your city"

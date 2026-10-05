@@ -415,7 +415,9 @@ export const addressSchemas = {
     latitude: formNumber.optional(),
     longitude: formNumber.optional(),
     area_name: Joi.string().max(255).allow('').default('N/A'),
-    city: Joi.string().max(100).default('Gujrat'),
+    // No hard-coded city: when a client omits it the controller derives it
+    // from the selected service city (?city_id / ?city) instead of 'Gujrat'.
+    city: Joi.string().max(100).allow('').optional(),
     province: Joi.string().max(100).default('Punjab'),
     postal_code: Joi.string().max(20).allow('').empty(''),
     is_default: formBoolean.default(false),

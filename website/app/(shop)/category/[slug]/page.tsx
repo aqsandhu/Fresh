@@ -83,7 +83,7 @@ export default function CategoryPage() {
           className="mb-8"
         >
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
-            {category?.name || slug}
+            {category?.name || (categoryLoading ? '…' : slug)}
           </h1>
           {category?.nameUrdu && (
             <p className="text-lg text-gray-600 font-urdu" dir="rtl">
