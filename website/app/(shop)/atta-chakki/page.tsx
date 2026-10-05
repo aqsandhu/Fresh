@@ -20,7 +20,9 @@ import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
 import ComingSoon from '@/components/ui/ComingSoon'
-import { attaChakkiApi, addressesApi } from '@/lib/api'
+import { attaChakkiApi, addressesApi, type AttaCharges } from '@/lib/api'
+import { useCityContext } from '@/context/CityContext'
+import { addressMatchesSelectedCity } from '@/lib/cityStorage'
 import { usePublicConfig } from '@/lib/usePublicConfig'
 import { useAuthStore } from '@/store/cartStore'
 import { Address } from '@/types'
@@ -68,6 +70,8 @@ export default function AttaChakkiPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [addresses, setAddresses] = useState<Address[]>([])
   const [loadingAddresses, setLoadingAddresses] = useState(false)
+  const [charges, setCharges] = useState<AttaCharges | null>(null)
+  const { selectedCity } = useCityContext()
   
   const { 
     register, 
@@ -89,11 +93,21 @@ export default function AttaChakkiPage() {
     if (isAuthenticated) {
       setLoadingAddresses(true)
       addressesApi.getAll()
-        .then(setAddresses)
+        .then((list) =>
+          // Pickup must happen in the selected service city (same rule as checkout).
+          setAddresses(
+            selectedCity?.name ? list.filter((a) => addressMatchesSelectedCity(a.city, selectedCity.name)) : list
+          )
+        )
         .catch(() => {})
         .finally(() => setLoadingAddresses(false))
     }
-  }, [isAuthenticated])
+  }, [isAuthenticated, selectedCity?.name])
+
+  // Live admin-configured rates for the copy below (no hard-coded Rs/kg).
+  useEffect(() => {
+    attaChakkiApi.getCharges().then(setCharges).catch(() => {})
+  }, [])
 
   const onSubmit = async (data: AttaChakkiFormData) => {
     if (!isAuthenticated) {
@@ -104,14 +118,20 @@ export default function AttaChakkiPage() {
 
     setIsSubmitting(true)
     try {
+      // The backend has no contact-phone column — carry the number the rider
+      // should call inside the instructions (it was silently dropped before).
+      const instructions = [data.phone ? `Contact: ${data.phone}` : '', data.notes || '']
+        .filter(Boolean)
+        .join('\n')
       await attaChakkiApi.createRequest({
         wheat_quantity_kg: data.weight,
         address_id: data.addressId,
         flour_type: data.flourType,
-        special_instructions: data.notes || undefined,
+        special_instructions: instructions || undefined,
       })
-      toast.success('Atta Chakki request submitted successfully! We will contact you shortly.')
+      toast.success('Atta Chakki request submitted! Track it under My requests.')
       reset()
+      router.push('/atta-chakki/requests')
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || 'Failed to submit request. Please try again.'
       toast.error(errorMessage)
@@ -280,7 +300,8 @@ export default function AttaChakkiPage() {
                     <p className="text-red-500 text-sm mt-1">{errors.weight.message}</p>
                   )}
                   <p className="text-xs text-gray-500 mt-1">
-                    Minimum order: 5 kg | Rate: Rs. 10 per kg
+                    Minimum order: 5 kg
+                    {charges ? ` | Grinding: Rs. ${charges.millingChargePerKg} per kg` : ''}
                   </p>
                 </div>
 
@@ -422,13 +443,28 @@ export default function AttaChakkiPage() {
             <div className="grid sm:grid-cols-2 gap-6">
               <div className="bg-primary-50 rounded-xl p-6">
                 <h3 className="font-semibold text-primary-800 mb-2">Grinding Charges</h3>
-                <p className="text-3xl font-bold text-primary-700">Rs. 10/kg</p>
-                <p className="text-sm text-primary-600 mt-1">Minimum 5 kg order</p>
+                <p className="text-3xl font-bold text-primary-700">
+                  {charges ? `Rs. ${charges.millingChargePerKg}/kg` : '—'}
+                </p>
+                <p className="text-sm text-primary-600 mt-1">
+                  Minimum 5 kg order
+                  {charges && charges.serviceCharge > 0 ? ` · Rs. ${charges.serviceCharge} service charge` : ''}
+                </p>
               </div>
               <div className="bg-green-50 rounded-xl p-6">
                 <h3 className="font-semibold text-green-800 mb-2">Pickup & Delivery</h3>
-                <p className="text-3xl font-bold text-green-700">FREE</p>
-                <p className="text-sm text-green-600 mt-1">Within Gujrat city limits</p>
+                <p className="text-3xl font-bold text-green-700">
+                  {charges
+                    ? charges.deliveryCharge > 0
+                      ? `Rs. ${charges.deliveryCharge}`
+                      : 'FREE'
+                    : '—'}
+                </p>
+                <p className="text-sm text-green-600 mt-1">
+                  {charges && charges.deliveryCharge > 0 && charges.freeDeliveryThresholdKg > 0
+                    ? `Free for ${charges.freeDeliveryThresholdKg} kg and above · within ${selectedCity?.name || 'your city'}`
+                    : `Within ${selectedCity?.name || 'your city'} service area`}
+                </p>
               </div>
             </div>
           </div>

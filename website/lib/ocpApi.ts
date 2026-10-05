@@ -2,6 +2,7 @@
 
 import { getApiBaseUrl } from '@/lib/apiBase'
 import { getOcpToken, clearOcpSession } from '@/lib/ocpSession'
+import { handlePortalAuthFailure } from '@/lib/portalSession'
 
 async function ofetch(path: string, options: RequestInit = {}): Promise<any> {
   const token = getOcpToken()
@@ -20,7 +21,7 @@ async function ofetch(path: string, options: RequestInit = {}): Promise<any> {
     /* empty */
   }
   if (!res.ok) {
-    if (res.status === 401) clearOcpSession()
+    handlePortalAuthFailure(res.status, path, '/ocp/login', clearOcpSession)
     const err: any = new Error(body?.message || 'Request failed')
     err.status = res.status
     throw err

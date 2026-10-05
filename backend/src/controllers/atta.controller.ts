@@ -189,6 +189,21 @@ export const createAttaRequest = asyncHandler(async (req: Request, res: Response
  * Get user's atta requests
  * GET /api/atta-requests
  */
+/**
+ * Public charge configuration — lets the storefront render live rates instead
+ * of hard-coded "Rs. 10/kg" copy that drifted from the admin settings.
+ * GET /api/atta-requests/charges
+ */
+export const getAttaChargesPublic = asyncHandler(async (_req: Request, res: Response) => {
+  const charges = await getAttaCharges();
+  successResponse(res, {
+    service_charge: charges.serviceCharge,
+    milling_charge_per_kg: charges.millingChargePerKg,
+    delivery_charge: charges.deliveryCharge,
+    free_delivery_threshold_kg: charges.freeDeliveryThresholdKg,
+  }, 'Atta charges retrieved');
+});
+
 export const getAttaRequests = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
     return errorResponse(res, 'Authentication required', 401);

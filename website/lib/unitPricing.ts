@@ -43,16 +43,36 @@ export function qualityStock(product: Product, quality: ProductQuality = 'A'): n
  * A honours the admin's explicit half/quarter overrides; B/C derive the fraction
  * from the tier's base price (×0.5 / ×0.25).
  */
+/** Admin-set fraction price for the given quality tier (A/B/C), if any. */
+function fractionOverride(
+  product: Product,
+  quality: ProductQuality,
+  kind: 'halfKg' | 'quarterKg' | 'halfDozen'
+): number | null {
+  if (quality === 'B') {
+    return toNumber(
+      kind === 'halfKg' ? product.halfKgPriceB : kind === 'quarterKg' ? product.quarterKgPriceB : product.halfDozenPriceB
+    )
+  }
+  if (quality === 'C') {
+    return toNumber(
+      kind === 'halfKg' ? product.halfKgPriceC : kind === 'quarterKg' ? product.quarterKgPriceC : product.halfDozenPriceC
+    )
+  }
+  return toNumber(
+    kind === 'halfKg' ? product.halfKgPrice : kind === 'quarterKg' ? product.quarterKgPrice : product.halfDozenPrice
+  )
+}
+
 export function getUnitOptions(product: Product, quality: ProductQuality = 'A'): UnitOption[] {
   const base = qualityBasePrice(product, quality) ?? 0
   if (base <= 0) return []
 
-  const useOverrides = quality === 'A'
   const unit = String(product.unit || '').toLowerCase()
 
   // Only kg-based products get half/quarter kg; only dozen-based get half dozen.
   if (unit === 'dozen') {
-    const halfDozenOverride = useOverrides ? toNumber(product.halfDozenPrice) : null
+    const halfDozenOverride = fractionOverride(product, quality, 'halfDozen')
     return [
       { unit: 'full', label: 'Per Dozen', price: base, derived: false },
       {
@@ -65,8 +85,8 @@ export function getUnitOptions(product: Product, quality: ProductQuality = 'A'):
   }
 
   if (unit === 'kg' || unit === 'gram') {
-    const halfKgOverride = useOverrides ? toNumber(product.halfKgPrice) : null
-    const quarterKgOverride = useOverrides ? toNumber(product.quarterKgPrice) : null
+    const halfKgOverride = fractionOverride(product, quality, 'halfKg')
+    const quarterKgOverride = fractionOverride(product, quality, 'quarterKg')
     const options: UnitOption[] = [
       { unit: 'full', label: 'Per Kg', price: base, derived: false },
     ]

@@ -43,7 +43,7 @@ interface AddressData {
 
 export default function ProfilePage() {
   const router = useRouter()
-  const { user: authUser, isAuthenticated, logout } = useAuthStore()
+  const { user: authUser, isAuthenticated, hasHydrated, logout } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
   const [user, setUser] = useState<UserProfile | null>(null)
   const [addresses, setAddresses] = useState<AddressData[]>([])
@@ -102,13 +102,14 @@ export default function ProfilePage() {
   }, [])
 
   useEffect(() => {
+    if (!hasHydrated) return
     if (!isAuthenticated) {
       router.push('/login?redirect=/profile')
       return
     }
     loadProfile()
     loadAddresses()
-  }, [isAuthenticated, router, loadProfile, loadAddresses])
+  }, [hasHydrated, isAuthenticated, router, loadProfile, loadAddresses])
 
   const handleSaveProfile = async () => {
     setSaving(true)

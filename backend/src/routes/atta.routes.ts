@@ -14,6 +14,8 @@ const router = Router();
 
 // Track atta request (public)
 router.get('/track/:id', attaController.trackAttaRequest);
+// Public: live charge configuration so storefront copy never hard-codes rates.
+router.get('/charges', attaController.getAttaChargesPublic);
 
 // Protected routes
 router.use(authenticate);

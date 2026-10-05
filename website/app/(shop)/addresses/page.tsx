@@ -43,7 +43,7 @@ interface FullAddress {
 
 export default function AddressesPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, hasHydrated } = useAuthStore()
   const { selectedCity } = useCityContext()
   const [addresses, setAddresses] = useState<FullAddress[]>([])
   const [loading, setLoading] = useState(true)
@@ -75,6 +75,7 @@ export default function AddressesPage() {
   }, [])
 
   useEffect(() => {
+    if (!hasHydrated) return
     if (!isAuthenticated) {
       router.push('/login?redirect=/addresses')
       return
@@ -82,7 +83,7 @@ export default function AddressesPage() {
     loadAddresses()
     // selectedCity?.id keyed on purpose: cityAddresses re-filters per city and a
     // fresh fetch keeps the list current when the user switches city.
-  }, [isAuthenticated, selectedCity?.id, router, loadAddresses])
+  }, [hasHydrated, isAuthenticated, selectedCity?.id, router, loadAddresses])
 
   const closeForm = () => {
     setFormInitial(undefined)

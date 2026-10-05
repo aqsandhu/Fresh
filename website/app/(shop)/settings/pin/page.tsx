@@ -28,7 +28,7 @@ type Stage = 'current' | 'create' | 'confirm'
 
 export default function ChangePinPage() {
   const router = useRouter()
-  const { isAuthenticated, user, markPinVerified, logout } = useAuthStore()
+  const { isAuthenticated, hasHydrated, user, markPinVerified, logout } = useAuthStore()
 
   // null = still checking whether the account already has a PIN.
   const [hasPin, setHasPin] = useState<boolean | null>(null)
@@ -39,13 +39,14 @@ export default function ChangePinPage() {
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
+    if (!hasHydrated) return
     if (!isAuthenticated) {
       // Defer to client to avoid SSR window issue.
       if (typeof window !== 'undefined') {
         router.push('/login?redirect=/settings/pin')
       }
     }
-  }, [isAuthenticated, router])
+  }, [hasHydrated, isAuthenticated, router])
 
   // Find out if the account already has a PIN — that decides whether we must
   // ask for the current PIN first (Contract C2).

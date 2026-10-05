@@ -2,6 +2,7 @@
 
 import { getApiBaseUrl } from '@/lib/apiBase'
 import { getShareholderToken, clearShareholderSession } from '@/lib/shareholderSession'
+import { handlePortalAuthFailure } from '@/lib/portalSession'
 
 async function sfetch(path: string, options: RequestInit = {}): Promise<any> {
   const token = getShareholderToken()
@@ -20,7 +21,7 @@ async function sfetch(path: string, options: RequestInit = {}): Promise<any> {
     /* empty */
   }
   if (!res.ok) {
-    if (res.status === 401) clearShareholderSession()
+    handlePortalAuthFailure(res.status, path, '/shareholder/login', clearShareholderSession)
     const err: any = new Error(body?.message || 'Request failed')
     err.status = res.status
     throw err

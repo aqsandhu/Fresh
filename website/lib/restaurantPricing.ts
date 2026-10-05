@@ -16,6 +16,19 @@ export interface RestaurantProduct {
   restaurant_price_a?: number | string | null
   restaurant_price_b?: number | string | null
   restaurant_price_c?: number | string | null
+  // Channel enable flag for Quality A (B/C are gated server-side by nulling
+  // their prices; A needs the flag because its consumer price always exists).
+  restaurant_enabled_a?: boolean | null
+  // Explicit restaurant fraction prices (override the ×0.5 / ×0.25 derivation).
+  restaurant_half_kg_price_a?: number | string | null
+  restaurant_quarter_kg_price_a?: number | string | null
+  restaurant_half_dozen_price_a?: number | string | null
+  restaurant_half_kg_price_b?: number | string | null
+  restaurant_quarter_kg_price_b?: number | string | null
+  restaurant_half_dozen_price_b?: number | string | null
+  restaurant_half_kg_price_c?: number | string | null
+  restaurant_quarter_kg_price_c?: number | string | null
+  restaurant_half_dozen_price_c?: number | string | null
   // Shared per-quality stock buckets (sold-out display).
   stock_quantity?: number
   stock_quantity_b?: number
@@ -58,12 +71,30 @@ export function qualityStock(product: RestaurantProduct, quality: Quality): numb
   return Number(product.stock_quantity ?? 0) || 0
 }
 
-/** Qualities a product offers (A always; B/C only when priced). */
+/**
+ * Qualities a product offers to restaurants — mirrors backend
+ * `restaurantQualities`: A only when `restaurant_enabled_a` is on (the server
+ * sends the flag), B/C only when the server left their prices non-null.
+ */
 export function availableQualities(product: RestaurantProduct): Quality[] {
-  const out: Quality[] = ['A']
+  const out: Quality[] = []
+  if (product.restaurant_enabled_a !== false && qualityBasePrice(product, 'A') != null) out.push('A')
   if (qualityBasePrice(product, 'B') != null) out.push('B')
   if (qualityBasePrice(product, 'C') != null) out.push('C')
   return out
+}
+
+/** Explicit admin-set restaurant price for a fraction unit, if any. */
+export function explicitRestaurantFractionPrice(
+  product: RestaurantProduct,
+  quality: Quality,
+  unit: Unit
+): number | null {
+  const q = quality.toLowerCase() as 'a' | 'b' | 'c'
+  if (unit === 'half_kg') return n(product[`restaurant_half_kg_price_${q}`])
+  if (unit === 'quarter_kg') return n(product[`restaurant_quarter_kg_price_${q}`])
+  if (unit === 'half_dozen') return n(product[`restaurant_half_dozen_price_${q}`])
+  return null
 }
 
 export interface UnitOption {
@@ -90,6 +121,10 @@ export function availableUnits(product: RestaurantProduct): UnitOption[] {
 export function unitPrice(product: RestaurantProduct, quality: Quality, unit: Unit): number | null {
   const base = qualityBasePrice(product, quality)
   if (base == null) return null
+  // Same precedence as backend resolveRestaurantUnitPrice: explicit fraction
+  // price first, derived fraction otherwise.
+  const explicit = explicitRestaurantFractionPrice(product, quality, unit)
+  if (explicit != null) return explicit
   if (unit === 'half_kg') return base * 0.5
   if (unit === 'quarter_kg') return base * 0.25
   if (unit === 'half_dozen') return base * 0.5

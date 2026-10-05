@@ -323,7 +323,7 @@ export default function TrackOrderPage() {
             )}
 
             {/* Chat for non-delivered/cancelled orders without rider yet */}
-            {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'out-for-delivery' && (
+            {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' && order.status !== 'out-for-delivery' && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -463,7 +463,7 @@ export default function TrackOrderPage() {
               </div>
 
               {/* Cancel Order Button */}
-              {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'out-for-delivery' && (
+              {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' && order.status !== 'out-for-delivery' && (
                 <div className="border-t pt-4 mt-4">
                   <Button
                     variant="outline"

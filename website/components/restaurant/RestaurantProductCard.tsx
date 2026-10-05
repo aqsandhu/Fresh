@@ -13,6 +13,7 @@ import { useRestaurantCartStore } from '@/store/restaurantCartStore'
 import {
   availableQualities, qualityBasePrice, qualityStock,
   type RestaurantProduct, type Quality,
+  explicitRestaurantFractionPrice,
 } from '@/lib/restaurantPricing'
 
 interface Props {
@@ -33,7 +34,7 @@ function ImageFallback() {
 export default function RestaurantProductCard({ product }: Props) {
   const { items, addItem, updateQuantity } = useRestaurantCartStore()
   const qualities = availableQualities(product)
-  const [quality, setQuality] = useState<Quality>(qualities[0])
+  const [quality, setQuality] = useState<Quality>(qualities[0] ?? 'A')
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
 
   // Stock is per-quality (shared with consumers) — the selected tier's bucket.
@@ -51,9 +52,11 @@ export default function RestaurantProductCard({ product }: Props) {
       image: resolveImageUrl(product.primary_image || ''),
       price: base,
       unit: (product.unit_type as Product['unit']) || 'kg',
-      halfKgPrice: null,
-      quarterKgPrice: null,
-      halfDozenPrice: null,
+      // Explicit admin-set restaurant fraction prices win over ×0.5/×0.25 —
+      // same precedence the server charges at checkout.
+      halfKgPrice: explicitRestaurantFractionPrice(product, quality, 'half_kg'),
+      quarterKgPrice: explicitRestaurantFractionPrice(product, quality, 'quarter_kg'),
+      halfDozenPrice: explicitRestaurantFractionPrice(product, quality, 'half_dozen'),
       allowHalfKg: product.allow_half_kg !== false,
       allowQuarterKg: product.allow_quarter_kg !== false,
       isFresh: inStock,
@@ -67,6 +70,9 @@ export default function RestaurantProductCard({ product }: Props) {
     (l) => l.product.id === product.id && l.quality === quality && (l.unit || 'full') === selectedUnit
   )
   const quantity = line?.quantity || 0
+
+  // Admin disabled every tier for restaurants → nothing to sell here.
+  if (qualities.length === 0) return null
 
   const handleAdd = () =>
     addItem({ product, quantity: 1, unit: selectedUnit, quality, unitPrice: displayPrice })

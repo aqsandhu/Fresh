@@ -3,6 +3,7 @@
 
 import { getApiBaseUrl } from '@/lib/apiBase'
 import { getRestaurantToken, clearRestaurantSession } from '@/lib/restaurantSession'
+import { handlePortalAuthFailure } from '@/lib/portalSession'
 
 async function rfetch(path: string, options: RequestInit = {}): Promise<any> {
   const token = getRestaurantToken()
@@ -21,7 +22,7 @@ async function rfetch(path: string, options: RequestInit = {}): Promise<any> {
     /* empty body */
   }
   if (!res.ok) {
-    if (res.status === 401) clearRestaurantSession()
+    handlePortalAuthFailure(res.status, path, '/restaurant/login', clearRestaurantSession)
     const err: any = new Error(body?.message || 'Request failed')
     err.status = res.status
     throw err
@@ -62,7 +63,7 @@ async function rupload(path: string, form: FormData): Promise<any> {
     /* empty body */
   }
   if (!res.ok) {
-    if (res.status === 401) clearRestaurantSession()
+    handlePortalAuthFailure(res.status, path, '/restaurant/login', clearRestaurantSession)
     const err: any = new Error(body?.message || 'Upload failed')
     err.status = res.status
     throw err

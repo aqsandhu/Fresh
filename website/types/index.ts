@@ -77,6 +77,13 @@ export interface Product {
   halfKgPrice?: number | null;
   quarterKgPrice?: number | null;
   halfDozenPrice?: number | null;
+  /** Explicit Quality-B / Quality-C fraction prices (admin overrides). */
+  halfKgPriceB?: number | null;
+  quarterKgPriceB?: number | null;
+  halfDozenPriceB?: number | null;
+  halfKgPriceC?: number | null;
+  quarterKgPriceC?: number | null;
+  halfDozenPriceC?: number | null;
   /** Per-product availability of the half/quarter-kg units (default true). */
   allowHalfKg?: boolean;
   allowQuarterKg?: boolean;
@@ -241,12 +248,21 @@ export interface Address {
 
 export interface AttaChakkiRequest {
   id: string;
-  user_id: string;
+  user_id?: string;
+  request_number?: string;
   status: string;
   wheat_quantity_kg: number;
+  wheat_quality?: string;
   flour_type: string;
-  total_amount: number;
+  service_charge?: number | string;
+  milling_charge?: number | string;
+  delivery_charge?: number | string;
+  total_amount: number | string;
+  payment_status?: string;
+  pickup_address?: string;
+  special_instructions?: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface ChatMessage {

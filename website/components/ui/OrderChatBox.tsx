@@ -4,8 +4,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, MessageCircle, Loader2, Wifi, WifiOff } from 'lucide-react'
 import { chatApi } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
+import toast from 'react-hot-toast'
 import {
   connectSocket,
+  getSocket,
   resolveSocketAuthToken,
   subscribeToOrder,
   unsubscribeFromOrder,
@@ -104,6 +106,15 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
       }
     }
 
+    // The server emits `chat:error` (rate limit, completed order, not
+    // authorised) instead of echoing the message — drop the optimistic bubble
+    // and tell the user, otherwise the message looks sent.
+    const handleChatError = (data: { message?: string }) => {
+      setMessages((prev) => prev.filter((m) => !m.id.startsWith('temp-')))
+      setSending(false)
+      toast.error(data?.message || 'Message could not be sent')
+    }
+
     const setupSocket = async () => {
       const token = await getSocketTokenCached()
       if (!token || cancelled) return
@@ -113,6 +124,8 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
       subscribeToOrder(orderId, () => {})
       onChatMessage(handleIncomingMessage)
       onTyping(handleTypingEvent)
+      socket.off('chat:error', handleChatError)
+      socket.on('chat:error', handleChatError)
 
       checkConnection = setInterval(() => {
         setIsConnected(socket.connected)
@@ -125,6 +138,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
       cancelled = true
       unsubscribeFromOrder(orderId)
       offChatMessage(handleIncomingMessage)
+      getSocket()?.off('chat:error', handleChatError)
       if (checkConnection) clearInterval(checkConnection)
     }
   }, [orderId, fetchMessages, isAuthenticated, getSocketTokenCached])

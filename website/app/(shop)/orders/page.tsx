@@ -46,6 +46,9 @@ function mapStatus(s: string): OrderDisplayStatus {
   return map[s] || 'received'
 }
 
+/** Orders per page — the backend caps a page at 100. */
+const ORDERS_PAGE_SIZE = 20
+
 interface MappedOrder {
   id: string
   orderNumber: string
@@ -67,19 +70,25 @@ const statusIcons: Record<OrderDisplayStatus, typeof Package> = {
 
 export default function OrdersPage() {
   const router = useRouter()
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, hasHydrated } = useAuthStore()
   const { addItem } = useCartStore()
   const [orders, setOrders] = useState<MappedOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'completed'>('all')
+  // The backend pages orders (10 by default) — page explicitly and append, so
+  // customers with more than one page can still reach older orders.
+  const [pageInfo, setPageInfo] = useState({ page: 1, totalPages: 1, total: 0 })
+  const [loadingMore, setLoadingMore] = useState(false)
 
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (pageNum = 1, append = false) => {
     setLoadError(false)
+    if (append) setLoadingMore(true)
     try {
-      const res = await ordersApi.getAll()
-      const rawOrders = Array.isArray(res) ? res : []
-      
+      const res = await ordersApi.getPage({ page: pageNum, limit: ORDERS_PAGE_SIZE })
+      const rawOrders = Array.isArray(res.orders) ? res.orders : []
+      setPageInfo(res.pagination)
+
       const mapped: MappedOrder[] = rawOrders.map((o: any) => ({
         id: o.id,
         orderNumber: o.order_number || o.id,
@@ -98,10 +107,16 @@ export default function OrdersPage() {
         rider: o.rider_name ? { name: o.rider_name, phone: o.rider_phone || '' } : undefined,
       }))
       
-      setOrders(mapped)
+      setOrders((prev) => {
+        if (!append) return mapped
+        const seen = new Set(prev.map((o) => o.id))
+        return [...prev, ...mapped.filter((o) => !seen.has(o.id))]
+      })
     } catch (err: any) {
       if (err?.response?.status === 401) {
         router.push('/login?redirect=/orders')
+      } else if (append) {
+        toast.error('Could not load more orders')
       } else {
         // Non-auth failure (network/5xx) — show an error state with retry
         // instead of silently rendering the "no orders yet" empty state.
@@ -109,16 +124,20 @@ export default function OrdersPage() {
       }
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }, [router])
 
   useEffect(() => {
+    // Persisted auth hydrates asynchronously — redirecting before that would
+    // bounce signed-in users to /login on a hard refresh.
+    if (!hasHydrated) return
     if (!isAuthenticated) {
       router.push('/login?redirect=/orders')
       return
     }
     loadOrders()
-  }, [isAuthenticated, router, loadOrders])
+  }, [hasHydrated, isAuthenticated, router, loadOrders])
 
   const filteredOrders = orders.filter((order) => {
     if (activeTab === 'active') {
@@ -361,6 +380,17 @@ export default function OrdersPage() {
               </motion.div>
             )
           })}
+          {pageInfo.page < pageInfo.totalPages && (
+            <div className="flex justify-center pt-2">
+              <Button
+                variant="outline"
+                onClick={() => loadOrders(pageInfo.page + 1, true)}
+                disabled={loadingMore}
+              >
+                {loadingMore ? 'Loading…' : `Load older orders (${Math.max(pageInfo.total - orders.length, 0)} more)`}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

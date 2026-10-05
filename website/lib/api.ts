@@ -172,6 +172,14 @@ function mapBackendProduct(raw: any): Product {
     halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),
     quarterKgPrice: toOptionalPrice(raw.quarter_kg_price ?? raw.quarterKgPrice),
     halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
+    // B/C fraction overrides — the server charges these at checkout, so the
+    // cart must show the same numbers (previously derived ×0.5/×0.25 only).
+    halfKgPriceB: toOptionalPrice(raw.half_kg_price_b ?? raw.halfKgPriceB),
+    quarterKgPriceB: toOptionalPrice(raw.quarter_kg_price_b ?? raw.quarterKgPriceB),
+    halfDozenPriceB: toOptionalPrice(raw.half_dozen_price_b ?? raw.halfDozenPriceB),
+    halfKgPriceC: toOptionalPrice(raw.half_kg_price_c ?? raw.halfKgPriceC),
+    quarterKgPriceC: toOptionalPrice(raw.quarter_kg_price_c ?? raw.quarterKgPriceC),
+    halfDozenPriceC: toOptionalPrice(raw.half_dozen_price_c ?? raw.halfDozenPriceC),
     // Quality tiers (B/C optional). Each tier has its own consumer price + stock.
     priceB,
     priceC,
@@ -428,11 +436,35 @@ export const notificationsApi = {
 }
 
 // Orders API
+export interface OrdersPage {
+  orders: Order[]
+  pagination: { page: number; totalPages: number; total: number }
+}
+
 export const ordersApi = {
+  /** Flat list (first 100) — for pickers; use getPage for the orders screen. */
   getAll: async (): Promise<Order[]> => {
-    const response = await api.get('/orders')
+    const response = await api.get('/orders', { params: { limit: 100 } })
     const body = response.data
     return body.data?.orders || body.data || []
+  },
+
+  /** Paged list — the backend defaults to 10 per page, so page explicitly. */
+  getPage: async (params: { page?: number; limit?: number } = {}): Promise<OrdersPage> => {
+    const response = await api.get('/orders', {
+      params: { page: params.page ?? 1, limit: params.limit ?? 20 },
+    })
+    const data = response.data?.data || {}
+    const orders: Order[] = Array.isArray(data) ? data : data.orders || []
+    const p = data.pagination || {}
+    return {
+      orders,
+      pagination: {
+        page: Number(p.page) || params.page || 1,
+        totalPages: Number(p.totalPages) || 1,
+        total: Number(p.total) || orders.length,
+      },
+    }
   },
 
   getById: async (id: string): Promise<Order> => {
@@ -814,8 +846,32 @@ export const attaChakkiApi = {
   getRequestById: async (id: string): Promise<AttaChakkiRequest> => {
     const response = await api.get(`/atta-requests/${id}`)
     const body = response.data
-    return body.data || body
+    return body.data?.request || body.data || body
   },
+
+  cancelRequest: async (id: string, reason?: string) => {
+    const response = await api.put(`/atta-requests/${id}/cancel`, { reason })
+    return response.data
+  },
+
+  /** Live admin-configured charges (public) — never hard-code rates in copy. */
+  getCharges: async (): Promise<AttaCharges> => {
+    const response = await api.get('/atta-requests/charges')
+    const d = response.data?.data || {}
+    return {
+      serviceCharge: Number(d.service_charge) || 0,
+      millingChargePerKg: Number(d.milling_charge_per_kg) || 0,
+      deliveryCharge: Number(d.delivery_charge) || 0,
+      freeDeliveryThresholdKg: Number(d.free_delivery_threshold_kg) || 0,
+    }
+  },
+}
+
+export interface AttaCharges {
+  serviceCharge: number
+  millingChargePerKg: number
+  deliveryCharge: number
+  freeDeliveryThresholdKg: number
 }
 
 // Banner API (public, no auth needed)
