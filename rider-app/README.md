@@ -18,6 +18,7 @@ offline-safe duty writes.
 | **Delivery confirm** | COD orders require the rider to confirm the exact cash collected before `PUT /tasks/:id/deliver`. |
 | **Offline** | Pickup / deliver / off-duty writes made without connectivity are queued and replayed in order when the network returns; 4xx responses are never retried. |
 | **Chat** | Full-screen per-order chat (socket first, REST fallback) with optimistic sends and retry. |
+| **Atta Chakki** | Pickup tasks: *Wheat collected* → *Dropped at mill*. Delivery tasks: *Flour collected* → *Delivered*. Created by the backend when the admin assigns a pickup/delivery rider. |
 | **Earnings** | Period stats from `/rider/stats`, cash panel (collected − your earnings − settled = **due to company**), per-delivery earnings list. |
 | **Notifications** | Local notifications for new / cancelled tasks and chat; Expo push token registered so the backend can reach a backgrounded phone. Tapping opens the task. |
 | **Languages** | English + Urdu, every string in `src/i18n` (TypeScript enforces parity). |

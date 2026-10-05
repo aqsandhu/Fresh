@@ -28,7 +28,7 @@
 Branch: `feat/rider-app-rebuild` (based on `fix/backend-hardening` @ `5d9e3ed`).
 Remote: `origin` → https://github.com/aqsandhu/Fresh.git
 
-> ✅ **Push status:** branch pushed to `origin/feat/rider-app-rebuild` on 2026-10-05 (the automated
+> ✅ **Push status:** merged into `main` and pushed on 2026-10-05; feature branch kept on origin (the automated
 > session cannot answer the credential prompt — run `git push` from your own terminal when
 > new commits land). PR: https://github.com/aqsandhu/Fresh/pull/new/feat/rider-app-rebuild
 
@@ -65,9 +65,12 @@ Legend: `TODO` not started · `WIP` in progress · `DONE` complete + verified ·
 | 5.1 | jest.setup native mocks → LoginScreen suite green | DONE | task-manager, location, notifications, device, constants, image-picker, netinfo, maps, socket.io, reanimated |
 | 5.2 | New tests | DONE | i18n parity, taskMapping, offlineQueue, helpers, TaskCard, LoginScreen — 43 tests |
 | 5.3 | typecheck + lint + test green; README | DONE | see §6 |
-| G16 | Declare `expo-constants` in rider-app package.json | DEFERRED | see §7 D7 (lockfile churn) |
+| G16 | Declare `expo-constants` in rider-app package.json | DONE | lockfile regenerated with `pnpm install --lockfile-only` (same pnpm 10.12.3 as `packageManager`) |
+| 4.4 | Backend: Atta Chakki rider tasks actually created + type-aware rider flow | DONE | `createAttaRiderTask` on admin rider assignment; fixed dead `status='active'` rider check (G21); pickup/deliver map to `picked_up/at_mill` and `out_for_delivery/delivered` |
+| 4.5 | Backend: customer push on rider assigned / delivered; customer-cancel closes rider tasks | DONE | §8 (a)(b) closed |
+| 3.8 | Rider app: atta wording on actions (Wheat collected / Dropped at mill / Flour collected) | DONE | DeliverSheet hides cash block for atta |
 
-**Remaining (next session):** nothing blocking. Optional follow-ups in §7 / §8.
+**Remaining:** none in code. Only the on-device smoke test (§6) is outstanding — it needs a physical phone and cannot be run from this session.
 
 ---
 
@@ -133,6 +136,7 @@ Derived from `backend/src/controllers/rider.controller.ts`, `rider.routes.ts`,
 | G18 | M | *(found during build)* `tokenRefresh.onRefreshFailed` called `logout()` which fires server calls with dead tokens; Login showed no reason. | R2 | 1.5 | DONE — `endSession(t('auth.sessionEnded'))` |
 | G19 | M | *(found during build)* admin "mark delivered" (`updateOrderStatus`) left the rider task `in_progress` (only the payment-received fast path closed it). | R6 | 4.2 | DONE |
 | G20 | L | *(incidental)* backend lint failed on a pre-existing unused arg in `utils/siteSettings.ts` (`--max-warnings=0`). | CI red | — | DONE (`_userId`) |
+| G21 | H | *(found in session 2)* admin atta rider assignment checked `riders.status = 'active'` — a value that does not exist in the enum (`available/busy/offline/on_leave`) — so **every** atta rider assignment failed with "Active rider not found", and no `rider_tasks` row was ever created for atta work. | R6/R10 — the whole Atta Chakki rider flow was dead end-to-end. | 4.4 | DONE |
 
 ---
 
@@ -167,6 +171,11 @@ Derived from `backend/src/controllers/rider.controller.ts`, `rider.routes.ts`,
 - **4.2** `utils/riderTaskEvents.ts`: `cancelActiveRiderTasks(client, orderId, {note})` (returns affected tasks), `notifyRiderTasksCancelled()` (socket `rider:task_cancelled` + push), `pushNewAssignment()`. Wired into `assignRiderToOrder` (displaced rider), `admin/orders.controller.updateOrderStatus` (cancel → cancel tasks; delivered → complete tasks) and `bulkUpdateOrderStatus`.
 - **4.3** `utils/expoPush.ts`: `sendExpoPushToUsers(userIds, message)` reads `users.device_tokens`, keeps `Expo(nent)PushToken[…]`, POSTs to `exp.host` in chunks of 100 via Node `fetch`, prunes `DeviceNotRegistered` tokens, never throws. Pure helpers unit-tested.
 
+### Phase 4b — Atta Chakki + customer notifications (session 2)
+- **4.4** `utils/riderTaskEvents.createAttaRiderTask(client, attaRequestId, riderId, type)`: cancels a different rider's active task of the same type, keeps an existing task for the same rider (idempotent), inserts `rider_tasks` (`atta_pickup` / `atta_delivery`) with the customer's address + GPS as pickup/delivery point, marks the rider `busy`. Called from `admin updateAttaStatus` when `pickup_rider_id` / `delivery_rider_id` is set (status `picked_up` / `out_for_delivery`); `notifyAttaAssignment` emits `rider:new_assignment` + push. Rider app flow: `atta_pickup` — "Wheat collected" (→ `picked_up`) then "Dropped at mill" (→ `at_mill`); `atta_delivery` — "Flour collected" (→ `out_for_delivery`) then "Delivered" (→ `delivered`, counts toward `total_deliveries`).
+- **4.5** `assignRiderToOrder` pushes "Your order is on the way" to the customer; rider `confirmDelivery` pushes "Order delivered"; customer `cancelOrder` runs `cancelActiveRiderTasks` + notify (defensive — customers cannot cancel `out_for_delivery` today).
+- **3.8** TaskDetail picks atta-specific labels; `DeliverSheet` skips the cash block for atta tasks (atta payment is not surfaced to riders — see D10).
+
 ### Phase 5 — Quality gates
 - **5.1** `jest.setup.js` mocks listed in §1.
 - **5.2** `__tests__/i18n.test.ts` (parity, placeholders, interpolation, tEnum), `taskMapping.test.ts`, `offlineQueue.test.ts`, `helpers.test.ts`, `TaskCard.test.tsx`, `LoginScreen.test.tsx`.
@@ -175,6 +184,12 @@ Derived from `backend/src/controllers/rider.controller.ts`, `rider.routes.ts`,
 ---
 
 ## 5. Work log (newest first)
+
+### 2026-10-05 — Session 2 — close every remaining item, merge to main
+- G16 closed: `expo-constants` declared; lockfile regenerated online (`pnpm install --lockfile-only`, 7 min) — diff is peer-suffix churn produced by the same pnpm version, safe for `--frozen-lockfile`.
+- Found + fixed G21 (atta rider assignment dead); implemented 4.4 / 4.5 / 3.8.
+- Gates re-run (see §6). Branch merged into `main` with `--no-ff` and pushed; feature branch pushed too.
+- Authorship check: every commit on this branch is authored and committed by `AQSANDHU <aq.sandhu786@gmail.com>` (the configured git user). Older `main` history contains 12 commits by other identities (`Kimi Fix Swarm`, `agent@example.com`, `Aqsa Sandhu noreply`); rewriting those would force-push `main` and change every SHA since, so it was **not** done without explicit confirmation.
 
 ### 2026-10-05 — Session 1 (continued) — rebuild implemented end-to-end
 - Phase 1–5 implemented as per §4. Deleted: `OrderChat.tsx`, `StatsCard.tsx`, `StatusToggle.tsx`, `locationStore.ts`, `useLocation.ts`, `useTasks.ts`, `AuthNavigator.tsx`, `TasksNavigator.tsx`, `ProfileNavigator.tsx`. Renamed `DashboardScreen` → `HomeScreen`.
@@ -189,7 +204,7 @@ Derived from `backend/src/controllers/rider.controller.ts`, `rider.routes.ts`,
 
 ---
 
-## 6. Verification evidence (latest run — 2026-10-05)
+## 6. Verification evidence (latest run — 2026-10-05, session 2, after 4.4/4.5/3.8/G16)
 
 | Workspace | Command | Result |
 |---|---|---|
@@ -199,6 +214,7 @@ Derived from `backend/src/controllers/rider.controller.ts`, `rider.routes.ts`,
 | backend | `pnpm typecheck` | ✅ clean |
 | backend | `pnpm lint` (`--max-warnings=0`) | ✅ clean (was 1 warning) |
 | backend | `npx jest --coverage=false src/__tests__` | ✅ 2 suites, 6 tests (incl. new `expoPush.test.ts`) |
+| root | `pnpm install --lockfile-only` | ✅ lockfile consistent with every workspace `package.json` |
 
 Not verified in this session (no device/emulator available): on-device GPS/background-service behaviour, Expo push delivery end-to-end, Google Maps rendering. These paths reuse the previously shipped expo-location / react-native-maps configuration; the first real-device smoke test should cover: go on duty → background app → admin sees location; admin assigns → phone (backgrounded) receives push; deliver COD flow.
 
@@ -207,16 +223,19 @@ Not verified in this session (no device/emulator available): on-device GPS/backg
 ## 7. Decisions, assumptions, deferred items
 
 - **D1** Backend changes limited to additive columns, rider-task cancellation side-effects and an Expo push sender. No schema migration needed (all columns exist; newer columns are probe-guarded).
-- **D2** Atta Chakki rider tasks render generically (request #, wheat kg, status) because **no backend code creates atta rider tasks today**. Full atta flow DEFERRED until the backend creates them.
+- **D2** *(superseded in session 2 by 4.4)* Atta rider tasks are now created by the backend on admin rider assignment and the rider app drives the `picked_up → at_mill` and `out_for_delivery → delivered` transitions.
+- **D10** Atta tasks carry no rider pay: `rider_delivery_charge` exists only on `orders`, and `atta_requests` has no per-rider rate. Earnings screens therefore show atta deliveries with `—`. Needs a product decision (flat atta rate per rider?) before any backend change.
 - **D3** No dark mode (`userInterfaceStyle: light`); the dead toggle was removed rather than half-implemented.
 - **D4** Rider self-service account deletion DEFERRED — rider accounts are admin-managed.
 - **D5** Layout stays LTR for Urdu (matches customer app); Urdu text renders RTL within its own `Text`.
 - **D6** Card distance is a straight-line estimate from the last GPS fix (labelled `~`), not routing.
-- **D7** `expo-constants` stays undeclared in `rider-app/package.json`: it is a dependency of `expo` and is public-hoisted by `.npmrc` (`public-hoist-pattern[]=*expo*`), so it resolves today; declaring it rewrote 250+ lockfile lines of unrelated peer suffixes, which would risk CI `--frozen-lockfile`. Revisit when the lockfile is next regenerated intentionally.
+- **D7** *(closed in session 2)* `expo-constants` is now declared; the lockfile was regenerated online with the pinned pnpm version, so the peer-suffix churn is the canonical output and `--frozen-lockfile` accepts it.
 - **D8** Problem reasons are stored in `rider_tasks.notes` as an English label + rider details so admins read one consistent string regardless of the rider's UI language.
 - **D9** `cashInHand` on Home is emphasised (warning tone) only when `paymentPending > 0`.
 
-## 8. Optional follow-ups (not required for this rebuild)
-- Backend: emit `rider:task_cancelled` from the customer-cancel path too (`order.controller.cancelOrder`) — customers cannot cancel once `out_for_delivery`, so today no rider task is ever active at customer-cancel time; add if that rule changes.
-- Backend: send Expo push to customers for `order:delivered` / rider assigned (token path already exists).
-- Rider app: detox/e2e smoke on a real device for the duty → deliver flow.
+## 8. Follow-ups
+- ~~Backend: customer-cancel path closes rider tasks~~ — done (4.5).
+- ~~Backend: Expo push to customers for rider assigned / delivered~~ — done (4.5).
+- **Open:** real-device smoke test of duty → background GPS → admin assign → push → COD deliver, and atta pickup/delivery (needs a phone; see §6 note).
+- **Open (product decision):** rider pay for atta tasks (D10).
+- **Open (needs your go-ahead):** rewrite the 12 older `main` commits authored by other identities to `AQSANDHU <aq.sandhu786@gmail.com>` — requires `git filter-repo`/rebase + force-push of `main`.
