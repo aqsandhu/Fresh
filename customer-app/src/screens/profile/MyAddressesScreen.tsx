@@ -46,13 +46,13 @@ export const MyAddressesScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedCity?.id, selectedCity?.name]);
+  }, [selectedCity?.name]);
 
   useEffect(() => {
     setLoading(true);
     setAddresses([]);
     loadAddresses();
-  }, [loadAddresses]);
+  }, [loadAddresses, selectedCity?.id]);
 
   const onRefresh = () => {
     setRefreshing(true);

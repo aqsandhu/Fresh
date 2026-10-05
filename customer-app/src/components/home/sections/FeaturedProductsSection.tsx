@@ -9,6 +9,9 @@ import { useCityContext } from '@/context/CityContext';
 import { productService } from '@services/product.service';
 import { ProductCard } from '@components';
 
+/** Featured cards on Home (the backend caps featured at 100 anyway). */
+const HOME_FEATURED_LIMIT = 20;
+
 interface FeaturedProductsSectionProps {
   onProductPress: (product: StoreProduct) => void;
   onViewAll: () => void;
@@ -20,10 +23,13 @@ export const FeaturedProductsSection: React.FC<FeaturedProductsSectionProps> = (
   onViewAll,
 }) => {
   const { selectedCityId } = useCityContext();
+  // Home shows a curated strip: on a 2-column phone grid 100 cards pushed the
+  // category wall thousands of pixels down, so riders "never saw" it. The full
+  // catalog is one tap away via "View All".
   const { data: products = [], isLoading: loading } = useQuery({
-    queryKey: ['featured-products', selectedCityId],
+    queryKey: ['featured-products', selectedCityId, HOME_FEATURED_LIMIT],
     queryFn: async () => {
-      const res = await productService.getFeaturedProducts(500);
+      const res = await productService.getFeaturedProducts(HOME_FEATURED_LIMIT);
       return res.success ? res.data : [];
     },
     enabled: !!selectedCityId,

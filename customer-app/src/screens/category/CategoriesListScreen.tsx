@@ -38,13 +38,13 @@ export const CategoriesListScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedCityId]);
+  }, []);
 
   useEffect(() => {
     setLoading(true);
     setCategories([]);
     loadCategories();
-  }, [loadCategories]);
+  }, [loadCategories, selectedCityId]);
 
   const onRefresh = () => {
     setRefreshing(true);

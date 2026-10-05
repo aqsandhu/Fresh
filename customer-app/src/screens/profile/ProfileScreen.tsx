@@ -63,7 +63,7 @@ export const ProfileScreen: React.FC = () => {
     } catch {
       /* optional */
     }
-  }, [isAuthenticated, selectedCity?.id, selectedCity?.name]);
+  }, [isAuthenticated, selectedCity?.name]);
 
   useEffect(() => {
     setAddresses([]);
@@ -72,7 +72,7 @@ export const ProfileScreen: React.FC = () => {
       setEditName(user.fullName || '');
       setEditEmail(user.email || '');
     }
-  }, [loadAddresses, user]);
+  }, [loadAddresses, user, selectedCity?.id]);
 
   useEffect(() => {
     if (!isAuthenticated) {

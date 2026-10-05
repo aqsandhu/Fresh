@@ -37,10 +37,10 @@ Legend: TODO · WIP · DONE · DEFERRED
 | 0.1 | all | Log + baseline gates recorded | DONE | §2 |
 | 0.2 | all | Audits: website core ✅, website static ✅, admin 12 pages ✅; **customer-app, admin main, backend agents died on session limit** | PARTIAL | findings in `docs/audits/2026-10-05-findings.md`; re-run the 3 dead sweeps (§4 step 9) |
 | 0.3 | ci | admin build needed `VITE_API_URL` → CI red | DONE | `.github/workflows/ci.yml` |
-| 1.1 | customer-app | Home "Shop by Category" wall after Featured Products | TODO | agent died before root cause; plan §4 step 6 |
+| 1.1 | customer-app | Home "Shop by Category" wall after Featured Products | DONE | wall now react-query keyed on city (old retry loop gave up after ~3 s); Home featured strip capped at 20 so the wall is reachable on a 2-col grid |
 | 1.2 | admin-panel | typecheck TS2786 | DONE (env) | vanished after full install; not a repo defect |
 | 1.3 | website | Header/Footer suites | DONE (env) | pass after full install |
-| 1.4 | customer-app | 10 react-hooks lint warnings | TODO | |
+| 1.4 | customer-app | 10 react-hooks lint warnings | DONE | 0 warnings |
 | 2.1 | backend+website | W-H1 set-pin revokes fresh session | DONE | backend skips revoke on first set |
 | 2.2 | website | W-H2 wrong OTP strands register | DONE | back to OTP step on 401 |
 | 2.3 | website | W-H3 restaurant 401 → customer logout | DONE | portal login/register treated as auth endpoints |
@@ -48,7 +48,7 @@ Legend: TODO · WIP · DONE · DEFERRED
 | 2.5 | website+backend | WS-H1 products cap 100 → load-more | DONE | `useInfiniteQuery`, 48/page; category loading flash (WS-L13) fixed too |
 | 2.6 | website | WS-H2/WS-M3 placeholder phone | DONE | `useSupportContact`; Header/Footer/Hero/contact/help/returns/shipping/privacy/terms |
 | 2.7 | website+backend | W-M1/M2/L3 orders paging + quality + urgent | DONE (M1, M2) · L3 urgent label TODO | `ordersApi.getPage`, 20/page |
-| 2.8 | website+customer-app | W-M3 B/C fraction prices | DONE (website) · customer-app TODO | `fractionOverride` in unitPricing |
+| 2.8 | website+customer-app | W-M3 B/C fraction prices | DONE | `fractionOverride` in both unitPricing modules |
 | 2.9 | website | W-M4/M5/L7/L8 atta flow | DONE | phone in instructions, `/atta-chakki/requests`, live charges (`GET /atta-requests/charges`), city-filtered addresses |
 | 2.10 | website | W-M6 chat:error | DONE | |
 | 2.11 | website+backend | W-M7 address pin removal | DONE | nulls clear location |
@@ -58,9 +58,9 @@ Legend: TODO · WIP · DONE · DEFERRED
 | 2.15 | website | W-M13 settings toggles | DONE | real `notification_enabled` + `preferred_language`; dead rows removed |
 | 2.16 | website | W-M14/L13 OCP/shareholder session handling | DONE (M14) · L13 polish TODO | `handlePortalAuthFailure` |
 | 2.17 | website | WS-M4 ribbon ✅, WS-M6 app section ✅, WS-M7 search cap ✅, WS-M8/M9 footer ✅, WS-M11 dead links ✅; WS-M10 copy, WS-M12 wishlist label, WS-L14..L21, W-L1..L11 | PARTIAL | |
-| 3.1 | admin+backend | A-H1/H2/H3 camel/snake mismatches | PARTIAL | backend accepts snake (H2, H3); admin Expenses byType (H1) TODO |
-| 3.2 | admin | A-M4..M10 | TODO | |
-| 3.3 | admin+backend | A-L11..L14 | TODO | |
+| 3.1 | admin+backend | A-H1/H2/H3 camel/snake mismatches | DONE | |
+| 3.2 | admin | A-M4..M10 | DONE | |
+| 3.3 | admin+backend | A-L11..L14 | PARTIAL | L11 registry ✅, L14 OCP buttons ✅; L12 (OCP stock modal limit), L13 (coupons-used paging), L14 Complaints/Reviews/RiderApplications buttons TODO |
 | 4.1 | backend | re-verify the 28 prior-audit items (agent died) | TODO | |
 
 ## 2. Baseline (before this work) — 2026-10-05

@@ -100,14 +100,14 @@ export const ProductDetailScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [productId, selectedCityId]);
+  }, [productId]);
 
   useEffect(() => {
     setLoading(true);
     setProduct(null);
     setRelatedProducts([]);
     loadProduct();
-  }, [loadProduct]);
+  }, [loadProduct, selectedCityId]);
 
   useEffect(() => {
     if (!selectedCityId) return;

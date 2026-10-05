@@ -30,7 +30,7 @@ export const Skeleton: React.FC<SkeletonProps> = ({
       -1,
       true
     );
-  }, []);
+  }, [shimmer]);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {

@@ -58,7 +58,7 @@ export const CartMiniSheet: React.FC = () => {
   const prevLineCount = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const blockedRoutes = ['CartMain'];
+  const blockedRoutes = useMemo(() => ['CartMain'], []);
   const lineCount = items.length;
   const count = getTotalItems();
   const sub = getSubtotal();
@@ -95,7 +95,7 @@ export const CartMiniSheet: React.FC = () => {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [lineCount, activeRoute, hasHydrated, setCartDropdownOpen]);
+  }, [lineCount, activeRoute, hasHydrated, setCartDropdownOpen, blockedRoutes]);
 
   return (
     <Modal visible={isCartDropdownOpen} transparent animationType="fade">

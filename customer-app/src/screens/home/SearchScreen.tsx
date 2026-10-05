@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,8 +36,10 @@ export const SearchScreen: React.FC = () => {
   const [maxPrice, setMaxPrice] = useState('');
   const [inStockOnly, setInStockOnly] = useState(false);
 
-  const searchProducts = useCallback(
-    debounce(async (query: string) => {
+  // useMemo (not useCallback) so the debounced function is created once; the
+  // effect below re-runs the search whenever the city changes.
+  const searchProducts = useMemo(
+    () => debounce(async (query: string) => {
       if (!query.trim()) {
         setRawProducts([]);
         return;
@@ -52,7 +54,7 @@ export const SearchScreen: React.FC = () => {
         setLoading(false);
       }
     }, 500),
-    [selectedCityId]
+    []
   );
 
   useEffect(() => {

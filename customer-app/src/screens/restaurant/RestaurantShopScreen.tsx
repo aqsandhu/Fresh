@@ -66,7 +66,7 @@ export const RestaurantShopScreen: React.FC = () => {
         setLoading(false);
       }
     })();
-  }, [navigation]);
+  }, [navigation, setStoreDelivery]);
 
   const loadCategory = async (catId: string) => {
     setActiveCat(catId);

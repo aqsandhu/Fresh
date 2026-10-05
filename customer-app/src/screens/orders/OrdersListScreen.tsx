@@ -57,7 +57,7 @@ export const OrdersListScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedCityId]);
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {

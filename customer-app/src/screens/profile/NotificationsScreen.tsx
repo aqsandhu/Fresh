@@ -65,7 +65,7 @@ export const NotificationsScreen: React.FC = () => {
 
   useEffect(() => {
     loadNotifications();
-  }, []);
+  }, [loadNotifications]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
