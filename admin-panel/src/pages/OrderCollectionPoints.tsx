@@ -12,6 +12,8 @@ import { productService } from '@/services/product.service';
 import { useDebounce } from '@/hooks/useDebounce';
 import { api } from '@/services/api';
 import toast from 'react-hot-toast';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 
 const money = (n: number) => `Rs. ${(Math.round((n + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
 const qtyFmt = (n: number) => (Math.round((Number(n) + Number.EPSILON) * 1000) / 1000).toLocaleString('en-PK');
@@ -38,6 +40,7 @@ export const OrderCollectionPoints: React.FC = () => {
 // ── Collection points ───────────────────────────────────────────────────────
 function PointsSection() {
   const qc = useQueryClient();
+  const { user } = useAuthContext();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Ocp | null>(null);
   const [stockFor, setStockFor] = useState<Ocp | null>(null);
@@ -85,11 +88,18 @@ function PointsSection() {
     setModalOpen(true);
   };
 
+  // Only ocp.manage may create/edit/toggle/remove points; stock-send has its
+  // own code. Hiding the buttons avoids a 403 toast the admin cannot act on.
+  const canManage = hasPermission(user?.permissions, 'ocp.manage');
+  const canSendStock = hasPermission(user?.permissions, ['ocp.manage', 'ocp.stock.send']);
+
   return (
     <>
-      <div className="flex justify-end mb-4">
-        <Button onClick={openAdd} leftIcon={<Plus className="w-5 h-5" />}>Add OCP</Button>
-      </div>
+      {canManage && (
+        <div className="flex justify-end mb-4">
+          <Button onClick={openAdd} leftIcon={<Plus className="w-5 h-5" />}>Add OCP</Button>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-gray-500">Loading…</p>
@@ -115,12 +125,18 @@ function PointsSection() {
                 </p>
               )}
               <div className="flex items-center gap-2 pt-2">
-                <Button size="sm" variant="outline" onClick={() => setStockFor(o)} leftIcon={<Package className="w-4 h-4" />}>Send stock</Button>
-                <button onClick={() => openEdit(o)} title="Edit" className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Edit className="w-4 h-4" /></button>
-                <button onClick={() => statusMut.mutate(o)} title="Toggle status" className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
-                  {o.status === 'active' ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                </button>
-                <button onClick={() => { if (confirm(`Remove "${o.name}"?`)) delMut.mutate(o.id); }} title="Remove" className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                {canSendStock && (
+                  <Button size="sm" variant="outline" onClick={() => setStockFor(o)} leftIcon={<Package className="w-4 h-4" />}>Send stock</Button>
+                )}
+                {canManage && (
+                  <>
+                    <button onClick={() => openEdit(o)} title="Edit" className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg"><Edit className="w-4 h-4" /></button>
+                    <button onClick={() => statusMut.mutate(o)} title="Toggle status" className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg">
+                      {o.status === 'active' ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => { if (confirm(`Remove "${o.name}"?`)) delMut.mutate(o.id); }} title="Remove" className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                  </>
+                )}
               </div>
             </Card>
           ))}

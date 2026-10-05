@@ -126,8 +126,16 @@ export const financeService = {
     const res = await api.put<ApiResponse<{ id: string }>>(`/finance/shareholders/${id}`, d);
     return unwrap(res);
   },
-  payShareholder: async (id: string, d: { amount: number; note?: string }) => {
-    const res = await api.post<ApiResponse<{ id: string }>>(`/finance/shareholders/${id}/pay`, d);
+  payShareholder: async (id: string, d: { amount: number; note?: string }, period: ExpenseFilters = {}) => {
+    // Same period params as getProfit so the backend's balance cap matches
+    // the balance the admin is looking at.
+    const q = new URLSearchParams();
+    if (period.period) q.set('period', String(period.period));
+    if (period.month) q.set('month', String(period.month));
+    if (period.year) q.set('year', String(period.year));
+    if (period.date) q.set('date', String(period.date));
+    const qs = q.toString();
+    const res = await api.post<ApiResponse<{ id: string }>>(`/finance/shareholders/${id}/pay${qs ? `?${qs}` : ''}`, d);
     return unwrap(res);
   },
   shareholderPayouts: async (id: string): Promise<{ id: string; amount: number; status: string; note: string | null; createdAt: string; receivedAt: string | null }[]> => {

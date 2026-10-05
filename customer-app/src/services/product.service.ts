@@ -129,6 +129,13 @@ function mapBackendProduct(raw: any): StoreProduct {
     halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),
     quarterKgPrice: toOptionalPrice(raw.quarter_kg_price ?? raw.quarterKgPrice),
     halfDozenPrice: toOptionalPrice(raw.half_dozen_price ?? raw.halfDozenPrice),
+    // B/C fraction overrides — the server charges these at checkout.
+    halfKgPriceB: toOptionalPrice(raw.half_kg_price_b ?? raw.halfKgPriceB),
+    quarterKgPriceB: toOptionalPrice(raw.quarter_kg_price_b ?? raw.quarterKgPriceB),
+    halfDozenPriceB: toOptionalPrice(raw.half_dozen_price_b ?? raw.halfDozenPriceB),
+    halfKgPriceC: toOptionalPrice(raw.half_kg_price_c ?? raw.halfKgPriceC),
+    quarterKgPriceC: toOptionalPrice(raw.quarter_kg_price_c ?? raw.quarterKgPriceC),
+    halfDozenPriceC: toOptionalPrice(raw.half_dozen_price_c ?? raw.halfDozenPriceC),
     // Quality tiers (B/C optional). Each tier has its own consumer price + stock.
     priceB,
     priceC,

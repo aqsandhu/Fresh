@@ -61,7 +61,11 @@ export const Complaints: React.FC = () => {
         <div className="flex flex-wrap gap-2">
           {STATUS_TABS.map((t) => {
             const active = status === t.value;
-            const count = t.value ? counts[t.value] : undefined;
+            // Interceptor camelizes `counts.in_progress` → `counts.inProgress`.
+            const countMap = (counts || {}) as Record<string, number | undefined>;
+            const count = t.value
+              ? countMap[t.value] ?? countMap[t.value.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase())]
+              : undefined;
             return (
               <button
                 key={t.value || 'all'}
@@ -276,7 +280,7 @@ function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) 
         footer={
           <div className="flex justify-end gap-3">
             <Button variant="outline" onClick={() => setRefundOpen(false)}>Cancel</Button>
-            <Button onClick={() => refundMut.mutate()} disabled={refundMut.isPending || !(parseFloat(amount) > 0)} isLoading={refundMut.isPending}>Refund</Button>
+            <Button onClick={() => refundMut.mutate()} disabled={refundMut.isPending || !(parseFloat(amount) > 0) || !note.trim()} isLoading={refundMut.isPending}>Refund</Button>
           </div>
         }>
         <div className="space-y-3">
@@ -295,8 +299,14 @@ function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) 
             <p className="text-xs text-gray-400 mt-1">For the record only — the refund always comes from the admin account.</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
-            <input value={note} onChange={(e) => setNote(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Reason (required)</label>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="e.g. damaged items, partial refund agreed on call"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            />
+            {!note.trim() && <p className="text-xs text-red-500 mt-1">The backend records every refund with a reason.</p>}
           </div>
         </div>
       </Modal>

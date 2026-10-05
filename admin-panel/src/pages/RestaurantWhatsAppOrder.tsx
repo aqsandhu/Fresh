@@ -4,6 +4,7 @@ import { UtensilsCrossed, Plus, Trash2, Package, Receipt, MessageCircle } from '
 import { Button } from '@/components/ui/Button';
 import { restaurantService } from '@/services/restaurant.service';
 import { productService } from '@/services/product.service';
+import { useDebounce } from '@/hooks/useDebounce';
 import toast from 'react-hot-toast';
 
 type Quality = 'A' | 'B' | 'C';
@@ -27,19 +28,23 @@ const num = (v: unknown): number | null => {
 
 function qualityBase(p: any, q: Quality): number | null {
   // Restaurant pays restaurant_price_* (falling back to the consumer price for
-  // that tier). A tier is offered only when its consumer price exists.
+  // that tier). A tier is offered only when the admin enabled it for
+  // restaurants (restaurant_enabled_*, default OFF) — the backend rejects any
+  // other tier at order time with "Quality X is not available".
   if (q === 'B') {
-    if (num(p?.priceB) == null) return null;
+    if (p?.restaurantEnabledB !== true || num(p?.priceB) == null) return null;
     return num(p?.restaurantPriceB) ?? num(p?.priceB);
   }
   if (q === 'C') {
-    if (num(p?.priceC) == null) return null;
+    if (p?.restaurantEnabledC !== true || num(p?.priceC) == null) return null;
     return num(p?.restaurantPriceC) ?? num(p?.priceC);
   }
+  if (p?.restaurantEnabledA !== true) return null;
   return num(p?.restaurantPriceA) ?? num(p?.price) ?? 0;
 }
 function availableQualities(p: any): Quality[] {
-  const out: Quality[] = ['A'];
+  const out: Quality[] = [];
+  if (qualityBase(p, 'A') != null) out.push('A');
   if (qualityBase(p, 'B') != null) out.push('B');
   if (qualityBase(p, 'C') != null) out.push('C');
   return out;
@@ -94,12 +99,20 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
   const restaurants = restData?.restaurants ?? [];
   const selectedRestaurant = restaurants.find((r) => r.id === restaurantId);
 
+  // The backend caps a page at 100 and sorts newest-first, so a bare list
+  // would silently hide older products — search server-side instead.
+  const [productSearch, setProductSearch] = useState('');
+  const debouncedSearch = useDebounce(productSearch, 300);
   const { data: productsData } = useQuery({
-    queryKey: ['products', 'restaurant-whatsapp'],
-    queryFn: () => productService.getProducts({ page: 1, limit: 300 }),
+    queryKey: ['products', 'restaurant-whatsapp', debouncedSearch],
+    queryFn: () => productService.getProducts({ page: 1, limit: 100, search: debouncedSearch || undefined, isActive: true }),
   });
-  // Unified catalog: only products flagged "also for restaurants" can be ordered here.
-  const products = (productsData?.products || []).filter((p: any) => p.availableForRestaurants);
+  // Unified catalog: only ACTIVE products flagged "also for restaurants" with at
+  // least one restaurant-enabled quality tier can be ordered here.
+  const products = (productsData?.products || []).filter(
+    (p: any) => p.availableForRestaurants && p.isActive !== false && availableQualities(p).length > 0
+  );
+  const productsTruncated = (productsData?.pagination?.total || 0) > (productsData?.products || []).length;
 
   const { data: settings } = useQuery({
     queryKey: ['restaurant-settings'],
@@ -184,6 +197,16 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
         <h3 className="text-lg font-medium text-gray-900 mb-3 flex items-center">
           <Package className="w-5 h-5 mr-2" /> Items
         </h3>
+        <input
+          type="search"
+          value={productSearch}
+          onChange={(e) => setProductSearch(e.target.value)}
+          placeholder="Search products by name…"
+          className="w-full max-w-md mb-3 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+        />
+        {productsTruncated && (
+          <p className="mb-3 text-xs text-amber-600">Showing the first 100 matches — type to narrow the search.</p>
+        )}
         <div className="space-y-3">
           {items.map((item, idx) => {
             const product = (products as any[]).find((p) => p.id === item.productId);
@@ -197,7 +220,10 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
                   <span className="text-sm text-gray-500 w-5">{idx + 1}.</span>
                   <select
                     value={item.productId}
-                    onChange={(e) => update(item.id, { productId: e.target.value, quality: 'A', unit: 'full' })}
+                    onChange={(e) => {
+                      const next = (products as any[]).find((p) => p.id === e.target.value);
+                      update(item.id, { productId: e.target.value, quality: next ? (availableQualities(next)[0] ?? 'A') : 'A', unit: 'full' });
+                    }}
                     className="flex-1 min-w-[180px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                   >
                     <option value="">Select product</option>

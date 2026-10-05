@@ -155,7 +155,7 @@ export const Profit: React.FC = () => {
         </>
       )}
 
-      {payFor && <PayModal shareholder={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); invalidate(); }} />}
+      {payFor && <PayModal shareholder={payFor} period={filters} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); invalidate(); }} />}
       {addOpen && <AddShareholderModal remaining={Math.max(0, 100 - allocatedPercent)} onClose={() => setAddOpen(false)} onDone={() => { setAddOpen(false); invalidate(); }} />}
       {editFor && <EditShareholderModal shareholder={editFor} remaining={Math.max(0, 100 - (allocatedPercent - editFor.sharePercent))} onClose={() => setEditFor(null)} onDone={() => { setEditFor(null); invalidate(); }} />}
     </Layout>
@@ -243,11 +243,14 @@ function FormulaCard({ onSaved }: { onSaved: () => void }) {
   );
 }
 
-function PayModal({ shareholder, onClose, onDone }: { shareholder: ProfitShareholder; onClose: () => void; onDone: () => void }) {
+function PayModal({ shareholder, period, onClose, onDone }: { shareholder: ProfitShareholder; period: ExpenseFilters; onClose: () => void; onDone: () => void }) {
   const [amount, setAmount] = useState(shareholder.balance > 0 ? String(shareholder.balance) : '');
   const [note, setNote] = useState('');
   const mut = useMutation({
-    mutationFn: () => financeService.payShareholder(shareholder.id, { amount: parseFloat(amount) || 0, note: note.trim() || undefined }),
+    // The backend caps the payout at the balance of the period it is given —
+    // send the SAME period the dashboard computed `balance` for, otherwise it
+    // silently falls back to "this month" and rejects the prefilled amount.
+    mutationFn: () => financeService.payShareholder(shareholder.id, { amount: parseFloat(amount) || 0, note: note.trim() || undefined }, period),
     onSuccess: () => { toast.success('Payment sent — pending until received'); onDone(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });

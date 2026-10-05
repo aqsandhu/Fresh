@@ -32,14 +32,13 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   '/admin/products': ['products.view'],
   '/admin/price-manager': ['products.update'],
   '/admin/stock': ['products.update', 'products.view', 'stock.adjust'],
-  '/admin/expenses': [
-    'finance.expenses.view',
-    'finance.expenses.create',
-    'finance.stock_purchase.create',
-    'finance.rider_payments.create',
-  ],
+  // The page's first request is GET /finance/expenses, which the backend gates
+  // on finance.expenses.view — admitting create-only roles just produced a 403
+  // toast and an empty table.
+  '/admin/expenses': ['finance.expenses.view'],
   '/admin/workers': ['finance.workers.manage'],
-  '/admin/profit': ['finance.profit.view', 'finance.profit.manage', 'finance.shareholders.view', 'finance.shareholders.manage', 'finance.shareholders.pay'],
+  // Same for GET /finance/profit (finance.profit.view).
+  '/admin/profit': ['finance.profit.view'],
   '/admin/categories': ['categories.manage'],
   '/admin/customers': ['customers.view'],
   '/admin/riders': ['riders.view'],

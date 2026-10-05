@@ -98,12 +98,18 @@ export const Expenses: React.FC = () => {
           <p className="text-xs text-gray-500">Total</p>
           <p className="text-xl font-bold text-gray-900">{money(data?.total || 0)}</p>
         </Card>
-        {(['stock_purchase', 'rider_payment', 'worker_payment', 'other'] as const).map((t) => (
-          <Card key={t} className="text-center">
-            <p className="text-xs text-gray-500">{TYPE_LABEL[t]}</p>
-            <p className="text-lg font-semibold text-gray-700">{money(data?.byType?.[t] || 0)}</p>
-          </Card>
-        ))}
+        {(['stock_purchase', 'rider_payment', 'worker_payment', 'other'] as const).map((t) => {
+          // The response interceptor camelizes map keys too (stock_purchase →
+          // stockPurchase); read both so the per-type totals never show Rs 0.
+          const camel = t.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+          const byType = (data?.byType || {}) as Record<string, number | undefined>;
+          return (
+            <Card key={t} className="text-center">
+              <p className="text-xs text-gray-500">{TYPE_LABEL[t]}</p>
+              <p className="text-lg font-semibold text-gray-700">{money(byType[camel] ?? byType[t] ?? 0)}</p>
+            </Card>
+          );
+        })}
       </div>
 
       {isLoading ? (

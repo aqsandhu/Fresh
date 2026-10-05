@@ -114,6 +114,13 @@ export interface StoreProduct {
   halfKgPrice?: number | null;
   quarterKgPrice?: number | null;
   halfDozenPrice?: number | null;
+  /** Explicit Quality-B / Quality-C fraction prices (admin overrides). */
+  halfKgPriceB?: number | null;
+  quarterKgPriceB?: number | null;
+  halfDozenPriceB?: number | null;
+  halfKgPriceC?: number | null;
+  quarterKgPriceC?: number | null;
+  halfDozenPriceC?: number | null;
   allowHalfKg?: boolean;
   allowQuarterKg?: boolean;
   qualifiesForFreeDelivery?: boolean;

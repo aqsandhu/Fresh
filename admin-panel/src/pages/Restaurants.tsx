@@ -221,10 +221,12 @@ function RestaurantTimeSlots() {
   const toggle = useMutation({
     mutationFn: (s: any) => restaurantService.updateTimeSlot(s.id, { is_active: !(s.isActive ?? s.is_active) }),
     onSuccess: invalidate,
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not update slot'),
   });
   const remove = useMutation({
     mutationFn: (id: string) => restaurantService.deleteTimeSlot(id),
     onSuccess: () => { toast.success('Slot removed'); invalidate(); },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not remove slot'),
   });
 
   return (
