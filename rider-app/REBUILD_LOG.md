@@ -28,10 +28,9 @@
 Branch: `feat/rider-app-rebuild` (based on `fix/backend-hardening` @ `5d9e3ed`).
 Remote: `origin` → https://github.com/aqsandhu/Fresh.git
 
-> ⚠️ **Push status:** `git push` from this automated session fails (no stored GitHub
-> credential; the credential helper needs an interactive prompt). All work is committed
-> locally on `feat/rider-app-rebuild`. Run **`git push -u origin feat/rider-app-rebuild`**
-> once from your own terminal (or `gh auth login`) and the branch will sync.
+> ✅ **Push status:** branch pushed to `origin/feat/rider-app-rebuild` on 2026-10-05 (the automated
+> session cannot answer the credential prompt — run `git push` from your own terminal when
+> new commits land). PR: https://github.com/aqsandhu/Fresh/pull/new/feat/rider-app-rebuild
 
 ---
 
