@@ -273,7 +273,7 @@ export async function placeRestaurantOrder(
       if (await hasTimeSlotBookings()) {
         const claim = await client.query(
           `INSERT INTO time_slot_bookings (time_slot_id, delivery_date, booked_count)
-           VALUES ($1, COALESCE($2::date, CURRENT_DATE), 1)
+           VALUES ($1, COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date), 1)
            ON CONFLICT (time_slot_id, delivery_date)
            DO UPDATE SET booked_count = time_slot_bookings.booked_count + 1, updated_at = NOW()
              WHERE $3::int IS NULL OR time_slot_bookings.booked_count < $3

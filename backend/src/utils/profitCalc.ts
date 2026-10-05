@@ -64,6 +64,8 @@ export interface CityProfit {
   totalExpenses: number;
   inventoryCost: number;
   operatingExpenses: number;
+  /** Money handed back on delivered orders in the period (refunds ledger). */
+  refunds: number;
   profit: number;
   freshbazarShare: number;
   distributable: number;
@@ -83,6 +85,23 @@ export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promis
   );
   const totalSale = parseFloat(sales.rows[0].total) || 0;
   const orderCount = Number(sales.rows[0].orders) || 0;
+
+  // Refunds paid out on delivered orders of this city reduce real sales.
+  // (Refunded/cancelled orders are already excluded by status above; this
+  // catches partial refunds via complaints on orders that stay delivered.)
+  let refunds = 0;
+  const refundsTable = await query(`SELECT to_regclass('public.refunds') IS NOT NULL AS ok`);
+  if (refundsTable.rows[0]?.ok) {
+    const refP = periodClause('r.created_at', p, 2);
+    const ref = await query(
+      `SELECT COALESCE(SUM(r.amount),0) AS total
+         FROM refunds r
+         JOIN orders o ON o.id = r.order_id
+        WHERE o.deleted_at IS NULL AND o.status = 'delivered' AND o.city_id = $1${refP.sql}`,
+      [cityId, ...refP.params]
+    );
+    refunds = parseFloat(ref.rows[0].total) || 0;
+  }
 
   const expP = periodClause('incurred_at', p, 2);
   const exp = await query(
@@ -148,7 +167,7 @@ export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promis
   );
   const inventoryCost = parseFloat(inventory.rows[0].total) || 0;
   const totalExpenses = operatingExpenses + inventoryCost;
-  const profit = round2(totalSale - totalExpenses);
+  const profit = round2(totalSale - refunds - totalExpenses);
 
   const setRow = await query(`SELECT * FROM profit_settings WHERE city_id = $1`, [cityId]);
   const s = setRow.rows[0] || null;
@@ -179,7 +198,8 @@ export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promis
 
   return {
     totalSale: round2(totalSale), orderCount, totalExpenses: round2(totalExpenses),
-    inventoryCost: round2(inventoryCost), operatingExpenses: round2(operatingExpenses), profit,
+    inventoryCost: round2(inventoryCost), operatingExpenses: round2(operatingExpenses),
+    refunds: round2(refunds), profit,
     freshbazarShare, distributable: round2(profit - freshbazarShare),
     settings: s ? { enabled: s.freshbazar_enabled === true, mode: s.freshbazar_mode, perOrder: parseFloat(s.freshbazar_per_order) || 0, marginPercent: parseFloat(s.freshbazar_margin_percent) || 0 } : defaultSettings(),
   };

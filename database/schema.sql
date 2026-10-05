@@ -168,8 +168,8 @@ CREATE TABLE riders (
     
     -- Rider info
     cnic VARCHAR(15) UNIQUE NOT NULL,  -- Pakistani CNIC format: 12345-1234567-8
-    cnic_front_image TEXT NOT NULL,
-    cnic_back_image TEXT NOT NULL,
+    cnic_front_image TEXT,  -- uploaded later from the rider app (migration 55)
+    cnic_back_image TEXT,
     driving_license_number VARCHAR(50),
     license_image TEXT,
     

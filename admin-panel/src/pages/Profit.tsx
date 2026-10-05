@@ -90,6 +90,9 @@ export const Profit: React.FC = () => {
             <Card className="text-center"><p className="text-xs text-gray-500">Total sale</p><p className="text-lg font-bold text-gray-900">{money(profit?.totalSale || 0)}</p><p className="text-[11px] text-gray-400">{profit?.orderCount || 0} orders</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Inventory cost</p><p className="text-lg font-bold text-red-600">{money(profit?.inventoryCost || 0)}</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Other expenses</p><p className="text-lg font-bold text-red-600">{money(profit?.operatingExpenses || 0)}</p></Card>
+            {(profit?.refunds || 0) > 0 && (
+              <Card className="text-center"><p className="text-xs text-gray-500">Refunds</p><p className="text-lg font-bold text-red-600">{money(profit?.refunds || 0)}</p></Card>
+            )}
             <Card className="text-center"><p className="text-xs text-gray-500">Profit</p><p className={`text-lg font-bold ${(profit?.profit || 0) >= 0 ? 'text-green-700' : 'text-red-600'}`}>{money(profit?.profit || 0)}</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">FreshBazar share</p><p className="text-lg font-semibold text-gray-700">{money(profit?.freshbazarShare || 0)}</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Distributable</p><p className="text-lg font-bold text-primary-700">{money(profit?.distributable || 0)}</p></Card>

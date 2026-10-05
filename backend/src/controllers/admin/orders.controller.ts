@@ -302,15 +302,49 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
       const timestampColumn = ORDER_STATUS_TIMESTAMPS[status];
       const timestampValue = timestampColumn ? `, ${timestampColumn} = NOW()` : '';
 
+      // Admin-confirmed delivery of a COD order collects the cash exactly like
+      // the rider's own "delivered" path does (OCP orders are collected by the
+      // OCP, so they are left alone). Without this the order sat "delivered /
+      // payment pending" forever and never counted in revenue.
+      const codPaidSql =
+        status === 'delivered'
+          ? `, payment_status = CASE
+                 WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN 'completed'::payment_status
+                 ELSE payment_status END,
+               paid_amount = CASE
+                 WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN total_amount
+                 ELSE paid_amount END`
+          : '';
+
       const result = await client.query(
         `UPDATE orders
-         SET status = $1${timestampValue},
+         SET status = $1${timestampValue}${codPaidSql},
              cancellation_reason = COALESCE($2, cancellation_reason),
              updated_at = NOW()
          WHERE id = $3
          RETURNING *`,
         [status, reason, id]
       );
+
+      // delivered → refunded: money goes back. Record the refunds-ledger row
+      // (same shape as cancellation) and flip the payment status so finance
+      // and the customer's order page both reflect it.
+      if (status === 'refunded' && order.status !== 'refunded') {
+        const paidOut = parseFloat(String(order.paid_amount ?? '0')) || 0;
+        if (paidOut > 0 && (await hasCatalogV2Columns())) {
+          await client.query(
+            `INSERT INTO refunds
+               (order_id, complaint_id, amount, original_payment_source, note, reason)
+             VALUES ($1, NULL, $2, 'admin', $3, $3)`,
+            [id, roundMoney(paidOut), reason ? `Refunded by admin: ${reason}` : 'Refunded by admin']
+          );
+        }
+        await client.query(
+          `UPDATE orders SET payment_status = 'refunded'::payment_status, updated_at = NOW() WHERE id = $1`,
+          [id]
+        );
+        result.rows[0].payment_status = 'refunded';
+      }
 
       // Admin-confirmed delivery closes the rider's task too (same as the
       // payment-received fast path) so the rider app stops showing it active.
@@ -512,7 +546,7 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
   try {
     updatedOrder = await withTransaction(async (client) => {
       const orderRes = await client.query(
-        `SELECT id, user_id, status, delivery_charge, discount_amount, coupon_discount, tax_amount, city_id
+        `SELECT id, user_id, status, payment_status, delivery_charge, discount_amount, coupon_discount, tax_amount, city_id
            FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
         [id]
       );
@@ -523,6 +557,14 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
       if (['cancelled', 'refunded'].includes(order.status)) {
         throw Object.assign(
           new Error('Cannot change weight on a cancelled or refunded order'),
+          { http: 400 }
+        );
+      }
+      // Once the cash is in (delivered / paid) the total is final — a weight
+      // edit would silently desync total_amount from paid_amount.
+      if (order.status === 'delivered' || order.payment_status === 'completed') {
+        throw Object.assign(
+          new Error('Cannot change weight after the order is delivered or paid'),
           { http: 400 }
         );
       }
@@ -722,6 +764,26 @@ export const assignOrderToOcp = asyncHandler(async (req: Request, res: Response)
   }
 
   if (!ocp_id) {
+    // Unassigning silently dropped cash the OCP had already collected (the
+    // settlement query keys on ocp_id) and orphaned a rider the OCP assigned.
+    // Refuse in those states; the order must be settled / reassigned first.
+    const cur = await query(
+      `SELECT ocp_id, rider_id, status, payment_status, paid_amount
+         FROM orders WHERE id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+    if (cur.rows.length === 0) return notFoundResponse(res, 'Order not found');
+    const o = cur.rows[0];
+    if (!o.ocp_id) return successResponse(res, { id, ocp_id: null }, 'Order is not assigned to an OCP');
+    if (['delivered', 'refunded'].includes(o.status)) {
+      return errorResponse(res, `Cannot unassign a ${o.status} order from its OCP`, 409);
+    }
+    if (o.payment_status === 'completed' && (parseFloat(String(o.paid_amount ?? '0')) || 0) > 0) {
+      return errorResponse(res, 'The OCP has already collected cash for this order; settle it instead of unassigning', 409);
+    }
+    if (o.rider_id) {
+      return errorResponse(res, 'Unassign the rider first — this order is already out with an OCP rider', 409);
+    }
     const cleared = await query(
       `UPDATE orders SET ocp_id = NULL, updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL RETURNING id`,
@@ -1328,15 +1390,42 @@ export const deleteOrder = asyncHandler(async (req: Request, res: Response) => {
 
   const { id } = req.params;
 
-  const result = await query(
-    `UPDATE orders SET deleted_at = NOW(), updated_at = NOW()
-     WHERE id = $1 AND deleted_at IS NULL
-     RETURNING id, order_number`,
-    [id]
-  );
+  // Soft-deleting a live order must release what it holds: reserved stock,
+  // the slot seat and any rider task — otherwise the stock stays locked and the
+  // rider keeps driving to an order nobody can see any more.
+  let deletedRow: any = null;
+  let cancelledRiderTasks: CancelledRiderTask[] = [];
+  await withTransaction(async (client) => {
+    const cur = await client.query(
+      `SELECT id, order_number, status, time_slot_id, requested_delivery_date
+         FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+      [id]
+    );
+    if (cur.rows.length === 0) return;
+    const order = cur.rows[0];
+    if (!['delivered', 'cancelled', 'refunded'].includes(order.status)) {
+      cancelledRiderTasks = await cancelActiveRiderTasks(client, id, { note: 'Order deleted by admin' });
+      await restoreOrderInventory(client, order);
+    }
+    const result = await client.query(
+      `UPDATE orders SET deleted_at = NOW(), updated_at = NOW()
+       WHERE id = $1 AND deleted_at IS NULL
+       RETURNING id, order_number`,
+      [id]
+    );
+    deletedRow = result.rows[0] ?? null;
+  });
 
-  if (result.rows.length === 0) {
+  if (!deletedRow) {
     return notFoundResponse(res, 'Order not found');
+  }
+  const result = { rows: [deletedRow] };
+  if (cancelledRiderTasks.length > 0) {
+    notifyRiderTasksCancelled(
+      cancelledRiderTasks,
+      { id, order_number: deletedRow.order_number },
+      'Order deleted by admin'
+    );
   }
 
   logger.info('Order deleted', {

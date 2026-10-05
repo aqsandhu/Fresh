@@ -88,10 +88,15 @@ export const verifyAdminActive = async (
       throw new UnauthorizedError('Authentication required');
     }
 
+    // Same gate as adminLogin: the user must still have an `admins` row and
+    // that row must be active. Without this, disabling the admins row (the
+    // only "revoke admin" switch the roles UI exposes) left every existing
+    // access token valid until it expired.
     const result = await query(
-      `SELECT id, role, status
-         FROM users
-        WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT u.id, u.role, u.status, a.is_active AS admin_active
+         FROM users u
+         LEFT JOIN admins a ON a.user_id = u.id
+        WHERE u.id = $1 AND u.deleted_at IS NULL`,
       [req.user.id]
     );
 
@@ -107,6 +112,10 @@ export const verifyAdminActive = async (
 
     if (!['admin', 'super_admin'].includes(dbUser.role)) {
       throw new ForbiddenError('Admin role revoked');
+    }
+
+    if (dbUser.admin_active === null || dbUser.admin_active === false) {
+      throw new ForbiddenError('Admin access revoked');
     }
 
     // Token-claim role may be stale (e.g. super_admin demoted to admin) —

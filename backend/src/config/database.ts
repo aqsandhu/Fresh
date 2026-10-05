@@ -71,6 +71,23 @@ function buildPoolSizing(connectionString?: string) {
   return { min, max };
 }
 
+/**
+ * Server-side guard rails so one runaway query, lock wait or forgotten
+ * transaction can't pin a pooled connection forever (the pool is tiny on the
+ * hosted tier). All overridable per environment; the SQL migration runner
+ * uses its own Pool and is unaffected.
+ */
+function envMs(name: string, fallback: number): number {
+  const n = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+const QUERY_GUARDS = {
+  statement_timeout: envMs('DB_STATEMENT_TIMEOUT_MS', 30_000),
+  query_timeout: envMs('DB_QUERY_TIMEOUT_MS', 35_000),
+  lock_timeout: envMs('DB_LOCK_TIMEOUT_MS', 10_000),
+  idle_in_transaction_session_timeout: envMs('DB_IDLE_IN_TX_TIMEOUT_MS', 60_000),
+};
+
 // Build connection config from environment
 function buildPoolConfig() {
   // If DATABASE_URL is provided, use it directly
@@ -85,6 +102,7 @@ function buildPoolConfig() {
       connectionTimeoutMillis: 10000,
       idleTimeoutMillis: 30000,
       allowExitOnIdle: false,
+      ...QUERY_GUARDS,
     };
   }
 
@@ -103,6 +121,7 @@ function buildPoolConfig() {
     connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 30000,
     allowExitOnIdle: false,
+    ...QUERY_GUARDS,
   };
 }
 

@@ -116,8 +116,14 @@ const sanitizeData = (data: any): any => {
 
   const sensitiveKeys = [
     'password', 'password_hash', 'token', 'secret', 'api_key',
-    'authorization', 'cookie', 'credit_card', 'cnic',
+    'authorization', 'cookie', 'credit_card', 'cnic', 'bank_account',
+    'otp',
   ];
+  // Exact-match keys: "pin" as a substring would also redact e.g.
+  // "shipping_address", so PIN-shaped keys are matched whole.
+  const exactSensitiveKeys = new Set([
+    'pin', 'new_pin', 'old_pin', 'current_pin', 'confirm_pin', 'pin_hash', 'pin_code',
+  ]);
 
   if (Array.isArray(data)) {
     return data.map(sanitizeData);
@@ -126,7 +132,7 @@ const sanitizeData = (data: any): any => {
   const sanitized: Record<string, any> = {};
   for (const [key, value] of Object.entries(data)) {
     const lowerKey = key.toLowerCase();
-    if (sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
+    if (exactSensitiveKeys.has(lowerKey) || sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
       sanitized[key] = '[REDACTED]';
     } else if (typeof value === 'object' && value !== null) {
       sanitized[key] = sanitizeData(value);

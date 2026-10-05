@@ -107,6 +107,8 @@ function resolveRequiredPermissions(
   }
   if (p.startsWith('/products')) {
     if (m === 'GET') return ['products.view'];
+    // Gallery add/remove is an edit of an existing product, not create/delete.
+    if (/^\/products\/[^/]+\/images(\/|$)/.test(p)) return ['products.update'];
     if (m === 'DELETE') return ['products.delete'];
     if (m === 'POST') return ['products.create'];
     return ['products.update'];

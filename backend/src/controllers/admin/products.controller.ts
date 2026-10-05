@@ -442,16 +442,26 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   }
 
   // Handle uploaded images — Supabase URLs already attached to f.url.
+  // The admin form echoes the images it wants to KEEP as `existing_images`
+  // (JSON array, in stored order); new uploads are appended to that list.
+  // Previously any upload replaced the whole gallery.
   const uploadedFiles = req.files as Express.Multer.File[] | undefined;
+  const uploaded = (uploadedFiles ?? []).map(f => f.url || '').filter(Boolean);
+  const existingImages = parseExistingImages(updates.existing_images);
 
-  if (uploadedFiles && uploadedFiles.length > 0) {
-    const images = uploadedFiles.map(f => f.url || '').filter(Boolean);
-    if (images.length > 0) {
-      setClauses.push(`primary_image = $${paramIndex++}`);
-      values.push(images[0]);
-      setClauses.push(`images = $${paramIndex++}`);
-      values.push(images);
+  if (uploaded.length > 0 || existingImages !== null) {
+    let base: string[];
+    if (existingImages !== null) {
+      base = existingImages;
+    } else {
+      const cur = await query('SELECT images FROM products WHERE id = $1', [id]);
+      base = Array.isArray(cur.rows[0]?.images) ? cur.rows[0].images : [];
     }
+    const images = [...base, ...uploaded].slice(0, MAX_PRODUCT_IMAGES);
+    setClauses.push(`primary_image = $${paramIndex++}`);
+    values.push(images[0] ?? null);
+    setClauses.push(`images = $${paramIndex++}`);
+    values.push(images.length > 0 ? images : null);
   }
 
   if (setClauses.length === 0) {
@@ -490,6 +500,75 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
   logger.info('Product updated', { productId: id, updatedBy: req.user?.id });
 
   successResponse(res, result.rows[0], 'Product updated successfully');
+});
+
+const MAX_PRODUCT_IMAGES = 5;
+
+/** `existing_images` arrives as a JSON string (multipart) or an array. */
+function parseExistingImages(raw: unknown): string[] | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  let list: unknown = raw;
+  if (typeof raw === 'string') {
+    try { list = JSON.parse(raw); } catch { return null; }
+  }
+  if (!Array.isArray(list)) return null;
+  return list.filter((u): u is string => typeof u === 'string' && u.length > 0).slice(0, MAX_PRODUCT_IMAGES);
+}
+
+/**
+ * Append images to a product's gallery.
+ * POST /api/admin/products/:id/images   (multipart `images`, up to 5)
+ * The admin panel has called this endpoint for a long time; it never existed.
+ */
+export const addProductImages = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const scope = await resolveCityScope(req);
+  const existing = await query('SELECT city_id, images FROM products WHERE id = $1', [id]);
+  if (existing.rows.length === 0 || !cityRowInScope(scope, existing.rows[0].city_id)) {
+    return notFoundResponse(res, 'Product not found');
+  }
+  const uploaded = ((req.files as Express.Multer.File[] | undefined) ?? [])
+    .map(f => f.url || '')
+    .filter(Boolean);
+  if (uploaded.length === 0) return errorResponse(res, 'No images uploaded', 400);
+
+  const current: string[] = Array.isArray(existing.rows[0].images) ? existing.rows[0].images : [];
+  if (current.length + uploaded.length > MAX_PRODUCT_IMAGES) {
+    return errorResponse(res, `A product can have at most ${MAX_PRODUCT_IMAGES} images`, 400);
+  }
+  const images = [...current, ...uploaded];
+  const result = await query(
+    `UPDATE products SET images = $1, primary_image = $2, updated_at = NOW() WHERE id = $3 RETURNING images, primary_image`,
+    [images, images[0], id]
+  );
+  logger.info('Product images added', { productId: id, count: uploaded.length, by: req.user?.id });
+  successResponse(res, { imageUrls: uploaded, images: result.rows[0].images }, 'Images added');
+});
+
+/**
+ * Remove one gallery image by index.
+ * DELETE /api/admin/products/:id/images/:index
+ */
+export const deleteProductImage = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const index = parseInt(String(req.params.index), 10);
+  if (!Number.isInteger(index) || index < 0) return errorResponse(res, 'Invalid image index', 400);
+
+  const scope = await resolveCityScope(req);
+  const existing = await query('SELECT city_id, images FROM products WHERE id = $1', [id]);
+  if (existing.rows.length === 0 || !cityRowInScope(scope, existing.rows[0].city_id)) {
+    return notFoundResponse(res, 'Product not found');
+  }
+  const current: string[] = Array.isArray(existing.rows[0].images) ? existing.rows[0].images : [];
+  if (index >= current.length) return notFoundResponse(res, 'Image not found');
+
+  const images = current.filter((_, i) => i !== index);
+  await query(
+    `UPDATE products SET images = $1, primary_image = $2, updated_at = NOW() WHERE id = $3`,
+    [images.length > 0 ? images : null, images[0] ?? null, id]
+  );
+  logger.info('Product image removed', { productId: id, index, by: req.user?.id });
+  successResponse(res, { images }, 'Image removed');
 });
 
 /**

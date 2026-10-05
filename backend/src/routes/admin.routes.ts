@@ -217,6 +217,13 @@ router.put(
 // doesn't treat "move-category" or "toggle-active" as a product UUID.
 router.patch('/products/move-category', adminController.moveProductsCategory);
 router.patch('/products/:id/toggle-active', adminController.toggleProductActive);
+router.post(
+  '/products/:id/images',
+  adminRateLimiter,
+  uploadMultiple('images', 5, 'products'),
+  adminController.addProductImages
+);
+router.delete('/products/:id/images/:index', adminController.deleteProductImage);
 router.delete(
   '/products/:id',
   adminController.deleteProduct  // ?hard=true for permanent deletion

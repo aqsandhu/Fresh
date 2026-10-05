@@ -328,6 +328,12 @@ export const productSchemas = {
   update: Joi.object({
     name_ur: Joi.string().min(2).max(255).allow('', null),
     name_en: Joi.string().min(2).max(255),
+    // Images the admin form wants to keep (JSON string from multipart, or an
+    // array). Must be allowed here, else stripUnknown drops it silently.
+    existing_images: Joi.alternatives().try(
+      Joi.string().max(5000),
+      Joi.array().items(Joi.string().max(1000)).max(5)
+    ).optional(),
     category_id: commonSchemas.uuid,
     subcategory_id: commonSchemas.uuid,
     price: positivePrice,

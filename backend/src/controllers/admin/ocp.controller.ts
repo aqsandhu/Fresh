@@ -108,13 +108,21 @@ export const createOcp = asyncHandler(async (req: Request, res: Response) => {
 /** PUT /api/admin/ocp/:id — update name/address/status/city; optional new PIN. */
 export const updateOcp = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const existing = await query('SELECT id FROM order_collection_points WHERE id = $1 AND deleted_at IS NULL', [id]);
-  if (existing.rows.length === 0) return notFoundResponse(res, 'OCP not found');
+  // City isolation: a city-scoped admin can only manage OCPs in their own city
+  // (this endpoint resets the OCP portal PIN, so it is a credential primitive).
+  const scope = await resolveCityScope(req);
+  const existing = await query('SELECT id, city_id FROM order_collection_points WHERE id = $1 AND deleted_at IS NULL', [id]);
+  if (existing.rows.length === 0 || !cityRowInScope(scope, existing.rows[0].city_id)) {
+    return notFoundResponse(res, 'OCP not found');
+  }
 
   const sets: string[] = [];
   const vals: any[] = [];
   let i = 1;
   const { name, owner_name, address, status, city_id, pin } = req.body;
+  if (city_id !== undefined && city_id && !cityRowInScope(scope, city_id)) {
+    return errorResponse(res, 'You can only move an OCP within your own city.', 403);
+  }
 
   if (name !== undefined) { sets.push(`name = $${i++}`); vals.push(String(name).trim()); }
   if (owner_name !== undefined) { sets.push(`owner_name = $${i++}`); vals.push(owner_name ? String(owner_name).trim() : null); }

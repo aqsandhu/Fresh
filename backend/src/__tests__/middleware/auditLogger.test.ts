@@ -72,3 +72,39 @@ describe('Audit Logger Middleware', () => {
     expect(callArgs[0]).toContain('INSERT INTO audit_logs');
   });
 });
+
+describe('Audit Logger redaction', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (query as jest.Mock).mockResolvedValue({ rows: [] });
+  });
+
+  it('redacts PIN / OTP / bank fields but keeps unrelated keys like shipping_address', async () => {
+    await logAdminAction({
+      action: 'UPDATE_OCP',
+      adminId: 'admin-1',
+      resource: 'ocp',
+      resourceId: 'ocp-1',
+      newData: {
+        pin: '1234',
+        new_pin: '5678',
+        otp_code: '000000',
+        bank_account_number: '1234567890',
+        shipping_address: 'Street 1',
+        nested: { pin_hash: 'x', note: 'ok' },
+      },
+      ip: '127.0.0.1',
+      status: 'success',
+    });
+
+    const callArgs = (query as jest.Mock).mock.calls[0];
+    const stored = JSON.parse(callArgs[1][6]); // $7 = new_data
+    expect(stored.pin).toBe('[REDACTED]');
+    expect(stored.new_pin).toBe('[REDACTED]');
+    expect(stored.otp_code).toBe('[REDACTED]');
+    expect(stored.bank_account_number).toBe('[REDACTED]');
+    expect(stored.nested.pin_hash).toBe('[REDACTED]');
+    expect(stored.nested.note).toBe('ok');
+    expect(stored.shipping_address).toBe('Street 1');
+  });
+});

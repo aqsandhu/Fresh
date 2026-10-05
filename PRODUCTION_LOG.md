@@ -61,7 +61,7 @@ Legend: TODO · WIP · DONE · DEFERRED
 | 3.1 | admin+backend | A-H1/H2/H3 camel/snake mismatches | DONE | |
 | 3.2 | admin | A-M4..M10 | DONE | |
 | 3.3 | admin+backend | A-L11..L14 | PARTIAL | L11 registry ✅, L14 OCP buttons ✅; L12 (OCP stock modal limit), L13 (coupons-used paging), L14 Complaints/Reviews/RiderApplications buttons TODO |
-| 4.1 | backend | re-verify the 28 prior-audit items (agent died) | TODO | |
+| 4.1 | backend | re-verify the 28 prior-audit items (agent died) | DONE | verified by reading code, not by trusting the old report. **Still open → fixed now (B-1..B-16, §5 2026-10-05 session 4).** Already fixed earlier (confirmed): cancel double-refund, markPaymentReceived reviving cancelled orders, customers/lookup address scoping, refresh limiter, cart unit whitelist, admin login requires `admins` row. Not a defect: `rider_delivery_charges` has rider+slot unique key. |
 
 ## 2. Baseline (before this work) — 2026-10-05
 First run (incomplete local node_modules — NOT a repo defect, corrected below after a full `pnpm install`):
@@ -92,6 +92,27 @@ Full tables with file:line, WHY and fix: `docs/audits/2026-10-05-findings.md`. S
 9. Re-run the three dead audit sweeps (customer-app, admin main, backend 28-item verification) when the session limit allows; fix what they find.
 
 ## 5. Work log (newest first)
+### 2026-10-05 — Session 4: backend prior-audit items (row 4.1), all on `main`
+Each item: WHAT was wrong → WHY it matters → HOW fixed (file).
+- **B-1 admin tokens outlived `admins.is_active=false`.** `verifyAdminActive` only checked `users`; adminLogin JOINs `admins`. Now LEFT JOINs `admins` and rejects missing/inactive rows (`middleware/auth.ts`).
+- **B-2 cross-city OCP PIN reset (H1 from the Sept audit, still open).** `PUT /admin/ocp/:id` had no city scope → a city-A admin could reset a city-B OCP's portal PIN. Now `resolveCityScope` + `cityRowInScope` on the OCP and on any `city_id` change (`admin/ocp.controller.ts`).
+- **B-3 any admin could take a city offline (H3).** `toggleCity` is now super_admin only, like `deleteCity` (`admin/settings.controller.ts`). H2 (customer lookup) was already address-scoped; the name/phone echo is needed for admin-created orders and is left as is.
+- **B-4 admin "delivered" left COD orders unpaid forever.** The rider path marks COD (non-OCP) orders paid on delivery; the admin status path did not → revenue/profit under-counted. Same CASE now applied (`admin/orders.controller.ts updateOrderStatus`).
+- **B-5 delivered → refunded had no side effects.** Now writes a `refunds` ledger row for the paid amount and sets `payment_status='refunded'` (same handler).
+- **B-6 DELETE order left stock reserved, slot seat taken and rider task live.** `deleteOrder` now runs in a transaction: cancels rider tasks + `restoreOrderInventory` for non-terminal orders, notifies riders (same file).
+- **B-7 unassigning an OCP (`ocp_id=null`) dropped collected cash.** Settlement keys on `ocp_id`. Now refused (409) when the OCP has collected cash, when an OCP rider is out with it, or when the order is delivered/refunded (`assignOrderToOcp`).
+- **B-8 weight edit allowed on delivered/paid orders** → total ≠ paid. Now rejected after delivery or once payment is completed (`updateOrderItemWeight`).
+- **B-9 admin product image endpoints did not exist.** The admin panel has always called `POST /admin/products/:id/images` and `DELETE …/images/:index` → 404. Implemented both (city-scoped, max 5) and mapped to `products.update`. Also: `PUT /products/:id` with new uploads used to REPLACE the gallery and ignored the form's `existing_images`; now keeps `existing_images` + appends uploads (`admin/products.controller.ts`, `routes/admin.routes.ts`, `middleware/validation.ts`, `middleware/adminPermissions.ts`).
+- **B-10 admin create-rider failed on a schema.sql database.** Insert writes `NULL` CNIC images but `riders.cnic_front_image/back_image` were `NOT NULL`. Migration 55 drops NOT NULL; `schema.sql` updated.
+- **B-11 restaurant slot booking counted against the UTC date.** `CURRENT_DATE` vs the consumer path's `Asia/Karachi` date → after 19:00 PKT restaurant orders booked *tomorrow's* seat. Fixed (`utils/restaurantOrders.ts`).
+- **B-12 restaurant notes-only edit wiped delivery overrides.** `free_delivery_threshold`/`delivery_base_charge` were set to NULL whenever absent from the body. Now only present fields change (`admin/restaurants.controller.ts`).
+- **B-13 no DB timeouts.** Pool now sets `statement_timeout` 30 s, `query_timeout` 35 s, `lock_timeout` 10 s, `idle_in_transaction_session_timeout` 60 s (env-overridable `DB_*_TIMEOUT_MS`); the SQL migration runner has its own pool and is unaffected (`config/database.ts`).
+- **B-14 profit ignored refunds.** `computeCityProfit` now subtracts the `refunds` ledger for delivered orders of the city/period and returns `refunds`; admin Profit page shows a Refunds card when non-zero (`utils/profitCalc.ts`, admin `pages/Profit.tsx`).
+- **B-15 urgent orders paid riders Rs 0.** Rider charge was looked up by (rider, slot); urgent orders have no slot. Fallback = the rider's most recently configured per-order rate (`utils/assignRiderToOrder.ts`). Business rule chosen by me — owner may prefer a dedicated urgent rate.
+- **B-16 audit log stored PINs/OTPs in clear.** Redaction list gained `otp`, `bank_account` and exact-match PIN keys (substring "pin" would have redacted `shipping_address`). Regression test added (`middleware/auditLogger.ts`, `__tests__/middleware/auditLogger.test.ts`).
+- **B-17 no money sanity constraints.** Migration 56 adds `NOT VALID` CHECKs: orders money columns ≥ 0, `order_items.unit_price` ≥ 0, `rider_delivery_charge` ≥ 0 (legacy rows untouched, new writes enforced).
+- Gates: backend typecheck ✅ lint ✅ unit 7/7 ✅; admin typecheck ✅ lint ✅.
+
 ### 2026-10-05 — Session 3 start
 - Branch created; baseline gates run (§2). Full `pnpm install` started (website/admin node_modules were incomplete).
 - Four read-only audit agents launched.

@@ -69,6 +69,20 @@ export async function assignRiderToOrder(
         riderCharge = parseFloat(chargeResult.rows[0].charge_per_order) || 0;
       }
     }
+    if (!timeSlotId || riderCharge === 0) {
+      // Urgent orders carry no slot (and a slot may have no rate configured
+      // for this rider). Fall back to the rider's most recently configured
+      // per-order rate so the delivery is never silently unpaid.
+      const fallback = await client.query(
+        `SELECT charge_per_order FROM rider_delivery_charges
+          WHERE rider_id = $1 AND charge_per_order > 0
+          ORDER BY effective_from DESC, updated_at DESC LIMIT 1`,
+        [riderId]
+      );
+      if (fallback.rows.length > 0) {
+        riderCharge = parseFloat(fallback.rows[0].charge_per_order) || 0;
+      }
+    }
 
     const upd = await client.query(
       `UPDATE orders

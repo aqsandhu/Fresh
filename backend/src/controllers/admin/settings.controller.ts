@@ -956,6 +956,11 @@ export const addCity = asyncHandler(async (req: Request, res: Response) => {
  */
 
 export const toggleCity = asyncHandler(async (req: Request, res: Response) => {
+  // Same gate as deleteCity / importCityCatalog: a city-scoped admin must not
+  // be able to take another city offline.
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only super admins can enable or disable a city', 403);
+  }
   const { id } = req.params;
   const result = await query(
     `UPDATE service_cities SET is_active = NOT is_active WHERE id = $1 RETURNING *`,

@@ -140,20 +140,24 @@ export const updateRestaurant = asyncHandler(async (req: Request, res: Response)
     return Number.isFinite(n) && n >= 0 ? n : null;
   };
 
+  // Only the fields present in the body change. A notes-only edit used to
+  // wipe both delivery overrides back to NULL (= global defaults).
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  let i = 1;
+  if (admin_notes !== undefined) { sets.push(`admin_notes = $${i++}`); vals.push(admin_notes); }
+  if (free_delivery_threshold !== undefined) { sets.push(`free_delivery_threshold = $${i++}`); vals.push(num(free_delivery_threshold)); }
+  if (delivery_base_charge !== undefined) { sets.push(`delivery_base_charge = $${i++}`); vals.push(num(delivery_base_charge)); }
+  if (sets.length === 0) return errorResponse(res, 'Nothing to update', 400);
+  vals.push(req.params.id);
+
   const result = await query(
     `UPDATE restaurants
-        SET admin_notes = COALESCE($1, admin_notes),
-            free_delivery_threshold = $2,
-            delivery_base_charge = $3,
+        SET ${sets.join(', ')},
             updated_at = NOW()
-      WHERE id = $4
+      WHERE id = $${i}
       RETURNING ${RESTAURANT_PUBLIC_COLUMNS.replace(/r\./g, '')}`,
-    [
-      admin_notes === undefined ? null : admin_notes,
-      num(free_delivery_threshold),
-      num(delivery_base_charge),
-      req.params.id,
-    ]
+    vals
   );
 
   logger.info('Restaurant updated', { restaurantId: req.params.id, by: req.user?.id });
