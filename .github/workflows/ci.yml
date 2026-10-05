@@ -52,8 +52,12 @@ jobs:
         env:
           NEXT_PUBLIC_API_URL: https://api.example.invalid/api
 
+      # vite.config.ts refuses a production build without VITE_API_URL (so a
+      # bundle can never silently point at localhost) — CI must supply one.
       - name: Build admin panel
         run: pnpm --filter freshbazar-admin build
+        env:
+          VITE_API_URL: https://api.example.invalid/api
 
       # Bundle budget: fail if any single admin JS chunk exceeds 600 KB
       # minified (the split build's largest chunk is ~165 KB today).
