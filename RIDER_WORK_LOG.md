@@ -43,10 +43,10 @@ Legend: TODO · WIP · DONE · DEFERRED
 | B10 | backend | Customer tracking returns rider phone/vehicle (customer "call rider") | DONE |
 | B11 | backend | Admin: `GET /admin/riders/:id`, list limit/search/active-task counts, slot id in charges, block/unblock, delete closes tasks, rider tasks/history/reviews endpoints, order rider-task timeline | DONE |
 | B12 | backend | Rider: own reviews endpoint, richer profile | DONE |
-| A1 | admin | Riders page: all riders (not 20), full edit form, charges prefilled, block/unblock, detail view (tasks, history, settlements, reviews) | TODO |
-| A2 | admin | Orders: rider problem alerts, rider-task timeline + proof photo in order detail, dispatch dropdown with load | TODO |
-| A3 | admin | Atta page: assign pickup/delivery rider, show riders + task state | TODO |
-| A4 | admin | Rider application → create rider account | TODO |
+| A1 | admin | Riders page: all riders (not 20), full edit form, charges prefilled, block/unblock, detail view (tasks, history, settlements, reviews) | DONE |
+| A2 | admin | Orders: rider problem alerts, rider-task timeline + proof photo in order detail, dispatch dropdown with load | DONE |
+| A3 | admin | Atta page: assign pickup/delivery rider, show riders + task state | DONE |
+| A4 | admin | Rider application → create rider account | DONE |
 | R1 | rider-app | Arrived / notify-customer flow | TODO |
 | R2 | rider-app | Proof photo step in delivery | TODO |
 | R3 | rider-app | Restaurant orders, atta details/amount, variable weight, live amount change | TODO |
@@ -111,6 +111,14 @@ Legend: TODO · WIP · DONE · DEFERRED
 - A*/R*/C* UI work as listed in §1.
 
 ## 5. Work log (newest first)
+### 2026-10-31 — Session 1: admin panel (commits `46c4cf8`, `820b469`)
+- **A1** Riders: server search, all riders (limit 500), GPS-live dot, active-task load, duty override (busy derived), verify / block / unblock (block signs the rider out), safe delete; `RiderFormModal` loads the full record (`GET /admin/riders/:id`) and sends every optional field so clearing works; `RiderDetail` tabs — Overview (Karachi-day stats incl. atta, COD position: cash with rider / his pay inside / to hand over / handed over / pay owed on non-cash orders; Receive cash; per-slot pay editor prefilled by `time_slot_id`), Active tasks, History (proof photos, failure reasons), Cash hand-overs, Reviews & complaints.
+- **A2** Orders: dispatch dropdown lists every verified on-duty rider with load + GPS; "Rider problem" / "At door" flags; order detail "Rider activity" timeline + proof photo + **Return to store**; `?search=` deep link; admin toast + sound + bell on `rider:task_failed`.
+- **A3** Atta Chakki: pickup/delivery rider assign + reassign (status untouched), rider names, task state + failure reason, proof photos, COD state, customer contact note.
+- **A4** Rider applications: "Create rider account" (prefilled form) → application marked approved.
+- Env fix: admin `tsconfig` pins `react`/`react-dom` types to its own @types (491 TS2786 errors from the hoisted React 19 types made `typecheck` red).
+- Gates: admin typecheck ✅ lint ✅ tests 204/204 ✅.
+
 ### 2026-10-31 — Session 1: backend (commits `0f2e40d`, next)
 - **B1** `auth.controller.riderLogin`: JOIN riders `deleted_at IS NULL`; no status write on login; blocked riders get a clear message.
 - **B2** `utils/riderAvailability.ts` (`syncRiderAvailability`, `resolveDutyStatus`) used by deliver, fail, assign, `cancelActiveRiderTasks`, `createAttaRiderTask`, admin completion, return-to-store; `PUT /rider/status` accepts only available/offline/on_leave and stores busy when tasks remain.
