@@ -146,6 +146,13 @@ export interface Order {
   riderId?: string;
   riderName?: string;
   riderPhone?: string;
+  /** Latest rider task on this order (list view): flags "rider reported a problem". */
+  riderTaskStatus?: RiderTaskStatus | null;
+  riderTaskNotes?: string | null;
+  riderArrivedAt?: string | null;
+  /** Every rider task on this order (detail view) — the rider timeline. */
+  riderTasks?: RiderTaskRow[];
+  deliveryProofImage?: string | null;
   showCustomerPhone?: boolean;
   /** OCP assignment (collection point) + per-order phone reveal to that OCP. */
   ocpId?: string | null;
@@ -200,9 +207,94 @@ export interface Rider {
   bankName?: string;
   avatarUrl?: string;
   status: RiderStatus;
-  verificationStatus?: string;
+  verificationStatus?: 'pending' | 'verified' | 'rejected' | string;
   rating: number;
+  ratingCount?: number;
   totalDeliveries: number;
+  totalEarnings?: number;
+  cityId?: string | null;
+  cityName?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  locationAccuracy?: number | null;
+  locationUpdatedAt?: string | null;
+  /** GPS reached the server in the last few minutes and the rider is on duty. */
+  isOnline?: boolean;
+  /** assigned + in_progress tasks right now. */
+  activeTasks?: number;
+  /** users.status — 'active' | 'inactive' | 'suspended'. */
+  accountStatus?: string;
+  lastLoginAt?: string | null;
+  createdAt?: string;
+}
+
+export type RiderTaskStatus = 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'failed';
+export type RiderTaskType = 'delivery' | 'pickup' | 'atta_pickup' | 'atta_delivery';
+
+/** A rider_tasks row as the admin sees it (rider detail + order timeline). */
+export interface RiderTaskRow {
+  id: string;
+  taskType: RiderTaskType;
+  status: RiderTaskStatus;
+  notes?: string | null;
+  assignedAt?: string | null;
+  acceptedAt?: string | null;
+  startedAt?: string | null;
+  arrivedAt?: string | null;
+  completedAt?: string | null;
+  deliveryProofImage?: string | null;
+  pickupProofImage?: string | null;
+  riderId?: string;
+  riderName?: string;
+  riderPhone?: string;
+  orderId?: string | null;
+  orderNumber?: string | null;
+  orderStatus?: string | null;
+  totalAmount?: number | string | null;
+  paymentMethod?: string | null;
+  paymentStatus?: string | null;
+  riderDeliveryCharge?: number | string | null;
+  address?: string | null;
+  attaRequestId?: string | null;
+  attaRequestNumber?: string | null;
+  attaStatus?: string | null;
+}
+
+export interface RiderCashSettlement {
+  id: string;
+  amount: number;
+  status: 'received' | 'void' | string;
+  note?: string | null;
+  receivedAt: string;
+  receivedByName?: string | null;
+  orderCount: number;
+  attaCount?: number;
+}
+
+export interface RiderFeedback {
+  reviews: Array<{
+    id: string;
+    rating: number;
+    comment?: string | null;
+    isPublished: boolean;
+    adminReply?: string | null;
+    createdAt: string;
+    orderNumber?: string | null;
+    customerName?: string | null;
+  }>;
+  complaints: Array<{
+    id: string;
+    ticketNumber: string;
+    category: string;
+    subject: string;
+    message: string;
+    status: string;
+    priority: string;
+    adminResponse?: string | null;
+    createdAt: string;
+    orderNumber?: string | null;
+    customerName?: string | null;
+  }>;
 }
 
 export interface ApiResponse<T = any> {
@@ -289,6 +381,25 @@ export interface AttaRequest {
   flourType: string;
   status: AttaRequestStatus;
   totalAmount: number;
+  paidAmount?: number;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  specialInstructions?: string | null;
+  actualFlourQuantityKg?: number | null;
+  pickupAddress?: string | null;
+  houseNumber?: string | null;
+  areaName?: string | null;
+  city?: string | null;
+  pickupRiderId?: string | null;
+  pickupRiderName?: string | null;
+  deliveryRiderId?: string | null;
+  deliveryRiderName?: string | null;
+  pickupTaskStatus?: RiderTaskStatus | null;
+  pickupTaskNotes?: string | null;
+  deliveryTaskStatus?: RiderTaskStatus | null;
+  deliveryTaskNotes?: string | null;
+  pickupProofImage?: string | null;
+  deliveryProofImage?: string | null;
   createdAt: string;
 }
 
@@ -359,6 +470,8 @@ export interface Settings {
 export interface RiderPeriodStats {
   orders: number;
   earnings: number;
+  /** Atta Chakki pickups + deliveries completed in the period. */
+  attaTasks?: number;
 }
 
 export interface RiderStats {
@@ -371,15 +484,26 @@ export interface RiderStats {
     lastMonth: RiderPeriodStats;
   };
   payment: {
+    /** All-time COD cash collected (direct orders + atta). */
     totalCollected: number;
+    /** All-time rider pay on delivered orders. */
     totalEarned: number;
     codEarned?: number;
+    /** Pay on orders where no cash passed through the rider — owed BY the company. */
+    nonCashEarned?: number;
     totalSettled?: number;
+    /** Customer cash still with the rider (unsettled). */
     cashInHand?: number;
+    /** Rider's own pay inside cashInHand. */
+    unsettledEarned?: number;
+    /** What the rider must hand over now. */
     paymentPending: number;
+    pendingOrders?: number;
+    pendingAtta?: number;
   };
   deliveryCharges?: Array<{
     id: string;
+    timeSlotId: string;
     chargePerOrder: number;
     slotName?: string;
     startTime?: string;
@@ -461,7 +585,7 @@ export interface CreateRiderData {
   email?: string;
   password: string;
   cnic: string;
-  vehicleType: 'bike' | 'car' | 'van';
+  vehicleType: 'bike' | 'car' | 'van' | 'bicycle' | 'rickshaw' | string;
   vehicleNumber: string;
   drivingLicenseNumber?: string;
   emergencyContactName?: string;

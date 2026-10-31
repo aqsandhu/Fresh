@@ -49,11 +49,20 @@ export const attaService = {
     }
   },
 
-  assignRider: async (id: string, riderId: string): Promise<AttaRequest> => {
+  /**
+   * Assign the rider who collects the wheat (atta_pickup) or brings the flour
+   * back (atta_delivery). The status is NOT moved — the rider's own taps do that.
+   */
+  assignRider: async (
+    id: string,
+    riderId: string,
+    taskType: 'atta_pickup' | 'atta_delivery'
+  ): Promise<{ taskId: string; requestId: string; taskType: string }> => {
     try {
-      const response = await api.put<ApiResponse<AttaRequest>>(`/admin/atta-requests/${id}/assign-rider`, {
-        riderId,
-      });
+      const response = await api.put<ApiResponse<{ taskId: string; requestId: string; taskType: string }>>(
+        `/admin/atta-requests/${id}/assign-rider`,
+        { riderId, taskType }
+      );
       return unwrap(response);
     } catch (error: any) {
       console.error('Error assigning rider to atta request:', error);

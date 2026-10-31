@@ -63,6 +63,22 @@ export const orderService = {
     }
   },
 
+  /**
+   * Failed delivery → back to the store (ready_for_pickup, rider detached) so
+   * it can be re-dispatched or cancelled. Only after the rider reported the
+   * problem (no live rider task on the order).
+   */
+  returnToStore: async (orderId: string, reason?: string): Promise<Order> => {
+    try {
+      const response = await api.post<ApiResponse<Order>>(`/admin/orders/${orderId}/return-to-store`, {
+        reason: reason || undefined,
+      });
+      return unwrap(response);
+    } catch (error: any) {
+      throw new Error(error?.response?.data?.message || 'Failed to return the order to the store');
+    }
+  },
+
   assignToOcp: async (orderId: string, ocpId: string | null): Promise<{ id: string; ocpId: string | null }> => {
     const response = await api.patch<ApiResponse<{ id: string; ocpId: string | null }>>(
       `/admin/orders/${orderId}/assign-ocp`,

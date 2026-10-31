@@ -1,33 +1,59 @@
 import { api, unwrap } from './api';
-import type { 
-  Rider, 
+import type {
+  Rider,
   ApiResponse,
   RiderStats,
   RiderDeliveryCharge,
+  RiderTaskRow,
+  RiderCashSettlement,
+  RiderFeedback,
 } from '@/types';
 
+export interface RiderListFilters {
+  status?: string;
+  verificationStatus?: string;
+  search?: string;
+  online?: boolean;
+  /** Backend default 200, max 500 — dispatch needs every rider. */
+  limit?: number;
+}
+
+const failure = (error: any, fallback: string) =>
+  new Error(error?.response?.data?.message || error?.message || fallback);
+
 export const riderService = {
-  getRiders: async (status?: string): Promise<Rider[]> => {
+  /**
+   * Riders in the admin's city. Accepts a bare status string (legacy callers)
+   * or a filter object.
+   */
+  getRiders: async (filters?: string | RiderListFilters): Promise<Rider[]> => {
     try {
-      const params = status ? { status } : undefined;
+      const f: RiderListFilters = typeof filters === 'string' ? { status: filters } : filters || {};
+      const params: Record<string, unknown> = {};
+      if (f.status) params.status = f.status;
+      if (f.verificationStatus) params.verificationStatus = f.verificationStatus;
+      if (f.search?.trim()) params.search = f.search.trim();
+      if (f.online) params.online = 'true';
+      if (f.limit) params.limit = f.limit;
       const response = await api.get<ApiResponse<{ riders: Rider[]; pagination: any }>>(
         '/admin/riders',
-        params
+        Object.keys(params).length ? params : undefined
       );
       return response.data?.riders || [];
     } catch (error: any) {
       console.error('Error fetching riders:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch riders');
+      throw failure(error, 'Failed to fetch riders');
     }
   },
 
+  /** Full record — license, emergency contact and bank details for the edit form. */
   getRiderById: async (id: string): Promise<Rider> => {
     try {
       const response = await api.get<ApiResponse<Rider>>(`/admin/riders/${id}`);
       return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching rider:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch rider');
+      throw failure(error, 'Failed to fetch rider');
     }
   },
 
@@ -37,7 +63,7 @@ export const riderService = {
       return unwrap(response);
     } catch (error: any) {
       console.error('Error creating rider:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to create rider');
+      throw failure(error, 'Failed to create rider');
     }
   },
 
@@ -47,7 +73,7 @@ export const riderService = {
       return unwrap(response);
     } catch (error: any) {
       console.error('Error updating rider:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to update rider');
+      throw failure(error, 'Failed to update rider');
     }
   },
 
@@ -56,7 +82,7 @@ export const riderService = {
       await api.delete<ApiResponse<void>>(`/admin/riders/${id}`);
     } catch (error: any) {
       console.error('Error deleting rider:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to delete rider');
+      throw failure(error, 'Failed to delete rider');
     }
   },
 
@@ -68,10 +94,11 @@ export const riderService = {
       return unwrap(response);
     } catch (error: any) {
       console.error('Error updating rider status:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to update rider status');
+      throw failure(error, 'Failed to update rider status');
     }
   },
 
+  /** verified = allowed to work · rejected = blocked (signed out everywhere) · pending. */
   verifyRider: async (id: string, verificationStatus: string): Promise<Rider> => {
     try {
       const response = await api.patch<ApiResponse<Rider>>(`/admin/riders/${id}/verify`, {
@@ -80,22 +107,7 @@ export const riderService = {
       return unwrap(response);
     } catch (error: any) {
       console.error('Error verifying rider:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to verify rider');
-    }
-  },
-
-  uploadRiderAvatar: async (id: string, avatar: File): Promise<string> => {
-    try {
-      const formData = new FormData();
-      formData.append('avatar', avatar);
-      const response = await api.postForm<ApiResponse<{ avatarUrl: string }>>(
-        `/admin/riders/${id}/avatar`,
-        formData
-      );
-      return unwrap(response).avatarUrl;
-    } catch (error: any) {
-      console.error('Error uploading rider avatar:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to upload avatar');
+      throw failure(error, 'Failed to update rider verification');
     }
   },
 
@@ -105,23 +117,59 @@ export const riderService = {
       return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching rider stats:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch rider stats');
+      throw failure(error, 'Failed to fetch rider stats');
+    }
+  },
+
+  getRiderTasks: async (
+    id: string,
+    scope: 'active' | 'history',
+    page = 1
+  ): Promise<{ tasks: RiderTaskRow[]; pagination: { page: number; total: number; totalPages: number } }> => {
+    try {
+      const response = await api.get<ApiResponse<{ tasks: RiderTaskRow[]; pagination: any }>>(
+        `/admin/riders/${id}/tasks`,
+        { scope, page, limit: 30 }
+      );
+      const data = unwrap(response);
+      return { tasks: data.tasks || [], pagination: data.pagination || { page, total: 0, totalPages: 0 } };
+    } catch (error: any) {
+      throw failure(error, 'Failed to load rider tasks');
+    }
+  },
+
+  getRiderFeedback: async (id: string): Promise<RiderFeedback> => {
+    try {
+      const response = await api.get<ApiResponse<RiderFeedback>>(`/admin/riders/${id}/feedback`);
+      const data = unwrap(response);
+      return { reviews: data.reviews || [], complaints: data.complaints || [] };
+    } catch (error: any) {
+      throw failure(error, 'Failed to load rider feedback');
+    }
+  },
+
+  getCashSettlements: async (id: string): Promise<RiderCashSettlement[]> => {
+    try {
+      const response = await api.get<ApiResponse<RiderCashSettlement[]>>(`/admin/riders/${id}/cash-settlements`);
+      return response.data || [];
+    } catch (error: any) {
+      throw failure(error, 'Failed to load cash hand-overs');
     }
   },
 
   receiveCashSettlement: async (
     id: string,
     data: { password: string; note?: string }
-  ): Promise<{ id: string; amount: number; orders: number; received_at: string }> => {
+  ): Promise<{ id: string; amount: number; orders: number; atta?: number; receivedAt: string }> => {
     try {
-      const response = await api.post<ApiResponse<{ id: string; amount: number; orders: number; received_at: string }>>(
+      const response = await api.post<ApiResponse<{ id: string; amount: number; orders: number; atta?: number; receivedAt: string }>>(
         `/admin/riders/${id}/cash-settlements/receive`,
         data
       );
       return unwrap(response);
     } catch (error: any) {
       console.error('Error receiving rider cash:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to receive rider cash');
+      throw failure(error, 'Failed to receive rider cash');
     }
   },
 
@@ -131,7 +179,7 @@ export const riderService = {
       return unwrap(response);
     } catch (error: any) {
       console.error('Error setting delivery charges:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to set delivery charges');
+      throw failure(error, 'Failed to set delivery charges');
     }
   },
 
@@ -142,7 +190,7 @@ export const riderService = {
       });
     } catch (error: any) {
       console.error('Error assigning order to rider:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to assign order');
+      throw failure(error, 'Failed to assign order');
     }
   },
 
@@ -152,7 +200,7 @@ export const riderService = {
       return unwrap(response);
     } catch (error: any) {
       console.error('Error fetching rider location:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch rider location');
+      throw failure(error, 'Failed to fetch rider location');
     }
   },
 };
