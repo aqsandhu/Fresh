@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Task, taskReference, GeoPoint } from '../types';
 import { colors, spacing, typography, radius } from '../theme';
-import { formatCurrency, formatSlotRange, formatDate, haversineMeters, formatDistance, formatDateTime } from '../utils/helpers';
+import { formatCurrency, formatSlotRange, formatDate, haversineMeters, formatDistance, formatDateTime, formatTime } from '../utils/helpers';
 import { useT, tEnum } from '../i18n';
 import { Card, Badge } from './ui';
 import { taskStatusTone, taskStatusIcon, taskTypeIcon, taskTypeColor, isAttaTask } from '../utils/taskMeta';
@@ -47,7 +47,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onPress, riderPoint, compact 
             {reference}
           </Text>
           <Text style={styles.typeLabel} numberOfLines={1}>
-            {tEnum(language, 'taskType', task.type)}
+            {task.isRestaurant && task.restaurantName ? `${t('tasks.restaurant')} · ${task.restaurantName}` : tEnum(language, 'taskType', task.type)}
             {task.isUrgent ? <Text style={styles.urgent}>  •  {t('tasks.urgent')}</Text> : null}
           </Text>
         </View>
@@ -99,6 +99,18 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onPress, riderPoint, compact 
           <View style={styles.chip}>
             <MaterialCommunityIcons name="weight-kilogram" size={14} color={colors.gray500} />
             <Text style={styles.chipText}>{t('tasks.wheat', { kg: task.wheatKg })}</Text>
+          </View>
+        ) : null}
+        {task.ocpName && task.status !== 'completed' ? (
+          <View style={styles.chip}>
+            <MaterialCommunityIcons name="storefront-outline" size={14} color={colors.info} />
+            <Text style={[styles.chipText, { color: colors.info }]} numberOfLines={1}>{task.ocpName}</Text>
+          </View>
+        ) : null}
+        {task.arrivedAt && (task.status === 'assigned' || task.status === 'in_progress') ? (
+          <View style={styles.chip}>
+            <MaterialCommunityIcons name="bell-check-outline" size={14} color={colors.success} />
+            <Text style={[styles.chipText, { color: colors.success }]}>{formatTime(task.arrivedAt)}</Text>
           </View>
         ) : null}
         {task.status === 'completed' && task.completedAt ? (

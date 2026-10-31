@@ -19,7 +19,10 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 const vehicleIcon = (type?: string): keyof typeof MaterialCommunityIcons.glyphMap => {
   switch (type) {
     case 'cycle':
+    case 'bicycle':
       return 'bicycle';
+    case 'rickshaw':
+      return 'rickshaw';
     case 'car':
       return 'car';
     case 'van':
@@ -65,13 +68,18 @@ const ProfileScreen: React.FC = () => {
           <Text style={styles.phone}>{rider?.phone}</Text>
           <View style={styles.badges}>
             <Badge label={isOnDuty ? t('profile.statusOnline') : t('profile.statusOffline')} tone={isOnDuty ? 'success' : 'neutral'} icon={isOnDuty ? 'power' : 'power-standby'} />
-            {rider?.rating !== undefined ? (
-              <View style={styles.rating}>
-                <MaterialCommunityIcons name="star" size={16} color={colors.warning} />
-                <Text style={[styles.ratingText, { color: getRatingColor(rating) }]}>{rating.toFixed(1)}</Text>
-                {rider.ratingCount ? <Text style={styles.ratingCount}>{t('profile.ratingCount', { count: rider.ratingCount })}</Text> : null}
-              </View>
-            ) : null}
+            {/* riders.rating defaults to 5.0 — only show it once customers rated. */}
+            <TouchableOpacity style={styles.rating} onPress={() => navigation.navigate('Reviews')} accessibilityRole="button">
+              <MaterialCommunityIcons name="star" size={16} color={colors.warning} />
+              {rider?.ratingCount ? (
+                <>
+                  <Text style={[styles.ratingText, { color: getRatingColor(rating) }]}>{rating.toFixed(1)}</Text>
+                  <Text style={styles.ratingCount}>{t('profile.ratingCount', { count: rider.ratingCount })}</Text>
+                </>
+              ) : (
+                <Text style={styles.ratingCount}>{t('profile.noRating')}</Text>
+              )}
+            </TouchableOpacity>
           </View>
           {rider?.vehicleType ? (
             <View style={styles.vehicle}>
@@ -80,6 +88,12 @@ const ProfileScreen: React.FC = () => {
                 {tEnum(language, 'profile.vehicle', rider.vehicleType)}
                 {rider.vehicleNumber ? `  ·  ${rider.vehicleNumber}` : ''}
               </Text>
+            </View>
+          ) : null}
+          {rider?.cityName ? (
+            <View style={styles.vehicle}>
+              <MaterialCommunityIcons name="city-variant-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.vehicleText}>{t('profile.city')}  ·  {rider.cityName}</Text>
             </View>
           ) : null}
           {rider?.cnic ? (
@@ -96,6 +110,7 @@ const ProfileScreen: React.FC = () => {
         </View>
 
         <Card padded={false} style={styles.menu}>
+          <MenuItem icon="star-outline" title={t('profile.reviews')} subtitle={t('profile.reviewsHint')} onPress={() => navigation.navigate('Reviews')} />
           <MenuItem icon="cog-outline" title={t('profile.settings')} subtitle={t('profile.settingsHint')} onPress={() => navigation.navigate('Settings')} />
           <MenuItem icon="help-circle-outline" title={t('profile.help')} subtitle={t('profile.helpHint')} onPress={() => navigation.navigate('Help')} last />
         </Card>

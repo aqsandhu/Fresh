@@ -25,6 +25,8 @@ export const mapRiderProfile = (raw: any): Rider => ({
   ratingCount: toNumberOrNull(raw.rating_count) ?? undefined,
   totalDeliveries: toNumber(raw.total_deliveries),
   totalEarnings: toNumber(raw.total_earnings),
+  cityName: raw.city_name || null,
+  activeTasks: toNumberOrNull(raw.active_tasks) ?? undefined,
 });
 
 class AuthService {

@@ -36,7 +36,9 @@ interface TaskState {
   markPickedUp: (taskId: string, notes?: string) => Promise<Task>;
   markDelivered: (taskId: string, notes?: string) => Promise<Task>;
   failTask: (taskId: string, reason: string) => Promise<Task>;
-  requestCustomerCall: (orderId: string) => Promise<string | null>;
+  requestCustomerCall: (orderId: string) => Promise<{ number: string | null; notified: boolean }>;
+  markArrived: (taskId: string) => Promise<{ notified: boolean; arrivedAt: string | null }>;
+  uploadProof: (taskId: string, imageUri: string, stage?: 'pickup' | 'delivery') => Promise<string>;
   pinLocation: (taskId: string, latitude: number, longitude: number) => Promise<void>;
   uploadDoorPicture: (taskId: string, imageUri: string) => Promise<string>;
 
@@ -195,7 +197,32 @@ export const useTaskStore = create<TaskState>((set, get) => {
 
     requestCustomerCall: async (orderId) => {
       const result = await taskService.requestCustomerCall(orderId);
-      return result.number;
+      if (result.notified) {
+        const now = new Date().toISOString();
+        set((s) => ({
+          activeTasks: s.activeTasks.map((t) => (t.orderId === orderId ? { ...t, arrivedAt: now } : t)),
+        }));
+      }
+      return { number: result.number, notified: result.notified };
+    },
+
+    markArrived: async (taskId) => {
+      const result = await taskService.markArrived(taskId);
+      const arrivedAt = result.arrivedAt || new Date().toISOString();
+      set((s) => ({
+        activeTasks: s.activeTasks.map((t) => (t.id === taskId ? { ...t, arrivedAt } : t)),
+      }));
+      return { notified: result.notified, arrivedAt };
+    },
+
+    uploadProof: async (taskId, imageUri, stage = 'delivery') => {
+      const url = await taskService.uploadProof(taskId, imageUri, stage);
+      const field = stage === 'pickup' ? 'pickupProofImage' : 'deliveryProofImage';
+      set((s) => {
+        const patch = (t: Task) => (t.id === taskId ? { ...t, [field]: url } : t);
+        return { activeTasks: s.activeTasks.map(patch), completedTasks: s.completedTasks.map(patch) };
+      });
+      return url;
     },
 
     pinLocation: async (taskId, latitude, longitude) => {

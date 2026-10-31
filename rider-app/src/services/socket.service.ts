@@ -3,6 +3,7 @@ import { API_BASE_URL } from '../utils/constants';
 import { useAuthStore } from '../store/authStore';
 import { useTaskStore } from '../store/taskStore';
 import { notificationService } from './notification.service';
+import { t } from '../i18n';
 
 /** Order whose chat screen is currently open — suppress its chat toasts. */
 let activeChatOrderId: string | null = null;
@@ -80,6 +81,43 @@ class SocketService {
       notificationService
         .notifyTaskCancelled({ orderId: data?.orderId, orderNumber: data?.orderNumber, taskId: data?.taskId })
         .catch(() => {});
+    });
+
+    // Office changed something on a live task (re-weighed → new cash amount,
+    // phone revealed, marked delivered by admin…) — re-sync and tell the rider.
+    this.socket.on(
+      'rider:task_updated',
+      (data: { orderId?: string; orderNumber?: string; taskId?: string; message?: string; status?: string }) => {
+        useTaskStore.getState().fetchActiveTasks().catch(() => {});
+        if (data?.status === 'completed') useTaskStore.getState().fetchCompletedTasks().catch(() => {});
+        if (data?.message) {
+          notificationService
+            .notifyTaskUpdated({ orderId: data.orderId, orderNumber: data.orderNumber, taskId: data.taskId, message: data.message })
+            .catch(() => {});
+        }
+      }
+    );
+
+    // Admin blocked / removed this rider or changed his login → sign out now.
+    this.socket.on('rider:account_blocked', (data: { message?: string; reason?: string }) => {
+      useAuthStore.getState().endSession(data?.message || data?.reason || t('auth.accountBlocked'));
+    });
+
+    // Admin flipped the duty switch from the panel.
+    this.socket.on('rider:status_changed', (data: { status?: string }) => {
+      if (data?.status === 'offline' || data?.status === 'on_leave') {
+        const { useDutyStore } = require('../store/dutyStore') as typeof import('../store/dutyStore');
+        if (useDutyStore.getState().isOnDuty) {
+          useDutyStore.getState().teardown().catch(() => {});
+          notificationService.notifyInfo(t('duty.off'), t('duty.adminOff')).catch(() => {});
+        }
+      }
+    });
+
+    // Office counted the cash this rider handed over.
+    this.socket.on('rider:cash_received', (data: { message?: string }) => {
+      useTaskStore.getState().fetchMyStats().catch(() => {});
+      notificationService.notifyInfo(t('notif.cashReceivedTitle'), data?.message || '').catch(() => {});
     });
 
     // A subscribed order changed (admin cancel/deliver, etc.) — re-sync.

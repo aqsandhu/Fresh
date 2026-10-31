@@ -41,6 +41,8 @@ export interface TaskItem {
   unit: UnitFraction;
   quality?: string | null;
   weightKg?: number | null;
+  /** Actual packed weight after the admin re-weighed (variable-weight items). */
+  finalWeightKg?: number | null;
   unitPrice: number;
   totalPrice: number;
   instructions?: string | null;
@@ -61,7 +63,11 @@ export interface Task {
   assignedAt?: string;
   acceptedAt?: string | null;
   startedAt?: string | null;
+  /** When the rider tapped "I've arrived" (customer notified). */
+  arrivedAt?: string | null;
   completedAt?: string | null;
+  deliveryProofImage?: string | null;
+  pickupProofImage?: string | null;
 
   // ── Order ──────────────────────────────────────────────────────────────
   orderId?: string;
@@ -76,6 +82,10 @@ export interface Task {
   paymentStatus?: PaymentStatus | string;
   /** Cash the rider must collect at the door (null when nothing to collect). */
   codAmount: number | null;
+  /** Who receives that cash: the office, or an Order Collection Point. */
+  cashTo: 'office' | 'ocp' | null;
+  ocpName?: string | null;
+  ocpAddress?: string | null;
   isUrgent: boolean;
   urgentEta?: string | null;
   customerNotes?: string | null;
@@ -97,6 +107,10 @@ export interface Task {
   pickupAddress?: string | null;
   pickupLocation?: GeoPoint | null;
 
+  // ── Restaurant (B2B) orders ────────────────────────────────────────────
+  isRestaurant: boolean;
+  restaurantName?: string | null;
+
   // ── Customer (privacy-gated) ───────────────────────────────────────────
   customerName?: string | null;
   customerPhone?: string | null;
@@ -117,6 +131,12 @@ export interface Task {
   attaRequestNumber?: string | null;
   attaStatus?: AttaRequestStatus | string | null;
   wheatKg?: number | null;
+  wheatQuality?: string | null;
+  flourType?: string | null;
+  flourExpectedKg?: number | null;
+  flourActualKg?: number | null;
+  /** Customer's note for the atta request (often a contact number). */
+  attaInstructions?: string | null;
 
   items?: TaskItem[];
 }
@@ -141,6 +161,35 @@ export interface Rider {
   ratingCount?: number;
   totalDeliveries: number;
   totalEarnings: number;
+  cityName?: string | null;
+  activeTasks?: number;
+}
+
+export interface RiderReview {
+  id: string;
+  rating: number;
+  comment?: string | null;
+  adminReply?: string | null;
+  createdAt: string;
+  orderNumber?: string | null;
+  customerFirstName?: string | null;
+}
+
+export interface RiderReviews {
+  rating: number | null;
+  ratingCount: number;
+  reviews: RiderReview[];
+}
+
+export interface CashSettlement {
+  id: string;
+  amount: number;
+  status: string;
+  note?: string | null;
+  receivedAt: string;
+  receivedByName?: string | null;
+  orderCount: number;
+  attaCount: number;
 }
 
 export interface AppSettings {
@@ -164,6 +213,8 @@ export interface DailyStats {
 export interface PeriodStats {
   orders: number;
   earnings: number;
+  /** Atta Chakki pickups + deliveries in the period. */
+  attaTasks: number;
 }
 
 export interface RiderStatsData {
@@ -181,12 +232,18 @@ export interface RiderStatsData {
     totalEarned: number;
     /** Earnings on COD orders (deducted from cash due). */
     codEarned: number;
+    /** Pay on orders where no cash passed through the rider — the office owes it. */
+    nonCashEarned: number;
     /** Cash already handed to the company (rider_cash_settlements). */
     totalSettled: number;
-    /** collected − settled */
+    /** Customer cash still with the rider (not yet handed over). */
     cashInHand: number;
-    /** collected − settled − codEarned → what the rider must hand over. */
+    /** The rider's own pay inside cashInHand (he keeps it). */
+    unsettledEarned: number;
+    /** cashInHand − unsettledEarned → what the rider must hand over. */
     paymentPending: number;
+    /** Deliveries whose cash is not handed over yet. */
+    pendingLines: number;
   };
 }
 
@@ -242,4 +299,5 @@ export type RootStackParamList = {
   Chat: { orderId: string; orderNumber?: string; orderStatus?: string };
   Settings: undefined;
   Help: undefined;
+  Reviews: undefined;
 };

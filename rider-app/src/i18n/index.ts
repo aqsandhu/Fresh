@@ -53,7 +53,7 @@ export function useT() {
  */
 export function tEnum(
   language: Language,
-  prefix: 'taskType' | 'taskStatus' | 'orderStatus' | 'attaStatus' | 'unit' | 'detail.paymentMethod' | 'profile.vehicle',
+  prefix: 'taskType' | 'taskStatus' | 'orderStatus' | 'attaStatus' | 'unit' | 'detail.paymentMethod' | 'profile.vehicle' | 'wheatQuality' | 'flourType',
   value: string | null | undefined
 ): string {
   if (!value) return '';

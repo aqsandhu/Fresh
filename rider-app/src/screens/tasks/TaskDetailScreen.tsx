@@ -16,7 +16,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import { ScreenHeader, Card, Badge, Banner, BottomActionBar, SectionTitle, InfoRow, Sheet, EmptyState } from '../../components/ui';
 import { BOTTOM_BAR_CONTENT_PADDING } from '../../components/ui/BottomActionBar';
 import { colors, radius, spacing, typography } from '../../theme';
-import { formatCurrency, formatDate, formatSlotRange, formatDateTime, openNavigation, openDialer, openWhatsApp } from '../../utils/helpers';
+import { formatCurrency, formatDate, formatSlotRange, formatDateTime, formatTime, openNavigation, openDialer, openWhatsApp, extractPhones } from '../../utils/helpers';
 import { taskStatusTone, taskStatusIcon, isAttaTask, primaryActionFor } from '../../utils/taskMeta';
 import { RootStackParamList, Task, GeoPoint, PROBLEM_REASONS, ProblemReason, taskReference, isTerminalTaskStatus } from '../../types';
 
@@ -28,13 +28,13 @@ const TaskDetailScreen: React.FC = () => {
   const { taskId } = useRoute<RouteProp<RootStackParamList, 'TaskDetail'>>().params;
 
   const storeTask = useTaskStore((s) => [...s.activeTasks, ...s.completedTasks].find((x) => x.id === taskId) ?? null);
-  const { fetchTaskById, markPickedUp, markDelivered, failTask, requestCustomerCall, pinLocation, uploadDoorPicture, pendingTaskIds } = useTaskStore();
+  const { fetchTaskById, markPickedUp, markDelivered, failTask, markArrived, uploadProof, pinLocation, uploadDoorPicture, pendingTaskIds } = useTaskStore();
   const lastFix = useDutyStore((s) => s.lastFix);
 
   const [task, setTask] = useState<Task | null>(storeTask);
   const [loading, setLoading] = useState(!storeTask);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [isCalling, setIsCalling] = useState(false);
+  const [isNotifying, setIsNotifying] = useState(false);
   const [isPinning, setIsPinning] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [adjusted, setAdjusted] = useState<GeoPoint | null>(null);
@@ -74,11 +74,23 @@ const TaskDetailScreen: React.FC = () => {
       if (!data?.orderId || data.orderId === orderId) load();
     };
     socketService.on('order:update', onUpdate);
+    socketService.on('rider:task_updated', onUpdate);
     return () => {
       socketService.off('order:update', onUpdate);
+      socketService.off('rider:task_updated', onUpdate);
       socketService.unsubscribeFromOrder(orderId);
     };
   }, [task?.orderId, load]);
+
+  // Atta tasks have no order room — office updates arrive per task.
+  useEffect(() => {
+    if (task?.orderId || !task?.id) return;
+    const onTaskUpdate = (data: { taskId?: string; attaRequestId?: string }) => {
+      if (data?.taskId === task.id || (data?.attaRequestId && data.attaRequestId === task.attaRequestId)) load();
+    };
+    socketService.on('rider:task_updated', onTaskUpdate);
+    return () => socketService.off('rider:task_updated', onTaskUpdate);
+  }, [task?.orderId, task?.id, task?.attaRequestId, load]);
 
   const atta = task ? isAttaTask(task) : false;
   const terminal = task ? isTerminalTaskStatus(task.status) : true;
@@ -112,8 +124,24 @@ const TaskDetailScreen: React.FC = () => {
     ]);
   };
 
-  const handleDeliver = async (notes: string) => {
+  const handleDeliver = async (notes: string, proofUri: string | null) => {
     if (!task) return;
+    // Proof photo first (website privacy policy: riders photograph the
+    // delivered order). A failed upload must not strand the delivery — the
+    // rider decides whether to continue without it.
+    if (proofUri) {
+      try {
+        await uploadProof(task.id, proofUri, 'delivery');
+      } catch (error) {
+        const goOn = await new Promise<boolean>((resolve) =>
+          Alert.alert(t('proof.uploadFailedTitle'), t('proof.uploadFailedBody', { reason: getApiErrorMessage(error) }), [
+            { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+            { text: t('proof.continueWithout'), onPress: () => resolve(true) },
+          ])
+        );
+        if (!goOn) return;
+      }
+    }
     try {
       await markDelivered(task.id, notes || undefined);
       setDeliverOpen(false);
@@ -142,29 +170,35 @@ const TaskDetailScreen: React.FC = () => {
     }
   };
 
-  const handleCall = async () => {
+  const handleCall = () => {
     if (!task) return;
+    // Phone visible (admin override) → dial directly. Hidden → the privacy
+    // flow: tell the customer the rider is at the door.
     if (task.phoneVisible && task.customerPhone) {
       openDialer(task.customerPhone).catch(() => {});
       return;
     }
-    if (!task.orderId) return;
-    setIsCalling(true);
-    try {
-      const number = await requestCustomerCall(task.orderId);
-      if (number) openDialer(number).catch(() => {});
-      else Alert.alert(t('detail.call'), t('detail.callNoNumber'));
-    } catch (error) {
-      // 403 carries the admin-facing explanation — show it verbatim.
-      Alert.alert(t('detail.callFailed'), getApiErrorMessage(error));
-    } finally {
-      setIsCalling(false);
-    }
+    handleArrived();
   };
 
   const handleWhatsApp = () => {
     if (!task?.customerPhone) return;
     openWhatsApp(task.customerPhone, t('detail.whatsappMessage', { orderNumber: taskReference(task) })).catch(() => {});
+  };
+
+  // "I've arrived" → customer gets "Aapka order aapke darwaze par hai".
+  const handleArrived = async () => {
+    if (!task) return;
+    setIsNotifying(true);
+    try {
+      const result = await markArrived(task.id);
+      setTask((prev) => (prev ? { ...prev, arrivedAt: result.arrivedAt } : prev));
+      Alert.alert(t('arrival.doneTitle'), result.notified ? t('arrival.doneBody') : t('arrival.noAccountBody'));
+    } catch (error) {
+      Alert.alert(t('arrival.failed'), getApiErrorMessage(error));
+    } finally {
+      setIsNotifying(false);
+    }
   };
 
   const savePin = async (point: GeoPoint, accuracy?: number) => {
@@ -268,11 +302,19 @@ const TaskDetailScreen: React.FC = () => {
     task.type === 'atta_pickup' ? t('action.wheatCollected') : task.type === 'atta_delivery' ? t('action.flourCollected') : t('action.pickedUp');
   const deliverLabel = task.type === 'atta_pickup' ? t('action.droppedAtMill') : t('action.delivered');
 
+  // At the customer's door: atta wheat pickup happens while still 'assigned';
+  // everything else after the rider picked the goods up ('in_progress').
+  const atCustomerStage =
+    !terminal && (task.type === 'atta_pickup' ? task.status === 'assigned' : task.status === 'in_progress');
+  const canNotifyArrival = atCustomerStage && !(task.phoneVisible && task.customerPhone);
+  const instructionPhones = extractPhones(task.attaInstructions);
+  const isRestaurant = task.isRestaurant;
+
   return (
     <View style={styles.container}>
       <ScreenHeader
         title={`${t(atta ? 'tasks.request' : 'tasks.order')} #${taskReference(task)}`}
-        subtitle={tEnum(language, 'taskType', task.type)}
+        subtitle={isRestaurant && task.restaurantName ? `${t('tasks.restaurant')} · ${task.restaurantName}` : tEnum(language, 'taskType', task.type)}
         onBack={() => navigation.goBack()}
         right={<Badge label={tEnum(language, 'taskStatus', task.status)} tone={taskStatusTone[task.status]} icon={taskStatusIcon[task.status]} size="lg" />}
       />
@@ -280,6 +322,15 @@ const TaskDetailScreen: React.FC = () => {
       <ScrollView contentContainerStyle={[styles.content, !terminal && { paddingBottom: BOTTOM_BAR_CONTENT_PADDING }]} showsVerticalScrollIndicator={false}>
         {loadError ? <Banner tone="warning" icon="alert-circle-outline" message={loadError} actionLabel={t('common.retry')} onAction={load} style={styles.block} /> : null}
         {task.isUrgent ? <Banner tone="danger" icon="lightning-bolt" title={t('tasks.urgent')} message={t('detail.urgentEta', { eta: task.urgentEta || '—' })} style={styles.block} /> : null}
+
+        {/* Order Collection Point — rider collects here and the cash goes here */}
+        {task.ocpName ? (
+          <View style={styles.block}>
+            <Card>
+              <InfoRow icon="storefront-outline" iconColor={colors.info} label={t('detail.ocpPickup')} value={[task.ocpName, task.ocpAddress].filter(Boolean).join('\n')} />
+            </Card>
+          </View>
+        ) : null}
 
         {/* Deliver to */}
         <View style={styles.block}>
@@ -311,6 +362,12 @@ const TaskDetailScreen: React.FC = () => {
             <View style={styles.addressBox}>
               <View style={styles.addressRow}>
                 <View style={styles.flex}>
+                  {isRestaurant && task.restaurantName ? (
+                    <View style={styles.restaurantRow}>
+                      <MaterialCommunityIcons name="silverware-fork-knife" size={16} color={colors.primaryDark} />
+                      <Text style={styles.restaurantName}>{task.restaurantName}</Text>
+                    </View>
+                  ) : null}
                   <Text style={styles.addressText}>{task.address || '—'}</Text>
                   {task.landmark ? <Text style={styles.addressMeta}>{t('tasks.near')} {task.landmark}</Text> : null}
                   {task.area || task.city ? <Text style={styles.addressMeta}>{[task.area, task.city].filter(Boolean).join(', ')}</Text> : null}
@@ -345,15 +402,15 @@ const TaskDetailScreen: React.FC = () => {
           </Card>
         </View>
 
-        {/* Door photo */}
-        {!atta ? (
+        {/* Door / storefront photo — atta pickups happen at the same door */}
+        {task.addressId || isRestaurant || task.doorPictureUrl ? (
           <View style={styles.block}>
-            <SectionTitle title={t('detail.doorPhoto')} />
+            <SectionTitle title={t(isRestaurant ? 'detail.storefrontPhoto' : 'detail.doorPhoto')} />
             <Card padded={false}>
               {task.doorPictureUrl ? <Image source={{ uri: task.doorPictureUrl }} style={styles.doorImage} resizeMode="cover" /> : null}
               {!terminal ? (
                 <View style={styles.photoRow}>
-                  {!task.doorPictureUrl ? <Text style={styles.pinPromptText}>{t('detail.doorPhotoPrompt')}</Text> : null}
+                  {!task.doorPictureUrl ? <Text style={styles.pinPromptText}>{t(isRestaurant ? 'detail.storefrontPrompt' : 'detail.doorPhotoPrompt')}</Text> : null}
                   <Button
                     title={task.doorPictureUrl ? t('detail.updatePhoto') : t('detail.addPhoto')}
                     icon="camera-outline"
@@ -383,6 +440,23 @@ const TaskDetailScreen: React.FC = () => {
             <SectionTitle title={t('detail.atta')} />
             <Card>
               <InfoRow icon="grain" label={t('detail.attaRequest', { number: task.attaRequestNumber || '—' })} value={task.wheatKg ? t('detail.attaWheat', { kg: task.wheatKg }) : '—'} right={task.attaStatus ? <Badge label={tEnum(language, 'attaStatus', task.attaStatus)} tone="warning" /> : null} />
+              {task.wheatQuality ? <InfoRow icon="sprout-outline" label={t('detail.attaQuality')} value={tEnum(language, 'wheatQuality', task.wheatQuality)} /> : null}
+              {task.flourType ? <InfoRow icon="shaker-outline" label={t('detail.attaFlour')} value={tEnum(language, 'flourType', task.flourType)} /> : null}
+              {task.type === 'atta_delivery' && (task.flourActualKg || task.flourExpectedKg) ? (
+                <InfoRow
+                  icon="weight-kilogram"
+                  label={t(task.flourActualKg ? 'detail.attaActual' : 'detail.attaExpected')}
+                  value={t('detail.kg', { kg: Number(task.flourActualKg || task.flourExpectedKg).toFixed(1) })}
+                />
+              ) : null}
+              {task.attaInstructions ? <InfoRow icon="note-text-outline" label={t('detail.attaInstructions')} value={task.attaInstructions} /> : null}
+              {!terminal && instructionPhones.length > 0 ? (
+                <View style={styles.contactRow}>
+                  {instructionPhones.map((phone) => (
+                    <Button key={phone} title={t('detail.callNumber', { number: phone })} icon="phone" variant="dark" size="small" onPress={() => openDialer(phone).catch(() => {})} style={styles.flex} />
+                  ))}
+                </View>
+              ) : null}
             </Card>
           </View>
         ) : null}
@@ -400,7 +474,7 @@ const TaskDetailScreen: React.FC = () => {
                     <Text style={styles.itemMeta}>
                       {item.quantity} × {tEnum(language, 'unit', item.unit) || '1'}
                       {item.quality ? `  ·  ${t('unit.quality', { q: item.quality })}` : ''}
-                      {item.weightKg ? `  ·  ${item.weightKg} kg` : ''}
+                      {item.finalWeightKg ? `  ·  ${t('detail.weighed', { kg: item.finalWeightKg })}` : item.weightKg ? `  ·  ${item.weightKg} kg` : ''}
                     </Text>
                     {item.instructions ? <Text style={styles.itemNote}>{item.instructions}</Text> : null}
                   </View>
@@ -418,7 +492,7 @@ const TaskDetailScreen: React.FC = () => {
         ) : null}
 
         {/* Payment */}
-        {task.paymentMethod ? (
+        {task.paymentMethod || (task.codAmount !== null && task.codAmount > 0) ? (
           <View style={styles.block}>
             <SectionTitle title={t('detail.payment')} />
             {task.codAmount !== null && task.codAmount > 0 && task.status !== 'completed' ? (
@@ -427,15 +501,18 @@ const TaskDetailScreen: React.FC = () => {
                 <View style={styles.flex}>
                   <Text style={styles.codLabel}>{t('detail.collectCash')}</Text>
                   <Text style={styles.codAmount}>{formatCurrency(task.codAmount)}</Text>
-                  <Text style={styles.codMeta}>{tEnum(language, 'detail.paymentMethod', task.paymentMethod)}</Text>
+                  <Text style={styles.codMeta}>
+                    {task.type === 'atta_delivery' ? t('detail.attaCharges') : tEnum(language, 'detail.paymentMethod', task.paymentMethod || 'cash_on_delivery')}
+                  </Text>
+                  {task.cashTo === 'ocp' && task.ocpName ? <Text style={styles.codOcp}>{t('detail.ocpCash', { name: task.ocpName })}</Text> : null}
                 </View>
               </View>
             ) : (
               <Card>
                 <InfoRow
-                  icon={task.paymentMethod === 'cash_on_delivery' ? 'cash' : 'credit-card-outline'}
+                  icon={!task.paymentMethod || task.paymentMethod === 'cash_on_delivery' ? 'cash' : 'credit-card-outline'}
                   iconColor={colors.success}
-                  label={tEnum(language, 'detail.paymentMethod', task.paymentMethod)}
+                  label={tEnum(language, 'detail.paymentMethod', task.paymentMethod || 'cash_on_delivery')}
                   value={task.status === 'completed' && task.codAmount ? `${t('earnings.collectedAmount', { amount: formatCurrency(task.codAmount) })}` : t('detail.alreadyPaid')}
                   right={<Badge label={t('tasks.paid')} tone="success" icon="check" />}
                 />
@@ -466,10 +543,25 @@ const TaskDetailScreen: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <Text style={styles.hiddenHint}>{t('detail.callHiddenHint')}</Text>
-                  <Button title={isCalling ? t('detail.calling') : t('detail.callViaApp')} icon="phone-in-talk" variant="dark" onPress={handleCall} loading={isCalling} fullWidth />
+                  <Text style={styles.hiddenHint}>{t('arrival.hint')}</Text>
+                  <Button
+                    title={isNotifying ? t('arrival.sending') : t('arrival.button')}
+                    icon="bell-ring-outline"
+                    variant="dark"
+                    onPress={handleArrived}
+                    loading={isNotifying}
+                    disabled={!atCustomerStage}
+                    fullWidth
+                    testID="action-arrived"
+                  />
                 </>
               )}
+              {task.arrivedAt ? (
+                <View style={styles.arrivedRow}>
+                  <MaterialCommunityIcons name="bell-check-outline" size={16} color={colors.success} />
+                  <Text style={styles.arrivedText}>{t('arrival.notifiedAt', { time: formatTime(task.arrivedAt) })}</Text>
+                </View>
+              ) : null}
               {task.orderId ? (
                 <Button
                   title={t('detail.chat')}
@@ -501,6 +593,9 @@ const TaskDetailScreen: React.FC = () => {
         <BottomActionBar>
           {primary === 'pickup' ? (
             <Button title={pickupLabel} icon="package-variant-closed-check" size="large" fullWidth onPress={handlePickup} loading={busy} testID="action-pickup" />
+          ) : null}
+          {canNotifyArrival && !task.arrivedAt ? (
+            <Button title={isNotifying ? t('arrival.sending') : t('arrival.button')} icon="bell-ring-outline" variant="outline" fullWidth onPress={handleArrived} loading={isNotifying} />
           ) : null}
           {primary === 'deliver' ? (
             <Button title={deliverLabel} icon="check-decagram" variant="success" size="large" fullWidth onPress={() => setDeliverOpen(true)} loading={busy} testID="action-deliver" />
@@ -540,28 +635,56 @@ const DeliverSheet: React.FC<{
   busy: boolean;
   title: string;
   onClose: () => void;
-  onSubmit: (notes: string) => void;
+  onSubmit: (notes: string, proofUri: string | null) => void | Promise<void>;
 }> = ({ visible, task, busy, title, onClose, onSubmit }) => {
   const { t } = useT();
   const [cashConfirmed, setCashConfirmed] = useState(false);
   const [notes, setNotes] = useState('');
+  const [proofUri, setProofUri] = useState<string | null>(null);
   const needsCash = task.codAmount !== null && task.codAmount > 0;
   const atta = isAttaTask(task);
+  // Hand-over to a customer needs a photo; dropping wheat at the mill does not.
+  const proofRequired = task.type !== 'atta_pickup';
+  const existingProof = task.deliveryProofImage || null;
 
   useEffect(() => {
     if (visible) {
       setCashConfirmed(false);
       setNotes('');
+      setProofUri(null);
     }
   }, [visible]);
+
+  const takeProof = async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert(t('proof.title'), t('detail.cameraDenied'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('common.openSettings'), onPress: () => Linking.openSettings().catch(() => {}) },
+        ]);
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.6, allowsEditing: false });
+      if (!result.canceled && result.assets?.[0]?.uri) setProofUri(result.assets[0].uri);
+    } catch (error) {
+      Alert.alert(t('proof.title'), getApiErrorMessage(error));
+    }
+  };
 
   const submit = () => {
     if (needsCash && !cashConfirmed) {
       Alert.alert(t('action.deliverTitle'), t('action.deliverCashRequired'));
       return;
     }
-    onSubmit(notes);
+    if (proofRequired && !proofUri && !existingProof) {
+      Alert.alert(t('proof.title'), t('proof.required'));
+      return;
+    }
+    onSubmit(notes, proofUri);
   };
+
+  const shownProof = proofUri || existingProof;
 
   return (
     <Sheet
@@ -570,20 +693,37 @@ const DeliverSheet: React.FC<{
       onClose={onClose}
       footer={<Button title={atta ? title : t('action.deliverSubmit')} icon="check-decagram" variant="success" size="large" fullWidth onPress={submit} loading={busy} testID="deliver-submit" />}
     >
-      {atta ? null : needsCash ? (
+      {needsCash ? (
         <>
           <View style={styles.sheetCash}>
-            <Text style={styles.sheetCashLabel}>{t('action.deliverCashLabel')}</Text>
+            <Text style={styles.sheetCashLabel}>{atta ? t('detail.attaCharges') : t('action.deliverCashLabel')}</Text>
             <Text style={styles.sheetCashAmount}>{formatCurrency(task.codAmount)}</Text>
+            {task.cashTo === 'ocp' && task.ocpName ? <Text style={styles.codOcp}>{t('detail.ocpCash', { name: task.ocpName })}</Text> : null}
           </View>
           <TouchableOpacity style={[styles.checkRow, cashConfirmed && styles.checkRowOn]} onPress={() => setCashConfirmed((v) => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: cashConfirmed }} testID="deliver-cash-check">
             <MaterialCommunityIcons name={cashConfirmed ? 'checkbox-marked' : 'checkbox-blank-outline'} size={28} color={cashConfirmed ? colors.success : colors.gray500} />
             <Text style={styles.checkText}>{t('action.deliverCashConfirm', { amount: formatCurrency(task.codAmount) })}</Text>
           </TouchableOpacity>
         </>
-      ) : (
+      ) : atta ? null : (
         <Banner tone="success" icon="check-circle-outline" message={t('action.deliverPaidNote')} />
       )}
+
+      <View style={styles.proofRow}>
+        <Text style={styles.inputLabel}>{t('proof.title')}{proofRequired ? ' *' : ''}</Text>
+        {shownProof ? <Image source={{ uri: shownProof }} style={styles.proofImage} resizeMode="cover" /> : null}
+        {!shownProof ? <Text style={styles.pinPromptText}>{proofRequired ? t('proof.prompt') : t('proof.promptOptional')}</Text> : null}
+        <Button
+          title={shownProof ? t('proof.retake') : t('proof.take')}
+          icon="camera-outline"
+          variant={shownProof ? 'outline' : 'primary'}
+          size="small"
+          onPress={takeProof}
+          testID="deliver-proof"
+          style={{ marginTop: spacing.sm }}
+        />
+      </View>
+
       <Text style={styles.inputLabel}>{t('action.deliverNoteLabel')}</Text>
       <TextInput style={styles.textArea} value={notes} onChangeText={setNotes} placeholder={t('action.deliverNotePlaceholder')} placeholderTextColor={colors.gray400} multiline maxLength={300} />
     </Sheet>
@@ -685,6 +825,13 @@ const styles = StyleSheet.create({
   codLabel: { fontSize: typography.size.xs, color: colors.gray400, textTransform: 'uppercase', letterSpacing: 0.8 },
   codAmount: { fontSize: typography.size.display, fontWeight: typography.weight.heavy, color: colors.white, marginTop: 2 },
   codMeta: { fontSize: typography.size.sm, color: colors.gray300, marginTop: 2 },
+  codOcp: { fontSize: typography.size.sm, color: colors.warningSoft, marginTop: spacing.xs, fontWeight: typography.weight.semibold },
+  restaurantRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  restaurantName: { fontSize: typography.size.md, fontWeight: typography.weight.bold, color: colors.primaryDark },
+  arrivedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: spacing.sm },
+  arrivedText: { fontSize: typography.size.sm, color: colors.success, fontWeight: typography.weight.semibold },
+  proofImage: { width: '100%', height: 200, borderRadius: radius.md, marginBottom: spacing.sm, backgroundColor: colors.gray100 },
+  proofRow: { marginTop: spacing.lg },
   contactRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   hiddenHint: { fontSize: typography.size.sm, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: typography.size.sm * 1.5 },
   sheetBody: { fontSize: typography.size.sm, color: colors.textSecondary, marginBottom: spacing.md, lineHeight: typography.size.sm * 1.5 },

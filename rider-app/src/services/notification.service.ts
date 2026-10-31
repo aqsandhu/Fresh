@@ -176,6 +176,20 @@ class NotificationService {
     );
   }
 
+  /** Something about a live task changed on the office side (amount, phone…). */
+  notifyTaskUpdated(d: { orderId?: string; orderNumber?: string; taskId?: string; message?: string }): Promise<void> {
+    return this.show(
+      t('notif.taskUpdatedTitle'),
+      d.message || t('notif.newTaskBody', { orderNumber: d.orderNumber || '—' }),
+      { type: 'task_updated', orderId: d.orderId, orderNumber: d.orderNumber, taskId: d.taskId },
+      NOTIFICATION_CHANNELS.TASK_UPDATE
+    );
+  }
+
+  notifyInfo(title: string, body: string): Promise<void> {
+    return this.show(title, body, { type: 'info' }, NOTIFICATION_CHANNELS.TASK_UPDATE);
+  }
+
   async clearBadge(): Promise<void> {
     try {
       await Notifications.setBadgeCountAsync(0);

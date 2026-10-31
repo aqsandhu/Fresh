@@ -197,3 +197,20 @@ export const parseErrorMessage = (error: unknown, fallback = 'An unknown error o
 export const isEmptyObject = (obj: object): boolean => Object.keys(obj).length === 0;
 
 export const deepClone = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
+
+/**
+ * Pakistani mobile numbers written inside free text (the website puts
+ * "Contact: 0300-1234567" into an atta request's instructions so the rider
+ * can call). Returns unique numbers normalised to 03XXXXXXXXX.
+ */
+export const extractPhones = (text: string | null | undefined): string[] => {
+  if (!text) return [];
+  const found = new Set<string>();
+  const re = /(?:\+?92|0)[\s-]?3\d{2}[\s-]?\d{7}/g;
+  for (const match of text.match(re) || []) {
+    const digits = match.replace(/\D/g, '');
+    const local = digits.startsWith('92') ? `0${digits.slice(2)}` : digits;
+    if (/^03\d{9}$/.test(local)) found.add(local);
+  }
+  return Array.from(found);
+};

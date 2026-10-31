@@ -33,6 +33,7 @@ import EarningsScreen from '../screens/profile/EarningsScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import HelpScreen from '../screens/settings/HelpScreen';
+import ReviewsScreen from '../screens/profile/ReviewsScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -171,6 +172,7 @@ const MainNavigator = () => {
         <Stack.Screen name="Chat" component={ChatScreen} options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: t('settings.title') }} />
         <Stack.Screen name="Help" component={HelpScreen} options={{ title: t('help.title') }} />
+        <Stack.Screen name="Reviews" component={ReviewsScreen} options={{ title: t('reviews.title') }} />
       </Stack.Navigator>
     </>
   );

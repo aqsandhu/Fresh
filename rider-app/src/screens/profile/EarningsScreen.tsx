@@ -9,7 +9,8 @@ import { useT } from '../../i18n';
 import { ScreenHeader, Card, StatTile, SectionTitle, EmptyState, Banner } from '../../components/ui';
 import { colors, radius, spacing, typography } from '../../theme';
 import { formatCurrency, formatDateTime } from '../../utils/helpers';
-import type { RootStackParamList, Task, RiderStatsData } from '../../types';
+import type { RootStackParamList, Task, RiderStatsData, CashSettlement } from '../../types';
+import { taskService } from '../../services/task.service';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type Period = keyof RiderStatsData['stats'];
@@ -22,9 +23,14 @@ const EarningsScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const { myStats, completedTasks, hasLoadedCompleted, fetchMyStats, fetchCompletedTasks } = useTaskStore();
   const rider = useAuthStore((s) => s.rider);
+  const [settlements, setSettlements] = useState<CashSettlement[]>([]);
 
   const load = useCallback(async () => {
-    await Promise.all([fetchMyStats(), fetchCompletedTasks()]);
+    await Promise.all([
+      fetchMyStats(),
+      fetchCompletedTasks(),
+      taskService.getCashSettlements().then(setSettlements).catch(() => {}),
+    ]);
   }, [fetchMyStats, fetchCompletedTasks]);
 
   useEffect(() => {
@@ -69,25 +75,54 @@ const EarningsScreen: React.FC = () => {
 
       <View style={styles.tiles}>
         <StatTile label={t('earnings.earned')} value={formatCurrency(periodStats?.earnings ?? 0)} icon="wallet-outline" tone="success" emphasis />
-        <StatTile label={t('home.deliveries')} value={String(periodStats?.orders ?? 0)} icon="package-variant-closed-check" tone="primary" />
+        <StatTile
+          label={periodStats?.attaTasks ? `${t('home.deliveries')} ${t('earnings.attaTasks', { count: periodStats.attaTasks })}` : t('home.deliveries')}
+          value={String(periodStats?.orders ?? 0)}
+          icon="package-variant-closed-check"
+          tone="primary"
+        />
       </View>
 
       <View style={styles.block}>
         <SectionTitle title={t('earnings.cashTitle')} />
         <Card>
-          <CashRow label={t('earnings.collected')} value={formatCurrency(pay?.totalCollected ?? 0)} />
-          <CashRow label={t('earnings.earned')} value={`− ${formatCurrency(pay?.codEarned ?? 0)}`} />
-          <CashRow label={t('earnings.settled')} value={`− ${formatCurrency(pay?.totalSettled ?? 0)}`} />
+          <CashRow label={t('earnings.cashWithYou')} value={formatCurrency(pay?.cashInHand ?? 0)} />
+          <CashRow label={t('earnings.yourShare')} value={`− ${formatCurrency(pay?.unsettledEarned ?? 0)}`} />
           <View style={styles.divider} />
-          <CashRow label={t('earnings.cashInHand')} value={formatCurrency(pay?.cashInHand ?? 0)} bold />
           <View style={[styles.due, due > 0 ? styles.dueOn : styles.dueOff]}>
             <MaterialCommunityIcons name={due > 0 ? 'hand-coin-outline' : 'check-circle-outline'} size={28} color={due > 0 ? colors.warning : colors.success} />
             <View style={styles.flex}>
-              <Text style={styles.dueLabel}>{t('earnings.dueToCompany')}</Text>
+              <Text style={styles.dueLabel}>{t('earnings.handOver')}</Text>
               <Text style={[styles.dueAmount, { color: due > 0 ? colors.text : colors.success }]}>{formatCurrency(due)}</Text>
-              <Text style={styles.dueHint}>{due > 0 ? t('earnings.dueHint') : t('earnings.allSettled')}</Text>
+              <Text style={styles.dueHint}>
+                {due > 0 ? `${t('earnings.dueHint')} ${t('earnings.pendingLines', { count: pay?.pendingLines ?? 0 })}` : t('earnings.allSettled')}
+              </Text>
             </View>
           </View>
+          <View style={styles.divider} />
+          <CashRow label={t('earnings.handedOverTotal')} value={formatCurrency(pay?.totalSettled ?? 0)} />
+          {(pay?.nonCashEarned ?? 0) > 0 ? <CashRow label={t('earnings.nonCashEarned')} value={formatCurrency(pay?.nonCashEarned ?? 0)} /> : null}
+        </Card>
+      </View>
+
+      <View style={styles.block}>
+        <SectionTitle title={t('earnings.settlements')} count={settlements.length} />
+        <Card>
+          {settlements.length === 0 ? (
+            <Text style={styles.historyMeta}>{t('earnings.noSettlements')}</Text>
+          ) : (
+            settlements.slice(0, 10).map((st, i) => (
+              <View key={st.id} style={[styles.settlementRow, i > 0 && styles.settlementBorder]}>
+                <View style={styles.flex}>
+                  <Text style={styles.historyTitle}>{formatCurrency(st.amount)}</Text>
+                  <Text style={styles.historyMeta}>
+                    {formatDateTime(st.receivedAt)} · {t('earnings.settlementRow', { orders: st.orderCount, atta: st.attaCount, by: st.receivedByName || '—' })}
+                  </Text>
+                </View>
+                <MaterialCommunityIcons name="check-circle" size={20} color={colors.success} />
+              </View>
+            ))
+          )}
         </Card>
       </View>
 
@@ -156,6 +191,8 @@ const styles = StyleSheet.create({
   historyTitle: { fontSize: typography.size.md, fontWeight: typography.weight.semibold, color: colors.text },
   historyMeta: { fontSize: typography.size.xs, color: colors.textMuted, marginTop: 2 },
   historyAmount: { fontSize: typography.size.md, fontWeight: typography.weight.bold, color: colors.success },
+  settlementRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, gap: spacing.md },
+  settlementBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
 });
 
 export default EarningsScreen;

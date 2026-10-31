@@ -1,5 +1,16 @@
 import apiService, { ApiError } from './api';
-import { Task, TaskItem, TaskStatus, TaskType, ApiResponse, DailyStats, RiderStatsData, GeoPoint } from '../types';
+import {
+  Task,
+  TaskItem,
+  TaskStatus,
+  TaskType,
+  ApiResponse,
+  DailyStats,
+  RiderStatsData,
+  GeoPoint,
+  RiderReviews,
+  CashSettlement,
+} from '../types';
 import { API_BASE_URL } from '../utils/constants';
 import { toNumber, toNumberOrNull } from '../utils/helpers';
 
@@ -48,6 +59,7 @@ const mapItem = (row: any): TaskItem => ({
   unit: row.unit || 'full',
   quality: row.quality ?? null,
   weightKg: toNumberOrNull(row.weight_kg),
+  finalWeightKg: toNumberOrNull(row.final_weight_kg),
   unitPrice: toNumber(row.unit_price),
   totalPrice: toNumber(row.total_price, toNumber(row.unit_price) * toNumber(row.quantity, 1)),
   instructions: row.special_instructions ?? null,
@@ -68,6 +80,9 @@ export const mapTask = (row: any): Task => {
   const paidAmount = toNumberOrNull(row.paid_amount);
   const status = normalizeStatus(row.status);
 
+  const type = normalizeType(row.task_type ?? row.type);
+  const ocpName: string | null = row.ocp_name || null;
+
   // Cash the rider collects at the door. Once the task is completed the
   // backend has already flipped payment_status to completed — show what was
   // collected (paid_amount) rather than "nothing to collect".
@@ -76,6 +91,16 @@ export const mapTask = (row: any): Task => {
     if (status === 'completed') codAmount = paidAmount ?? totalAmount;
     else if (paymentStatus !== 'completed') codAmount = totalAmount;
   }
+  // Atta Chakki: the flour-delivery rider collects the atta charges.
+  if (type === 'atta_delivery' && row.atta_payment_method !== 'card') {
+    const attaTotal = toNumberOrNull(row.atta_total_amount);
+    const attaPaid = toNumberOrNull(row.atta_paid_amount);
+    if (attaTotal !== null && attaTotal > 0) {
+      if (status === 'completed') codAmount = attaPaid && attaPaid > 0 ? attaPaid : attaTotal;
+      else if (row.atta_payment_status !== 'completed') codAmount = attaTotal;
+    }
+  }
+  const cashTo: Task['cashTo'] = codAmount && codAmount > 0 ? (row.ocp_id ? 'ocp' : 'office') : null;
 
   const location =
     point(row.address_latitude, row.address_longitude) ||
@@ -86,7 +111,7 @@ export const mapTask = (row: any): Task => {
 
   return {
     id: String(row.id),
-    type: normalizeType(row.task_type ?? row.type),
+    type,
     status,
     sequence: toNumberOrNull(row.sequence_number) ?? undefined,
     notes: row.notes ?? null,
@@ -94,7 +119,10 @@ export const mapTask = (row: any): Task => {
     assignedAt: row.assigned_at ?? undefined,
     acceptedAt: row.accepted_at ?? null,
     startedAt: row.started_at ?? null,
+    arrivedAt: row.arrived_at ?? null,
     completedAt: row.completed_at ?? null,
+    deliveryProofImage: fixImageUrl(row.delivery_proof_image) ?? null,
+    pickupProofImage: fixImageUrl(row.pickup_proof_image) ?? null,
 
     orderId: row.order_id ?? undefined,
     orderNumber: row.order_number ?? undefined,
@@ -110,6 +138,9 @@ export const mapTask = (row: any): Task => {
     paymentMethod,
     paymentStatus,
     codAmount,
+    cashTo,
+    ocpName,
+    ocpAddress: row.ocp_address || null,
     isUrgent: row.is_urgent_delivery === true,
     urgentEta: row.urgent_delivery_eta ?? null,
     customerNotes: row.customer_notes ?? null,
@@ -132,6 +163,9 @@ export const mapTask = (row: any): Task => {
     pickupAddress: row.pickup_address ?? null,
     pickupLocation: point(row.pickup_latitude, row.pickup_longitude),
 
+    isRestaurant: row.is_restaurant === true,
+    restaurantName: row.restaurant_name || null,
+
     customerName: row.customer_name || null,
     customerPhone,
     phoneVisible: Boolean(customerPhone),
@@ -147,6 +181,11 @@ export const mapTask = (row: any): Task => {
     attaRequestNumber: row.atta_request_number ?? null,
     attaStatus: row.atta_status ?? null,
     wheatKg: toNumberOrNull(row.wheat_quantity_kg),
+    wheatQuality: row.wheat_quality ?? null,
+    flourType: row.flour_type ?? null,
+    flourExpectedKg: toNumberOrNull(row.flour_quantity_expected_kg),
+    flourActualKg: toNumberOrNull(row.actual_flour_quantity_kg),
+    attaInstructions: row.atta_instructions ?? null,
 
     items: Array.isArray(row.items) ? row.items.map(mapItem) : undefined,
   };
@@ -217,11 +256,10 @@ class TaskService {
   async getMyStats(): Promise<RiderStatsData> {
     const response = await apiService.get<ApiResponse<any>>('/rider/stats');
     const raw = unwrap(response, 'Failed to fetch rider stats') || {};
-    const period = (p: any) => ({ orders: toNumber(p?.orders), earnings: toNumber(p?.earnings) });
+    const period = (p: any) => ({ orders: toNumber(p?.orders), earnings: toNumber(p?.earnings), attaTasks: toNumber(p?.attaTasks) });
     const pay = raw.payment || {};
-    const totalCollected = toNumber(pay.totalCollected);
-    const totalSettled = toNumber(pay.totalSettled);
-    const codEarned = toNumber(pay.codEarned);
+    const cashInHand = toNumber(pay.cashInHand);
+    const unsettledEarned = toNumber(pay.unsettledEarned);
     return {
       stats: {
         today: period(raw.stats?.today),
@@ -231,15 +269,77 @@ class TaskService {
         lastMonth: period(raw.stats?.lastMonth),
       },
       payment: {
-        totalCollected,
+        totalCollected: toNumber(pay.totalCollected),
         totalEarned: toNumber(pay.totalEarned),
-        codEarned,
-        totalSettled,
-        cashInHand: toNumberOrNull(pay.cashInHand) ?? Math.max(totalCollected - totalSettled, 0),
-        paymentPending:
-          toNumberOrNull(pay.paymentPending) ?? Math.max(totalCollected - totalSettled - codEarned, 0),
+        codEarned: toNumber(pay.codEarned),
+        nonCashEarned: toNumber(pay.nonCashEarned),
+        totalSettled: toNumber(pay.totalSettled),
+        cashInHand,
+        unsettledEarned,
+        paymentPending: toNumberOrNull(pay.paymentPending) ?? Math.max(cashInHand - unsettledEarned, 0),
+        pendingLines: toNumber(pay.pendingOrders) + toNumber(pay.pendingAtta),
       },
     };
+  }
+
+  async getCashSettlements(): Promise<CashSettlement[]> {
+    const response = await apiService.get<ApiResponse<any[]>>('/rider/cash-settlements');
+    const rows = unwrap(response, 'Failed to load cash hand-overs') || [];
+    return rows.map((r: any) => ({
+      id: String(r.id),
+      amount: toNumber(r.amount),
+      status: r.status || 'received',
+      note: r.note ?? null,
+      receivedAt: r.received_at,
+      receivedByName: r.received_by_name ?? null,
+      orderCount: toNumber(r.order_count),
+      attaCount: toNumber(r.atta_count),
+    }));
+  }
+
+  async getReviews(): Promise<RiderReviews> {
+    const response = await apiService.get<ApiResponse<any>>('/rider/reviews');
+    const raw = unwrap(response, 'Failed to load reviews') || {};
+    return {
+      rating: toNumberOrNull(raw.rating),
+      ratingCount: toNumber(raw.ratingCount),
+      reviews: (raw.reviews || []).map((r: any) => ({
+        id: String(r.id),
+        rating: toNumber(r.rating),
+        comment: r.comment ?? null,
+        adminReply: r.admin_reply ?? null,
+        createdAt: r.created_at,
+        orderNumber: r.order_number ?? null,
+        customerFirstName: r.customer_first_name || null,
+      })),
+    };
+  }
+
+  /**
+   * "I've arrived" — the customer gets "Aapka order aapke darwaze par hai"
+   * (push + live alert + inbox). `notified` is false for restaurant orders,
+   * where the office is told instead.
+   */
+  async markArrived(taskId: string): Promise<{ notified: boolean; arrivedAt: string | null }> {
+    const response = await apiService.post<ApiResponse<{ notified: boolean; arrived_at: string | null }>>(
+      `/rider/tasks/${taskId}/arrived`
+    );
+    const data = unwrap(response, 'Failed to notify the customer');
+    return { notified: data?.notified === true, arrivedAt: data?.arrived_at ?? null };
+  }
+
+  /** Proof-of-delivery photo (stage 'pickup' is the atta wheat hand-over). */
+  async uploadProof(taskId: string, imageUri: string, stage: 'pickup' | 'delivery' = 'delivery'): Promise<string> {
+    const formData = new FormData();
+    formData.append('delivery_proof', {
+      uri: imageUri,
+      type: 'image/jpeg',
+      name: `proof_${taskId}_${stage}.jpg`,
+    } as any);
+    formData.append('stage', stage);
+    const response = await apiService.post<ApiResponse<{ url: string }>>(`/rider/tasks/${taskId}/proof`, formData);
+    const data = unwrap(response, 'Failed to upload the proof photo');
+    return fixImageUrl(data.url) || data.url;
   }
 
   /**
@@ -247,13 +347,12 @@ class TaskService {
    * phone visibility; throws an ApiError carrying the backend's explanation
    * (403) otherwise.
    */
-  async requestCustomerCall(orderId: string): Promise<{ callRequestId: string; number: string | null }> {
-    const response = await apiService.post<ApiResponse<{ call_request_id: string; virtual_number: string | null }>>(
-      '/rider/call-request',
-      { order_id: orderId }
-    );
+  async requestCustomerCall(orderId: string): Promise<{ callRequestId: string | null; number: string | null; notified: boolean }> {
+    const response = await apiService.post<
+      ApiResponse<{ call_request_id: string | null; virtual_number: string | null; notified?: boolean }>
+    >('/rider/call-request', { order_id: orderId });
     const data = unwrap(response, 'Failed to request call');
-    return { callRequestId: data.call_request_id, number: data.virtual_number ?? null };
+    return { callRequestId: data.call_request_id ?? null, number: data.virtual_number ?? null, notified: data.notified === true };
   }
 
   async pinLocation(taskId: string, latitude: number, longitude: number): Promise<GeoPoint> {
