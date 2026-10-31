@@ -13,6 +13,7 @@ import {
 } from '../utils/siteSettings';
 import { isMissingTable } from '../utils/dbErrors';
 import logger from '../utils/logger';
+import { pushToCustomers } from '../utils/customerNotify';
 
 export const MARKETING_KEYS = {
   fbPixelId: 'marketing_fb_pixel_id',
@@ -165,6 +166,13 @@ export async function runAbandonedCartReminders(): Promise<number> {
         `UPDATE abandoned_carts SET status = 'reminded', reminded_at = NOW() WHERE id = $1`,
         [row.id]
       );
+      // The inbox row alone was invisible until the app was opened — push it
+      // (skipped for customers who switched notifications off).
+      await pushToCustomers([row.user_id], {
+        title: 'You left items in your cart 🛒',
+        body: 'Your FreshBazar cart is waiting — complete your order before items sell out!',
+        data: { type: 'cart_reminder', screen: 'cart' },
+      });
       sent++;
     } catch (err: any) {
       logger.warn('Abandoned-cart reminder failed', { id: row.id, error: err?.message });

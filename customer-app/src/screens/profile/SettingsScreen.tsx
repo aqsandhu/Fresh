@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -32,10 +32,46 @@ export const SettingsScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const { user, isAuthenticated, logout } = useAuthStore();
 
+  // Saved on the account (users.notification_enabled) — the same switch as
+  // the website's "Order updates". Off = no push alerts (order status, rider,
+  // delivery, cart reminders); the in-app inbox still keeps them.
   const [notifications, setNotifications] = useState(true);
-  const [promotions, setPromotions] = useState(true);
-  const [locationServices, setLocationServices] = useState(true);
+  const [savingNotifications, setSavingNotifications] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let active = true;
+    authService
+      .getProfile()
+      .then((res: any) => {
+        if (active && res?.data) setNotifications(res.data.notification_enabled !== false);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated]);
+
+  const toggleNotifications = async (next: boolean) => {
+    if (!isAuthenticated) {
+      Toast.show({ type: 'info', text1: 'Please log in to change notifications' });
+      return;
+    }
+    if (savingNotifications) return;
+    const previous = notifications;
+    setNotifications(next);
+    setSavingNotifications(true);
+    try {
+      await authService.updateProfile({ notification_enabled: next } as any);
+      Toast.show({ type: 'success', text1: next ? 'Order notifications on' : 'Order notifications off' });
+    } catch (err: any) {
+      setNotifications(previous);
+      Toast.show({ type: 'error', text1: err?.message || 'Could not save — please try again' });
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
 
   // Self-service account deletion — required by Play Store & App Store.
   // Two-step confirmation; anonymizes the account server-side and signs out.
@@ -86,26 +122,10 @@ export const SettingsScreen: React.FC = () => {
     {
       icon: 'notifications',
       title: 'Order Notifications',
-      subtitle: 'Get notified about order updates',
+      subtitle: 'Status changes, rider on the way and delivery alerts',
       type: 'toggle',
       value: notifications,
-      onToggle: setNotifications,
-    },
-    {
-      icon: 'local-offer',
-      title: 'Promotions',
-      subtitle: 'Receive promotional offers',
-      type: 'toggle',
-      value: promotions,
-      onToggle: setPromotions,
-    },
-    {
-      icon: 'location-on',
-      title: 'Location Services',
-      subtitle: 'Enable location for better experience',
-      type: 'toggle',
-      value: locationServices,
-      onToggle: setLocationServices,
+      onToggle: toggleNotifications,
     },
     {
       icon: 'verified-user',

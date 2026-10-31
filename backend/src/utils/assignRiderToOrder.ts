@@ -11,7 +11,7 @@ import { emitOrderUpdate, emitToUser } from '../config/socket';
 import logger from './logger';
 import { isValidOrderTransition } from './orderStatus';
 import { cancelActiveRiderTasks, notifyRiderTasksCancelled, pushNewAssignment } from './riderTaskEvents';
-import { sendExpoPushToUsers } from './expoPush';
+import { pushToCustomers } from './customerNotify';
 import { syncRiderAvailability } from './riderAvailability';
 import { hasUrgentDeliveryColumns } from '../config/orderSchema';
 import { hasRiderUrgentChargeColumn } from '../config/riderSchema';
@@ -151,7 +151,7 @@ export async function assignRiderToOrder(
       status: 'out_for_delivery',
       message: `Rider ${rider.full_name} is on the way with your order #${updated.order_number}!`,
     });
-    sendExpoPushToUsers([updated.user_id], {
+    pushToCustomers([updated.user_id], {
       title: 'Your order is on the way',
       body: `Rider ${rider.full_name} is bringing order #${updated.order_number}.`,
       data: { type: 'rider_assigned', orderId, orderNumber: updated.order_number },

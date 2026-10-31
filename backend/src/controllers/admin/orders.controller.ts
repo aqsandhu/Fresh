@@ -8,6 +8,7 @@ import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../../config/socket';
 import logger from '../../utils/logger';
+import { notifyOrderStatus, pushToCustomers } from '../../utils/customerNotify';
 import {
   resolveCityScope,
   orderCityClause,
@@ -449,6 +450,8 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
     status,
     message: `Your order #${order.order_number} is now ${status}`,
   });
+  // App closed / in background → push (honours the customer's switch).
+  notifyOrderStatus(order, status, reason).catch(() => {});
 
   // Notify admins
   emitToAdmins('order:status_updated', {
@@ -544,6 +547,7 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
     orderNumber: updatedOrder.order_number,
     message: `Your order #${updatedOrder.order_number} has been delivered!`,
   });
+  notifyOrderStatus(updatedOrder, 'delivered').catch(() => {});
   notifyRiderTasksClosed(closedRiderTasks, { id, order_number: updatedOrder.order_number }, `Order #${updatedOrder.order_number} was marked delivered by the admin`);
 
   successResponse(res, result.rows[0], 'Payment received and order marked as delivered');
@@ -723,6 +727,13 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
     totalAmount: parseFloat(updatedOrder.total_amount),
     message: 'Your order amount was updated after weighing the items.',
   });
+  // The inbox row was written inside the transaction; push it too so a
+  // customer with the app closed learns the new COD amount before the rider.
+  pushToCustomers([updatedOrder.user_id], {
+    title: 'Order total updated',
+    body: `Order #${updatedOrder.order_number}: new total Rs. ${parseFloat(updatedOrder.total_amount)} after weighing.`,
+    data: { type: 'order_amount_updated', orderId: id, orderNumber: updatedOrder.order_number },
+  }).catch(() => {});
   // The rider carrying it must collect the NEW amount.
   const newTotal = parseFloat(updatedOrder.total_amount);
   notifyActiveRiderOfOrderChange(id, {
@@ -1470,6 +1481,7 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
       status,
       message: `Your order #${order.order_number} is now ${status}`,
     });
+    notifyOrderStatus(order, status, reason).catch(() => {});
 
     emitToAdmins('order:status_updated', {
       orderId: order.id,

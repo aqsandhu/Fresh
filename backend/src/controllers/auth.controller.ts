@@ -650,6 +650,9 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
   }
 
   if (notification_enabled !== undefined) {
+    if (typeof notification_enabled !== 'boolean') {
+      return errorResponse(res, 'notification_enabled must be true or false', 400);
+    }
     updates.push(`notification_enabled = $${paramIndex++}`);
     values.push(notification_enabled);
   }

@@ -78,8 +78,18 @@ export default function App() {
   // Handle push-notification taps: deep-link into the order tracking screen.
   useEffect(() => {
     const unsubscribe = notificationService.addNotificationResponseListener((data) => {
+      if (!navigationRef.isReady()) return;
+      // Cart reminder → open the cart; complaint reply → my complaints.
+      if (data?.screen === 'cart') {
+        (navigationRef as any).navigate('Main', { screen: 'Cart' });
+        return;
+      }
+      if (data?.screen === 'complaints') {
+        (navigationRef as any).navigate('Main', { screen: 'Orders', params: { screen: 'MyComplaints' } });
+        return;
+      }
       const orderId = data?.orderId || data?.order_id;
-      if (!orderId || !navigationRef.isReady()) return;
+      if (!orderId) return;
       (navigationRef as any).navigate('Main', {
         screen: 'Orders',
         params: { screen: 'TrackOrder', params: { orderId: String(orderId) } },

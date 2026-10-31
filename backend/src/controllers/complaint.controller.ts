@@ -20,6 +20,7 @@ import { ensureControlColumns } from '../config/controlSchema';
 import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
 import { approvalForValue } from '../utils/adminApproval';
 import { emitToAdmins } from '../config/socket';
+import { notifyCustomer } from '../utils/customerNotify';
 import logger from '../utils/logger';
 
 const CATEGORIES = [
@@ -337,7 +338,7 @@ export const refundComplaint = asyncHandler(async (req: Request, res: Response) 
 
   await ensureControlColumns();
 
-  const cRes = await query(`SELECT id, order_id, city_id FROM complaints WHERE id = $1`, [id]);
+  const cRes = await query(`SELECT id, order_id, city_id, user_id, ticket_number FROM complaints WHERE id = $1`, [id]);
   const complaint = cRes.rows[0];
   if (!complaint) return notFoundResponse(res, 'Complaint not found');
   if (!scope.unrestricted && scope.cityId && complaint.city_id && complaint.city_id !== scope.cityId) {
@@ -376,6 +377,17 @@ export const refundComplaint = asyncHandler(async (req: Request, res: Response) 
     throw err;
   }
   logger.info('Complaint refund recorded', { complaintId: id, orderId: complaint.order_id, amount, source, by: req.user?.id });
+  if (complaint.user_id) {
+    notifyCustomer(complaint.user_id, {
+      type: 'system',
+      title: 'Refund issued',
+      message: `A refund of Rs. ${amount} was issued for your complaint${complaint.ticket_number ? ` ${complaint.ticket_number}` : ''}.`,
+      orderId: complaint.order_id,
+      actionUrl: '/support',
+      actionType: 'complaint',
+      data: { screen: 'complaints', complaintId: id },
+    }).catch(() => {});
+  }
   return successResponse(res, { id: out.id, amount: parseFloat(out.amount), source: out.original_payment_source }, 'Refund recorded');
 });
 
@@ -389,7 +401,7 @@ export const updateComplaint = asyncHandler(async (req: Request, res: Response) 
   const { id } = req.params;
   if (!isUuid(id)) return notFoundResponse(res, 'Complaint not found');
 
-  const existing = await query('SELECT id, city_id, status FROM complaints WHERE id = $1', [id]);
+  const existing = await query('SELECT id, city_id, status, user_id, ticket_number, admin_response FROM complaints WHERE id = $1', [id]);
   const row = existing.rows[0];
   if (!row) return notFoundResponse(res, 'Complaint not found');
   if (!scope.unrestricted && scope.cityId && row.city_id && row.city_id !== scope.cityId) {
@@ -442,5 +454,25 @@ export const updateComplaint = asyncHandler(async (req: Request, res: Response) 
     params
   );
   logger.info('Complaint updated', { complaintId: id, by: req.user?.id });
-  return successResponse(res, mapComplaint(result.rows[0]), 'Complaint updated');
+
+  // Tell the customer: a new/changed reply, or the ticket was resolved/closed.
+  const updated = result.rows[0];
+  const newReply = typeof updated.admin_response === 'string' ? updated.admin_response.trim() : '';
+  const replyChanged = newReply !== '' && newReply !== String(row.admin_response || '').trim();
+  const closedNow = (updated.status === 'resolved' || updated.status === 'closed') && updated.status !== row.status;
+  if (replyChanged || closedNow) {
+    const ticket = updated.ticket_number || row.ticket_number || '';
+    notifyCustomer(updated.user_id || row.user_id, {
+      type: 'system',
+      title: replyChanged ? 'Reply to your complaint' : 'Complaint resolved',
+      message: replyChanged
+        ? `${ticket ? `Ticket ${ticket}: ` : ''}${newReply.slice(0, 160)}${newReply.length > 160 ? '…' : ''}`
+        : `${ticket ? `Ticket ${ticket} ` : 'Your complaint '}has been marked ${updated.status}.`,
+      orderId: updated.order_id || null,
+      actionUrl: '/support',
+      actionType: 'complaint',
+      data: { screen: 'complaints', complaintId: id },
+    }).catch(() => {});
+  }
+  return successResponse(res, mapComplaint(updated), 'Complaint updated');
 });

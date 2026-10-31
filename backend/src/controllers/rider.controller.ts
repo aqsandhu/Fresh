@@ -34,7 +34,7 @@ import {
   hasRiderCashSettlementTables,
   hasRiderTaskArrivedColumn,
 } from '../config/riderSchema';
-import { sendExpoPushToUsers } from '../utils/expoPush';
+import { pushToCustomers } from '../utils/customerNotify';
 import { syncRiderAvailability, resolveDutyStatus } from '../utils/riderAvailability';
 import { computeRiderStats, computeRiderToday } from '../utils/riderStats';
 import logger from '../utils/logger';
@@ -403,7 +403,7 @@ function notifyAttaCustomer(
   };
   const payload = { attaRequestId: request.id, requestNumber: request.request_number ?? null, status, message: copy[status].body };
   emitToUser(userId, 'atta:status_changed', payload);
-  sendExpoPushToUsers([userId], {
+  pushToCustomers([userId], {
     title: copy[status].title,
     body: copy[status].body,
     data: { type: 'atta_update', ...payload },
@@ -610,7 +610,7 @@ async function notifyArrival(riderId: string, taskId: string): Promise<ArrivalOu
   };
   emitToUser(customerUserId, 'order:rider_arrived', payload);
   if (t.order_id) emitOrderUpdate(t.order_id, { ...payload, status: t.order_status, event: 'rider_arrived' });
-  sendExpoPushToUsers([customerUserId], {
+  pushToCustomers([customerUserId], {
     title,
     body,
     data: { type: 'rider_arrived', ...payload },
@@ -852,7 +852,7 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
         orderNumber: order.order_number,
         message: `Your order #${order.order_number} has been delivered!`,
       });
-      sendExpoPushToUsers([order.user_id], {
+      pushToCustomers([order.user_id], {
         title: 'Order delivered',
         body: `Your order #${order.order_number} has been delivered. Enjoy your fresh groceries!`,
         data: { type: 'order_delivered', orderId: order.id, orderNumber: order.order_number },
