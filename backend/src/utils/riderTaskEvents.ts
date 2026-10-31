@@ -9,6 +9,7 @@
 
 import { PoolClient } from 'pg';
 import { emitToUser } from '../config/socket';
+import { query } from '../config/database';
 import { sendExpoPushToUsers } from './expoPush';
 import { syncRiderAvailability, syncRidersAvailability } from './riderAvailability';
 import logger from './logger';
@@ -250,4 +251,47 @@ export function pushNewAssignment(
     data: { type: 'new_task', orderId: order.id, orderNumber: order.order_number ?? null, taskId: taskId ?? null },
     channelId: 'new-task',
   }).catch(() => {});
+}
+
+/**
+ * Something about a live order changed on the admin side (amount after
+ * re-weighing, phone visibility…). Tell the rider who is carrying it so the
+ * app refreshes — the order room only reaches a rider with the detail screen
+ * open, the Home/Tasks lists would keep showing the old cash amount.
+ */
+export async function notifyActiveRiderOfOrderChange(
+  orderId: string,
+  change: { message: string; push?: { title: string; body: string } | null; data?: Record<string, unknown> }
+): Promise<void> {
+  try {
+    const r = await query(
+      `SELECT rt.id AS task_id, r.user_id AS rider_user_id, o.order_number
+         FROM rider_tasks rt
+         JOIN riders r ON r.id = rt.rider_id
+         JOIN orders o ON o.id = rt.order_id
+        WHERE rt.order_id = $1 AND rt.status IN ('assigned', 'in_progress')`,
+      [orderId]
+    );
+    for (const row of r.rows) {
+      if (!row.rider_user_id) continue;
+      const payload = {
+        taskId: row.task_id,
+        orderId,
+        orderNumber: row.order_number ?? null,
+        message: change.message,
+        ...(change.data ?? {}),
+      };
+      emitToUser(row.rider_user_id, 'rider:task_updated', payload);
+      if (change.push) {
+        sendExpoPushToUsers([row.rider_user_id], {
+          title: change.push.title,
+          body: change.push.body,
+          data: { type: 'task_updated', ...payload },
+          channelId: 'task-update',
+        }).catch(() => {});
+      }
+    }
+  } catch (err: any) {
+    logger.warn('notifyActiveRiderOfOrderChange failed', { orderId, err: err?.message });
+  }
 }

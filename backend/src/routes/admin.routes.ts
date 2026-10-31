@@ -107,12 +107,16 @@ router.put(
   validate(orderSchemas.assignRider),
   adminController.assignRider
 );
+router.post('/orders/:id/return-to-store', adminController.returnOrderToStore);
 router.patch('/orders/:id/assign-ocp', adminController.assignOrderToOcp);
 router.patch('/orders/:id/ocp-phone', adminController.setOcpPhoneVisibility);
 router.delete('/orders/:id', adminController.deleteOrder);
 
 // Riders
 router.get('/riders', adminController.getRiders);
+router.get('/riders/:id', adminController.getRiderById);
+router.get('/riders/:id/tasks', adminController.getRiderTasks);
+router.get('/riders/:id/feedback', adminController.getRiderFeedback);
 router.post('/riders', uploadSingle('avatar'), adminController.createRider);
 router.put('/riders/:id', uploadSingle('avatar'), adminController.updateRider);
 router.delete('/riders/:id', adminController.deleteRider);
@@ -377,6 +381,7 @@ router.put(
   validate(attaSchemas.updateStatus),
   adminController.updateAttaStatus
 );
+router.put('/atta-requests/:id/assign-rider', adminController.assignAttaRider);
 
 // Site Settings - Brand logo (global)
 router.get('/site-settings/brand', adminController.getBrandLogoSettings);

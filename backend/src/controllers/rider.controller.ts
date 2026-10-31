@@ -671,6 +671,11 @@ export const uploadProofOfDelivery = asyncHandler(async (req: Request, res: Resp
   if (updated.rows.length === 0) return notFoundResponse(res, 'Task not found');
 
   const task = updated.rows[0];
+  if (task.order_id && stage === 'delivery') {
+    // orders.delivery_proof_image is what the admin order view / slip reads.
+    await query(`UPDATE orders SET delivery_proof_image = $1, updated_at = NOW() WHERE id = $2`, [imageUrl, task.order_id])
+      .catch((err) => logger.warn('orders.delivery_proof_image update failed', { err: err?.message }));
+  }
   if (task.atta_request_id) {
     await query(`UPDATE atta_requests SET ${column} = $1, updated_at = NOW() WHERE id = $2`, [imageUrl, task.atta_request_id]);
   }

@@ -20,11 +20,14 @@ import {
 } from '../../utils/orderStatus';
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
+import { hasRiderTaskArrivedColumn, hasAttaCashColumns } from '../../config/riderSchema';
+import { syncRiderAvailability } from '../../utils/riderAvailability';
 import {
   cancelActiveRiderTasks,
   notifyRiderTasksCancelled,
   completeActiveRiderTasks,
   notifyRiderTasksClosed,
+  notifyActiveRiderOfOrderChange,
   createAttaRiderTask,
   notifyAttaAssignment,
   CancelledRiderTask,
@@ -158,6 +161,9 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
       o.address_id, o.delivery_address_snapshot,
       u.id as customer_id, ${custName} as customer_name, ${custPhone} as customer_phone,
       r.id as rider_id, ru.full_name as rider_name,
+      -- Latest rider task: lets the list flag "rider reported a problem".
+      lt.status AS rider_task_status, lt.notes AS rider_task_notes,
+      ${(await hasRiderTaskArrivedColumn()) ? 'lt.arrived_at AS rider_arrived_at,' : 'NULL::timestamptz AS rider_arrived_at,'}
       ts.slot_name, o.requested_delivery_date,
       ST_Y(addr.location::geometry) as address_latitude,
       ST_X(addr.location::geometry) as address_longitude,
@@ -172,6 +178,12 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
     LEFT JOIN users ru ON r.user_id = ru.id
     LEFT JOIN time_slots ts ON o.time_slot_id = ts.id
     LEFT JOIN addresses addr ON o.address_id = addr.id
+    LEFT JOIN LATERAL (
+      SELECT t.* FROM rider_tasks t
+       WHERE t.order_id = o.id
+       ORDER BY t.assigned_at DESC NULLS LAST, t.created_at DESC
+       LIMIT 1
+    ) lt ON TRUE
     ${ocpJoin}
     ${whereSql}
     ORDER BY o.placed_at DESC
@@ -261,6 +273,24 @@ export const getOrderDetails = asyncHandler(async (req: Request, res: Response) 
   );
 
   order.items = itemsResult.rows;
+
+  // What the rider(s) actually did on this order — assigned / picked up /
+  // arrived / delivered / failed (+ reason) / cancelled, with proof photos.
+  const arrivedReady = await hasRiderTaskArrivedColumn();
+  const tasksResult = await query(
+    `SELECT rt.id, rt.task_type, rt.status, rt.notes,
+            rt.assigned_at, rt.accepted_at, rt.started_at, rt.completed_at,
+            ${arrivedReady ? 'rt.arrived_at,' : 'NULL::timestamptz AS arrived_at,'}
+            rt.delivery_proof_image, rt.pickup_proof_image,
+            r.id AS rider_id, ru.full_name AS rider_name, ru.phone AS rider_phone
+       FROM rider_tasks rt
+       JOIN riders r ON r.id = rt.rider_id
+       JOIN users ru ON ru.id = r.user_id
+      WHERE rt.order_id = $1
+      ORDER BY rt.assigned_at ASC NULLS LAST, rt.created_at ASC`,
+    [id]
+  );
+  order.rider_tasks = tasksResult.rows;
 
   successResponse(res, order, 'Order details retrieved successfully');
 });
@@ -692,6 +722,16 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
     totalAmount: parseFloat(updatedOrder.total_amount),
     message: 'Your order amount was updated after weighing the items.',
   });
+  // The rider carrying it must collect the NEW amount.
+  const newTotal = parseFloat(updatedOrder.total_amount);
+  notifyActiveRiderOfOrderChange(id, {
+    message: `Order #${updatedOrder.order_number} amount changed to Rs ${newTotal}`,
+    push: {
+      title: 'Order amount changed',
+      body: `Order #${updatedOrder.order_number}: collect Rs ${newTotal} (items re-weighed).`,
+    },
+    data: { totalAmount: newTotal },
+  }).catch(() => {});
   successResponse(res, updatedOrder, 'Weight and amount updated');
 });
 
@@ -719,8 +759,80 @@ export const togglePhoneVisibility = asyncHandler(async (req: Request, res: Resp
   }
 
   logger.info('Phone visibility toggled', { orderId: id, show: show_customer_phone, updatedBy: req.user?.id });
+  notifyActiveRiderOfOrderChange(id, {
+    message: show_customer_phone ? 'Customer phone is now visible to you' : 'Customer phone was hidden by the admin',
+  }).catch(() => {});
 
   successResponse(res, result.rows[0], 'Phone visibility updated successfully');
+});
+
+/**
+ * Bring a failed delivery back to the store.
+ * POST /api/admin/orders/:id/return-to-store   Body: { reason? }
+ *
+ * An order cannot be cancelled while it is out for delivery (the rider is on
+ * the road). When the rider reports a problem (customer unreachable, refused,
+ * wrong address…) his task ends as `failed` but the order stays
+ * out_for_delivery with him as rider — a dead end. This moves it back to
+ * ready_for_pickup and detaches the rider, so the admin can re-dispatch it or
+ * cancel it. Refused while any rider task on the order is still live.
+ */
+export const returnOrderToStore = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim().slice(0, 300) : '';
+
+  const scope = await resolveCityScope(req);
+  if (!(await orderInScope(scope, id))) return notFoundResponse(res, 'Order not found');
+
+  let out: { order: any; previousRiderId: string | null } | null = null;
+  try {
+    out = await withTransaction(async (client) => {
+      const o = await client.query(
+        `SELECT id, order_number, status, rider_id, user_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
+        [id]
+      );
+      if (o.rows.length === 0) throw Object.assign(new Error('Order not found'), { http: 404 });
+      const order = o.rows[0];
+      if (order.status !== 'out_for_delivery') {
+        throw Object.assign(new Error(`Only an out-for-delivery order can be returned (this one is ${order.status}).`), { http: 409 });
+      }
+      const live = await client.query(
+        `SELECT COUNT(*)::int AS n FROM rider_tasks WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
+        [id]
+      );
+      if (Number(live.rows[0]?.n || 0) > 0) {
+        throw Object.assign(
+          new Error('A rider is still working on this order. Wait for him to report the problem, or reassign it.'),
+          { http: 409 }
+        );
+      }
+      const upd = await client.query(
+        `UPDATE orders
+            SET status = 'ready_for_pickup', rider_id = NULL, rider_delivery_charge = 0,
+                admin_notes = CONCAT_WS(E'\n', NULLIF(admin_notes, ''), $2::text),
+                updated_at = NOW()
+          WHERE id = $1
+          RETURNING *`,
+        [id, `Returned to store${reason ? `: ${reason}` : ''} (${new Date().toISOString()})`]
+      );
+      await syncRiderAvailability(order.rider_id, client);
+      return { order: upd.rows[0], previousRiderId: order.rider_id };
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 409) return errorResponse(res, err.message, 409);
+    // admin_notes is optional on very old schemas — retry without it.
+    if (err?.code === '42703') {
+      return errorResponse(res, 'Database is missing orders.admin_notes — run migrations.', 500);
+    }
+    throw err;
+  }
+
+  const order = out!.order;
+  emitOrderUpdate(id, { orderId: id, status: 'ready_for_pickup', message: `Order #${order.order_number} returned to store` });
+  emitToAdmins('order:status_updated', { orderId: id, orderNumber: order.order_number, status: 'ready_for_pickup', updatedBy: req.user?.id });
+  logger.info('Order returned to store after failed delivery', { orderId: id, previousRiderId: out!.previousRiderId, by: req.user?.id });
+  successResponse(res, order, 'Order returned to store — assign a new rider or cancel it');
 });
 
 /**
@@ -1461,6 +1573,10 @@ export const getAttaRequests = asyncHandler(async (req: Request, res: Response) 
     FROM atta_requests ar
     JOIN users u ON ar.user_id = u.id
     LEFT JOIN addresses a ON ar.address_id = a.id
+    LEFT JOIN riders pr ON pr.id = ar.pickup_rider_id
+    LEFT JOIN users pru ON pru.id = pr.user_id
+    LEFT JOIN riders dr ON dr.id = ar.delivery_rider_id
+    LEFT JOIN users dru ON dru.id = dr.user_id
     WHERE 1=1
   `;
 
@@ -1484,16 +1600,30 @@ export const getAttaRequests = asyncHandler(async (req: Request, res: Response) 
   const countResult = await query(`SELECT COUNT(*) ${sql}`, params);
   const total = parseInt(countResult.rows[0].count);
 
-  // Get requests
+  // Get requests — with who is (or was) carrying the wheat / flour and the
+  // live task state, so the admin can dispatch from this page.
+  const attaCashReady = await hasAttaCashColumns();
   const requestsSql = `
     SELECT 
       ar.id, ar.request_number, ar.status,
       ar.wheat_quality, ar.wheat_quantity_kg,
-      ar.flour_type, ar.actual_flour_quantity_kg,
+      ar.flour_type, ar.actual_flour_quantity_kg, ar.special_instructions,
       ar.service_charge, ar.milling_charge, ar.delivery_charge, ar.total_amount,
-      ar.payment_status,
+      ar.payment_status, ar.payment_method,
+      ${attaCashReady ? 'ar.paid_amount,' : '0 AS paid_amount,'}
       u.full_name as customer_name, u.phone as customer_phone,
-      a.written_address as pickup_address,
+      a.written_address as pickup_address, a.house_number, a.area_name, a.city,
+      ar.pickup_rider_id, pru.full_name AS pickup_rider_name,
+      ar.delivery_rider_id, dru.full_name AS delivery_rider_name,
+      (SELECT t.status FROM rider_tasks t WHERE t.atta_request_id = ar.id AND t.task_type = 'atta_pickup'
+        ORDER BY t.assigned_at DESC LIMIT 1) AS pickup_task_status,
+      (SELECT t.notes FROM rider_tasks t WHERE t.atta_request_id = ar.id AND t.task_type = 'atta_pickup'
+        ORDER BY t.assigned_at DESC LIMIT 1) AS pickup_task_notes,
+      (SELECT t.status FROM rider_tasks t WHERE t.atta_request_id = ar.id AND t.task_type = 'atta_delivery'
+        ORDER BY t.assigned_at DESC LIMIT 1) AS delivery_task_status,
+      (SELECT t.notes FROM rider_tasks t WHERE t.atta_request_id = ar.id AND t.task_type = 'atta_delivery'
+        ORDER BY t.assigned_at DESC LIMIT 1) AS delivery_task_notes,
+      ar.pickup_proof_image, ar.delivery_proof_image,
       ar.created_at
     ${sql}
     ORDER BY ar.created_at DESC
@@ -1594,6 +1724,31 @@ export const updateAttaStatus = asyncHandler(async (req: Request, res: Response)
     return notFoundResponse(res, 'Atta request not found');
   }
 
+  // A manual status move past a rider's step closes that rider task, so the
+  // rider app does not keep showing work the office already finished.
+  const closePickup = ['at_mill', 'milling', 'ready_for_delivery', 'out_for_delivery', 'delivered'].includes(status);
+  const closeDelivery = status === 'delivered';
+  if (closePickup || closeDelivery) {
+    const types = [closePickup ? 'atta_pickup' : null, closeDelivery ? 'atta_delivery' : null].filter(Boolean);
+    const closed = await query(
+      `UPDATE rider_tasks rt
+          SET status = 'completed', completed_at = COALESCE(rt.completed_at, NOW()),
+              notes = COALESCE(rt.notes, 'Closed by admin'), updated_at = NOW()
+         FROM riders r
+        WHERE rt.rider_id = r.id AND rt.atta_request_id = $1
+          AND rt.task_type = ANY($2::task_type[]) AND rt.status IN ('assigned', 'in_progress')
+        RETURNING rt.id AS task_id, rt.rider_id, r.user_id AS rider_user_id`,
+      [id, types]
+    );
+    for (const row of closed.rows) {
+      await syncRiderAvailability(row.rider_id);
+      emitToUser(row.rider_user_id, 'rider:task_updated', {
+        taskId: row.task_id, attaRequestId: id, orderNumber: result.rows[0].request_number,
+        status: 'completed', message: 'The office updated this atta request',
+      });
+    }
+  }
+
   // A rider assignment creates the rider_tasks row the rider app works from
   // (previously the rider column was set but no task ever reached the app).
   if (update.riderColumn && rider_id) {
@@ -1608,6 +1763,85 @@ export const updateAttaStatus = asyncHandler(async (req: Request, res: Response)
   }
 
   successResponse(res, result.rows[0], 'Atta request status updated successfully');
+});
+
+/**
+ * Assign the rider who collects the wheat (atta_pickup) or brings the flour
+ * back (atta_delivery) WITHOUT moving the request's status — the rider's own
+ * "Wheat collected" / "Flour collected" / "Delivered" taps move it, exactly
+ * like an order. (The old way only assigned a rider as a side-effect of the
+ * admin claiming the wheat was already picked up.)
+ * PUT /api/admin/atta-requests/:id/assign-rider   Body: { rider_id, task_type }
+ */
+export const assignAttaRider = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { rider_id } = req.body;
+  const taskType = req.body?.task_type as AttaTaskType;
+  if (!rider_id) return errorResponse(res, 'Select a rider.', 400);
+  if (!['atta_pickup', 'atta_delivery'].includes(taskType)) {
+    return errorResponse(res, "task_type must be 'atta_pickup' or 'atta_delivery'", 400);
+  }
+
+  const attaScope = await resolveCityScope(req);
+  if (!attaScope.unrestricted && attaScope.cityName && attaScope.dbReady) {
+    const chk = await query(
+      `SELECT 1 FROM atta_requests ar
+         LEFT JOIN addresses a ON a.id = ar.address_id
+        WHERE ar.id = $1 AND LOWER(COALESCE(a.city, '')) = LOWER($2)`,
+      [id, attaScope.cityName]
+    );
+    if (chk.rows.length === 0) return notFoundResponse(res, 'Atta request not found');
+  }
+
+  const rider = await query(
+    `SELECT r.id, r.city_id FROM riders r
+      WHERE r.id = $1 AND r.deleted_at IS NULL AND r.verification_status = 'verified'
+        AND r.status NOT IN ('offline', 'on_leave')`,
+    [rider_id]
+  );
+  if (rider.rows.length === 0) return errorResponse(res, 'Rider not found, not verified, or off duty', 400);
+  if (attaScope.cityId && rider.rows[0].city_id && rider.rows[0].city_id !== attaScope.cityId && !attaScope.unrestricted) {
+    return errorResponse(res, 'Rider belongs to a different service city', 400);
+  }
+
+  const allowed = taskType === 'atta_pickup'
+    ? ['pending_pickup']
+    : ['at_mill', 'milling', 'ready_for_delivery'];
+  const column = taskType === 'atta_pickup' ? 'pickup_rider_id' : 'delivery_rider_id';
+
+  let out: { created: { taskId: string; riderUserId: string | null; displaced: CancelledRiderTask[] }; request: any };
+  try {
+    out = await withTransaction(async (client) => {
+      const reqRow = await client.query(
+        `SELECT id, request_number, status FROM atta_requests WHERE id = $1 FOR UPDATE`,
+        [id]
+      );
+      if (reqRow.rows.length === 0) throw Object.assign(new Error('Atta request not found'), { http: 404 });
+      const request = reqRow.rows[0];
+      if (!allowed.includes(request.status)) {
+        throw Object.assign(
+          new Error(
+            taskType === 'atta_pickup'
+              ? `A pickup rider can only be assigned while the request is pending pickup (it is ${request.status}).`
+              : `A delivery rider can be assigned once the wheat is at the mill (it is ${request.status}).`
+          ),
+          { http: 409 }
+        );
+      }
+      await client.query(`UPDATE atta_requests SET ${column} = $1, updated_at = NOW() WHERE id = $2`, [rider_id, id]);
+      const created = await createAttaRiderTask(client, id, rider_id, taskType);
+      return { created, request };
+    });
+  } catch (err: any) {
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http === 409) return errorResponse(res, err.message, 409);
+    throw err;
+  }
+
+  notifyAttaAssignment(out.created.riderUserId, { id, request_number: out.request.request_number }, taskType, out.created.taskId);
+  notifyRiderTasksCancelled(out.created.displaced, { id, order_number: out.request.request_number }, 'Reassigned to another rider');
+  logger.info('Atta rider assigned', { attaRequestId: id, riderId: rider_id, taskType, by: req.user?.id });
+  successResponse(res, { task_id: out.created.taskId, request_id: id, task_type: taskType }, 'Rider assigned');
 });
 
 // ============================================================================

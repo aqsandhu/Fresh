@@ -187,6 +187,8 @@ export const getOrderById = asyncHandler(async (req: Request, res: Response) => 
       ts.slot_name, ts.start_time as slot_start, ts.end_time as slot_end,
       o.requested_delivery_date,
       r.id as rider_id, ru.full_name as rider_name, ru.phone as rider_phone,
+      r.vehicle_type as rider_vehicle_type, r.vehicle_number as rider_vehicle_number,
+      o.delivery_proof_image,
       dcr.rule_name as delivery_rule_applied
     FROM orders o
     LEFT JOIN time_slots ts ON o.time_slot_id = ts.id
@@ -257,6 +259,14 @@ function buildTrackingPayload(order: Record<string, unknown>) {
     rider: order.rider_id && order.status === 'out_for_delivery' ? {
       id: order.rider_id,
       name: order.rider_name,
+      // The customer may call / WhatsApp their rider (website + app guidance:
+      // "once the rider leaves you can call or message him"). Only the
+      // customer's own phone is hidden from riders, not the other way round.
+      phone: order.rider_phone ?? null,
+      avatar_url: order.rider_avatar_url ?? null,
+      vehicle_type: order.rider_vehicle_type ?? null,
+      vehicle_number: order.rider_vehicle_number ?? null,
+      rating: order.rider_rating_count && Number(order.rider_rating_count) > 0 ? Number(order.rider_rating) : null,
       location: order.rider_latitude ? {
         latitude: order.rider_latitude,
         longitude: order.rider_longitude,
@@ -281,7 +291,9 @@ export const trackOrder = asyncHandler(async (req: Request, res: Response) => {
       o.delivery_address_snapshot->>'written_address' as delivery_address,
       o.delivery_address_snapshot,
       o.user_id,
-      r.id as rider_id, ru.full_name as rider_name,
+      r.id as rider_id, ru.full_name as rider_name, ru.phone as rider_phone, ru.avatar_url as rider_avatar_url,
+      r.vehicle_type as rider_vehicle_type, r.vehicle_number as rider_vehicle_number,
+      r.rating as rider_rating, r.rating_count as rider_rating_count,
       ST_X(r.current_location::geometry) as rider_longitude,
       ST_Y(r.current_location::geometry) as rider_latitude,
       r.location_updated_at as rider_location_updated_at
@@ -341,7 +353,9 @@ export const trackOrderPublic = asyncHandler(async (req: Request, res: Response)
       o.delivery_address_snapshot->>'written_address' as delivery_address,
       o.delivery_address_snapshot,
       o.user_id,
-      r.id as rider_id, ru.full_name as rider_name,
+      r.id as rider_id, ru.full_name as rider_name, ru.phone as rider_phone, ru.avatar_url as rider_avatar_url,
+      r.vehicle_type as rider_vehicle_type, r.vehicle_number as rider_vehicle_number,
+      r.rating as rider_rating, r.rating_count as rider_rating_count,
       ST_X(r.current_location::geometry) as rider_longitude,
       ST_Y(r.current_location::geometry) as rider_latitude,
       r.location_updated_at as rider_location_updated_at

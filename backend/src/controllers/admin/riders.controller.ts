@@ -1,5 +1,11 @@
 // ============================================================================
 // ADMIN CONTROLLER — riders
+//
+// Everything the admin panel's Riders hub needs: list (all riders, with live
+// load + online state), full record for editing, create/update, block /
+// unblock, delete (only when hands are empty), per-slot pay, stats + cash
+// position (shared with the rider app via utils/riderStats), cash hand-over,
+// task history and customer feedback.
 // ============================================================================
 
 import { Request, Response } from 'express';
@@ -15,34 +21,18 @@ import {
   cityRowInScope,
   requireCityScope,
 } from '../../utils/cityScope';
+import { hasAttaCashColumns, hasRiderCashSettlementTables, hasRiderTaskArrivedColumn } from '../../config/riderSchema';
+import { hasFeedbackTables } from '../../config/feedbackSchema';
+import { computeRiderStats } from '../../utils/riderStats';
+import { resolveDutyStatus } from '../../utils/riderAvailability';
+import { revokeAllUserRefreshTokens } from '../../services/refreshToken.service';
+import { emitToUser } from '../../config/socket';
 
 const SALT_ROUNDS = 12;
-let riderCashTablesReady: boolean | null = null;
-
-async function hasRiderCashSettlementTables(): Promise<boolean> {
-  if (riderCashTablesReady !== null) return riderCashTablesReady;
-  try {
-    const r = await query(
-      `SELECT COUNT(*)::int AS count
-         FROM information_schema.tables
-        WHERE table_schema = 'public'
-          AND table_name IN ('rider_cash_settlements', 'rider_cash_settlement_orders')`
-    );
-    riderCashTablesReady = Number(r.rows[0]?.count || 0) === 2;
-  } catch {
-    riderCashTablesReady = false;
-  }
-  return riderCashTablesReady;
-}
-
-function riderCodCashExpr(alias: string): string {
-  return `COALESCE(SUM(${alias}.paid_amount) FILTER (
-    WHERE ${alias}.status = 'delivered'
-      AND ${alias}.payment_method = 'cash_on_delivery'
-      AND ${alias}.payment_status = 'completed'
-      AND ${alias}.ocp_id IS NULL
-  ), 0)`;
-}
+const VEHICLE_TYPES = ['bike', 'car', 'van', 'bicycle', 'rickshaw'];
+const CNIC_RE = /^\d{5}-?\d{7}-?\d$/;
+/** A rider whose GPS reached us within this window counts as "online". */
+const ONLINE_WINDOW_MIN = 10;
 
 /**
  * City-ownership guard for by-id rider endpoints. Returns false when the rider
@@ -50,61 +40,108 @@ function riderCodCashExpr(alias: string): string {
  * by guessing an id). Super-admins (unrestricted) always pass.
  */
 async function riderInScope(req: Request, id: string): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return false;
   const r = await query('SELECT city_id FROM riders WHERE id = $1 AND deleted_at IS NULL', [id]);
   if (r.rows.length === 0) return false;
   const scope = await resolveCityScope(req);
   return cityRowInScope(scope, r.rows[0].city_id);
 }
 
+async function activeTaskCount(riderId: string): Promise<number> {
+  const r = await query(
+    `SELECT COUNT(*)::int AS n FROM rider_tasks WHERE rider_id = $1 AND status IN ('assigned', 'in_progress')`,
+    [riderId]
+  );
+  return Number(r.rows[0]?.n || 0);
+}
+
+/** End every session of a rider and tell a running app to sign out. */
+async function kickRider(riderId: string, reason: string): Promise<void> {
+  const r = await query('SELECT user_id FROM riders WHERE id = $1', [riderId]);
+  const userId: string | undefined = r.rows[0]?.user_id;
+  if (!userId) return;
+  await revokeAllUserRefreshTokens(userId).catch((err) =>
+    logger.warn('revokeAllUserRefreshTokens failed', { riderId, err: err?.message })
+  );
+  emitToUser(userId, 'rider:account_blocked', { reason, message: reason });
+}
+
+const RIDER_LIST_COLUMNS = `
+      r.id, r.user_id, r.cnic, r.vehicle_type, r.vehicle_number,
+      r.status, r.verification_status,
+      r.rating, r.rating_count, r.total_deliveries, r.total_earnings,
+      r.city_id, sc.name AS city_name,
+      ST_X(r.current_location::geometry) as longitude,
+      ST_Y(r.current_location::geometry) as latitude,
+      r.location_accuracy,
+      r.location_updated_at,
+      (r.location_updated_at IS NOT NULL
+        AND r.location_updated_at > NOW() - INTERVAL '${ONLINE_WINDOW_MIN} minutes'
+        AND r.status NOT IN ('offline', 'on_leave')) AS is_online,
+      (SELECT COUNT(*)::int FROM rider_tasks t
+        WHERE t.rider_id = r.id AND t.status IN ('assigned', 'in_progress')) AS active_tasks,
+      u.full_name, u.phone, u.email, u.avatar_url, u.status AS account_status,
+      u.last_login_at, r.created_at`;
+
+/**
+ * GET /api/admin/riders?status&verification_status&search&online&page&limit
+ * limit defaults to 200 (max 500) — dispatch dropdowns need every rider, not
+ * the first page of 20.
+ */
 export const getRiders = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
-  const { status, verification_status, page = 1, limit = 20 } = req.query;
-  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit);
+  const { status, verification_status, search, online, page = 1, limit = 200 } = req.query;
+  const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit, { defaultLimit: 200, maxLimit: 500 });
 
   let sql = `
     FROM riders r
     JOIN users u ON r.user_id = u.id
+    LEFT JOIN service_cities sc ON sc.id = r.city_id
     WHERE r.deleted_at IS NULL
   `;
 
   const params: any[] = [];
   let paramIndex = 1;
 
-  if (status) {
+  if (typeof status === 'string' && ['available', 'busy', 'offline', 'on_leave'].includes(status)) {
     sql += ` AND r.status = $${paramIndex++}`;
     params.push(status);
   }
 
-  if (verification_status) {
+  if (typeof verification_status === 'string' && ['pending', 'verified', 'rejected'].includes(verification_status)) {
     sql += ` AND r.verification_status = $${paramIndex++}`;
     params.push(verification_status);
+  }
+
+  if (typeof search === 'string' && search.trim()) {
+    const term = `%${search.trim().toLowerCase()}%`;
+    sql += ` AND (LOWER(u.full_name) LIKE $${paramIndex} OR u.phone LIKE $${paramIndex}
+              OR LOWER(r.vehicle_number) LIKE $${paramIndex} OR r.cnic LIKE $${paramIndex})`;
+    params.push(term);
+    paramIndex++;
+  }
+
+  if (online === 'true') {
+    sql += ` AND r.status NOT IN ('offline', 'on_leave')
+             AND r.location_updated_at > NOW() - INTERVAL '${ONLINE_WINDOW_MIN} minutes'`;
   }
 
   const riderCity = cityIdClause(scope, 'r', params, paramIndex);
   sql += riderCity.sql;
   paramIndex = riderCity.nextIndex;
 
-  // Count total
   const countResult = await query(`SELECT COUNT(*) ${sql}`, params);
   const total = parseInt(countResult.rows[0].count);
 
-  // Get riders
   const ridersSql = `
-    SELECT 
-      r.id, r.cnic, r.vehicle_type, r.vehicle_number,
-      r.status, r.verification_status,
-      r.rating, r.total_deliveries, r.total_earnings,
-      ST_X(r.current_location::geometry) as longitude,
-      ST_Y(r.current_location::geometry) as latitude,
-      r.location_updated_at,
-      u.full_name, u.phone, u.email, u.avatar_url
+    SELECT ${RIDER_LIST_COLUMNS}
     ${sql}
-    ORDER BY r.created_at DESC
+    ORDER BY
+      CASE r.status WHEN 'available' THEN 0 WHEN 'busy' THEN 1 WHEN 'offline' THEN 2 ELSE 3 END,
+      u.full_name ASC
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
-
   params.push(safeLimit, offset);
-
   const result = await query(ridersSql, params);
 
   successResponse(res, {
@@ -119,16 +156,70 @@ export const getRiders = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
+ * Full rider record (everything the edit form shows).
+ * GET /api/admin/riders/:id
+ */
+export const getRiderById = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
+
+  const result = await query(
+    `SELECT ${RIDER_LIST_COLUMNS},
+            r.driving_license_number, r.license_image, r.vehicle_image,
+            r.cnic_front_image, r.cnic_back_image,
+            r.emergency_contact_name, r.emergency_contact_phone,
+            r.bank_account_title, r.bank_account_number, r.bank_name
+       FROM riders r
+       JOIN users u ON r.user_id = u.id
+       LEFT JOIN service_cities sc ON sc.id = r.city_id
+      WHERE r.id = $1 AND r.deleted_at IS NULL`,
+    [id]
+  );
+  if (result.rows.length === 0) return notFoundResponse(res, 'Rider not found');
+  successResponse(res, result.rows[0], 'Rider retrieved');
+});
+
+function validateRiderInput(body: any, creating: boolean): string | null {
+  const { full_name, phone, password, cnic, vehicle_type, vehicle_number, email, emergency_contact_phone } = body;
+  if (creating) {
+    if (!full_name || !phone || !password || !cnic || !vehicle_type || !vehicle_number) {
+      return 'full_name, phone, password, cnic, vehicle_type, vehicle_number are required';
+    }
+  }
+  if (full_name !== undefined && String(full_name).trim().length < 3) return 'Full name must be at least 3 characters';
+  if (password && String(password).length < 6) return 'Password must be at least 6 characters';
+  if (cnic && !CNIC_RE.test(String(cnic).trim())) return 'CNIC must look like 12345-1234567-1';
+  if (vehicle_type && !VEHICLE_TYPES.includes(String(vehicle_type))) return `Vehicle type must be one of: ${VEHICLE_TYPES.join(', ')}`;
+  if (vehicle_number !== undefined && creating && !String(vehicle_number).trim()) return 'Vehicle number is required';
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) return 'Invalid email address';
+  if (phone) {
+    try { normalizePhoneNumber(String(phone)); } catch { return 'Invalid phone number'; }
+  }
+  if (emergency_contact_phone) {
+    try { normalizePhoneNumber(String(emergency_contact_phone)); } catch { return 'Invalid emergency contact phone'; }
+  }
+  return null;
+}
+
+/** Store CNIC as 12345-1234567-1 regardless of how it was typed. */
+function formatCnic(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  return digits.length === 13 ? `${digits.slice(0, 5)}-${digits.slice(5, 12)}-${digits.slice(12)}` : raw.trim();
+}
+
+/**
  * Create a rider
  * POST /api/admin/riders
  */
-
 export const createRider = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
   const scopeErr = requireCityScope(scope);
   if (scopeErr) {
     return errorResponse(res, scopeErr, 400);
   }
+
+  const invalid = validateRiderInput(req.body, true);
+  if (invalid) return errorResponse(res, invalid, 400);
 
   const {
     full_name, phone, email, password, cnic,
@@ -138,43 +229,41 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
     driving_license_number,
   } = req.body;
 
-  if (!full_name || !phone || !password || !cnic || !vehicle_type || !vehicle_number) {
-    return errorResponse(res, 'full_name, phone, password, cnic, vehicle_type, vehicle_number are required', 400);
-  }
-
   const normalizedPhone = normalizePhoneNumber(phone);
+  const cleanCnic = formatCnic(String(cnic));
 
-  // Check duplicate phone
-  const existing = await query('SELECT id FROM users WHERE phone = $1', [normalizedPhone]);
+  const existing = await query('SELECT id, role FROM users WHERE phone = $1 AND deleted_at IS NULL', [normalizedPhone]);
   if (existing.rows.length > 0) {
-    return errorResponse(res, 'A user with this phone number already exists', 409);
+    return errorResponse(
+      res,
+      existing.rows[0].role === 'customer'
+        ? 'This phone number belongs to a customer account. Use a different number for the rider.'
+        : 'A user with this phone number already exists',
+      409
+    );
   }
 
-  // Check duplicate CNIC
-  const existCnic = await query('SELECT id FROM riders WHERE cnic = $1 AND deleted_at IS NULL', [cnic]);
+  const existCnic = await query('SELECT id FROM riders WHERE cnic = $1 AND deleted_at IS NULL', [cleanCnic]);
   if (existCnic.rows.length > 0) {
     return errorResponse(res, 'A rider with this CNIC already exists', 409);
   }
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-  // req.file.url is the Supabase public URL set by the upload middleware.
   const avatarUrl = req.file?.url || null;
 
   let result;
   try {
     result = await withTransaction(async (client) => {
-      // Create user
       const userRes = await client.query(
         `INSERT INTO users (phone, full_name, email, password_hash, role, is_phone_verified, avatar_url)
          VALUES ($1, $2, $3, $4, 'rider', true, $5)
          RETURNING id, phone, full_name, email, avatar_url`,
-        [normalizedPhone, full_name, email || null, passwordHash, avatarUrl]
+        [normalizedPhone, String(full_name).trim(), email || null, passwordHash, avatarUrl]
       );
       const user = userRes.rows[0];
 
-      // Create rider — admin-created riders are verified immediately; CNIC
-      // images are uploaded later (NULL, not a placeholder string that would
-      // render as a broken image URL).
+      // Admin-created riders are verified immediately and start OFF duty —
+      // they appear on the dispatch list only after going on duty in the app.
       const riderRes = await client.query(
         `INSERT INTO riders (
           user_id, cnic, vehicle_type, vehicle_number,
@@ -182,13 +271,14 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
           emergency_contact_name, emergency_contact_phone,
           bank_account_title, bank_account_number, bank_name,
           cnic_front_image, cnic_back_image,
-          verification_status, created_by, city_id
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,NULL,'verified',$11,$12)
+          verification_status, status, created_by, city_id
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NULL,NULL,'verified','offline',$11,$12)
          RETURNING *`,
         [
-          user.id, cnic, vehicle_type, vehicle_number,
+          user.id, cleanCnic, vehicle_type, String(vehicle_number).trim().toUpperCase(),
           driving_license_number || null,
-          emergency_contact_name || null, emergency_contact_phone || null,
+          emergency_contact_name || null,
+          emergency_contact_phone ? normalizePhoneNumber(emergency_contact_phone) : null,
           bank_account_title || null, bank_account_number || null, bank_name || null,
           req.user?.id,
           scope.cityId,
@@ -200,12 +290,8 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
   } catch (err: any) {
     if (err.code === '23505') {
       const detail = err.detail || '';
-      if (detail.includes('cnic')) {
-        return errorResponse(res, 'A rider with this CNIC already exists', 409);
-      }
-      if (detail.includes('phone')) {
-        return errorResponse(res, 'A user with this phone number already exists', 409);
-      }
+      if (detail.includes('cnic')) return errorResponse(res, 'A rider with this CNIC already exists', 409);
+      if (detail.includes('phone')) return errorResponse(res, 'A user with this phone number already exists', 409);
       return errorResponse(res, 'Duplicate entry detected', 409);
     }
     throw err;
@@ -223,12 +309,16 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Update a rider
+ * Update a rider. A field sent as '' clears it; a field left out is kept.
  * PUT /api/admin/riders/:id
  */
-
 export const updateRider = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
+
+  const invalid = validateRiderInput(req.body, false);
+  if (invalid) return errorResponse(res, invalid, 400);
+
   const {
     full_name, phone, email, password, cnic,
     vehicle_type, vehicle_number,
@@ -237,100 +327,129 @@ export const updateRider = asyncHandler(async (req: Request, res: Response) => {
     driving_license_number,
   } = req.body;
 
-  // Get rider + user_id (city-scoped: a scoped admin can't edit another city's rider).
-  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
-  const riderCheck = await query(
-    'SELECT r.id, r.user_id FROM riders r WHERE r.id = $1 AND r.deleted_at IS NULL', [id]
-  );
+  const riderCheck = await query('SELECT r.id, r.user_id FROM riders r WHERE r.id = $1 AND r.deleted_at IS NULL', [id]);
   if (riderCheck.rows.length === 0) return notFoundResponse(res, 'Rider not found');
-
   const userId = riderCheck.rows[0].user_id;
+
+  if (phone) {
+    const np = normalizePhoneNumber(phone);
+    const clash = await query('SELECT id FROM users WHERE phone = $1 AND id <> $2 AND deleted_at IS NULL', [np, userId]);
+    if (clash.rows.length > 0) return errorResponse(res, 'Another account already uses this phone number', 409);
+  }
+  if (cnic) {
+    const clash = await query('SELECT id FROM riders WHERE cnic = $1 AND id <> $2 AND deleted_at IS NULL', [formatCnic(String(cnic)), id]);
+    if (clash.rows.length > 0) return errorResponse(res, 'Another rider already uses this CNIC', 409);
+  }
+
   const avatarUrl = req.file?.url || undefined;
 
-  await withTransaction(async (client) => {
-    // Update user
-    const userFields: string[] = [];
-    const userParams: any[] = [];
-    let idx = 1;
+  try {
+    await withTransaction(async (client) => {
+      const userFields: string[] = [];
+      const userParams: any[] = [];
+      let idx = 1;
 
-    if (full_name) { userFields.push(`full_name = $${idx++}`); userParams.push(full_name); }
-    if (phone) {
-      const np = normalizePhoneNumber(phone);
-      userFields.push(`phone = $${idx++}`); userParams.push(np);
-    }
-    if (email !== undefined) { userFields.push(`email = $${idx++}`); userParams.push(email || null); }
-    if (password) {
-      const ph = await bcrypt.hash(password, SALT_ROUNDS);
-      userFields.push(`password_hash = $${idx++}`); userParams.push(ph);
-    }
-    if (avatarUrl) { userFields.push(`avatar_url = $${idx++}`); userParams.push(avatarUrl); }
+      if (full_name) { userFields.push(`full_name = $${idx++}`); userParams.push(String(full_name).trim()); }
+      if (phone) { userFields.push(`phone = $${idx++}`); userParams.push(normalizePhoneNumber(phone)); }
+      if (email !== undefined) { userFields.push(`email = $${idx++}`); userParams.push(email || null); }
+      if (password) {
+        const ph = await bcrypt.hash(password, SALT_ROUNDS);
+        userFields.push(`password_hash = $${idx++}`); userParams.push(ph);
+      }
+      if (avatarUrl) { userFields.push(`avatar_url = $${idx++}`); userParams.push(avatarUrl); }
 
-    if (userFields.length > 0) {
-      userFields.push(`updated_at = NOW()`);
-      userParams.push(userId);
-      await client.query(
-        `UPDATE users SET ${userFields.join(', ')} WHERE id = $${idx}`,
-        userParams
+      if (userFields.length > 0) {
+        userFields.push(`updated_at = NOW()`);
+        userParams.push(userId);
+        await client.query(`UPDATE users SET ${userFields.join(', ')} WHERE id = $${idx}`, userParams);
+      }
+
+      const riderFields: string[] = [];
+      const riderParams: any[] = [];
+      let ri = 1;
+      const setNullable = (column: string, value: unknown) => {
+        if (value === undefined) return;
+        riderFields.push(`${column} = $${ri++}`);
+        riderParams.push(value === '' || value === null ? null : value);
+      };
+
+      if (cnic) { riderFields.push(`cnic = $${ri++}`); riderParams.push(formatCnic(String(cnic))); }
+      if (vehicle_type) { riderFields.push(`vehicle_type = $${ri++}`); riderParams.push(vehicle_type); }
+      if (vehicle_number) { riderFields.push(`vehicle_number = $${ri++}`); riderParams.push(String(vehicle_number).trim().toUpperCase()); }
+      setNullable('driving_license_number', driving_license_number);
+      setNullable('emergency_contact_name', emergency_contact_name);
+      setNullable(
+        'emergency_contact_phone',
+        emergency_contact_phone ? normalizePhoneNumber(emergency_contact_phone) : emergency_contact_phone
       );
-    }
+      setNullable('bank_account_title', bank_account_title);
+      setNullable('bank_account_number', bank_account_number);
+      setNullable('bank_name', bank_name);
 
-    // Update rider
-    const riderFields: string[] = [];
-    const riderParams: any[] = [];
-    let ri = 1;
+      if (riderFields.length > 0) {
+        riderFields.push(`updated_at = NOW()`);
+        riderFields.push(`updated_by = $${ri++}`); riderParams.push(req.user?.id);
+        riderParams.push(id);
+        await client.query(`UPDATE riders SET ${riderFields.join(', ')} WHERE id = $${ri}`, riderParams);
+      }
+    });
+  } catch (err: any) {
+    if (err.code === '23505') return errorResponse(res, 'Phone or CNIC already in use', 409);
+    throw err;
+  }
 
-    if (cnic) { riderFields.push(`cnic = $${ri++}`); riderParams.push(cnic); }
-    if (vehicle_type) { riderFields.push(`vehicle_type = $${ri++}`); riderParams.push(vehicle_type); }
-    if (vehicle_number) { riderFields.push(`vehicle_number = $${ri++}`); riderParams.push(vehicle_number); }
-    if (driving_license_number !== undefined) { riderFields.push(`driving_license_number = $${ri++}`); riderParams.push(driving_license_number || null); }
-    if (emergency_contact_name !== undefined) { riderFields.push(`emergency_contact_name = $${ri++}`); riderParams.push(emergency_contact_name || null); }
-    if (emergency_contact_phone !== undefined) { riderFields.push(`emergency_contact_phone = $${ri++}`); riderParams.push(emergency_contact_phone || null); }
-    if (bank_account_title !== undefined) { riderFields.push(`bank_account_title = $${ri++}`); riderParams.push(bank_account_title || null); }
-    if (bank_account_number !== undefined) { riderFields.push(`bank_account_number = $${ri++}`); riderParams.push(bank_account_number || null); }
-    if (bank_name !== undefined) { riderFields.push(`bank_name = $${ri++}`); riderParams.push(bank_name || null); }
+  // A new password or phone ends the rider's current sessions.
+  if (password || phone) {
+    await kickRider(id, 'Your login details were changed by the admin. Please sign in again.');
+  }
 
-    if (riderFields.length > 0) {
-      riderFields.push(`updated_at = NOW()`);
-      riderFields.push(`updated_by = $${ri++}`); riderParams.push(req.user?.id);
-      riderParams.push(id);
-      await client.query(
-        `UPDATE riders SET ${riderFields.join(', ')} WHERE id = $${ri}`,
-        riderParams
-      );
-    }
-  });
-
-  // Fetch updated rider
   const updated = await query(
-    `SELECT r.*, u.full_name, u.phone, u.email, u.avatar_url
-     FROM riders r JOIN users u ON r.user_id = u.id
-     WHERE r.id = $1`, [id]
+    `SELECT ${RIDER_LIST_COLUMNS},
+            r.driving_license_number, r.emergency_contact_name, r.emergency_contact_phone,
+            r.bank_account_title, r.bank_account_number, r.bank_name
+       FROM riders r JOIN users u ON r.user_id = u.id
+       LEFT JOIN service_cities sc ON sc.id = r.city_id
+      WHERE r.id = $1`,
+    [id]
   );
 
   successResponse(res, updated.rows[0], 'Rider updated successfully');
 });
 
 /**
- * Delete a rider (soft delete)
+ * Delete a rider (soft delete). Refused while the rider still carries tasks —
+ * those orders would otherwise stay "out for delivery" with nobody on them.
  * DELETE /api/admin/riders/:id
  */
-
 export const deleteRider = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
+
+  const active = await activeTaskCount(id);
+  if (active > 0) {
+    return errorResponse(
+      res,
+      `This rider still has ${active} active task(s). Reassign or close them before deleting the rider.`,
+      409
+    );
+  }
+
   const result = await query(
-    "UPDATE riders SET deleted_at = NOW(), status = 'offline' WHERE id = $1 AND deleted_at IS NULL RETURNING id",
-    [id]
+    "UPDATE riders SET deleted_at = NOW(), status = 'offline', updated_by = $2 WHERE id = $1 AND deleted_at IS NULL RETURNING id, user_id",
+    [id, req.user?.id ?? null]
   );
   if (result.rows.length === 0) return notFoundResponse(res, 'Rider not found');
+  await query(`UPDATE users SET status = 'inactive', updated_at = NOW() WHERE id = $1`, [result.rows[0].user_id]);
+  await kickRider(id, 'Your rider account has been removed.');
+  logger.info('Rider deleted', { riderId: id, by: req.user?.id });
   successResponse(res, null, 'Rider deleted successfully');
 });
 
 /**
- * Verify a rider
- * PATCH /api/admin/riders/:id/verify
+ * Verify / block a rider.
+ * PATCH /api/admin/riders/:id/verify   Body: { verification_status: verified | rejected | pending }
+ * 'rejected' is the block: the rider is signed out everywhere and can't log in.
  */
-
 export const verifyRider = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { verification_status } = req.body;
@@ -340,21 +459,44 @@ export const verifyRider = asyncHandler(async (req: Request, res: Response) => {
   }
   if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
+  if (verification_status !== 'verified') {
+    const active = await activeTaskCount(id);
+    if (active > 0) {
+      return errorResponse(
+        res,
+        `This rider still has ${active} active task(s). Reassign them before blocking the rider.`,
+        409
+      );
+    }
+  }
+
   const result = await query(
-    `UPDATE riders SET verification_status = $1, updated_at = NOW(), updated_by = $2
+    `UPDATE riders
+        SET verification_status = $1,
+            status = CASE WHEN $1 = 'verified' THEN status ELSE 'offline'::rider_status END,
+            updated_at = NOW(), updated_by = $2
      WHERE id = $3 AND deleted_at IS NULL
      RETURNING *`,
     [verification_status, req.user?.id, id]
   );
   if (result.rows.length === 0) return notFoundResponse(res, 'Rider not found');
+
+  if (verification_status !== 'verified') {
+    await kickRider(
+      id,
+      verification_status === 'rejected'
+        ? 'Your rider account has been blocked. Please contact the Fresh Bazar office.'
+        : 'Your rider account is waiting for verification.'
+    );
+  }
+  logger.info('Rider verification changed', { riderId: id, verification_status, by: req.user?.id });
   successResponse(res, result.rows[0], 'Rider verification updated');
 });
 
 /**
- * Update rider status
- * PATCH /api/admin/riders/:id/status  
+ * Admin override of the duty status.
+ * PATCH /api/admin/riders/:id/status
  */
-
 export const updateRiderStatus = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -364,19 +506,33 @@ export const updateRiderStatus = asyncHandler(async (req: Request, res: Response
   }
   if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
+  // 'busy' is derived from tasks; asking for available/busy gives the real one.
+  const active = await activeTaskCount(id);
+  const finalStatus =
+    status === 'busy' || status === 'available' ? resolveDutyStatus('available', active > 0) : status;
+
   const result = await query(
-    'UPDATE riders SET status = $1, updated_at = NOW() WHERE id = $2 AND deleted_at IS NULL RETURNING *',
-    [status, id]
+    `UPDATE riders SET status = $1, updated_at = NOW(), updated_by = $3
+      WHERE id = $2 AND deleted_at IS NULL RETURNING *`,
+    [finalStatus, id, req.user?.id ?? null]
   );
   if (result.rows.length === 0) return notFoundResponse(res, 'Rider not found');
-  successResponse(res, result.rows[0], 'Status updated');
+
+  // Keep the rider's app in step (e.g. admin put him off duty → stop GPS).
+  emitToUser(result.rows[0].user_id, 'rider:status_changed', {
+    status: finalStatus,
+    message:
+      finalStatus === 'offline' || finalStatus === 'on_leave'
+        ? 'The admin has set you off duty.'
+        : 'The admin has set you on duty.',
+  });
+  successResponse(res, { ...result.rows[0], active_tasks: active }, 'Status updated');
 });
 
 /**
  * Get rider live location
  * GET /api/admin/riders/:id/location
  */
-
 export const getRiderLocation = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
@@ -410,105 +566,26 @@ export const getRiderLocation = asyncHandler(async (req: Request, res: Response)
 });
 
 /**
- * Get rider stats (daily, weekly, monthly orders + payment tracking)
+ * Stats + cash position + per-slot pay.
  * GET /api/admin/riders/:id/stats
  */
-
 export const getRiderStats = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
-  // Verify rider exists
   const riderCheck = await query(
-    `SELECT r.id, r.total_deliveries, r.total_earnings, u.full_name
+    `SELECT r.id, r.total_deliveries, r.total_earnings, r.rating, r.rating_count, u.full_name
      FROM riders r JOIN users u ON r.user_id = u.id
      WHERE r.id = $1 AND r.deleted_at IS NULL`, [id]
   );
   if (riderCheck.rows.length === 0) return notFoundResponse(res, 'Rider not found');
 
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const { stats, payment } = await computeRiderStats(id);
 
-  // Monday of current week
-  const dayOfWeek = now.getDay() || 7; // Sunday=7
-  const thisWeekStart = new Date(now);
-  thisWeekStart.setDate(now.getDate() - dayOfWeek + 1);
-  thisWeekStart.setHours(0, 0, 0, 0);
-
-  // Monday of last week
-  const lastWeekStart = new Date(thisWeekStart);
-  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-  const lastWeekEnd = new Date(thisWeekStart);
-
-  // 1st of current month
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-  // 1st of last month
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
-  const settlementTablesReady = await hasRiderCashSettlementTables();
-  const settledSql = settlementTablesReady
-    ? `COALESCE((
-        SELECT SUM(rso.amount)
-          FROM rider_cash_settlement_orders rso
-          JOIN rider_cash_settlements rs ON rs.id = rso.settlement_id
-         WHERE rs.rider_id = $1 AND rs.status = 'received'
-      ), 0)`
-    : '0';
-
-  const statsQuery = `
-    SELECT
-      -- Today
-      COUNT(*) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $2) as today_orders,
-      COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $2), 0) as today_earnings,
-      -- This week
-      COUNT(*) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $3) as this_week_orders,
-      COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $3), 0) as this_week_earnings,
-      -- Last week
-      COUNT(*) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $4 AND o.placed_at < $5) as last_week_orders,
-      COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $4 AND o.placed_at < $5), 0) as last_week_earnings,
-      -- This month
-      COUNT(*) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $6) as this_month_orders,
-      COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $6), 0) as this_month_earnings,
-      -- Last month
-      COUNT(*) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $7 AND o.placed_at < $8) as last_month_orders,
-      COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered' AND o.placed_at >= $7 AND o.placed_at < $8), 0) as last_month_earnings,
-      -- Total delivered (all time)
-      COUNT(*) FILTER (WHERE o.status = 'delivered') as total_delivered,
-      COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE o.status = 'delivered'), 0) as total_earned,
-      COALESCE(SUM(o.rider_delivery_charge) FILTER (
-        WHERE o.status = 'delivered'
-          AND o.payment_method = 'cash_on_delivery'
-          AND o.payment_status = 'completed'
-          AND o.ocp_id IS NULL
-      ), 0) as cod_earned,
-      ${riderCodCashExpr('o')} as total_collected,
-      ${settledSql} as total_settled
-    FROM orders o
-    WHERE o.rider_id = $1
-  `;
-
-  const statsResult = await query(statsQuery, [
-    id, todayStart,
-    thisWeekStart.toISOString(),
-    lastWeekStart.toISOString(), lastWeekEnd.toISOString(),
-    thisMonthStart,
-    lastMonthStart, lastMonthEnd,
-  ]);
-
-  const stats = statsResult.rows[0];
-
-  const totalCollected = parseFloat(stats.total_collected) || 0;
-  const totalEarned = parseFloat(stats.total_earned) || 0;
-  const codEarned = parseFloat(stats.cod_earned) || 0;
-  const totalSettled = parseFloat(stats.total_settled) || 0;
-  const cashInHand = Math.max(totalCollected - totalSettled, 0);
-  const paymentPending = Math.max(totalCollected - totalSettled - codEarned, 0);
-
-  // Get delivery charges config
+  // time_slot_id is what the admin per-slot editor keys on — without it the
+  // editor always opened blank and looked like no rate was configured.
   const chargesResult = await query(
-    `SELECT rdc.id, rdc.charge_per_order, rdc.effective_from,
+    `SELECT rdc.id, rdc.time_slot_id, rdc.charge_per_order, rdc.effective_from,
             ts.slot_name, ts.start_time, ts.end_time
      FROM rider_delivery_charges rdc
      JOIN time_slots ts ON rdc.time_slot_id = ts.id
@@ -519,23 +596,95 @@ export const getRiderStats = asyncHandler(async (req: Request, res: Response) =>
 
   successResponse(res, {
     rider: riderCheck.rows[0],
-    stats: {
-      today: { orders: parseInt(stats.today_orders), earnings: parseFloat(stats.today_earnings) },
-      thisWeek: { orders: parseInt(stats.this_week_orders), earnings: parseFloat(stats.this_week_earnings) },
-      lastWeek: { orders: parseInt(stats.last_week_orders), earnings: parseFloat(stats.last_week_earnings) },
-      thisMonth: { orders: parseInt(stats.this_month_orders), earnings: parseFloat(stats.this_month_earnings) },
-      lastMonth: { orders: parseInt(stats.last_month_orders), earnings: parseFloat(stats.last_month_earnings) },
-    },
-    payment: {
-      totalCollected,
-      totalEarned,
-      codEarned,
-      totalSettled,
-      cashInHand,
-      paymentPending,
-    },
-    deliveryCharges: chargesResult.rows,
+    stats,
+    payment,
+    deliveryCharges: chargesResult.rows.map((row: any) => ({
+      ...row,
+      charge_per_order: parseFloat(row.charge_per_order) || 0,
+    })),
   }, 'Rider stats retrieved');
+});
+
+/**
+ * Active tasks or recent history for the admin rider detail view.
+ * GET /api/admin/riders/:id/tasks?scope=active|history&page&limit
+ */
+export const getRiderTasks = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
+
+  const scopeParam = req.query.scope === 'history' ? 'history' : 'active';
+  const { page, limit, offset } = parsePagination(req.query.page, req.query.limit, { defaultLimit: 30, maxLimit: 100 });
+  const arrivedReady = await hasRiderTaskArrivedColumn();
+  const statusSql =
+    scopeParam === 'active'
+      ? `rt.status IN ('assigned', 'in_progress')`
+      : `rt.status IN ('completed', 'failed', 'cancelled')`;
+
+  const [rows, count] = await Promise.all([
+    query(
+      `SELECT rt.id, rt.task_type, rt.status, rt.notes,
+              rt.assigned_at, rt.started_at, rt.completed_at,
+              ${arrivedReady ? 'rt.arrived_at,' : 'NULL::timestamptz AS arrived_at,'}
+              rt.delivery_proof_image, rt.pickup_proof_image,
+              o.id AS order_id, o.order_number, o.status AS order_status,
+              o.total_amount, o.payment_method, o.payment_status, o.rider_delivery_charge,
+              COALESCE(o.delivery_address_snapshot->>'written_address', a.written_address) AS address,
+              ar.id AS atta_request_id, ar.request_number AS atta_request_number, ar.status AS atta_status
+         FROM rider_tasks rt
+         LEFT JOIN orders o ON o.id = rt.order_id
+         LEFT JOIN atta_requests ar ON ar.id = rt.atta_request_id
+         LEFT JOIN addresses a ON a.id = COALESCE(o.address_id, ar.address_id)
+        WHERE rt.rider_id = $1 AND ${statusSql}
+        ORDER BY ${scopeParam === 'active' ? 'rt.sequence_number ASC, rt.assigned_at ASC' : 'COALESCE(rt.completed_at, rt.updated_at) DESC'}
+        LIMIT $2 OFFSET $3`,
+      [id, limit, offset]
+    ),
+    query(`SELECT COUNT(*)::int AS n FROM rider_tasks rt WHERE rt.rider_id = $1 AND ${statusSql}`, [id]),
+  ]);
+
+  const total = Number(count.rows[0]?.n || 0);
+  successResponse(res, {
+    tasks: rows.rows,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  }, 'Rider tasks');
+});
+
+/**
+ * Customer reviews + complaints about a rider.
+ * GET /api/admin/riders/:id/feedback
+ */
+export const getRiderFeedback = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
+  if (!(await hasFeedbackTables())) return successResponse(res, { reviews: [], complaints: [] }, 'Rider feedback');
+
+  const [reviews, complaints] = await Promise.all([
+    query(
+      `SELECT rv.id, rv.rating, rv.comment, rv.is_published, rv.admin_reply, rv.created_at,
+              o.order_number, u.full_name AS customer_name
+         FROM reviews rv
+         LEFT JOIN orders o ON o.id = rv.order_id
+         LEFT JOIN users u ON u.id = rv.user_id
+        WHERE rv.target_type = 'rider' AND rv.rider_id = $1
+        ORDER BY rv.created_at DESC
+        LIMIT 100`,
+      [id]
+    ),
+    query(
+      `SELECT c.id, c.ticket_number, c.category, c.subject, c.message, c.status, c.priority,
+              c.admin_response, c.created_at, o.order_number, u.full_name AS customer_name
+         FROM complaints c
+         LEFT JOIN orders o ON o.id = c.order_id
+         LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.rider_id = $1
+        ORDER BY c.created_at DESC
+        LIMIT 100`,
+      [id]
+    ),
+  ]);
+
+  successResponse(res, { reviews: reviews.rows, complaints: complaints.rows }, 'Rider feedback');
 });
 
 export const listRiderCashSettlements = asyncHandler(async (req: Request, res: Response) => {
@@ -543,15 +692,15 @@ export const listRiderCashSettlements = asyncHandler(async (req: Request, res: R
   if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
   if (!(await hasRiderCashSettlementTables())) return successResponse(res, [], 'Rider cash settlements');
 
+  const attaReady = await hasAttaCashColumns();
   const result = await query(
     `SELECT s.id, s.amount, s.status, s.note, s.received_at,
             u.full_name AS received_by_name,
-            COUNT(so.order_id)::int AS order_count
+            (SELECT COUNT(*)::int FROM rider_cash_settlement_orders so WHERE so.settlement_id = s.id) AS order_count,
+            ${attaReady ? '(SELECT COUNT(*)::int FROM rider_cash_settlement_atta sa WHERE sa.settlement_id = s.id)' : '0'} AS atta_count
        FROM rider_cash_settlements s
-       LEFT JOIN rider_cash_settlement_orders so ON so.settlement_id = s.id
        LEFT JOIN users u ON u.id = s.received_by
       WHERE s.rider_id = $1
-      GROUP BY s.id, u.full_name
       ORDER BY s.received_at DESC
       LIMIT 100`,
     [id]
@@ -563,15 +712,20 @@ export const listRiderCashSettlements = asyncHandler(async (req: Request, res: R
       ...row,
       amount: parseFloat(row.amount) || 0,
       order_count: Number(row.order_count) || 0,
+      atta_count: Number(row.atta_count) || 0,
     })),
     'Rider cash settlements'
   );
 });
 
+/**
+ * Receive the rider's COD cash (orders: paid − rider pay; atta: full amount).
+ * POST /api/admin/riders/:id/cash-settlements/receive   Body: { password, note? }
+ */
 export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const password = String(req.body?.password || '');
-  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : null;
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 300) : null;
 
   if (!(await hasRiderCashSettlementTables())) {
     return errorResponse(res, 'Rider cash settlement module is being set up. Please try again shortly.', 503);
@@ -585,10 +739,11 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
     return errorResponse(res, 'Incorrect password.', 401);
   }
 
+  const attaReady = await hasAttaCashColumns();
   let out: any;
   try {
     out = await withTransaction(async (client) => {
-      const rider = await client.query('SELECT id, city_id FROM riders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
+      const rider = await client.query('SELECT id, city_id, user_id FROM riders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
       if (rider.rows.length === 0) throw Object.assign(new Error('Rider not found'), { http: 404 });
 
       const orders = await client.query(
@@ -607,16 +762,35 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
           FOR UPDATE`,
         [id]
       );
-      if (orders.rows.length === 0) {
-        throw Object.assign(new Error('No direct COD cash is due from this rider.'), { http: 400 });
+      const orderLines = orders.rows
+        .map((order: any) => {
+          const paid = parseFloat(order.paid_amount) || 0;
+          const earned = parseFloat(order.rider_delivery_charge) || 0;
+          return { orderId: order.id as string, amount: Math.max(paid - earned, 0) };
+        });
+
+      let attaLines: { attaId: string; amount: number }[] = [];
+      if (attaReady) {
+        const atta = await client.query(
+          `SELECT ar.id, ar.paid_amount
+             FROM atta_requests ar
+            WHERE ar.collected_by_rider_id = $1
+              AND ar.status = 'delivered'
+              AND ar.paid_amount > 0
+              AND NOT EXISTS (SELECT 1 FROM rider_cash_settlement_atta sa WHERE sa.atta_request_id = ar.id)
+            FOR UPDATE`,
+          [id]
+        );
+        attaLines = atta.rows.map((row: any) => ({ attaId: row.id as string, amount: parseFloat(row.paid_amount) || 0 }));
       }
 
-      const lines = orders.rows.map((order: any) => {
-        const paid = parseFloat(order.paid_amount) || 0;
-        const earned = parseFloat(order.rider_delivery_charge) || 0;
-        return { orderId: order.id, amount: Math.max(paid - earned, 0) };
-      });
-      const amount = Math.round(lines.reduce((sum: number, line: any) => sum + line.amount, 0) * 100) / 100;
+      if (orderLines.length === 0 && attaLines.length === 0) {
+        throw Object.assign(new Error('No COD cash is due from this rider.'), { http: 400 });
+      }
+
+      const amount = Math.round(
+        (orderLines.reduce((sum, line) => sum + line.amount, 0) + attaLines.reduce((sum, line) => sum + line.amount, 0)) * 100
+      ) / 100;
       if (amount <= 0) {
         throw Object.assign(new Error('No payable cash is due from this rider.'), { http: 400 });
       }
@@ -627,20 +801,28 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
          RETURNING id, amount, received_at`,
         [id, rider.rows[0].city_id || null, amount, note, req.user?.id ?? null]
       );
+      const settlementId = settlement.rows[0].id;
 
-      for (const line of lines) {
+      for (const line of orderLines) {
         await client.query(
-          `INSERT INTO rider_cash_settlement_orders (settlement_id, order_id, amount)
-           VALUES ($1, $2, $3)`,
-          [settlement.rows[0].id, line.orderId, line.amount]
+          `INSERT INTO rider_cash_settlement_orders (settlement_id, order_id, amount) VALUES ($1, $2, $3)`,
+          [settlementId, line.orderId, line.amount]
+        );
+      }
+      for (const line of attaLines) {
+        await client.query(
+          `INSERT INTO rider_cash_settlement_atta (settlement_id, atta_request_id, amount) VALUES ($1, $2, $3)`,
+          [settlementId, line.attaId, line.amount]
         );
       }
 
       return {
-        id: settlement.rows[0].id,
+        id: settlementId,
         amount: parseFloat(settlement.rows[0].amount) || 0,
-        orders: lines.length,
+        orders: orderLines.length,
+        atta: attaLines.length,
         received_at: settlement.rows[0].received_at,
+        rider_user_id: rider.rows[0].user_id,
       };
     });
   } catch (err: any) {
@@ -649,15 +831,19 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
     throw err;
   }
 
+  emitToUser(out.rider_user_id, 'rider:cash_received', {
+    amount: out.amount,
+    message: `Office received Rs ${out.amount} cash from you.`,
+  });
   logger.info('Rider COD cash received', { settlementId: out.id, riderId: id, amount: out.amount, by: req.user?.id });
-  return successResponse(res, out, 'Rider cash received');
+  const { rider_user_id: _ignored, ...publicOut } = out;
+  return successResponse(res, publicOut, 'Rider cash received');
 });
 
 /**
  * Set/update rider delivery charges per time slot
  * PUT /api/admin/riders/:id/delivery-charges
  */
-
 export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { charges } = req.body; // Array of { time_slot_id, charge_per_order }
@@ -667,13 +853,9 @@ export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Re
   }
   if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
-  // Verify rider exists
-  const riderCheck = await query('SELECT id FROM riders WHERE id = $1 AND deleted_at IS NULL', [id]);
-  if (riderCheck.rows.length === 0) return notFoundResponse(res, 'Rider not found');
-
   await withTransaction(async (client) => {
     for (const item of charges) {
-      if (!item.time_slot_id || item.charge_per_order === undefined) continue;
+      if (!item.time_slot_id || item.charge_per_order === undefined || item.charge_per_order === '') continue;
       // Validate money: a NaN/negative charge would corrupt rider payout math.
       const charge = parseFloat(String(item.charge_per_order));
       if (!Number.isFinite(charge) || charge < 0) {
@@ -689,7 +871,6 @@ export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Re
     }
   });
 
-  // Return updated charges
   const result = await query(
     `SELECT rdc.*, ts.slot_name, ts.start_time, ts.end_time
      FROM rider_delivery_charges rdc
