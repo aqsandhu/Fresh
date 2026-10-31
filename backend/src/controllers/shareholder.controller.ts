@@ -116,7 +116,8 @@ export const getShareholderDashboard = asyncHandler(async (req: Request, res: Re
 
   return successResponse(res, {
     totalSale: cp.totalSale, totalExpenses: cp.totalExpenses,
-    inventoryCost: cp.inventoryCost, operatingExpenses: cp.operatingExpenses, profit: cp.profit,
+    inventoryCost: cp.inventoryCost, operatingExpenses: cp.operatingExpenses,
+    refunds: cp.refunds, riderDeliveryPay: cp.riderDeliveryPay, profit: cp.profit,
     freshbazarShare: cp.freshbazarShare, distributable: cp.distributable,
     sharePercent: me.share_percent, myShare,
     received: round2(received), pending: round2(pending), balance: round2(myShare - received),

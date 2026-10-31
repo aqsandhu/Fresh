@@ -474,9 +474,14 @@ export function RiderPaymentModal({ rider, onClose }: { rider: Rider; onClose: (
           <label className="block text-sm font-medium text-gray-700 mb-1">Payment type</label>
           <select value={category} onChange={(e) => setCategory(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="salary">Salary</option>
-            <option value="commission">Commission / delivery pay</option>
-            <option value="other">Other</option>
+            <option value="commission">Per-order delivery pay (hand-over)</option>
+            <option value="other">Bonus / other</option>
           </select>
+          <p className="text-xs text-gray-500 mt-1">
+            {category === 'commission'
+              ? 'Per-order pay is already counted in Profit automatically (on cash orders the rider keeps it when handing over cash). Use this only to hand over pay owed on non-cash orders — it is logged but not deducted from profit again.'
+              : 'Logged in Expenses and deducted from profit. Per-order delivery pay is counted automatically — do not enter it here.'}
+          </p>
         </div>
         <Input label="Amount (Rs.)" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         <Input label="Comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />

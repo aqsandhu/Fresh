@@ -377,7 +377,7 @@ export const Riders: React.FC = () => {
                               {rider.verificationStatus === 'rejected' ? <Shield className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
                             </IconButton>
                           )}
-                          <IconButton title="Pay (salary / commission)" onClick={() => setPayRider(rider)} hover="green"><DollarSign className="w-4 h-4" /></IconButton>
+                          <IconButton title="Pay rider (salary / bonus)" onClick={() => setPayRider(rider)} hover="green"><DollarSign className="w-4 h-4" /></IconButton>
                           <IconButton title="Delete" onClick={() => handleDelete(rider)} hover="red"><Trash2 className="w-4 h-4" /></IconButton>
                         </>
                       )}

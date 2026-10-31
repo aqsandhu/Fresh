@@ -1,7 +1,14 @@
 // ============================================================================
 // PROFIT CALCULATION — shared by the admin Profit view and the shareholder
 // portal so both see the SAME numbers for a city + period.
-//   profit = Σ delivered-order sales − Σ expenses
+//   profit = Σ delivered-order sales − refunds − stock cost
+//            − per-order rider pay (orders.rider_delivery_charge)
+//            − other expenses
+//   Per-order rider pay is a real cost on every delivered order: on COD the
+//   rider keeps it out of the cash, on OCP orders the company owes it. It is
+//   counted here automatically, so a manual "Pay rider → per-order pay"
+//   expense (category 'commission') is a hand-over of money already counted
+//   and is NOT subtracted a second time. Salary / other rider payments are.
 //   FreshBazar share (if enabled) = per-order fixed | per-category % | % margin
 //   distributable = profit − FreshBazar share
 // ============================================================================
@@ -66,6 +73,8 @@ export interface CityProfit {
   operatingExpenses: number;
   /** Money handed back on delivered orders in the period (refunds ledger). */
   refunds: number;
+  /** Σ per-order rider pay on the period's delivered orders. */
+  riderDeliveryPay: number;
   profit: number;
   freshbazarShare: number;
   distributable: number;
@@ -78,13 +87,15 @@ const defaultSettings = () => ({ enabled: false, mode: 'per_order_fixed', perOrd
 export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promise<CityProfit> {
   const saleP = periodClause('o.delivered_at', p, 2);
   const sales = await query(
-    `SELECT COALESCE(SUM(o.total_amount),0) AS total, COUNT(*) AS orders
+    `SELECT COALESCE(SUM(o.total_amount),0) AS total, COUNT(*) AS orders,
+            COALESCE(SUM(COALESCE(o.rider_delivery_charge, 0)),0) AS rider_pay
        FROM orders o
       WHERE o.deleted_at IS NULL AND o.status = 'delivered' AND o.city_id = $1${saleP.sql}`,
     [cityId, ...saleP.params]
   );
   const totalSale = parseFloat(sales.rows[0].total) || 0;
   const orderCount = Number(sales.rows[0].orders) || 0;
+  const riderDeliveryPay = parseFloat(sales.rows[0].rider_pay) || 0;
 
   // Refunds paid out on delivered orders of this city reduce real sales.
   // (Refunded/cancelled orders are already excluded by status above; this
@@ -107,7 +118,8 @@ export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promis
   const exp = await query(
     `SELECT COALESCE(SUM(amount),0) AS total
        FROM expenses
-      WHERE city_id = $1 AND type <> 'stock_purchase'${expP.sql}`,
+      WHERE city_id = $1 AND type <> 'stock_purchase'
+        AND NOT (type = 'rider_payment' AND COALESCE(category, '') = 'commission')${expP.sql}`,
     [cityId, ...expP.params]
   );
   const operatingExpenses = parseFloat(exp.rows[0].total) || 0;
@@ -166,7 +178,7 @@ export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promis
     [cityId, ...saleP.params, ...costP.params]
   );
   const inventoryCost = parseFloat(inventory.rows[0].total) || 0;
-  const totalExpenses = operatingExpenses + inventoryCost;
+  const totalExpenses = operatingExpenses + inventoryCost + riderDeliveryPay;
   const profit = round2(totalSale - refunds - totalExpenses);
 
   const setRow = await query(`SELECT * FROM profit_settings WHERE city_id = $1`, [cityId]);
@@ -199,7 +211,7 @@ export async function computeCityProfit(cityId: string, p: ProfitPeriod): Promis
   return {
     totalSale: round2(totalSale), orderCount, totalExpenses: round2(totalExpenses),
     inventoryCost: round2(inventoryCost), operatingExpenses: round2(operatingExpenses),
-    refunds: round2(refunds), profit,
+    refunds: round2(refunds), riderDeliveryPay: round2(riderDeliveryPay), profit,
     freshbazarShare, distributable: round2(profit - freshbazarShare),
     settings: s ? { enabled: s.freshbazar_enabled === true, mode: s.freshbazar_mode, perOrder: parseFloat(s.freshbazar_per_order) || 0, marginPercent: parseFloat(s.freshbazar_margin_percent) || 0 } : defaultSettings(),
   };

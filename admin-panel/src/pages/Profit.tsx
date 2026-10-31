@@ -86,9 +86,10 @@ export const Profit: React.FC = () => {
       ) : (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 mb-4">
             <Card className="text-center"><p className="text-xs text-gray-500">Total sale</p><p className="text-lg font-bold text-gray-900">{money(profit?.totalSale || 0)}</p><p className="text-[11px] text-gray-400">{profit?.orderCount || 0} orders</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Inventory cost</p><p className="text-lg font-bold text-red-600">{money(profit?.inventoryCost || 0)}</p></Card>
+            <Card className="text-center"><p className="text-xs text-gray-500">Rider delivery pay</p><p className="text-lg font-bold text-red-600">{money(profit?.riderDeliveryPay || 0)}</p><p className="text-[11px] text-gray-400">per-order pay, auto</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Other expenses</p><p className="text-lg font-bold text-red-600">{money(profit?.operatingExpenses || 0)}</p></Card>
             {(profit?.refunds || 0) > 0 && (
               <Card className="text-center"><p className="text-xs text-gray-500">Refunds</p><p className="text-lg font-bold text-red-600">{money(profit?.refunds || 0)}</p></Card>
