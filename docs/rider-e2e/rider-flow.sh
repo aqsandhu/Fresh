@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end rider flow against a local backend + scratch Postgres.
 set -u
+BACKEND_DIR="$(cd "$(dirname "$0")/../../backend" && pwd)"
 API=http://localhost:3999/api
 PSQL="psql -h 127.0.0.1 -p 55432 -U postgres -d fb -Atq"
 CITY=$($PSQL -c "select id from service_cities where name='Gujrat' limit 1")
@@ -66,7 +67,7 @@ check "hidden-phone call is throttled arrival (not 403)" "$(curl -s -o /dev/null
 echo "   (call-request inside 2-min window answers: $(echo "$CALL" | jq -r .message))"
 
 # customer sees rider phone in tracking
-CTOK=$(cd /home/user/Fresh/backend && node -e "
+CTOK=$(cd "$BACKEND_DIR" && node -e "
 const jwt=require('jsonwebtoken');console.log(jwt.sign({userId:'$CUST',phone:'+923331234567',role:'customer',type:'access'},process.env.JWT_SECRET,{expiresIn:'10m'}))" 2>/dev/null)
 TR=$(curl -s $API/orders/track/$ORDER -H "Authorization: Bearer $CTOK")
 echo "   tracking: $(echo "$TR" | jq -c '{s:.success, m:.message, rider:.data.rider|{name,phone,vehicle_number}}')"
@@ -138,3 +139,4 @@ check "block rider" "$(curl -s -X PATCH $API/admin/riders/$RIDER_ID/verify "${AH
 check "blocked rider REST refused" "$(curl -s -o /dev/null -w '%{http_code}' $API/rider/tasks/active "${RH[@]}")" "403"
 check "blocked rider login message" "$(curl -s -X POST $API/rider/login -H 'Content-Type: application/json' -d '{"phone":"03211234567","password":"rider123"}' | jq -r .message)" "Your rider account has been blocked. Please contact the Fresh Bazar office."
 echo "RESULT pass=$pass fail=$fail"
+[ "$fail" -eq 0 ]

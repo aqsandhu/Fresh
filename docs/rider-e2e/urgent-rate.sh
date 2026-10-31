@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Urgent orders pay the rider's dedicated urgent rate (migration 58).
 set -u
+BACKEND_DIR="$(cd "$(dirname "$0")/../../backend" && pwd)"
 API=http://localhost:3999/api
 PSQL="psql -h 127.0.0.1 -p 55432 -U postgres -d fb -Atq"
 CITY=$($PSQL -c "select id from service_cities where name='Gujrat' limit 1")
@@ -27,3 +28,4 @@ check "negative urgent rate refused" "$(curl -s -o /dev/null -w '%{http_code}' -
 check "clear urgent rate" "$(curl -s -X PUT $API/admin/riders/$RID/delivery-charges "${AH[@]}" -H 'Content-Type: application/json' -d '{"charges":[],"urgent_charge":null}' | jq -r .data.urgent_delivery_charge)" "null"
 check "slot pay untouched by urgent edits" "$(curl -s $API/admin/riders/$RID/stats "${AH[@]}" | jq -r '.data.deliveryCharges[0].charge_per_order')" "80"
 echo "RESULT pass=$pass fail=$fail"
+[ "$fail" -eq 0 ]

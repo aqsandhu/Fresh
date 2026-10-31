@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+BACKEND_DIR="$(cd "$(dirname "$0")/../../backend" && pwd)"
 API=http://localhost:3999/api
 PSQL="psql -h 127.0.0.1 -p 55432 -U postgres -d fb -Atq"
 CITY=$($PSQL -c "select id from service_cities where name='Gujrat' limit 1")
@@ -38,3 +39,4 @@ check "off-duty rider stays offline after delivery" "$($PSQL -c "select status f
 check "delete allowed when free" "$(curl -s -X DELETE $API/admin/riders/$RID "${AH[@]}" | jq -r .success)" "true"
 check "deleted rider cannot log in" "$(curl -s -o /dev/null -w '%{http_code}' -X POST $API/rider/login -H 'Content-Type: application/json' -d '{"phone":"03451234567","password":"rider123"}')" "401"
 echo "RESULT pass=$pass fail=$fail"
+[ "$fail" -eq 0 ]

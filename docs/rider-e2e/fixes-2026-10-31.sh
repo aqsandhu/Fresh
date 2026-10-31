@@ -8,6 +8,7 @@
 #   T8 server rejects a today-slot past the admin cutoff %
 # Needs JWT_SECRET exported (customer token) + curl + jq. Fresh DB.
 set -u
+BACKEND_DIR="$(cd "$(dirname "$0")/../../backend" && pwd)"
 API=http://localhost:3999/api
 PSQL="psql -h 127.0.0.1 -p 55432 -U postgres -d fb -Atq"
 pass=0; fail=0
@@ -20,13 +21,15 @@ AH=(-H "Authorization: Bearer $ATOK" -H 'Content-Type: application/json')
 ACH=("${AH[@]}" -H "X-City-Id: $CITY")
 
 # ── T0: unlimited slot ───────────────────────────────────────────────────────
-NOWPK=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi'), 'HH24:MI')")
-S_OPEN=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') - interval '10 minutes', 'HH24:MI')")
-E_OPEN=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') + interval '110 minutes', 'HH24:MI')")
-R=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d "{\"start_time\":\"$S_OPEN\",\"end_time\":\"$E_OPEN\",\"max_orders\":null,\"is_active\":true}")
+# Orders below are booked for TOMORROW on a fixed 09:00–21:00 slot so the run
+# does not depend on the time of day (CI). The today-cutoff check (T8) only
+# runs when the test window does not cross Pakistan midnight.
+TOMORROW=$($PSQL -c "select (now() at time zone 'Asia/Karachi')::date + 1")
+HOURPK=$($PSQL -c "select extract(hour from now() at time zone 'Asia/Karachi')::int")
+R=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d '{"start_time":"09:00","end_time":"21:00","max_orders":null,"is_active":true}')
 SLOT=$(echo "$R" | jq -r .data.id)
 check "T0 slot saved with no limit (NULL)" "$($PSQL -c "select coalesce(max_orders::text,'NULL') from time_slots where id='$SLOT'")" "NULL"
-R=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d "{\"start_time\":\"$E_OPEN\",\"end_time\":\"23:59\",\"max_orders\":0,\"is_active\":true}")
+R=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d '{"start_time":"21:00","end_time":"23:00","max_orders":0,"is_active":true}')
 check "T0 max_orders 0 is stored as unlimited, not 'full'" "$($PSQL -c "select coalesce(max_orders::text,'NULL') from time_slots where id='$(echo "$R" | jq -r .data.id)'")" "NULL"
 R=$(curl -s "$API/orders/time-slots?city_id=$CITY")
 check "T0 /orders/time-slots shows 9999 for unlimited" "$(echo "$R" | jq -r --arg s "$SLOT" '[.data[]? // .data.slots[]? | select(.id==$s)][0].available_slots')" "9999"
@@ -41,7 +44,7 @@ CAT=$($PSQL -c "insert into categories (name_en, name_ur, slug) values ('Sabzi',
 P1=$($PSQL -c "insert into products (name_en, name_ur, slug, category_id, price, stock_quantity, city_id, is_active) values ('Aloo','آلو','aloo-t1','$CAT',200,500,'$CITY',true) returning id")
 CUST=$($PSQL -c "insert into users (phone, full_name, role, is_phone_verified) values ('+923361119991','Fix Customer','customer',true) returning id")
 ADDR=$($PSQL -c "insert into addresses (user_id, written_address, city) values ('$CUST','House 9','Gujrat') returning id")
-CTOK=$(cd /home/user/Fresh/backend && node -e "const jwt=require('jsonwebtoken');console.log(jwt.sign({userId:'$CUST',phone:'+923361119991',role:'customer',type:'access'},process.env.JWT_SECRET,{expiresIn:'15m'}))")
+CTOK=$(cd "$BACKEND_DIR" && node -e "const jwt=require('jsonwebtoken');console.log(jwt.sign({userId:'$CUST',phone:'+923361119991',role:'customer',type:'access'},process.env.JWT_SECRET,{expiresIn:'15m'}))")
 CH=(-H "Authorization: Bearer $CTOK" -H 'Content-Type: application/json')
 add_cart() { curl -s -X POST $API/cart/add "${CH[@]}" -d "{\"product_id\":\"$P1\",\"quantity\":$1,\"city_id\":\"$CITY\"}" >/dev/null; }
 
@@ -55,15 +58,25 @@ check "T3 other city keeps default 100" "$(curl -s "$API/site-settings/delivery?
 check "T3 admin GET shows city override" "$(curl -s $API/admin/settings "${ACH[@]}" | jq -r '.data.delivery.city_override')" "true"
 
 # ── T8: cutoff + order placement in the city ─────────────────────────────────
-S_LATE=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') - interval '80 minutes', 'HH24:MI')")
-E_LATE=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') + interval '20 minutes', 'HH24:MI')")
-LATE=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d "{\"start_time\":\"$S_LATE\",\"end_time\":\"$E_LATE\",\"is_active\":true,\"slot_name\":\"late\"}" | jq -r .data.id)
 add_cart 2
-R=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$LATE\",\"payment_method\":\"cash_on_delivery\"}")
-check "T8 slot past 60% cutoff refused" "$(echo "$R" | jq -r .success)" "false"
-echo "   message: $(echo "$R" | jq -r .message)"
-R=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$SLOT\",\"payment_method\":\"cash_on_delivery\"}")
-check "T8 open slot accepted" "$(echo "$R" | jq -r .success)" "true"
+if [ "$HOURPK" -ge 2 ] && [ "$HOURPK" -le 20 ]; then
+  S_LATE=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') - interval '80 minutes', 'HH24:MI')")
+  E_LATE=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') + interval '20 minutes', 'HH24:MI')")
+  LATE=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d "{\"start_time\":\"$S_LATE\",\"end_time\":\"$E_LATE\",\"is_active\":true}" | jq -r .data.id)
+  R=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$LATE\",\"payment_method\":\"cash_on_delivery\"}")
+  check "T8 today-slot past 60% cutoff refused" "$(echo "$R" | jq -r .success)" "false"
+  echo "   message: $(echo "$R" | jq -r .message)"
+  S_OPEN=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') - interval '10 minutes', 'HH24:MI')")
+  E_OPEN=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') + interval '110 minutes', 'HH24:MI')")
+  OPEN=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d "{\"start_time\":\"$S_OPEN\",\"end_time\":\"$E_OPEN\",\"is_active\":true}" | jq -r .data.id)
+  R=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$OPEN\",\"payment_method\":\"cash_on_delivery\"}")
+  check "T8 today-slot before the cutoff accepted" "$(echo "$R" | jq -r .success)" "true"
+  add_cart 2
+else
+  echo "SKIP T8 today-cutoff checks (run within 2 h of Pakistan midnight)"
+fi
+R=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$SLOT\",\"requested_delivery_date\":\"$TOMORROW\",\"payment_method\":\"cash_on_delivery\"}")
+check "T0 order on the unlimited slot (tomorrow) accepted" "$(echo "$R" | jq -r .success)" "true"
 [ "$(echo "$R" | jq -r .success)" = "true" ] || echo "   message: $(echo "$R" | jq -c '.message, .errors')"
 O1=$(echo "$R" | jq -r '.data.id // .data.order.id')
 check "T3 order uses Gujrat delivery charge (400 < 3000 → 70)" "$($PSQL -c "select delivery_charge::int from orders where id='$O1'")" "70"
@@ -76,12 +89,12 @@ $PSQL -c "update orders set status='delivered', delivered_at=now(), payment_stat
 P=$(curl -s "$API/finance/profit?period=today" "${ACH[@]}")
 check "T1 rider delivery pay line" "$(echo "$P" | jq -r .data.riderDeliveryPay)" "60"
 SALE=$(echo "$P" | jq -r .data.totalSale); PROFIT=$(echo "$P" | jq -r .data.profit)
-check "T1 profit = sale − rider pay (no other costs)" "$PROFIT" "$(echo "$SALE - 60" | bc | sed 's/\.0*$//')"
+check "T1 profit = sale − rider pay (no other costs)" "$PROFIT" "$(jq -n "$SALE - 60")"
 RID=$(curl -s -X POST $API/admin/riders -H "Authorization: Bearer $ATOK" -H "X-City-Id: $CITY" -F full_name='Fix Rider' -F phone=03139998887 -F password=rider123 -F cnic=3520299988871 -F vehicle_type=bike -F vehicle_number=fx-1 | jq -r .data.id)
 curl -s -X POST $API/finance/rider-payment "${ACH[@]}" -d "{\"rider_id\":\"$RID\",\"amount\":60,\"category\":\"commission\"}" >/dev/null
 check "T1 'per-order pay' hand-over not deducted twice" "$(curl -s "$API/finance/profit?period=today" "${ACH[@]}" | jq -r .data.profit)" "$PROFIT"
 curl -s -X POST $API/finance/rider-payment "${ACH[@]}" -d "{\"rider_id\":\"$RID\",\"amount\":25,\"category\":\"salary\"}" >/dev/null
-check "T1 salary is deducted" "$(curl -s "$API/finance/profit?period=today" "${ACH[@]}" | jq -r .data.profit)" "$(echo "$PROFIT - 25" | bc | sed 's/\.0*$//')"
+check "T1 salary is deducted" "$(curl -s "$API/finance/profit?period=today" "${ACH[@]}" | jq -r .data.profit)" "$(jq -n "$PROFIT - 25")"
 
 # ── T2: atta charges ─────────────────────────────────────────────────────────
 R=$(curl -s -X PUT $API/admin/settings/atta-charges "${AH[@]}" -d '{"service_charge":40,"milling_charge_per_kg":8,"delivery_charge":120,"free_delivery_threshold_kg":25}')
@@ -99,7 +112,7 @@ check "T5 non-boolean preference refused" "$(echo "$R" | jq -r .success)" "false
 R=$(curl -s -X PUT $API/auth/profile "${CH[@]}" -d '{"notification_enabled":false}')
 check "T5 preference saved" "$($PSQL -c "select notification_enabled from users where id='$CUST'")" "f"
 add_cart 1
-O2=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$SLOT\",\"payment_method\":\"cash_on_delivery\"}" | jq -r '.data.id // .data.order.id')
+O2=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$SLOT\",\"requested_delivery_date\":\"$TOMORROW\",\"payment_method\":\"cash_on_delivery\"}" | jq -r '.data.id // .data.order.id')
 R=$(curl -s -X PUT $API/admin/orders/$O2/status "${ACH[@]}" -d '{"status":"cancelled","reason":"Shop closed early"}')
 check "T5 admin cancel ok" "$(echo "$R" | jq -r .success)" "true"
 check "T5 exactly one inbox row for the cancel (trigger, no duplicate)" "$($PSQL -c "select count(*) from notifications where order_id='$O2' and type='cancelled'")" "1"
@@ -115,3 +128,4 @@ E=$(curl -s "$API/finance/expenses?period=today" "${ACH[@]}")
 check "T6 expense 00:01 PKT is today" "$(echo "$E" | jq -r '[(.data.expenses // .data)[]? | select(.comment=="tz-after-midnight")] | length')" "1"
 check "T6 expense 23:59 PKT yesterday is not today" "$(echo "$E" | jq -r '[(.data.expenses // .data)[]? | select(.comment=="tz-before-midnight")] | length')" "0"
 echo "RESULT pass=$pass fail=$fail"
+[ "$fail" -eq 0 ]

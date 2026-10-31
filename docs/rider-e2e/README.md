@@ -1,4 +1,10 @@
-# Rider flow — local end-to-end checks
+# Real-DB API checks (local + CI)
+
+CI: `.github/workflows/db-e2e.yml` runs these on every push / PR against a
+`postgis/postgis:16-3.4` service (schema.sql + all migrations, API started
+with ts-node).
+
+## Rider flow — local end-to-end checks
 
 Two bash scripts that drive the real backend API against a real PostgreSQL +
 PostGIS database and assert every rider-related rule (admin ↔ rider ↔ customer).
@@ -18,7 +24,10 @@ DATABASE_URL=postgres://postgres@127.0.0.1:55432/fb DB_SSL=false PORT=3999 NODE_
 JWT_SECRET=<64 hex> JWT_REFRESH_SECRET=<64 hex> ADMIN_PHONE=03001112222 ADMIN_PASSWORD=Admin12345 \
 npx ts-node --transpile-only src/app.ts &
 
-# 3. Checks (needs curl + jq; rider-flow.sh needs JWT_SECRET exported for the customer token)
+# 3. Checks (needs curl + jq + node; JWT_SECRET exported for the customer token).
+#    All of them, in order, exit 1 on any failure (this is what CI runs):
+JWT_SECRET=<same> bash docs/rider-e2e/run-all.sh
+#    or one by one:
 JWT_SECRET=<same> bash docs/rider-e2e/rider-flow.sh
 bash docs/rider-e2e/restaurant-and-safeguards.sh
 bash docs/rider-e2e/urgent-rate.sh

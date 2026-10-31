@@ -1,0 +1,93 @@
+name: DB E2E
+
+# Real PostgreSQL + PostGIS: schema + every migration, the API running against
+# it, then the docs/rider-e2e API checks (orders, riders, COD cash, atta,
+# slots, per-city delivery, profit, notifications, Pakistan-day reports,
+# city-scoped admin realtime). The unit tests mock the database; these catch
+# SQL that Postgres itself rejects.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: db-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-e2e:
+    name: API checks on PostgreSQL + PostGIS
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: fb
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 55432
+      PGUSER: postgres
+      DATABASE_URL: postgres://postgres@127.0.0.1:55432/fb
+      DB_SSL: 'false'
+      NODE_ENV: development
+      PORT: 3999
+      ADMIN_PHONE: '03001112222'
+      ADMIN_PASSWORD: Admin12345
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Tools (psql, jq)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client jq
+
+      - name: Test secrets
+        run: |
+          echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Schema + migrations
+        run: |
+          psql -d fb -v ON_ERROR_STOP=1 -q <<'SQL'
+          DO $$ BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          DO $$ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          DO $$ BEGIN CREATE ROLE service_role NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          SQL
+          psql -d fb -v ON_ERROR_STOP=1 -q -f database/schema.sql
+          pnpm --filter @freshbazar/backend run migrate:sql
+
+      - name: Start API
+        working-directory: backend
+        run: |
+          nohup npx ts-node --transpile-only src/app.ts > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3999/health > /dev/null && exit 0
+            sleep 2
+          done
+          echo "API did not become healthy"; tail -50 "$RUNNER_TEMP/api.log"; exit 1
+
+      - name: API checks
+        run: bash docs/rider-e2e/run-all.sh
+
+      - name: API log (on failure)
+        if: failure()
+        run: tail -200 "$RUNNER_TEMP/api.log" || true
