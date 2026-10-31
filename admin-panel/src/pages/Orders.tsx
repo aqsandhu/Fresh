@@ -25,6 +25,7 @@ import {
   WifiOff,
   Trash2,
   Image,
+  AlertTriangle,
 } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
@@ -43,6 +44,8 @@ import { useNotifications } from '@/context/NotificationContext';
 import { useAuthContext } from '@/context/AuthContext';
 import { useBadgeCounts } from '@/hooks/useBadgeCounts';
 import type { Order, OrderStatus } from '@/types';
+import { TaskRowCard } from '@/components/riders/RiderDetail';
+import { isRiderAssignable, riderDispatchLabel } from '@/lib/riderLabels';
 import {
   formatCurrency,
   formatDateTime,
@@ -183,7 +186,14 @@ export const Orders: React.FC = () => {
   const queryClient = useQueryClient();
   const { user } = useAuthContext();
   const isSuperAdmin = user?.role === 'super_admin';
-  const [searchQuery, setSearchQuery] = useState('');
+  // ?search=<order no.> lets other screens (rider detail) deep-link an order.
+  const [searchQuery, setSearchQuery] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('search') || '';
+    } catch {
+      return '';
+    }
+  });
   const [statusFilter, setStatusFilter] = useState<OrderStatus | ''>('');
   // Consumer orders vs restaurant (B2B) orders — same UI, separate sets.
   const [mode, setMode] = useState<'customer' | 'restaurant'>('customer');
@@ -221,11 +231,30 @@ export const Orders: React.FC = () => {
       }),
   });
 
-  // Fetch all verified riders for assignment (not just available — allow multiple orders per rider)
+  // Every verified rider in the city (the old call returned only the first
+  // 20), with live load so dispatch can pick a free rider. Busy riders stay
+  // selectable — a rider may carry several orders.
   const { data: riders } = useQuery({
     queryKey: ['riders', 'for-assignment'],
-    queryFn: () => riderService.getRiders(),
+    queryFn: () => riderService.getRiders({ verificationStatus: 'verified', limit: 500 }),
+    refetchInterval: 60_000,
   });
+  const assignableRiders = (riders || []).filter(isRiderAssignable);
+
+  // Rider events → refresh the list (problem reports, deliveries, duty flips).
+  useEffect(() => {
+    const refreshOrders = () => queryClient.invalidateQueries({ queryKey: ['orders'] });
+    const refreshRiders = () => queryClient.invalidateQueries({ queryKey: ['riders'] });
+    const onTask = () => { refreshOrders(); refreshRiders(); };
+    onSocketEvent('rider:task_failed', onTask);
+    onSocketEvent('rider:task_completed', onTask);
+    onSocketEvent('rider:status', refreshRiders);
+    return () => {
+      offSocketEvent('rider:task_failed', onTask);
+      offSocketEvent('rider:task_completed', onTask);
+      offSocketEvent('rider:status', refreshRiders);
+    };
+  }, [queryClient]);
 
   // Active OCPs for assignment (backend enforces same-city on assign).
   const { data: ocps } = useQuery({
@@ -300,10 +329,30 @@ export const Orders: React.FC = () => {
   const assignRiderMutation = useMutation({
     mutationFn: ({ orderId, riderId }: { orderId: string; riderId: string }) =>
       orderService.assignRider(orderId, riderId),
-    onSuccess: () => {
+    onSuccess: async (_d, vars) => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-      toast.success('Rider assigned successfully');
+      queryClient.invalidateQueries({ queryKey: ['riders'] });
+      toast.success('Rider assigned — the rider app was notified');
+      if (selectedOrder?.id === vars.orderId) {
+        try {
+          setSelectedOrder(await orderService.getOrderById(vars.orderId));
+        } catch { /* list refresh is enough */ }
+      }
     },
+  });
+
+  // Failed delivery → back to the store so it can be re-dispatched or cancelled.
+  const returnToStoreMutation = useMutation({
+    mutationFn: ({ orderId, reason }: { orderId: string; reason?: string }) => orderService.returnToStore(orderId, reason),
+    onSuccess: async (_d, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['riders'] });
+      toast.success('Order is back in the store — assign another rider or cancel it');
+      try {
+        setSelectedOrder(await orderService.getOrderById(vars.orderId));
+      } catch { /* ignore */ }
+    },
+    onError: (e: any) => toast.error(e?.message || 'Could not return the order'),
   });
 
   const togglePhoneMutation = useMutation({
@@ -658,12 +707,22 @@ export const Orders: React.FC = () => {
       title: 'Rider',
       render: (order: Order) => {
         const isCompleted = ['delivered', 'cancelled', 'refunded'].includes(order.status);
-        // Filter riders: show verified, non-offline/on_leave for assignment
-        const assignableRiders = (riders || []).filter((r: any) =>
-          r.verificationStatus === 'verified' && r.status !== 'offline' && r.status !== 'on_leave'
-        );
+        const riderProblem = order.status === 'out_for_delivery' && order.riderTaskStatus === 'failed';
         return (
-          <div className="min-w-[140px]">
+          <div className="min-w-[160px]">
+            {riderProblem && (
+              <div
+                className="mb-1 inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700"
+                title={order.riderTaskNotes || 'Rider reported a problem'}
+              >
+                <AlertTriangle className="w-3 h-3" /> Rider problem: {(order.riderTaskNotes || '').slice(0, 40) || 'see details'}
+              </div>
+            )}
+            {!riderProblem && order.status === 'out_for_delivery' && order.riderArrivedAt && order.riderTaskStatus !== 'completed' && (
+              <div className="mb-1 inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+                At customer's door
+              </div>
+            )}
             {isCompleted ? (
               order.riderName ? (
                 <span className="text-sm text-gray-900">{order.riderName}</span>
@@ -681,8 +740,8 @@ export const Orders: React.FC = () => {
                 className="text-xs w-full px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               >
                 <option value="">{order.riderName || 'Select Rider'}</option>
-                {assignableRiders.map((r: any) => (
-                  <option key={r.id} value={r.id}>{r.fullName} ({r.status})</option>
+                {assignableRiders.map((r) => (
+                  <option key={r.id} value={r.id}>{riderDispatchLabel(r)}</option>
                 ))}
               </select>
             )}
@@ -1445,6 +1504,47 @@ export const Orders: React.FC = () => {
               </div>
             </div>
 
+            {/* Rider timeline — what the rider(s) did on this order */}
+            {(selectedOrder.riderTasks?.length || 0) > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-500 uppercase mb-3">Rider activity</h4>
+                <div className="space-y-2">
+                  {selectedOrder.riderTasks!.map((t) => <TaskRowCard key={t.id} task={t} showRider />)}
+                </div>
+                {selectedOrder.status === 'out_for_delivery' &&
+                  selectedOrder.riderTasks!.length > 0 &&
+                  !selectedOrder.riderTasks!.some((t) => t.status === 'assigned' || t.status === 'in_progress') && (
+                    <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3">
+                      <p className="text-sm text-red-800">
+                        No rider is working on this order any more. Assign another rider below, or bring the goods back to the
+                        store (the order returns to <strong>Ready for pickup</strong> and can then be cancelled).
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        isLoading={returnToStoreMutation.isPending}
+                        onClick={() => {
+                          const reason = window.prompt('Reason (shown in the order notes):', selectedOrder.riderTasks!.slice(-1)[0]?.notes || '') ?? undefined;
+                          if (reason === undefined) return;
+                          returnToStoreMutation.mutate({ orderId: selectedOrder.id, reason });
+                        }}
+                      >
+                        Return to store
+                      </Button>
+                    </div>
+                  )}
+              </div>
+            )}
+            {selectedOrder.deliveryProofImage && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-500 uppercase mb-3">Proof of delivery</h4>
+                <a href={resolveImageUrl(selectedOrder.deliveryProofImage)} target="_blank" rel="noopener noreferrer">
+                  <img src={resolveImageUrl(selectedOrder.deliveryProofImage)} alt="Proof of delivery" className="max-h-56 rounded-lg border" />
+                </a>
+              </div>
+            )}
+
             {/* Assign Rider */}
             {selectedOrder.status !== 'delivered' && selectedOrder.status !== 'cancelled' && (
               <div>
@@ -1466,7 +1566,7 @@ export const Orders: React.FC = () => {
                     }
                     options={[
                       { value: '', label: 'Select Rider' },
-                      ...(riders?.filter((r: any) => r.verificationStatus === 'verified' && r.status !== 'offline' && r.status !== 'on_leave').map((r: any) => ({ value: r.id, label: `${r.fullName} (${r.status})` })) || []),
+                      ...assignableRiders.map((r) => ({ value: r.id, label: riderDispatchLabel(r) })),
                     ]}
                   />
                 </div>

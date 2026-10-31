@@ -55,4 +55,35 @@ describe('riderService', () => {
 
     await expect(riderService.getRiderById('r9')).rejects.toThrow();
   });
+
+  it('getRiders sends filters (search, verification, online, limit) as query params', async () => {
+    mockApi.get.mockResolvedValue({ success: true, data: { riders: [], pagination: {} } });
+
+    await riderService.getRiders({ verificationStatus: 'verified', search: ' ali ', online: true, limit: 500 });
+
+    expect(mockApi.get).toHaveBeenCalledWith('/admin/riders', {
+      verificationStatus: 'verified',
+      search: 'ali',
+      online: 'true',
+      limit: 500,
+    });
+  });
+
+  it('getRiderTasks asks for the requested scope and page', async () => {
+    mockApi.get.mockResolvedValue({ success: true, data: { tasks: [{ id: 't1' }], pagination: { page: 2, total: 31, totalPages: 2 } } });
+
+    const out = await riderService.getRiderTasks('r1', 'history', 2);
+
+    expect(mockApi.get).toHaveBeenCalledWith('/admin/riders/r1/tasks', { scope: 'history', page: 2, limit: 30 });
+    expect(out.tasks).toEqual([{ id: 't1' }]);
+    expect(out.pagination.totalPages).toBe(2);
+  });
+
+  it('verifyRider sends the block status', async () => {
+    mockApi.patch.mockResolvedValue({ success: true, data: { id: 'r1', verificationStatus: 'rejected' } });
+
+    await riderService.verifyRider('r1', 'rejected');
+
+    expect(mockApi.patch).toHaveBeenCalledWith('/admin/riders/r1/verify', { verificationStatus: 'rejected' });
+  });
 });

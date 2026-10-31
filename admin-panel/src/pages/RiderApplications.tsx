@@ -14,6 +14,8 @@ import {
 import { formatDateTime } from '@/utils/formatters';
 import { useAuthContext } from '@/context/AuthContext';
 import { hasPermission } from '@/lib/permissions';
+import { RiderFormModal } from '@/components/riders/RiderFormModal';
+import { VEHICLE_TYPES } from '@/lib/riderLabels';
 
 /** Backend accepts application / page-content mutations for either code. */
 const RIDER_APP_MANAGE_CODES = ['rider_applications.manage', 'riders.manage'];
@@ -151,9 +153,25 @@ function ApplicationCard({ app }: { app: RiderApplication }) {
   const queryClient = useQueryClient();
   const { user } = useAuthContext();
   const canManage = hasPermission(user?.permissions, RIDER_APP_MANAGE_CODES);
+  const canCreateRider = hasPermission(user?.permissions, 'riders.manage');
   const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState(app.status);
   const [notes, setNotes] = useState(app.adminNotes || '');
+  const [createOpen, setCreateOpen] = useState(false);
+
+  // An application becomes a working rider account in one step: the form is
+  // prefilled from the application, and the application is marked approved.
+  const markApproved = useMutation({
+    mutationFn: () =>
+      riderApplicationService.update(app.id, {
+        status: 'approved',
+        adminNotes: [notes.trim(), `Rider account created ${new Date().toLocaleDateString()}`].filter(Boolean).join('\n'),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rider-applications'] }),
+  });
+  const knownVehicle = VEHICLE_TYPES.some((v) => v.value === (app.vehicleType || '').toLowerCase())
+    ? (app.vehicleType || '').toLowerCase()
+    : 'bike';
 
   const mutation = useMutation({
     mutationFn: () => riderApplicationService.update(app.id, { status, adminNotes: notes }),
@@ -210,11 +228,36 @@ function ApplicationCard({ app }: { app: RiderApplication }) {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
             />
           </div>
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !canManage} title={canManage ? undefined : 'No permission'}>
-            {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !canManage} title={canManage ? undefined : 'No permission'}>
+              {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+            </Button>
+            {app.status !== 'rejected' && app.status !== 'approved' && (
+              <Button
+                variant="outline"
+                onClick={() => setCreateOpen(true)}
+                disabled={!canCreateRider}
+                title={canCreateRider ? 'Create the rider app account from this application' : 'Needs riders.manage permission'}
+              >
+                Create rider account
+              </Button>
+            )}
+          </div>
+          <p className="text-xs text-gray-500">
+            "Create rider account" opens the rider form prefilled from this application — add the CNIC, vehicle number and a
+            password, then share the phone + password with the rider for the rider app.
+          </p>
         </div>
       )}
+      <RiderFormModal
+        isOpen={createOpen}
+        prefill={{ fullName: app.fullName, phone: app.phone, vehicleType: knownVehicle }}
+        onClose={() => setCreateOpen(false)}
+        onSaved={() => {
+          setStatus('approved');
+          markApproved.mutate();
+        }}
+      />
     </Card>
   );
 }

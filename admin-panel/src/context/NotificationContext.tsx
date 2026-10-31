@@ -35,7 +35,9 @@ export interface AdminNotification {
     | 'review:new'
     | 'rider:application'
     | 'restaurant:application'
-    | 'ocp:shortage';
+    | 'ocp:shortage'
+    | 'rider:task_failed'
+    | 'rider:arrived';
   title: string;
   message: string;
   orderId?: string;
@@ -302,6 +304,43 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['ocp-settlements'] });
     };
 
+    // A rider could not complete a task (customer unreachable, refused, wrong
+    // address…). The order stays out for delivery until the office acts —
+    // reassign it or return it to the store from the order detail.
+    const handleRiderTaskFailed = (data: Record<string, unknown>) => {
+      const isAtta = !data.orderId && !!data.attaRequestId;
+      const ref = data.orderNumber ? `#${data.orderNumber}` : '';
+      const item = buildNotification(
+        'rider:task_failed',
+        {
+          ...data,
+          title: 'Rider reported a problem',
+          message: `${data.riderName || 'A rider'} could not complete ${ref}${data.notes ? ` — ${data.notes}` : ''}`,
+          link: isAtta ? '/admin/atta-requests' : `/admin/orders${data.orderNumber ? `?search=${encodeURIComponent(String(data.orderNumber))}` : ''}`,
+        },
+        'Rider reported a problem',
+        'A rider could not complete a delivery'
+      );
+      pushNotification(item);
+      playNotificationSound();
+      toast.error(item.message, { duration: 10000 });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['riders'] });
+      queryClient.invalidateQueries({ queryKey: ['atta-requests'] });
+    };
+
+    // Restaurant orders have no customer app account — the office calls them.
+    const handleRiderArrived = (data: Record<string, unknown>) => {
+      const item = buildNotification(
+        'rider:arrived',
+        { ...data, link: `/admin/orders${data.orderNumber ? `?search=${encodeURIComponent(String(data.orderNumber))}` : ''}` },
+        'Rider at the door',
+        'A rider has arrived at a restaurant'
+      );
+      pushNotification(item);
+      toast(item.message, { icon: <Bell className="w-4 h-4 text-green-600" />, duration: 6000 });
+    };
+
     const setup = async () => {
       const token = await getValidAdminAccessToken();
       if (cancelled || !token) return;
@@ -344,6 +383,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       onSocketEvent('rider:application', handleRiderApplication);
       onSocketEvent('restaurant:application', handleRestaurantApplication);
       onSocketEvent('ocp:shortage', handleOcpShortage);
+      onSocketEvent('rider:task_failed', handleRiderTaskFailed);
+      onSocketEvent('rider:arrived', handleRiderArrived);
 
       connectionInterval = setInterval(() => {
         setIsSocketConnected(socket.connected);
@@ -364,6 +405,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       offSocketEvent('rider:application', handleRiderApplication);
       offSocketEvent('restaurant:application', handleRestaurantApplication);
       offSocketEvent('ocp:shortage', handleOcpShortage);
+      offSocketEvent('rider:task_failed', handleRiderTaskFailed);
+      offSocketEvent('rider:arrived', handleRiderArrived);
       flashTimers.forEach((t) => clearTimeout(t));
       flashTimers.clear();
       disconnectSocket();

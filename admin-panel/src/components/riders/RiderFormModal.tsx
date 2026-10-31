@@ -52,8 +52,19 @@ export const RiderFormModal: React.FC<Props> = ({ isOpen, editing, prefill, onCl
   const [preview, setPreview] = useState<string | null>(null);
   const [loadingRecord, setLoadingRecord] = useState(false);
 
+  // Reset only when the modal opens (or switches rider) — not on every parent
+  // re-render, which would wipe what the admin is typing (prefill objects are
+  // usually created inline).
+  const openKey = isOpen ? `open:${editing?.id ?? 'new'}` : 'closed';
+  const prefillRef = React.useRef(prefill);
+  prefillRef.current = prefill;
+  const editingRef = React.useRef(editing);
+  editingRef.current = editing;
+
   useEffect(() => {
-    if (!isOpen) return;
+    if (openKey === 'closed') return;
+    const editing = editingRef.current;
+    const prefill = prefillRef.current;
     setErrors({});
     setTab(0);
     setImage(null);
@@ -91,7 +102,7 @@ export const RiderFormModal: React.FC<Props> = ({ isOpen, editing, prefill, onCl
     return () => {
       cancelled = true;
     };
-  }, [isOpen, editing, prefill]);
+  }, [openKey]);
 
   const set = (key: keyof CreateRiderData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
