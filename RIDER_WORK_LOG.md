@@ -47,12 +47,12 @@ Legend: TODO · WIP · DONE · DEFERRED
 | A2 | admin | Orders: rider problem alerts, rider-task timeline + proof photo in order detail, dispatch dropdown with load | DONE |
 | A3 | admin | Atta page: assign pickup/delivery rider, show riders + task state | DONE |
 | A4 | admin | Rider application → create rider account | DONE |
-| R1 | rider-app | Arrived / notify-customer flow | TODO |
-| R2 | rider-app | Proof photo step in delivery | TODO |
-| R3 | rider-app | Restaurant orders, atta details/amount, variable weight, live amount change | TODO |
-| R4 | rider-app | Account-blocked socket → end session; reviews in profile | TODO |
-| C1 | customer-app | Track screen: call rider works, rider-arrived alert, vehicle info | TODO |
-| G | all | Gates green + final log | TODO |
+| R1 | rider-app | Arrived / notify-customer flow | DONE |
+| R2 | rider-app | Proof photo step in delivery | DONE |
+| R3 | rider-app | Restaurant orders, atta details/amount, variable weight, live amount change | DONE |
+| R4 | rider-app | Account-blocked socket → end session; reviews in profile | DONE |
+| C1 | customer-app | Track screen: call rider works, rider-arrived alert, vehicle info | DONE |
+| G | all | Gates green + final log | DONE |
 
 ## 2. Where the requirements come from (customer-side evidence)
 - **Pay the rider in cash** — website `help/page.tsx`, `terms/page.tsx`: "you pay the rider when your order arrives".
@@ -111,6 +111,14 @@ Legend: TODO · WIP · DONE · DEFERRED
 - A*/R*/C* UI work as listed in §1.
 
 ## 5. Work log (newest first)
+### 2026-10-31 — Session 1: rider app, customer side, E2E (commits `d37e4ec`, `e1d17fb`, `fb945ae`, `543ebb5`)
+- **R1** Task detail "I've arrived — notify customer" (hidden phone) + arrival time; atta pickup notifies while `assigned`, others while `in_progress`; hidden-phone "Call" = arrival.
+- **R2** Deliver sheet: proof photo (camera) required for customer hand-overs, optional at the mill; upload failure asks before continuing; stored via `POST /rider/tasks/:id/proof`.
+- **R3** Restaurant name / storefront photo, OCP collection point + "hand cash to OCP", atta quality / flour type / expected-actual flour / customer note with tap-to-call, atta charges to collect, re-weighed final weight, `rider:task_updated` refresh + notification.
+- **R4** `rider:account_blocked` ends the session with the reason, `rider:status_changed` (admin off-duty) stops GPS, `rider:cash_received`; Earnings = customer cash with you / your pay / hand over / handed over / pay owed on non-cash orders + hand-over history; Profile rating only after real reviews, city, My reviews screen. EN + UR for every new string.
+- **C1** customer-app TrackOrder call button dials the rider (was a dead alert), vehicle + rating, live "Rider aap ke darwaze par hai"; OrderDetail rider card with call + delivery photo; website toast/bell for `order:rider_arrived`; `GET /notifications` reports `rider_arrived`.
+- **E2E on real Postgres+PostGIS** (schema.sql + all 60 migrations, backend on :3999): found and fixed 2 SQL bugs — `createAttaRiderTask` INSERT (parameter `$2` used as enum and text → **no atta task could ever be created**, also in the code from the earlier rebuild) and `verifyRider` (block/unblock failed). Scripts: `docs/rider-e2e/`.
+
 ### 2026-10-31 — Session 1: admin panel (commits `46c4cf8`, `820b469`)
 - **A1** Riders: server search, all riders (limit 500), GPS-live dot, active-task load, duty override (busy derived), verify / block / unblock (block signs the rider out), safe delete; `RiderFormModal` loads the full record (`GET /admin/riders/:id`) and sends every optional field so clearing works; `RiderDetail` tabs — Overview (Karachi-day stats incl. atta, COD position: cash with rider / his pay inside / to hand over / handed over / pay owed on non-cash orders; Receive cash; per-slot pay editor prefilled by `time_slot_id`), Active tasks, History (proof photos, failure reasons), Cash hand-overs, Reviews & complaints.
 - **A2** Orders: dispatch dropdown lists every verified on-duty rider with load + GPS; "Rider problem" / "At door" flags; order detail "Rider activity" timeline + proof photo + **Return to store**; `?search=` deep link; admin toast + sound + bell on `rider:task_failed`.
@@ -141,4 +149,21 @@ Legend: TODO · WIP · DONE · DEFERRED
 - Wrote §2–§4.
 
 ## 6. Verification evidence
-_pending_
+Latest run — 2026-10-31, end of session 1:
+
+| Workspace | typecheck | lint | tests | other |
+|---|---|---|---|---|
+| backend | ✅ | ✅ | ✅ 4 suites / 14 tests (+ riderAvailability, riderStats) | E2E on local PostGIS: `rider-flow.sh` 59/60 (the 1 was a jq number-format artifact, fixed in the committed script), `restaurant-and-safeguards.sh` 16/16 |
+| rider-app | ✅ (after `turbo` builds `@freshbazar/shared-types`) | ✅ 0 warnings | ✅ 7 suites / 49 tests (+ riderFlow) | — |
+| admin-panel | ✅ (was 491 × TS2786 from hoisted React 19 types — fixed in tsconfig) | ✅ | ✅ 25 suites / 204 tests (+ riderLabels, rider.service) | `vite build` ✅ |
+| customer-app | ✅ | ✅ | ✅ 3 suites / 3 tests | — |
+| website | ✅ | ✅ | ✅ 7 suites / 65 tests | — |
+
+Not verifiable here (needs a phone / production services): on-device camera + GPS + background location, Expo push delivery, Supabase Storage uploads (proof / door photos need `SUPABASE_SERVICE_ROLE_KEY`; without it the upload endpoints answer 500 "storage misconfigured", which the rider app shows and lets the rider continue).
+
+## 7. Remaining / owner decisions
+- **Push to GitHub is blocked (403):** "Claude doesn't have GitHub access to aqsandhu/Fresh". All commits are on the local branch `claude/vibrant-cannon-bc89zv`. Reconnect GitHub (https://claude.ai/connect-github) and install the Claude GitHub App on the repo, then `git push -u origin claude/vibrant-cannon-bc89zv`.
+- **Deploy order:** run `npm run migrate:sql` (migration 57) — Render's `preDeployCommand` already does. The backend degrades gracefully before it runs (probes in `config/riderSchema.ts`).
+- **Rider pay for atta tasks** — still none (atta has no per-rider rate); atta cash is collected and settled, pay is a product decision.
+- **Urgent orders** use the rider's most recently set per-slot rate (existing rule B-15); a dedicated urgent rate would need a setting.
+- **On-device smoke test:** go on duty → admin assigns → push on a backgrounded phone → pickup → "I've arrived" (customer phone shows the notification) → proof photo → deliver COD → admin "Receive cash".
