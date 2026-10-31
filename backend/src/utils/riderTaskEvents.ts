@@ -194,18 +194,26 @@ export async function createAttaRiderTask(
   const address = addr.rows[0]?.written_address ?? null;
   const lng = addr.rows[0]?.lng ?? null;
   const lat = addr.rows[0]?.lat ?? null;
-  const locationSql = lng !== null && lat !== null ? 'ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography' : 'NULL';
+  // The customer's door is the pickup point for wheat and the drop point for
+  // flour. Branch in JS — reusing $2 (task_type enum) inside a CASE against a
+  // text literal made Postgres reject the statement ("inconsistent types
+  // deduced for parameter"), so no atta task could ever be created.
+  const isPickup = taskType === 'atta_pickup';
+  const hasPoint = lng !== null && lat !== null;
+  const point = hasPoint ? 'ST_SetSRID(ST_MakePoint($5::float8, $6::float8), 4326)::geography' : 'NULL';
   const params: unknown[] = [riderId, taskType, attaRequestId, address];
-  if (lng !== null && lat !== null) params.push(lng, lat);
+  if (hasPoint) params.push(lng, lat);
 
   const inserted = await client.query(
     `INSERT INTO rider_tasks (rider_id, task_type, atta_request_id, status, assigned_at,
-                              pickup_address, delivery_address, pickup_location, delivery_location)
-     VALUES ($1, $2, $3, 'assigned', NOW(),
-             CASE WHEN $2 = 'atta_pickup' THEN $4 ELSE NULL END,
-             CASE WHEN $2 = 'atta_delivery' THEN $4 ELSE NULL END,
-             CASE WHEN $2 = 'atta_pickup' THEN ${locationSql} ELSE NULL END,
-             CASE WHEN $2 = 'atta_delivery' THEN ${locationSql} ELSE NULL END)
+                              pickup_address, delivery_address, pickup_location, delivery_location, sequence_number)
+     VALUES ($1, $2::task_type, $3, 'assigned', NOW(),
+             ${isPickup ? '$4::text' : 'NULL'},
+             ${isPickup ? 'NULL' : '$4::text'},
+             ${isPickup ? point : 'NULL'},
+             ${isPickup ? 'NULL' : point},
+             COALESCE((SELECT MAX(sequence_number) FROM rider_tasks
+                        WHERE rider_id = $1 AND status IN ('assigned', 'in_progress')), 0) + 1)
      RETURNING id`,
     params
   );

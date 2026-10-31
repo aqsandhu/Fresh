@@ -470,14 +470,16 @@ export const verifyRider = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
+  // Separate boolean param: reusing $1 as both the enum and a text compare is
+  // rejected by Postgres ("inconsistent types deduced for parameter").
   const result = await query(
     `UPDATE riders
-        SET verification_status = $1,
-            status = CASE WHEN $1 = 'verified' THEN status ELSE 'offline'::rider_status END,
+        SET verification_status = $1::rider_verification_status,
+            status = CASE WHEN $4::boolean THEN status ELSE 'offline'::rider_status END,
             updated_at = NOW(), updated_by = $2
      WHERE id = $3 AND deleted_at IS NULL
      RETURNING *`,
-    [verification_status, req.user?.id, id]
+    [verification_status, req.user?.id, id, verification_status === 'verified']
   );
   if (result.rows.length === 0) return notFoundResponse(res, 'Rider not found');
 

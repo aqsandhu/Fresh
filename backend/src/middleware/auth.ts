@@ -200,6 +200,10 @@ export const verifyRiderActive = async (
     if (rider.status !== 'active') {
       throw new ForbiddenError('Rider account is not active');
     }
+    if (rider.verification_status === 'rejected') {
+      // Admin blocked this rider — the app ends the session and shows this.
+      throw new ForbiddenError('Rider account is blocked. Please contact the Fresh Bazar office.');
+    }
     if (rider.verification_status !== 'verified') {
       throw new ForbiddenError('Rider account is not verified');
     }
