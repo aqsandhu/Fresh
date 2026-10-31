@@ -21,7 +21,9 @@
 import { query } from '../config/database';
 import { hasAttaCashColumns, hasRiderCashSettlementTables } from '../config/riderSchema';
 
-export const BUSINESS_TZ = 'Asia/Karachi';
+import { BUSINESS_TZ } from './businessTime';
+
+export { BUSINESS_TZ };
 
 export interface PeriodStats {
   /** Delivered orders in the period. */

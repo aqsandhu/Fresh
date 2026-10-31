@@ -19,6 +19,7 @@ import { placeRestaurantOrder } from '../../utils/restaurantOrders';
 import { commitOrderSaleOnDelivery } from '../../utils/systemStock';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
 import logger from '../../utils/logger';
+import { isTodaySql } from '../../utils/businessTime';
 
 const RESTAURANT_PUBLIC_COLUMNS = `
   r.id, r.business_name, r.owner_name, r.phone, r.email, r.address,
@@ -380,9 +381,9 @@ export const getRestaurantDashboard = asyncHandler(async (req: Request, res: Res
        COUNT(*)::int AS total_orders,
        COUNT(*) FILTER (WHERE o.status = 'pending')::int AS pending_orders,
        COUNT(*) FILTER (WHERE o.status = 'delivered')::int AS delivered_orders,
-       COUNT(*) FILTER (WHERE DATE(o.created_at) = CURRENT_DATE)::int AS today_orders,
+       COUNT(*) FILTER (WHERE ${isTodaySql('o.created_at')})::int AS today_orders,
        COALESCE(SUM(o.total_amount) FILTER (WHERE o.status = 'delivered'), 0) AS revenue,
-       COALESCE(SUM(o.total_amount) FILTER (WHERE DATE(o.created_at) = CURRENT_DATE), 0) AS today_revenue
+       COALESCE(SUM(o.total_amount) FILTER (WHERE ${isTodaySql('o.created_at')}), 0) AS today_revenue
      FROM orders o
      WHERE o.restaurant_id IS NOT NULL AND o.deleted_at IS NULL${cCity.sql}`,
     params

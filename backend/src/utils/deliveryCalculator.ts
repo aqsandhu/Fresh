@@ -18,6 +18,7 @@ import { PoolClient } from 'pg';
 import { query } from '../config/database';
 import { DeliveryChargeResult } from '../types';
 import logger from './logger';
+import { TODAY_SQL } from './businessTime';
 import { captureMessage } from '../config/sentry';
 import { FRESH_CART_LINE_UNIT_PRICE_SQL, FRESH_CART_SUBTOTAL_SQL } from './unitPricing';
 import { getDeliverySettings, getCartCityId } from './deliverySettings';
@@ -183,8 +184,8 @@ export const getDeliveryChargeRules = async () => {
   const result = await query(
     `SELECT * FROM delivery_charges_config 
      WHERE is_active = TRUE 
-     AND (valid_from IS NULL OR valid_from <= CURRENT_DATE)
-     AND (valid_until IS NULL OR valid_until >= CURRENT_DATE)
+     AND (valid_from IS NULL OR valid_from <= ${TODAY_SQL})
+     AND (valid_until IS NULL OR valid_until >= ${TODAY_SQL})
      ORDER BY priority DESC`
   );
   return result.rows;

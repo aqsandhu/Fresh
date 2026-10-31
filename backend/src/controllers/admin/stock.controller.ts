@@ -22,6 +22,7 @@ import { approvalForValue } from '../../utils/adminApproval';
 import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
 import { hasOcpTables } from '../../config/ocpSchema';
 import logger from '../../utils/logger';
+import { isTodaySql, localDate } from '../../utils/businessTime';
 
 const QUALITIES = ['A', 'B', 'C'] as const;
 const num = (v: unknown): number => {
@@ -200,9 +201,9 @@ export const getWasteReport = asyncHandler(async (req: Request, res: Response) =
     : null;
   if (date) {
     params.push(date);
-    where.push(`m.created_at::date = $${params.length}::date`);
+    where.push(`${localDate('m.created_at')} = $${params.length}::date`);
   } else {
-    where.push(`m.created_at::date = CURRENT_DATE`);
+    where.push(isTodaySql('m.created_at'));
   }
 
   const r = await query(

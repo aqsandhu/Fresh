@@ -8,6 +8,7 @@ import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
 import { emitOrderUpdate, emitToUser, emitToAdmins } from '../../config/socket';
 import logger from '../../utils/logger';
+import { localDate } from '../../utils/businessTime';
 import { notifyOrderStatus, pushToCustomers } from '../../utils/customerNotify';
 import {
   resolveCityScope,
@@ -117,12 +118,12 @@ export const getAllOrders = asyncHandler(async (req: Request, res: Response) => 
   }
 
   if (date_from) {
-    whereSql += ` AND DATE(o.placed_at) >= $${paramIndex++}`;
+    whereSql += ` AND ${localDate('o.placed_at')} >= $${paramIndex++}::date`;
     params.push(date_from);
   }
 
   if (date_to) {
-    whereSql += ` AND DATE(o.placed_at) <= $${paramIndex++}`;
+    whereSql += ` AND ${localDate('o.placed_at')} <= $${paramIndex++}::date`;
     params.push(date_to);
   }
 

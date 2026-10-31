@@ -17,6 +17,7 @@ import { hasTimeSlotBookings } from '../config/timeSlotSchema';
 import { emitToAdmins } from '../config/socket';
 import { placeRestaurantOrder, getRestaurantDelivery } from '../utils/restaurantOrders';
 import logger from '../utils/logger';
+import { pktDateString, weekdayOfDate } from '../utils/businessTime';
 
 /** GET /api/restaurant/categories — restaurant categories in the restaurant's city. */
 export const getRestaurantCategories = asyncHandler(async (req: Request, res: Response) => {
@@ -130,8 +131,8 @@ export const getRestaurantTimeSlots = asyncHandler(async (req: Request, res: Res
   if (!(await hasRestaurantDeliveryColumns())) return successResponse(res, [], 'Time slots');
   const dateStr = typeof req.query.date === 'string' ? req.query.date : '';
   const validDate = /^\d{4}-\d{2}-\d{2}$/.test(dateStr);
-  const target = validDate ? new Date(`${dateStr}T00:00:00`) : new Date();
-  const dayOfWeek = Number.isNaN(target.getTime()) ? new Date().getDay() : target.getDay();
+  // Weekday of the requested date, or of today in Pakistan (server is UTC).
+  const dayOfWeek = weekdayOfDate(validDate ? dateStr : pktDateString());
 
   // Availability is per (slot, date) once the counter table exists; otherwise
   // fall back to the legacy global counter.

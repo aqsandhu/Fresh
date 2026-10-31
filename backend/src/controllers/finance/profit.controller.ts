@@ -27,24 +27,9 @@ const num = (v: unknown): number => { const n = parseFloat(String(v)); return Nu
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const isSuper = (req: Request) => req.user?.role === 'super_admin';
 
-/** Build a period SQL fragment + params for a timestamp column. */
+/** Period SQL fragment for a timestamptz column — same Pakistan-day rules as profitCalc. */
 function periodFilter(req: Request, col: string, startIndex: number): { sql: string; params: any[] } {
-  const period = typeof req.query.period === 'string' ? req.query.period : '';
-  const month = parseInt(String(req.query.month || ''), 10);
-  const year = parseInt(String(req.query.year || ''), 10);
-  const day = typeof req.query.date === 'string' ? req.query.date : '';
-  const params: any[] = [];
-  if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
-    params.push(day);
-    return { sql: ` AND ${col}::date = $${startIndex}::date`, params };
-  }
-  if (Number.isInteger(month) && month >= 1 && month <= 12 && Number.isInteger(year)) {
-    params.push(year, month);
-    return { sql: ` AND EXTRACT(YEAR FROM ${col}) = $${startIndex} AND EXTRACT(MONTH FROM ${col}) = $${startIndex + 1}`, params };
-  }
-  if (period === 'today') return { sql: ` AND ${col}::date = CURRENT_DATE`, params };
-  if (period === 'month') return { sql: ` AND date_trunc('month', ${col}) = date_trunc('month', CURRENT_DATE)`, params };
-  return { sql: '', params };
+  return periodClause(col, periodFromQuery(req.query), startIndex);
 }
 
 // ── GET /api/finance/profit ──────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import { qualityStockColumn } from '../../utils/unitPricing';
 import { recordStockMovement } from '../../utils/systemStock';
 import { ensureFinanceTables } from '../../config/financeSchema';
 import logger from '../../utils/logger';
+import { isThisMonthSql, isTodaySql, localDate, localTs } from '../../utils/businessTime';
 
 const num = (v: unknown): number => {
   const n = parseFloat(String(v));
@@ -72,15 +73,15 @@ export const listExpenses = asyncHandler(async (req: Request, res: Response) => 
   const year = parseInt(String(req.query.year || ''), 10);
   const day = typeof req.query.date === 'string' ? req.query.date : '';
   if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) {
-    params.push(day); where.push(`e.incurred_at::date = $${params.length}::date`);
+    params.push(day); where.push(`${localDate('e.incurred_at')} = $${params.length}::date`);
   } else if (Number.isInteger(month) && month >= 1 && month <= 12 && Number.isInteger(year)) {
     params.push(year); const y = params.length;
     params.push(month); const mo = params.length;
-    where.push(`EXTRACT(YEAR FROM e.incurred_at) = $${y} AND EXTRACT(MONTH FROM e.incurred_at) = $${mo}`);
+    where.push(`EXTRACT(YEAR FROM ${localTs('e.incurred_at')}) = $${y} AND EXTRACT(MONTH FROM ${localTs('e.incurred_at')}) = $${mo}`);
   } else if (period === 'today') {
-    where.push(`e.incurred_at::date = CURRENT_DATE`);
+    where.push(isTodaySql('e.incurred_at'));
   } else if (period === 'month') {
-    where.push(`date_trunc('month', e.incurred_at) = date_trunc('month', CURRENT_DATE)`);
+    where.push(isThisMonthSql('e.incurred_at'));
   }
 
   const rows = await query(

@@ -7,6 +7,7 @@ import { query } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
+import { TODAY_SQL, isTodaySql, localMidnight } from '../../utils/businessTime';
 import { loadAdminSession } from '../../utils/adminSession';
 import { hasRestaurantOrderColumns } from '../../config/orderSchema';
 
@@ -51,7 +52,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       COUNT(CASE WHEN status = 'out_for_delivery' THEN 1 END) as out_for_delivery_orders,
       COUNT(CASE WHEN status = 'delivered' THEN 1 END) as delivered_orders
     FROM orders
-    WHERE DATE(placed_at) = CURRENT_DATE
+    WHERE ${isTodaySql('placed_at')}
     AND deleted_at IS NULL${orderFilter}`,
     orderParams
   );
@@ -62,7 +63,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       COUNT(*) as total_orders,
       COALESCE(SUM(total_amount), 0) as total_sales
     FROM orders
-    WHERE placed_at >= CURRENT_DATE - INTERVAL '7 days'
+    WHERE placed_at >= ${localMidnight(`${TODAY_SQL} - 7`)}
     AND deleted_at IS NULL${orderFilter}`,
     orderParams
   );
@@ -73,7 +74,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       COUNT(*) as total_orders,
       COALESCE(SUM(total_amount), 0) as total_sales
     FROM orders
-    WHERE placed_at >= CURRENT_DATE - INTERVAL '30 days'
+    WHERE placed_at >= ${localMidnight(`${TODAY_SQL} - 30`)}
     AND deleted_at IS NULL${orderFilter}`,
     orderParams
   );
@@ -163,7 +164,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
       COUNT(CASE WHEN ar.status = 'pending_pickup' THEN 1 END) as pending_pickup,
       COUNT(CASE WHEN ar.status = 'at_mill' OR ar.status = 'milling' THEN 1 END) at_mill
     FROM atta_requests ar${attaJoin}
-    WHERE ar.created_at >= CURRENT_DATE - INTERVAL '7 days'${attaFilter}`,
+    WHERE ar.created_at >= ${localMidnight(`${TODAY_SQL} - 7`)}${attaFilter}`,
     attaParams
   );
 

@@ -14,6 +14,7 @@
 // ============================================================================
 
 import { query } from '../config/database';
+import { BUSINESS_TZ, TODAY_SQL, isThisMonthSql, localDate, localMidnight, localTs } from './businessTime';
 
 export interface ProfitPeriod {
   period?: string;          // 'today' | 'month'
@@ -24,34 +25,40 @@ export interface ProfitPeriod {
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-/** Period SQL fragment + params for a timestamp column (most specific wins). */
+/**
+ * Period SQL fragment + params for a timestamptz column (most specific wins).
+ * Days and months are Pakistan days/months (see utils/businessTime).
+ */
 export function periodClause(col: string, p: ProfitPeriod, startIndex: number): { sql: string; params: any[] } {
   const params: any[] = [];
   if (p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date)) {
     params.push(p.date);
-    return { sql: ` AND ${col}::date = $${startIndex}::date`, params };
+    return { sql: ` AND ${localDate(col)} = $${startIndex}::date`, params };
   }
   if (Number.isInteger(p.month) && (p.month as number) >= 1 && (p.month as number) <= 12 && Number.isInteger(p.year)) {
     params.push(p.year, p.month);
-    return { sql: ` AND EXTRACT(YEAR FROM ${col}) = $${startIndex} AND EXTRACT(MONTH FROM ${col}) = $${startIndex + 1}`, params };
+    return { sql: ` AND EXTRACT(YEAR FROM ${localTs(col)}) = $${startIndex} AND EXTRACT(MONTH FROM ${localTs(col)}) = $${startIndex + 1}`, params };
   }
-  if (p.period === 'today') return { sql: ` AND ${col}::date = CURRENT_DATE`, params };
-  if (p.period === 'month') return { sql: ` AND date_trunc('month', ${col}) = date_trunc('month', CURRENT_DATE)`, params };
+  if (p.period === 'today') return { sql: ` AND ${localDate(col)} = ${TODAY_SQL}`, params };
+  if (p.period === 'month') return { sql: ` AND ${isThisMonthSql(col)}`, params };
   return { sql: '', params };
 }
 
+/** Stock bought up to the END of the period (Pakistan time) counts for its cost. */
 function purchaseCostCutoffClause(col: string, p: ProfitPeriod, startIndex: number): { sql: string; params: any[] } {
   const params: any[] = [];
   if (p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date)) {
     params.push(p.date);
-    return { sql: ` AND ${col} < ($${startIndex}::date + INTERVAL '1 day')`, params };
+    return { sql: ` AND ${col} < ${localMidnight(`$${startIndex}::date + 1`)}`, params };
   }
   if (Number.isInteger(p.month) && (p.month as number) >= 1 && (p.month as number) <= 12 && Number.isInteger(p.year)) {
     params.push(p.year, p.month);
-    return { sql: ` AND ${col} < (make_date($${startIndex}::int, $${startIndex + 1}::int, 1) + INTERVAL '1 month')`, params };
+    return { sql: ` AND ${col} < ${localMidnight(`make_date($${startIndex}::int, $${startIndex + 1}::int, 1) + INTERVAL '1 month'`)}`, params };
   }
-  if (p.period === 'today') return { sql: ` AND ${col} < (CURRENT_DATE + INTERVAL '1 day')`, params };
-  if (p.period === 'month') return { sql: ` AND ${col} < (date_trunc('month', CURRENT_DATE) + INTERVAL '1 month')`, params };
+  if (p.period === 'today') return { sql: ` AND ${col} < ${localMidnight(`${TODAY_SQL} + 1`)}`, params };
+  if (p.period === 'month') {
+    return { sql: ` AND ${col} < ${localMidnight(`date_trunc('month', NOW() AT TIME ZONE '${BUSINESS_TZ}') + INTERVAL '1 month'`)}`, params };
+  }
   return { sql: '', params };
 }
 

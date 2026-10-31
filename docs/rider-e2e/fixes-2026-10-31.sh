@@ -107,4 +107,10 @@ R=$(curl -s -X PUT $API/admin/complaints/$TK "${ACH[@]}" -d '{"adminResponse":"S
 check "T5 complaint reply saved" "$(echo "$R" | jq -r .success)" "true"
 sleep 1
 check "T5 complaint reply reaches the customer inbox" "$($PSQL -c "select count(*) from notifications where user_id='$CUST' and title='Reply to your complaint'")" "1"
+# ── T6: "today" is the Pakistan day (01 min after / before PKT midnight) ──────
+PKMID="((now() at time zone 'Asia/Karachi')::date::timestamp at time zone 'Asia/Karachi')"
+$PSQL -c "insert into expenses (city_id, type, category, amount, comment, incurred_at) values ('$CITY','other','tz',11,'tz-after-midnight',$PKMID + interval '1 minute'), ('$CITY','other','tz',13,'tz-before-midnight',$PKMID - interval '1 minute')" >/dev/null
+E=$(curl -s "$API/finance/expenses?period=today" "${ACH[@]}")
+check "T6 expense 00:01 PKT is today" "$(echo "$E" | jq -r '[(.data.expenses // .data)[]? | select(.comment=="tz-after-midnight")] | length')" "1"
+check "T6 expense 23:59 PKT yesterday is not today" "$(echo "$E" | jq -r '[(.data.expenses // .data)[]? | select(.comment=="tz-before-midnight")] | length')" "0"
 echo "RESULT pass=$pass fail=$fail"

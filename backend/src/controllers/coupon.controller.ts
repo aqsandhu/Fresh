@@ -18,6 +18,7 @@ import { parsePagination } from '../utils/validators';
 import { buildCouponSummary, CouponRow, DiscountType, TriggerType } from '../utils/coupons';
 import { evaluateAutoCoupons, hasUserCouponsTable } from '../utils/autoCoupons';
 import logger from '../utils/logger';
+import { localMidnight } from '../utils/businessTime';
 
 const DISCOUNT_TYPES: DiscountType[] = ['percentage', 'fixed', 'free_delivery'];
 const TRIGGER_TYPES: TriggerType[] = ['manual', 'welcome_back', 'order_milestone'];
@@ -162,12 +163,12 @@ export const listCouponRedemptions = asyncHandler(async (req: Request, res: Resp
 
   if (typeof date_from === 'string' && date_from) {
     params.push(date_from);
-    where.push(`cr.created_at >= $${params.length}::date`);
+    where.push(`cr.created_at >= ${localMidnight(`$${params.length}::date`)}`);
   }
   if (typeof date_to === 'string' && date_to) {
     params.push(date_to);
     // inclusive of the whole end day
-    where.push(`cr.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    where.push(`cr.created_at < ${localMidnight(`$${params.length}::date + 1`)}`);
   }
   if (
     typeof discount_type === 'string' &&

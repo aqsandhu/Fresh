@@ -40,6 +40,7 @@ import { restoreOrderInventory } from '../utils/orderStatus';
 import { cancelActiveRiderTasks, notifyRiderTasksCancelled, CancelledRiderTask } from '../utils/riderTaskEvents';
 import { ensureTimeSlotBookings, hasTimeSlotBookings } from '../config/timeSlotSchema';
 import { validateAndClaimTimeSlot } from '../utils/timeSlots';
+import { pktDateString, weekdayOfDate } from '../utils/businessTime';
 
 const CATALOG_V2_CONSUMER_COLS =
   ', consumer_enabled_a, consumer_enabled_b, consumer_enabled_c' +
@@ -1105,16 +1106,18 @@ export const getTimeSlots = asyncHandler(async (req: Request, res: Response) => 
 
   // Get day of week (0 = Sunday, 6 = Saturday). Reject malformed dates so
   // they don't silently produce NaN and return zero slots.
-  let targetDate: Date;
+  // Without a date it is TODAY IN PAKISTAN (the server clock is UTC, so
+  // between 00:00 and 05:00 PKT it used to apply yesterday's weekday rules).
+  let dayOfWeek: number;
   if (typeof date === 'string' && date.length > 0) {
-    targetDate = new Date(date);
+    const targetDate = new Date(date);
     if (Number.isNaN(targetDate.getTime())) {
       return errorResponse(res, 'Invalid date format', 400);
     }
+    dayOfWeek = /^\d{4}-\d{2}-\d{2}$/.test(date) ? weekdayOfDate(date) : targetDate.getDay();
   } else {
-    targetDate = new Date();
+    dayOfWeek = weekdayOfDate(pktDateString());
   }
-  const dayOfWeek = targetDate.getDay();
   const dateParam = (typeof date === 'string' && date.length > 0) ? date : null;
 
   const audienceClause = (await hasRestaurantDeliveryColumns()) ? `AND audience = 'consumer'` : '';
