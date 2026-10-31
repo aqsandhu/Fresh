@@ -41,6 +41,9 @@ jobs:
       - name: Test (all workspaces)
         run: pnpm exec turbo run test
 
+      # Fails on any known production vulnerability. Advisories with no
+      # compatible fix are reviewed and listed in package.json
+      # pnpm.auditConfig.ignoreGhsas — reasons in docs/audits/dependency-audit-ignores.md.
       - name: Dependency audit (fail on any known vulnerability)
         run: pnpm audit --prod
 

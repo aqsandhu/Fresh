@@ -21,7 +21,7 @@
   },
   "pnpm": {
     "overrides": {
-      "undici": "^6.27.0",
+      "undici": "^6.29.1",
       "@types/react": "~19.1.10",
       "freshbazar-admin>@types/react": "18.3.29",
       "@react-navigation/native>@types/react": "~19.1.10",
@@ -31,15 +31,49 @@
       "@react-navigation/elements>@types/react": "~19.1.10",
       "@react-navigation/routers>@types/react": "~19.1.10",
       "node-pg-migrate>glob": "^11.1.0",
-      "postcss": "^8.5.10",
+      "postcss": "^8.5.32",
       "uuid": "^11.1.1",
       "protobufjs": "^7.6.3",
       "form-data@4": "^4.0.6",
       "form-data@2": "^2.5.6",
       "tar@7": "^7.5.16",
-      "js-yaml@3": "^3.15.0",
-      "js-yaml@4": "^4.2.0",
-      "ws@8": "^8.21.0"
+      "js-yaml@3": "^3.15.2",
+      "js-yaml@4": "^4.3.2",
+      "ws@8": "^8.21.0",
+      "proxy-addr": "^2.0.8",
+      "body-parser@1": "^1.20.9",
+      "engine.io@6": "^6.6.11",
+      "fast-uri@3": "^3.1.9",
+      "ip-address@10": "^10.7.5",
+      "node-forge@1": "^1.4.2",
+      "@fastify/busboy@3": "^3.2.4",
+      "@grpc/grpc-js@1": "^1.14.7",
+      "brace-expansion@1": "^1.1.20",
+      "brace-expansion@2": "^2.1.6",
+      "brace-expansion@5": "^5.0.12",
+      "follow-redirects@1": "^1.16.2",
+      "shell-quote@1": "^1.12.0",
+      "@xmldom/xmldom@^0.8.0": "^0.8.15",
+      "@xmldom/xmldom@^0.9.0": "^0.9.12",
+      "nanoid@3": "^3.3.20",
+      "source-map-js@1": "^1.2.2",
+      "sharp": "^0.35.5",
+      "qs@6": "^6.17.1",
+      "postcss-selector-parser@6": "^6.1.5"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-mrhx-c7xc-m3w5",
+        "GHSA-5p2g-fcmc-qvqq",
+        "GHSA-w3rx-r6r6-pgpr",
+        "GHSA-qr28-fpjm-wq7f",
+        "GHSA-vcc3-ghjq-m6fr",
+        "GHSA-wrjc-x8rr-h8h6",
+        "GHSA-337j-9hxr-rhxg",
+        "GHSA-gcqx-w48m-w2h4",
+        "GHSA-g3hv-75wg-m249",
+        "GHSA-3g3m-2fjr-6pw4"
+      ]
     }
   }
 }
