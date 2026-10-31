@@ -12,21 +12,30 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@app-types';
-import { COLORS, SPACING, BORDER_RADIUS, ATTA_CHAKKI } from '@utils/constants';
+import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button, ComingSoon } from '@components';
 import { productService } from '@services/product.service';
+import { attaService } from '@services/atta.service';
 import { formatCurrency } from '@utils/helpers';
 
 export const AttaChakkiScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   // Atta Chakki can be paused by the super admin (Settings → platform flags).
   const [attaEnabled, setAttaEnabled] = useState<boolean | null>(null);
+  // Live grinding rate (admin-configured) — null while loading / unavailable.
+  const [ratePerKg, setRatePerKg] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
     productService.getPublicConfig().then((res) => {
       if (active) setAttaEnabled(res.data.atta_chakki_enabled);
     });
+    attaService
+      .getCharges()
+      .then((c) => {
+        if (active) setRatePerKg(c.millingChargePerKg);
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
     };
@@ -92,12 +101,14 @@ export const AttaChakkiScreen: React.FC = () => {
             source={{ uri: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600' }}
             style={styles.heroImage}
           />
-          <View style={styles.priceBadge}>
-            <Text style={styles.priceText}>
-              {formatCurrency(ATTA_CHAKKI.PRICE_PER_KG)}
-            </Text>
-            <Text style={styles.priceUnit}>/kg</Text>
-          </View>
+          {ratePerKg !== null && (
+            <View style={styles.priceBadge}>
+              <Text style={styles.priceText}>
+                {formatCurrency(ratePerKg)}
+              </Text>
+              <Text style={styles.priceUnit}>/kg</Text>
+            </View>
+          )}
         </View>
 
         {/* Features */}

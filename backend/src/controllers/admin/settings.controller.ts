@@ -10,6 +10,7 @@ import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
 import logger from '../../utils/logger';
 import { resolveCityScope } from '../../utils/cityScope';
+import { getAttaCharges } from '../atta.controller';
 import {
   fetchBannerSettings,
   upsertBannerSettings,
@@ -1313,4 +1314,64 @@ export const deleteDeliveryZone = asyncHandler(async (req: Request, res: Respons
     return notFoundResponse(res, 'Delivery zone not found');
   }
   successResponse(res, null, 'Delivery zone deleted');
+});
+
+// ============================================================================
+// ATTA CHAKKI CHARGES (system_settings, one set for the whole service)
+// Billed by POST /atta-requests and shown live by the website + customer app.
+// Before this there was no admin screen for them at all (DB-only).
+// ============================================================================
+
+const ATTA_CHARGE_KEYS: Record<string, { key: string; description: string }> = {
+  service_charge: { key: 'atta_service_charge', description: 'Atta Chakki flat service charge (Rs)' },
+  milling_charge_per_kg: { key: 'atta_milling_charge_per_kg', description: 'Atta Chakki grinding charge per kg (Rs)' },
+  delivery_charge: { key: 'atta_delivery_charge', description: 'Atta Chakki pickup & delivery charge (Rs)' },
+  free_delivery_threshold_kg: { key: 'atta_free_delivery_threshold_kg', description: 'Atta delivery is free from this many kg (0 = never free)' },
+};
+
+/** GET /api/admin/settings/atta-charges */
+export const getAttaChargeSettings = asyncHandler(async (req: Request, res: Response) => {
+  const c = await getAttaCharges();
+  successResponse(res, {
+    service_charge: c.serviceCharge,
+    milling_charge_per_kg: c.millingChargePerKg,
+    delivery_charge: c.deliveryCharge,
+    free_delivery_threshold_kg: c.freeDeliveryThresholdKg,
+    can_edit: req.user?.role === 'super_admin',
+  }, 'Atta charges');
+});
+
+/**
+ * PUT /api/admin/settings/atta-charges — super admin only: the charges apply
+ * to every city, so a city admin must not change them for everyone.
+ */
+export const updateAttaChargeSettings = asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only the super admin can change Atta Chakki charges (they apply to every city).', 403);
+  }
+  const changed: string[] = [];
+  await withTransaction(async (client) => {
+    for (const [field, meta] of Object.entries(ATTA_CHARGE_KEYS)) {
+      if (req.body?.[field] === undefined || req.body?.[field] === null) continue;
+      const value = Number(req.body[field]);
+      if (!Number.isFinite(value) || value < 0) continue; // Joi already rejects these
+      await client.query(
+        `INSERT INTO system_settings (key, value, description, data_type, is_public, updated_by)
+         VALUES ($1, $2, $3, 'number', TRUE, $4)
+         ON CONFLICT (key) DO UPDATE
+           SET value = EXCLUDED.value, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+        [meta.key, String(value), meta.description, req.user?.id ?? null]
+      );
+      changed.push(field);
+    }
+  });
+  logger.info('Atta charges updated', { fields: changed, by: req.user?.id });
+  const c = await getAttaCharges();
+  successResponse(res, {
+    service_charge: c.serviceCharge,
+    milling_charge_per_kg: c.millingChargePerKg,
+    delivery_charge: c.deliveryCharge,
+    free_delivery_threshold_kg: c.freeDeliveryThresholdKg,
+    can_edit: true,
+  }, 'Atta charges updated');
 });

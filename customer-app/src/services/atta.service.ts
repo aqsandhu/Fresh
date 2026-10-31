@@ -10,6 +10,30 @@ export interface CreateAttaRequest {
   specialInstructions?: string;
 }
 
+/** Live admin-configured Atta Chakki charges (public endpoint). */
+export interface AttaCharges {
+  serviceCharge: number;
+  millingChargePerKg: number;
+  deliveryCharge: number;
+  freeDeliveryThresholdKg: number;
+}
+
+/**
+ * Same formula the server bills with (atta.controller calculateAttaCharges):
+ * service + kg × milling + delivery (free from the threshold kg upwards).
+ */
+export function estimateAttaTotal(kg: number, c: AttaCharges) {
+  const weight = Number.isFinite(kg) && kg > 0 ? kg : 0;
+  const milling = weight * c.millingChargePerKg;
+  const delivery = c.freeDeliveryThresholdKg > 0 && weight >= c.freeDeliveryThresholdKg ? 0 : c.deliveryCharge;
+  return {
+    service: c.serviceCharge,
+    milling,
+    delivery,
+    total: weight > 0 ? c.serviceCharge + milling + delivery : 0,
+  };
+}
+
 // Map backend atta response to customer app AttaRequest type
 function mapBackendAttaRequest(raw: any): AttaRequest {
   const pickupAddress: Address = {
@@ -52,6 +76,21 @@ function mapBackendAttaRequest(raw: any): AttaRequest {
 }
 
 class AttaService {
+  async getCharges(): Promise<AttaCharges> {
+    try {
+      const response = await apiClient.get('/atta-requests/charges');
+      const d = response.data?.data || {};
+      return {
+        serviceCharge: Number(d.service_charge) || 0,
+        millingChargePerKg: Number(d.milling_charge_per_kg) || 0,
+        deliveryCharge: Number(d.delivery_charge) || 0,
+        freeDeliveryThresholdKg: Number(d.free_delivery_threshold_kg) || 0,
+      };
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
   async createRequest(data: CreateAttaRequest): Promise<ApiResponse<AttaRequest>> {
     try {
       const body = {

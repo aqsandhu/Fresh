@@ -7,7 +7,34 @@ import type {
   ApiResponse 
 } from '@/types';
 
+/** Atta Chakki charges (global). camelCase — the api layer converts. */
+export interface AttaChargeSettings {
+  serviceCharge: number;
+  millingChargePerKg: number;
+  deliveryCharge: number;
+  freeDeliveryThresholdKg: number;
+  canEdit?: boolean;
+}
+
 export const settingsService = {
+  getAttaCharges: async (): Promise<AttaChargeSettings> => {
+    try {
+      const response = await api.get<ApiResponse<AttaChargeSettings>>('/admin/settings/atta-charges');
+      return unwrap(response);
+    } catch (error: any) {
+      throw new Error(error?.response?.data?.message || 'Failed to load Atta Chakki charges');
+    }
+  },
+
+  updateAttaCharges: async (data: Omit<AttaChargeSettings, 'canEdit'>): Promise<AttaChargeSettings> => {
+    try {
+      const response = await api.put<ApiResponse<AttaChargeSettings>>('/admin/settings/atta-charges', data);
+      return unwrap(response);
+    } catch (error: any) {
+      throw new Error(error?.response?.data?.message || 'Failed to update Atta Chakki charges');
+    }
+  },
+
   getSettings: async (): Promise<Settings> => {
     try {
       const response = await api.get<ApiResponse<Settings>>('/admin/settings');

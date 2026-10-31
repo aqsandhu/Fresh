@@ -53,6 +53,7 @@ import { BrandFaviconSettingsPanel } from '@/components/settings/BrandFaviconSet
 import { HeroImageSettingsPanel } from '@/components/settings/HeroImageSettingsPanel';
 import { CouponsSettingsPanel } from '@/components/settings/CouponsSettingsPanel';
 import { AppWidgetSettingsPanel } from '@/components/settings/AppWidgetSettingsPanel';
+import { AttaChargesSettingsPanel } from '@/components/settings/AttaChargesSettingsPanel';
 
 const DAYS_OF_WEEK = [
   'Monday',
@@ -378,6 +379,7 @@ export const Settings: React.FC = () => {
 
   // Render Tabs
   const renderDeliverySettings = () => (
+    <div className="space-y-6">
     <Card>
       <form onSubmit={handleDeliverySettingsSubmit} className="space-y-6">
         <div className="flex items-center space-x-3 mb-6">
@@ -523,6 +525,8 @@ export const Settings: React.FC = () => {
         </div>
       </form>
     </Card>
+    <AttaChargesSettingsPanel />
+    </div>
   );
 
   const renderTimeSlots = () => (

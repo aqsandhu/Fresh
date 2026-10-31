@@ -155,8 +155,9 @@ export const DELIVERY = {
 };
 
 // Atta Chakki Configuration
+// Prices are NOT here: they come live from GET /atta-requests/charges.
+// Weight limits match the website (atta-chakki page: 5–100 kg).
 export const ATTA_CHAKKI = {
-  PRICE_PER_KG: 10,
   MIN_WEIGHT_KG: 5,
   MAX_WEIGHT_KG: 100,
   GRINDING_TIME_HOURS: 2,

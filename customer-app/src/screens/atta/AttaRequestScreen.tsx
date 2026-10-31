@@ -16,7 +16,7 @@ import { COLORS, SPACING, BORDER_RADIUS, ATTA_CHAKKI, VALIDATION } from '@utils/
 import { formatCurrency } from '@utils/helpers';
 import { Button, Input, LoadingOverlay } from '@components';
 import { addressService } from '@services/address.service';
-import { attaService } from '@services/atta.service';
+import { attaService, estimateAttaTotal, AttaCharges } from '@services/atta.service';
 import { useAuthStore } from '@store';
 
 type FlourType = 'fine' | 'medium' | 'coarse';
@@ -38,6 +38,7 @@ export const AttaRequestScreen: React.FC = () => {
   const [selectedAddress, setSelectedAddress] = useState<Address | null>(null);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [charges, setCharges] = useState<AttaCharges | null>(null);
   const [errors, setErrors] = useState<{
     weight?: string;
     address?: string;
@@ -62,8 +63,24 @@ export const AttaRequestScreen: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  // Live charges — the server bills with these, never a hard-coded rate.
+  useEffect(() => {
+    let active = true;
+    attaService
+      .getCharges()
+      .then((c) => {
+        if (active) setCharges(c);
+      })
+      .catch(() => {
+        if (active) setCharges(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const weightValue = parseFloat(weight) || 0;
-  const totalPrice = weightValue * ATTA_CHAKKI.PRICE_PER_KG;
+  const estimate = charges ? estimateAttaTotal(weightValue, charges) : null;
 
   const validate = (): boolean => {
     const newErrors: {
@@ -156,10 +173,26 @@ export const AttaRequestScreen: React.FC = () => {
             error={errors.weight}
             leftIcon={<MaterialIcons name="scale" size={20} color={COLORS.gray400} />}
           />
-          <Text style={styles.pricePreview}>
-            Total: {formatCurrency(totalPrice)}
+          {estimate && weightValue > 0 ? (
+            <>
+              <Text style={styles.pricePreview}>
+                Estimated total: {formatCurrency(estimate.total)}
+              </Text>
+              <Text style={styles.hintText}>
+                Grinding {formatCurrency(estimate.milling)}
+                {estimate.service > 0 ? ` + service ${formatCurrency(estimate.service)}` : ''}
+                {` + delivery ${estimate.delivery > 0 ? formatCurrency(estimate.delivery) : 'FREE'}`}
+              </Text>
+            </>
+          ) : null}
+          <Text style={styles.hintText}>
+            {`Minimum order: ${ATTA_CHAKKI.MIN_WEIGHT_KG} kg`}
+            {charges ? ` | Grinding: ${formatCurrency(charges.millingChargePerKg)} per kg` : ''}
+            {charges && charges.deliveryCharge > 0 && charges.freeDeliveryThresholdKg > 0
+              ? ` | Free delivery from ${charges.freeDeliveryThresholdKg} kg`
+              : ''}
           </Text>
-          <Text style={styles.hintText}>Minimum order: 5 kg | Rate: Rs. 10 per kg</Text>
+          <Text style={styles.hintText}>Pay cash when your atta is delivered.</Text>
         </View>
 
         {/* Address Selection */}

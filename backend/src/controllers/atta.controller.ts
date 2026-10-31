@@ -35,7 +35,7 @@ const DEFAULT_CHARGES: AttaChargeConfig = {
   serviceCharge: 50,        // Rs. 50 base service charge
   millingChargePerKg: 5,    // Rs. 5 per kg
   deliveryCharge: 100,      // Rs. 100 delivery charge
-  freeDeliveryThresholdKg: 20, // Free delivery for orders above this threshold
+  freeDeliveryThresholdKg: 20, // Free delivery from this many kg upwards (0 = never free)
 };
 
 /**
@@ -104,7 +104,11 @@ const calculateAttaCharges = async (wheatQuantityKg: number): Promise<{
 
   const serviceCharge = config.serviceCharge;
   const millingCharge = wheatQuantityKg * config.millingChargePerKg;
-  const deliveryCharge = wheatQuantityKg > config.freeDeliveryThresholdKg ? 0 : config.deliveryCharge;
+  // Website/app promise "free for <threshold> kg and above"; a 0 threshold
+  // means no free-delivery rule (the website shows the plain charge then).
+  const deliveryCharge = config.freeDeliveryThresholdKg > 0 && wheatQuantityKg >= config.freeDeliveryThresholdKg
+    ? 0
+    : config.deliveryCharge;
   const totalAmount = serviceCharge + millingCharge + deliveryCharge;
 
   return {

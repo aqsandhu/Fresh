@@ -671,6 +671,13 @@ export const adminSchemas = {
     reset_to_global: Joi.boolean().optional(),
   }),
 
+  updateAttaCharges: Joi.object({
+    service_charge: Joi.number().min(0).max(100000).optional(),
+    milling_charge_per_kg: Joi.number().min(0).max(10000).optional(),
+    delivery_charge: Joi.number().min(0).max(100000).optional(),
+    free_delivery_threshold_kg: Joi.number().min(0).max(1000).optional(),
+  }).min(1),
+
   bulkUpdateOrderStatus: Joi.object({
     order_ids: Joi.array().items(Joi.string().uuid()).min(1).max(100).required(),
     status: Joi.string().valid(
