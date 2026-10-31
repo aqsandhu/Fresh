@@ -21,7 +21,7 @@ works wrongly for a real case · **L** = hardening / polish.
 | ID | Sev | Area | Problem (WHAT) | Why it matters / cross-check | Fix (HOW) |
 |---|---|---|---|---|---|
 | F1 | **H** | Finance | Rider per-order pay (`orders.rider_delivery_charge`) is **never part of profit**. On COD orders the rider keeps it out of the cash (cash settlement = paid − rider pay), but no expense row is written. `utils/profitCalc.ts` = sales − expenses − stock cost − refunds. | Profit and the **shareholder "distributable"** are over-stated by Σ rider pay. If the admin *also* records rider pay via "Pay rider (commission)", the rider is paid twice. Checked: no code path inserts rider pay into `expenses`. | Either add `Σ rider_delivery_charge` of delivered orders as a cost line in `computeCityProfit`, or write an expense row when a cash settlement is received; label "Pay rider" as salary/non-cash pay only. |
-| F2 | **H** | Customer app · Atta | `AttaRequestScreen` shows price = kg × **Rs 10 (hard-coded)** and enforces **min 5 kg / max 100 kg**. Backend charges admin-set `service + milling/kg + delivery` (defaults 50 + 5/kg), no minimum, max 1000 kg; the website already uses live `GET /atta-requests/charges`. | Customer sees one amount, the delivery rider now collects another (atta COD). 1–4 kg requests impossible in the app but allowed on the website. | Load charges from `/atta-requests/charges` like the website; drop the fake min/max (use 1000). |
+| F2 | **H** | Customer app · Atta | `AttaRequestScreen` shows price = kg × **Rs 10 (hard-coded)**. Backend charges service + milling/kg + delivery from `system_settings` (defaults 50 + 5/kg); the website already uses live `GET /atta-requests/charges`. *Correction (§4): the 5–100 kg limits are the same on the website, so they are not a bug.* | Customer sees one amount, the delivery rider now collects another (atta COD). | Load charges from `/atta-requests/charges` like the website. |
 | F3 | M | Multi-city | Delivery charge settings (`delivery_base_charge`, `free_delivery_threshold`, urgent charge) are **global** (`upsertGlobalSiteSetting`; readers don't filter city). Any admin with `settings.update` changes them for **every** city. | The rest of the system is city-scoped (products, stock, riders, orders, banners). A city admin of City B silently changes City A's prices. | Store delivery settings per city (`city_id` row, global fallback) and read with the order's city; or restrict the endpoint to super admin. |
 | F4 | M | Multi-city · Realtime | All admins join one socket room `admins`; `order:new`, `order:cancelled`, `rider:location`, `rider:task_failed` go to **every** admin of every city. The admin panel does not filter by city either. | City admins get other cities' new-order sounds/toasts/flashing rows and live GPS of other cities' riders (data leak + noise). | Join `admins:city:<id>` rooms (super admin joins all); emit with the order/rider city. |
 | F5 | M | Customer notifications | Push is sent only for: rider assigned, rider at door, delivered, atta progress. **No push** for order confirmed/preparing, **cancelled by admin**, amount changed after weighing, complaint replied, abandoned-cart reminder (inbox row only). `users.notification_enabled` is saved but no sender reads it. | Website/app settings promise "status changes … delivery alerts". A customer with the app closed never learns the admin cancelled or re-priced the order. | One `notifyCustomer(userId, …)` helper (inbox row + socket + Expo push, honours `notification_enabled`) called from admin status/bulk/weight/complaint paths and the marketing job. |
@@ -59,3 +59,43 @@ works wrongly for a real case · **L** = hardening / polish.
 
 This is a judgment from code reading and local execution, not from production
 traffic or load tests.
+
+## 4. Fix status (2026-10-31, session 2)
+
+All F1–F9 are fixed, plus the owner's two requests. Each was re-checked
+against the website / customer app before changing it, and verified on a
+real PostgreSQL + PostGIS database (`docs/rider-e2e/run-all.sh`, 124 checks,
+now also a CI job).
+
+| ID | Status | What changed | Commit |
+|---|---|---|---|
+| Owner | **DONE** | Time-slot capacity is **unlimited unless the admin sets a limit** (migration 59: no DEFAULT 50, NULL = no limit, CHECK ≥ 1). Slot lists return `available_slots = 9999` + `is_unlimited` so older app builds don't show "full". **Existing slots keep their current limit** — clear the box in Settings → Time Slots to make one unlimited. | `8dab5e6` |
+| Owner + F5 | **DONE** | Abandoned-cart reminders are **pushed** (tap opens the cart). Customers also get pushes for admin confirm / preparing / packed / out for delivery / delivered / cancelled (with reason) / refunded, re-weighing (new COD total), complaint reply / resolved / refund. The "Order notifications" switch (app) = "Order updates" (website) is saved on the account and honoured by every customer push; inbox rows are kept. No duplicate inbox row where the DB trigger already writes one. | `b7aa6e0` |
+| F1 | **DONE** | Profit = sales − refunds − stock cost − **per-order rider pay** − other expenses. "Pay rider → Per-order delivery pay (hand-over)" is logged but not subtracted twice; salary/bonus still are. Profit page shows the line (and refunds now reach it). | `ec20ce3` |
+| F2 | **DONE** | Customer app shows the live total (service + grinding + delivery) and the live rate. Also: free delivery is now *from* the threshold kg ("and above", as the website says) and 0 = never free. New finding fixed: there was **no admin screen** for atta charges — added (super admin). | `9faa98a` |
+| F3 | **DONE** | Delivery base / free threshold / express / urgent / ETA / cutoff % are per city with a global default; a city admin edits only their city; "Use default" resets a city. Checkout, cart, WhatsApp orders and the public endpoint use the order's city; the website now sends the city. | `8dab5e6` |
+| F4 | **DONE** | Admin sockets join `admins:city:<id>`; order / rider / complaint / review / application events go to that city's admins + super admins. Verified with real socket clients (Gujrat admin hears a Gujrat order, Sialkot admin does not). | `2ad7d7f` |
+| F6 + F14 | **DONE** | Explicit `AT TIME ZONE 'Asia/Karachi'` in profit, shareholder portal, expenses, dashboard, restaurant dashboard, waste report, order date filters, coupon dates, delivery-rule validity; slot weekday in Pakistan time. (A pool-level `SET TIME ZONE` was not used: production runs through the Supabase transaction pooler.) | `f53acd9` |
+| F7 | **DONE** | 154 → **0** open production advisories; `pnpm audit --prod` exits 0. 13 with no compatible fix are ignored by id with reasons (`docs/audits/dependency-audit-ignores.md`). | `c41aca2` |
+| F8 | **DONE** | `validateAndClaimTimeSlot` refuses a today-slot after the city's cutoff % of its window. | `8dab5e6` |
+| F9 | **DONE** | `.github/workflows/db-e2e.yml`: PostGIS service, schema + all migrations, API, 124 checks. Not yet seen running on GitHub (push is blocked from this session). | `e6808d9` |
+| F10–F13 | open (L) | Unchanged: admin token storage / 2FA, boot-time DDL, public atta track, AI chat budget. |  |
+
+Smaller things found and fixed on the way: the app's "Promotions" and "Location
+Services" switches saved nothing (removed; the website has neither);
+`PUT /auth/profile` accepted a non-boolean notification flag; the admin Profit
+page's refunds card never received data.
+
+Still not verifiable here: Expo push delivery on a real phone, on-device
+camera/GPS, Supabase Storage uploads.
+
+### Production-grade estimate after the fixes
+| Area | Before | Now | Main remaining gaps |
+|---|---|---|---|
+| Backend API & data integrity | 80 % | 88 % | F11, F12, F13 |
+| Admin panel | 76 % | 84 % | F10, react-router 7 |
+| Website | 80 % | 86 % | zod 4 move |
+| Customer app | 68 % | 77 % | not tested on a device |
+| Rider app | 76 % | 77 % | not tested on a device |
+| QA / CI / Ops | 58 % | 75 % | CI not yet observed green on GitHub; no load test |
+| **Overall (weighted)** | **≈ 74 %** | **≈ 83 %** | On-device QA of both apps + a green CI run on GitHub would take it to about 88–90 %. |

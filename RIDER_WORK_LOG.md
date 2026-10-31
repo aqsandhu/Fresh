@@ -112,6 +112,20 @@ Legend: TODO · WIP · DONE · DEFERRED
 - A*/R*/C* UI work as listed in §1.
 
 ## 5. Work log (newest first)
+### 2026-10-31 — Session 2: audit fixes (owner: "time slot capacity by default unlimited", "abandoned-cart reminders push hona chahye", "ye sab bugs b theek kero")
+Full detail + fix status per finding: `docs/audits/2026-10-31-full-audit.md` §4.
+- **Slots** unlimited unless the admin sets a limit (migration 59, NULL = no limit, lists return 9999 + `is_unlimited`); existing slots keep their limit until the admin clears it. Server enforces the slot cutoff %.
+- **Delivery prices per city** with a global default; "Use default" per city; website sends the city.
+- **Profit** counts per-order rider pay; "Pay rider → per-order pay" is a hand-over, not a second cost.
+- **Atta** customer app shows live charges (Rs 10/kg hard-code removed); admin "Atta Chakki charges" card (super admin); free delivery from the threshold kg.
+- **Customer push** on admin status changes (incl. cancel with reason), re-weighing, complaint reply/refund, abandoned-cart reminders; "Order notifications" switch saved on the account and honoured by every customer push.
+- **Reports** "today / month / date" in Pakistan time; slot weekday in Pakistan time.
+- **Admin realtime** per city (`admins:city:<id>`), super admins see all.
+- **Dependencies** 154 → 0 open production advisories (`pnpm audit --prod` passes); 13 unfixable ones ignored with reasons (`docs/audits/dependency-audit-ignores.md`).
+- **CI** `db-e2e.yml`: PostGIS service + migrations + 124 API checks (`docs/rider-e2e/run-all.sh`).
+- Verified: all workspaces typecheck + lint; tests backend 285, admin 205, website 65, rider 51, customer 7; backend/admin/website builds; 124/124 real-DB checks.
+- Push still 403 from this session → delivered as a patch file.
+
 ### 2026-10-31 — Session 1 (cont.): urgent-order rider pay (owner: "is k liye alag rate chahye")
 - **WHY:** urgent orders have no time slot, so they borrowed the rider's latest slot rate.
 - **HOW:** migration 58 `riders.urgent_delivery_charge` (NULL = not set, CHECK ≥ 0); `assignRiderToOrder` (admin, OCP and restaurant assignment all go through it) uses it for `is_urgent_delivery` orders and snapshots it on `orders.rider_delivery_charge`; unset → old fallback. `PUT /admin/riders/:id/delivery-charges` accepts `urgent_charge` (number / null clears), `GET …/stats` returns `urgentDeliveryCharge`. Admin rider detail → pay editor has a red "Urgent delivery" row (disabled with a hint until migration 58 has run).
