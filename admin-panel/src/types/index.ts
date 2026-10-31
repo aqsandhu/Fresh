@@ -501,6 +501,10 @@ export interface RiderStats {
     pendingOrders?: number;
     pendingAtta?: number;
   };
+  /** Dedicated pay for urgent (no-slot) orders; null = not set. */
+  urgentDeliveryCharge?: number | null;
+  /** False until database migration 58 has run. */
+  urgentChargeSupported?: boolean;
   deliveryCharges?: Array<{
     id: string;
     timeSlotId: string;

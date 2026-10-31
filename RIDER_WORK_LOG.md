@@ -53,6 +53,7 @@ Legend: TODO · WIP · DONE · DEFERRED
 | R4 | rider-app | Account-blocked socket → end session; reviews in profile | DONE |
 | C1 | customer-app | Track screen: call rider works, rider-arrived alert, vehicle info | DONE |
 | G | all | Gates green + final log | DONE |
+| U1 | backend+admin | Separate per-rider pay for URGENT orders (owner decision 2026-10-31) | DONE |
 
 ## 2. Where the requirements come from (customer-side evidence)
 - **Pay the rider in cash** — website `help/page.tsx`, `terms/page.tsx`: "you pay the rider when your order arrives".
@@ -111,6 +112,12 @@ Legend: TODO · WIP · DONE · DEFERRED
 - A*/R*/C* UI work as listed in §1.
 
 ## 5. Work log (newest first)
+### 2026-10-31 — Session 1 (cont.): urgent-order rider pay (owner: "is k liye alag rate chahye")
+- **WHY:** urgent orders have no time slot, so they borrowed the rider's latest slot rate.
+- **HOW:** migration 58 `riders.urgent_delivery_charge` (NULL = not set, CHECK ≥ 0); `assignRiderToOrder` (admin, OCP and restaurant assignment all go through it) uses it for `is_urgent_delivery` orders and snapshots it on `orders.rider_delivery_charge`; unset → old fallback. `PUT /admin/riders/:id/delivery-charges` accepts `urgent_charge` (number / null clears), `GET …/stats` returns `urgentDeliveryCharge`. Admin rider detail → pay editor has a red "Urgent delivery" row (disabled with a hint until migration 58 has run).
+- Verified on local PostGIS: `docs/rider-e2e/urgent-rate.sh` 8/8; regression `rider-flow.sh` 60/60, `restaurant-and-safeguards.sh` 16/16. Admin tests 205/205, backend 14/14.
+- Push: the owner's PAT was tried as a one-off auth header (never written to disk/config) — the session proxy still answers 403 for github.com writes, so it cannot be used from here.
+
 ### 2026-10-31 — Session 1: rider app, customer side, E2E (commits `d37e4ec`, `e1d17fb`, `fb945ae`, `543ebb5`)
 - **R1** Task detail "I've arrived — notify customer" (hidden phone) + arrival time; atta pickup notifies while `assigned`, others while `in_progress`; hidden-phone "Call" = arrival.
 - **R2** Deliver sheet: proof photo (camera) required for customer hand-overs, optional at the mill; upload failure asks before continuing; stored via `POST /rider/tasks/:id/proof`.
@@ -165,5 +172,5 @@ Not verifiable here (needs a phone / production services): on-device camera + GP
 - **Push to GitHub is blocked (403):** "Claude doesn't have GitHub access to aqsandhu/Fresh". All commits are on the local branch `claude/vibrant-cannon-bc89zv`. Reconnect GitHub (https://claude.ai/connect-github) and install the Claude GitHub App on the repo, then `git push -u origin claude/vibrant-cannon-bc89zv`.
 - **Deploy order:** run `npm run migrate:sql` (migration 57) — Render's `preDeployCommand` already does. The backend degrades gracefully before it runs (probes in `config/riderSchema.ts`).
 - **Rider pay for atta tasks** — still none (atta has no per-rider rate); atta cash is collected and settled, pay is a product decision.
-- **Urgent orders** use the rider's most recently set per-slot rate (existing rule B-15); a dedicated urgent rate would need a setting.
+- ~~Urgent orders use the latest slot rate~~ — done: per-rider urgent rate (U1). Set it for every rider in Riders → rider → Overview → "Urgent delivery".
 - **On-device smoke test:** go on duty → admin assigns → push on a backgrounded phone → pickup → "I've arrived" (customer phone shows the notification) → proof photo → deliver COD → admin "Receive cash".

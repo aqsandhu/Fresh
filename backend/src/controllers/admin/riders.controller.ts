@@ -21,7 +21,12 @@ import {
   cityRowInScope,
   requireCityScope,
 } from '../../utils/cityScope';
-import { hasAttaCashColumns, hasRiderCashSettlementTables, hasRiderTaskArrivedColumn } from '../../config/riderSchema';
+import {
+  hasAttaCashColumns,
+  hasRiderCashSettlementTables,
+  hasRiderTaskArrivedColumn,
+  hasRiderUrgentChargeColumn,
+} from '../../config/riderSchema';
 import { hasFeedbackTables } from '../../config/feedbackSchema';
 import { computeRiderStats } from '../../utils/riderStats';
 import { resolveDutyStatus } from '../../utils/riderAvailability';
@@ -604,6 +609,9 @@ export const getRiderStats = asyncHandler(async (req: Request, res: Response) =>
       ...row,
       charge_per_order: parseFloat(row.charge_per_order) || 0,
     })),
+    // Dedicated pay for urgent (no-slot) orders; null = not set.
+    urgentDeliveryCharge: await readUrgentCharge(id),
+    urgentChargeSupported: await hasRiderUrgentChargeColumn(),
   }, 'Rider stats retrieved');
 });
 
@@ -848,14 +856,37 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
  */
 export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { charges } = req.body; // Array of { time_slot_id, charge_per_order }
+  // charges: Array of { time_slot_id, charge_per_order }
+  // urgent_charge (optional): number ≥ 0 = urgent-order pay, '' / null = clear
+  const { charges } = req.body;
+  const hasUrgent = Object.prototype.hasOwnProperty.call(req.body || {}, 'urgent_charge');
 
   if (!Array.isArray(charges)) {
     return errorResponse(res, 'charges must be an array of { time_slot_id, charge_per_order }', 400);
   }
   if (!(await riderInScope(req, id))) return notFoundResponse(res, 'Rider not found');
 
+  let urgentValue: number | null = null;
+  if (hasUrgent) {
+    const raw = req.body.urgent_charge;
+    if (raw !== null && raw !== '' && raw !== undefined) {
+      urgentValue = parseFloat(String(raw));
+      if (!Number.isFinite(urgentValue) || urgentValue < 0) {
+        return errorResponse(res, 'urgent_charge must be a number ≥ 0 (or empty to clear)', 400);
+      }
+    }
+    if (!(await hasRiderUrgentChargeColumn())) {
+      return errorResponse(res, 'Urgent rider pay needs database migration 58 — run migrate:sql.', 503);
+    }
+  }
+
   await withTransaction(async (client) => {
+    if (hasUrgent) {
+      await client.query(
+        `UPDATE riders SET urgent_delivery_charge = $1, updated_at = NOW(), updated_by = $3 WHERE id = $2`,
+        [urgentValue, id, req.user?.id ?? null]
+      );
+    }
     for (const item of charges) {
       if (!item.time_slot_id || item.charge_per_order === undefined || item.charge_per_order === '') continue;
       // Validate money: a NaN/negative charge would corrupt rider payout math.
@@ -882,8 +913,19 @@ export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Re
     [id]
   );
 
-  successResponse(res, result.rows, 'Rider delivery charges updated');
+  successResponse(
+    res,
+    { charges: result.rows, urgent_delivery_charge: await readUrgentCharge(id) },
+    'Rider delivery charges updated'
+  );
 });
+
+async function readUrgentCharge(riderId: string): Promise<number | null> {
+  if (!(await hasRiderUrgentChargeColumn())) return null;
+  const r = await query('SELECT urgent_delivery_charge FROM riders WHERE id = $1', [riderId]);
+  const v = r.rows[0]?.urgent_delivery_charge;
+  return v === null || v === undefined ? null : parseFloat(v);
+}
 
 /**
  * Get all products (admin - no rate limit, includes inactive)

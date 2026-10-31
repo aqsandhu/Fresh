@@ -173,9 +173,15 @@ export const riderService = {
     }
   },
 
-  setDeliveryCharges: async (id: string, charges: RiderDeliveryCharge[]): Promise<any> => {
+  /**
+   * Per-slot pay + (optionally) the dedicated urgent-order pay.
+   * urgentCharge: number = set, null = clear, undefined = leave unchanged.
+   */
+  setDeliveryCharges: async (id: string, charges: RiderDeliveryCharge[], urgentCharge?: number | null): Promise<any> => {
     try {
-      const response = await api.put<ApiResponse<any>>(`/admin/riders/${id}/delivery-charges`, { charges });
+      const body: Record<string, unknown> = { charges };
+      if (urgentCharge !== undefined) body.urgentCharge = urgentCharge;
+      const response = await api.put<ApiResponse<any>>(`/admin/riders/${id}/delivery-charges`, body);
       return unwrap(response);
     } catch (error: any) {
       console.error('Error setting delivery charges:', error);

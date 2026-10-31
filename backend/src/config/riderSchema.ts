@@ -4,6 +4,7 @@
 //   • rider_cash_settlements / _orders      (migration 41)
 //   • rider_tasks.arrived_at                (migration 57)
 //   • atta_requests.paid_amount + rider_cash_settlement_atta (migration 57)
+//   • riders.urgent_delivery_charge          (migration 58)
 // A probe that returns false is retried after RETRY_MS so a deploy that runs
 // the migration after boot is picked up without a restart.
 // ============================================================================
@@ -58,4 +59,12 @@ export const hasAttaCashColumns = makeProbe(
         WHERE table_schema = 'public' AND table_name = 'rider_cash_settlement_atta') AS tbl`,
   [],
   (rows) => Number(rows[0]?.cols || 0) === 2 && Number(rows[0]?.tbl || 0) === 1
+);
+
+/** riders.urgent_delivery_charge exists (migration 58). */
+export const hasRiderUrgentChargeColumn = makeProbe(
+  `SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'riders' AND column_name = 'urgent_delivery_charge'`,
+  [],
+  (rows) => rows.length > 0
 );

@@ -13,6 +13,8 @@ import { isValidOrderTransition } from './orderStatus';
 import { cancelActiveRiderTasks, notifyRiderTasksCancelled, pushNewAssignment } from './riderTaskEvents';
 import { sendExpoPushToUsers } from './expoPush';
 import { syncRiderAvailability } from './riderAvailability';
+import { hasUrgentDeliveryColumns } from '../config/orderSchema';
+import { hasRiderUrgentChargeColumn } from '../config/riderSchema';
 
 export interface AssignRiderResult {
   order: any;
@@ -24,9 +26,14 @@ export async function assignRiderToOrder(
   riderId: string,
   assignedBy?: string
 ): Promise<AssignRiderResult> {
+  const [urgentReady, urgentRateReady] = await Promise.all([
+    hasUrgentDeliveryColumns(),
+    hasRiderUrgentChargeColumn(),
+  ]);
   const assignment = await withTransaction(async (client) => {
     const riderResult = await client.query(
-      `SELECT r.id, r.user_id, r.status, r.city_id, u.full_name
+      `SELECT r.id, r.user_id, r.status, r.city_id, u.full_name,
+              ${urgentRateReady ? 'r.urgent_delivery_charge' : 'NULL::numeric AS urgent_delivery_charge'}
          FROM riders r
          JOIN users u ON r.user_id = u.id
         WHERE r.id = $1 AND r.verification_status = 'verified' AND r.deleted_at IS NULL
@@ -42,7 +49,9 @@ export async function assignRiderToOrder(
     }
 
     const orderCheck = await client.query(
-      'SELECT time_slot_id, status, city_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+      `SELECT time_slot_id, status, city_id,
+              ${urgentReady ? 'COALESCE(is_urgent_delivery, FALSE) AS is_urgent' : 'FALSE AS is_urgent'}
+         FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
       [orderId]
     );
     if (orderCheck.rows.length === 0) {
@@ -61,7 +70,15 @@ export async function assignRiderToOrder(
 
     const timeSlotId = order.time_slot_id;
     let riderCharge = 0;
-    if (timeSlotId) {
+    // Urgent order + the rider has a dedicated urgent rate (migration 58) →
+    // that rate, and nothing else. Otherwise the slot rules below apply.
+    const urgentRate =
+      order.is_urgent === true && rider.urgent_delivery_charge !== null && rider.urgent_delivery_charge !== undefined
+        ? parseFloat(rider.urgent_delivery_charge)
+        : null;
+    if (urgentRate !== null && Number.isFinite(urgentRate)) {
+      riderCharge = urgentRate;
+    } else if (timeSlotId) {
       const chargeResult = await client.query(
         'SELECT charge_per_order FROM rider_delivery_charges WHERE rider_id = $1 AND time_slot_id = $2',
         [riderId, timeSlotId]
@@ -70,10 +87,10 @@ export async function assignRiderToOrder(
         riderCharge = parseFloat(chargeResult.rows[0].charge_per_order) || 0;
       }
     }
-    if (!timeSlotId || riderCharge === 0) {
-      // Urgent orders carry no slot (and a slot may have no rate configured
-      // for this rider). Fall back to the rider's most recently configured
-      // per-order rate so the delivery is never silently unpaid.
+    if (urgentRate === null && (!timeSlotId || riderCharge === 0)) {
+      // No urgent rate set / no slot rate for this slot: fall back to the
+      // rider's most recently configured per-order rate so the delivery is
+      // never silently unpaid.
       const fallback = await client.query(
         `SELECT charge_per_order FROM rider_delivery_charges
           WHERE rider_id = $1 AND charge_per_order > 0

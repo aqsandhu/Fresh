@@ -170,7 +170,13 @@ export const RiderDetail: React.FC<Props> = ({ rider, onBack, onTrack }) => {
               </div>
             </Card>
 
-            <SlotChargesEditor riderId={rider.id} charges={stats.deliveryCharges || []} onSaved={() => statsQuery.refetch()} />
+            <SlotChargesEditor
+              riderId={rider.id}
+              charges={stats.deliveryCharges || []}
+              urgentCharge={stats.urgentDeliveryCharge ?? null}
+              urgentSupported={stats.urgentChargeSupported !== false}
+              onSaved={() => statsQuery.refetch()}
+            />
           </div>
         )
       )}
@@ -201,8 +207,13 @@ export const RiderDetail: React.FC<Props> = ({ rider, onBack, onTrack }) => {
 const SlotChargesEditor: React.FC<{
   riderId: string;
   charges: Array<{ timeSlotId: string; chargePerOrder: number }>;
+  /** Dedicated pay for urgent (no-slot) orders; null = not set. */
+  urgentCharge: number | null;
+  urgentSupported: boolean;
   onSaved: () => void;
-}> = ({ riderId, charges, onSaved }) => {
+}> = ({ riderId, charges, urgentCharge, urgentSupported, onSaved }) => {
+  const [urgent, setUrgent] = useState<string>(urgentCharge === null ? '' : String(urgentCharge));
+  useEffect(() => setUrgent(urgentCharge === null ? '' : String(urgentCharge)), [urgentCharge]);
   const { data: timeSlots } = useQuery({ queryKey: ['timeSlots'], queryFn: () => settingsService.getTimeSlots() });
   const initial = useMemo(() => {
     const map: Record<string, string> = {};
@@ -218,20 +229,22 @@ const SlotChargesEditor: React.FC<{
         riderId,
         Object.entries(values)
           .filter(([, v]) => v !== '' && v !== undefined)
-          .map(([timeSlotId, v]) => ({ timeSlotId, chargePerOrder: Number(v) }))
+          .map(([timeSlotId, v]) => ({ timeSlotId, chargePerOrder: Number(v) })),
+        urgentSupported ? (urgent.trim() === '' ? null : Number(urgent)) : undefined
       ),
     onSuccess: () => { toast.success('Per-order pay saved'); onSaved(); },
     onError: (e: any) => toast.error(e?.message || 'Failed to save'),
   });
 
-  const invalid = Object.values(values).some((v) => v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0));
+  const invalid =
+    Object.values(values).some((v) => v !== '' && (!Number.isFinite(Number(v)) || Number(v) < 0)) ||
+    (urgent.trim() !== '' && (!Number.isFinite(Number(urgent)) || Number(urgent) < 0));
 
   return (
     <Card>
       <h3 className="text-lg font-semibold mb-1 flex items-center gap-2"><Clock className="w-5 h-5 text-primary-600" /> Pay per delivered order, by time slot</h3>
       <p className="text-sm text-gray-500 mb-4">
         Snapshotted onto an order when it is assigned to this rider, so changes apply to orders assigned <strong>after</strong> saving.
-        Urgent orders (no slot) use the most recently set rate.
       </p>
       <div className="space-y-3">
         {(timeSlots || []).length === 0 && <p className="text-sm text-gray-500">No time slots configured yet.</p>}
@@ -254,6 +267,29 @@ const SlotChargesEditor: React.FC<{
             </div>
           </div>
         ))}
+        {/* Urgent orders have no slot — they get their own rate. */}
+        <div className="flex items-center gap-4 bg-red-50 rounded-lg p-3">
+          <div className="flex-1">
+            <span className="font-medium text-sm text-red-800">Urgent delivery</span>
+            <span className="text-xs text-red-700 ml-2">(orders marked urgent — no time slot)</span>
+            {!urgentSupported ? (
+              <p className="text-xs text-amber-700 mt-1">Needs database migration 58 — run migrate:sql on the server.</p>
+            ) : urgent.trim() === '' ? (
+              <p className="text-xs text-amber-700 mt-1">Not set — urgent orders fall back to this rider's latest slot rate.</p>
+            ) : null}
+          </div>
+          <div className="w-40">
+            <Input
+              type="number"
+              min={0}
+              placeholder="not set"
+              value={urgent}
+              disabled={!urgentSupported}
+              onChange={(e) => setUrgent(e.target.value)}
+              leftIcon={<span className="text-xs text-gray-400">Rs</span>}
+            />
+          </div>
+        </div>
       </div>
       <div className="mt-4 flex justify-end">
         <Button onClick={() => mutation.mutate()} isLoading={mutation.isPending} disabled={invalid} leftIcon={<Save className="w-4 h-4" />}>Save pay</Button>

@@ -86,4 +86,19 @@ describe('riderService', () => {
 
     expect(mockApi.patch).toHaveBeenCalledWith('/admin/riders/r1/verify', { verificationStatus: 'rejected' });
   });
+
+  it('setDeliveryCharges sends the urgent rate only when given (null clears it)', async () => {
+    mockApi.put.mockResolvedValue({ success: true, data: { charges: [] } });
+
+    await riderService.setDeliveryCharges('r1', [{ timeSlotId: 's1', chargePerOrder: 80 }]);
+    expect(mockApi.put).toHaveBeenLastCalledWith('/admin/riders/r1/delivery-charges', {
+      charges: [{ timeSlotId: 's1', chargePerOrder: 80 }],
+    });
+
+    await riderService.setDeliveryCharges('r1', [], 150);
+    expect(mockApi.put).toHaveBeenLastCalledWith('/admin/riders/r1/delivery-charges', { charges: [], urgentCharge: 150 });
+
+    await riderService.setDeliveryCharges('r1', [], null);
+    expect(mockApi.put).toHaveBeenLastCalledWith('/admin/riders/r1/delivery-charges', { charges: [], urgentCharge: null });
+  });
 });

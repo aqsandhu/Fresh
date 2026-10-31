@@ -21,6 +21,7 @@ npx ts-node --transpile-only src/app.ts &
 # 3. Checks (needs curl + jq; rider-flow.sh needs JWT_SECRET exported for the customer token)
 JWT_SECRET=<same> bash docs/rider-e2e/rider-flow.sh
 bash docs/rider-e2e/restaurant-and-safeguards.sh
+bash docs/rider-e2e/urgent-rate.sh
 ```
 Run against a fresh database — the scripts create riders with fixed phone numbers.
 
@@ -31,3 +32,4 @@ Run against a fresh database — the scripts create riders with fixed phone numb
 - atta: assign pickup without moving status, address + contact note on the task, delivery rider refused before the mill, wheat collected → picked_up → at_mill, flour delivered + COD collected, cash due + settled, admin list rider names
 - restaurant orders: business name / phone / pin / storefront from the snapshot, call-request number, arrival tells the office, pin update
 - customer tracking returns rider phone + vehicle
+- urgent orders: dedicated per-rider urgent pay, fallback when unset, slot pay untouched
