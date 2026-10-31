@@ -101,6 +101,13 @@ export const mapTask = (row: any): Task => {
     }
   }
   const cashTo: Task['cashTo'] = codAmount && codAmount > 0 ? (row.ocp_id ? 'ocp' : 'office') : null;
+  // Orders only: a non-COD order counts as paid ONLY when payment_status says so.
+  const paymentUnconfirmed =
+    Boolean(row.order_id) &&
+    !!paymentMethod &&
+    paymentMethod !== 'cash_on_delivery' &&
+    paymentStatus !== 'completed' &&
+    status !== 'completed';
 
   const location =
     point(row.address_latitude, row.address_longitude) ||
@@ -139,6 +146,7 @@ export const mapTask = (row: any): Task => {
     paymentStatus,
     codAmount,
     cashTo,
+    paymentUnconfirmed,
     ocpName,
     ocpAddress: row.ocp_address || null,
     isUrgent: row.is_urgent_delivery === true,

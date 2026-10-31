@@ -4,6 +4,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import Joi, { ObjectSchema, ValidationError as JoiValidationError } from 'joi';
+import { ENABLED_PAYMENT_METHODS } from '../config/payments';
 import { ValidationError } from './errorHandler';
 import { isCodeEntryMode } from '../config/otpProvider';
 
@@ -469,7 +470,11 @@ export const orderSchemas = {
       then: Joi.forbidden(),
       otherwise: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }),
-    payment_method: Joi.string().valid('cash_on_delivery', 'card', 'easypaisa', 'jazzcash').default('cash_on_delivery'),
+    // COD only until a payment gateway exists (config/payments.ts).
+    payment_method: Joi.string()
+      .valid(...ENABLED_PAYMENT_METHODS)
+      .default('cash_on_delivery')
+      .messages({ 'any.only': 'Only Cash on Delivery is available right now.' }),
     customer_notes: Joi.string().allow('').max(1000),
   }),
 

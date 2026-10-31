@@ -84,3 +84,16 @@ describe('extractPhones', () => {
     expect(extractPhones(null)).toEqual([]);
   });
 });
+
+describe('COD-only payment safety', () => {
+  it('a non-COD order with pending payment is NOT shown as paid', () => {
+    const task = mapTask({ ...orderRow, payment_method: 'card', payment_status: 'pending' });
+    expect(task.paymentUnconfirmed).toBe(true);
+    expect(task.codAmount).toBeNull();
+  });
+
+  it('a genuinely paid non-COD order and every COD order are fine', () => {
+    expect(mapTask({ ...orderRow, payment_method: 'card', payment_status: 'completed' }).paymentUnconfirmed).toBe(false);
+    expect(mapTask(orderRow).paymentUnconfirmed).toBe(false);
+  });
+});

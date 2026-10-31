@@ -724,11 +724,19 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
 
       if (task.order_id) {
         const orderResult = await client.query(
-          'SELECT id, order_number, status, user_id, payment_method, ocp_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
+          'SELECT id, order_number, status, user_id, payment_method, payment_status, ocp_id FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE',
           [task.order_id]
         );
         const order = orderResult.rows[0];
         if (!order) throw httpError('Order not found', 404);
+        // A non-COD order whose payment never arrived must not be handed over:
+        // the rider collects no cash for it, so the goods would leave unpaid.
+        if (order.payment_method !== 'cash_on_delivery' && order.payment_status !== 'completed') {
+          throw httpError(
+            'Payment for this order has not been received. Do not hand it over — contact the office.',
+            409
+          );
+        }
         if (order.status !== 'delivered') {
           if (!isValidOrderTransition(order.status, 'delivered')) {
             throw httpError(`Order is ${order.status} and cannot be delivered`, 409);

@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
+import { isEnabledPaymentMethod } from '../config/payments';
 import { query, withTransaction } from '../config/database';
 import {
   asyncHandler,
@@ -392,6 +393,13 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     city_id: bodyCityId,
     urgent_delivery,
   } = req.body;
+
+  // Defence in depth behind the Joi schema: COD is the only live method. A
+  // non-COD order would be shown to the rider as already paid (no cash taken)
+  // although no gateway ever collected the money.
+  if (!isEnabledPaymentMethod(payment_method)) {
+    return errorResponse(res, 'Only Cash on Delivery is available right now.', 400);
+  }
 
   // Urgent (on-demand) delivery: a flat super-admin rate instead of a time
   // slot. It deliberately ignores free-delivery thresholds, free slots and

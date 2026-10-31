@@ -427,6 +427,9 @@ const en = {
   'reviews.empty': 'No reviews yet. On-time, polite deliveries earn 5 stars!',
   'reviews.order': 'Order #{number}',
   'reviews.officeReply': 'Office reply: {reply}',
+  'detail.paymentUnconfirmedTitle': 'Payment not received — do not hand over',
+  'detail.paymentUnconfirmedBody': 'This order was marked {method} but the payment has not arrived. Fresh Bazar works on cash on delivery only. Contact the office before handing over the goods.',
+  'tasks.paymentUnconfirmed': 'Payment not received',
 } as const;
 
 export type TranslationKey = keyof typeof en;

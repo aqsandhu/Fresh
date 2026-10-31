@@ -418,6 +418,9 @@ const ur: Record<TranslationKey, string> = {
   'reviews.empty': 'ابھی کوئی ریویو نہیں۔ وقت پر اور اچھے اخلاق سے ڈیلیوری کریں — 5 ستارے پائیں!',
   'reviews.order': 'آرڈر #{number}',
   'reviews.officeReply': 'آفس کا جواب: {reply}',
+  'detail.paymentUnconfirmedTitle': 'ادائیگی موصول نہیں ہوئی — سامان حوالے نہ کریں',
+  'detail.paymentUnconfirmedBody': 'یہ آرڈر {method} کے ساتھ لگا تھا مگر ادائیگی نہیں آئی۔ فریش بازار صرف کیش آن ڈیلیوری پر کام کرتا ہے۔ سامان دینے سے پہلے آفس سے رابطہ کریں۔',
+  'tasks.paymentUnconfirmed': 'ادائیگی نہیں ہوئی',
 };
 
 export default ur;

@@ -127,6 +127,11 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, onPress, riderPoint, compact 
               {task.status === 'completed' ? formatCurrency(task.codAmount) : t('tasks.collect', { amount: formatCurrency(task.codAmount) })}
             </Text>
           </View>
+        ) : task.paymentUnconfirmed ? (
+          <View style={[styles.cod, styles.codWarn]}>
+            <MaterialCommunityIcons name="alert-circle-outline" size={16} color={colors.white} />
+            <Text style={styles.codText}>{t('tasks.paymentUnconfirmed')}</Text>
+          </View>
         ) : task.paymentMethod && task.totalAmount ? (
           <View style={[styles.cod, styles.codDone]}>
             <MaterialCommunityIcons name="check-circle-outline" size={16} color={colors.success} />
@@ -193,6 +198,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
   },
   codDone: { backgroundColor: colors.gray100 },
+  codWarn: { backgroundColor: colors.danger },
   codText: { fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.white },
   codTextDone: { color: colors.gray700 },
 });

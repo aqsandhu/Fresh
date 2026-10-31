@@ -84,6 +84,12 @@ export interface Task {
   codAmount: number | null;
   /** Who receives that cash: the office, or an Order Collection Point. */
   cashTo: 'office' | 'ocp' | null;
+  /**
+   * Non-cash order whose payment has NOT been received. The business is
+   * COD-only; such an order must not be handed over (the backend refuses the
+   * delivery) — the rider contacts the office.
+   */
+  paymentUnconfirmed: boolean;
   ocpName?: string | null;
   ocpAddress?: string | null;
   isUrgent: boolean;

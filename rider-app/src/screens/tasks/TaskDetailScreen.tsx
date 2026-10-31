@@ -495,7 +495,14 @@ const TaskDetailScreen: React.FC = () => {
         {task.paymentMethod || (task.codAmount !== null && task.codAmount > 0) ? (
           <View style={styles.block}>
             <SectionTitle title={t('detail.payment')} />
-            {task.codAmount !== null && task.codAmount > 0 && task.status !== 'completed' ? (
+            {task.paymentUnconfirmed ? (
+              <Banner
+                tone="danger"
+                icon="cash-remove"
+                title={t('detail.paymentUnconfirmedTitle')}
+                message={t('detail.paymentUnconfirmedBody', { method: tEnum(language, 'detail.paymentMethod', task.paymentMethod) })}
+              />
+            ) : task.codAmount !== null && task.codAmount > 0 && task.status !== 'completed' ? (
               <View style={styles.codCard}>
                 <MaterialCommunityIcons name="cash-multiple" size={28} color={colors.warning} />
                 <View style={styles.flex}>
