@@ -4,6 +4,8 @@
 
 import { Request, Response } from 'express';
 import { isEnabledPaymentMethod } from '../config/payments';
+import { slotAvailabilitySql } from '../utils/timeSlots';
+import { getDeliverySettings } from '../utils/deliverySettings';
 import { query, withTransaction } from '../config/database';
 import {
   asyncHandler,
@@ -565,14 +567,10 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     let urgentEta = '';
 
     if (isUrgent) {
-      const u = await client.query(
-        `SELECT key, value FROM site_settings WHERE key IN ('delivery_urgent_charge', 'delivery_urgent_eta')`
-      );
-      let urgentCharge = 0;
-      for (const r of u.rows) {
-        if (r.key === 'delivery_urgent_charge') urgentCharge = parseFloat(r.value) || 0;
-        if (r.key === 'delivery_urgent_eta') urgentEta = String(r.value || '').trim();
-      }
+      // Urgent rate of the ORDER's city (global default when the city has none).
+      const citySettings = await getDeliverySettings(orderCityId, client);
+      const urgentCharge = citySettings.urgentCharge;
+      urgentEta = citySettings.urgentEta;
       if (urgentCharge <= 0) {
         throw new BadRequestError('Urgent delivery is not available right now.');
       }
@@ -583,7 +581,8 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         cart.id,
         time_slot_id,
         new Date(),
-        client
+        client,
+        orderCityId
       );
       deliveryCharge = deliveryChargeResult.delivery_charge;
       const ruleResult = await client.query(
@@ -937,6 +936,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       slotId: time_slot_id,
       deliveryDate: requested_delivery_date,
       isUrgent,
+      cityId: orderCityId,
     });
 
     // When no explicit delivery date was requested, the claim above booked a
@@ -1132,7 +1132,7 @@ export const getTimeSlots = asyncHandler(async (req: Request, res: Response) => 
     `SELECT
       ts.id, ts.slot_name, ts.start_time, ts.end_time,
       ts.max_orders, ${bookedExpr} AS booked_orders,
-      GREATEST(0, ts.max_orders - ${bookedExpr}) AS available_slots,
+      ${slotAvailabilitySql(bookedExpr)},
       ts.is_free_delivery_slot, ts.is_express_slot
     FROM time_slots ts
     ${join}

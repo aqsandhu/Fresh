@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { UNLIMITED_SLOT_AVAILABLE } from '../utils/timeSlots';
+import { getDeliverySettings } from '../utils/deliverySettings';
 import { asyncHandler } from '../middleware/errorHandler';
 import { successResponse } from '../utils/response';
 import { resolvePublicCityId } from '../utils/cityScope';
@@ -182,27 +184,20 @@ router.get('/cities', asyncHandler(async (req, res) => {
 
 // Public: Get delivery settings (no auth required)
 router.get('/delivery', asyncHandler(async (req, res) => {
-  const result = await query(
-    `SELECT key, value FROM site_settings WHERE key LIKE 'delivery_%'`
-  );
-  const map: Record<string, string> = {};
-  for (const row of result.rows) map[row.key.replace('delivery_', '')] = row.value;
-
-  const num = (k: string, d: number) => {
-    const n = parseFloat(map[k]);
-    return Number.isFinite(n) ? n : d;
-  };
-
+  // Per city (?city_id / ?city), falling back to the global default.
+  const cityId = await resolvePublicCityId(req).catch(() => null);
+  const d = await getDeliverySettings(cityId);
   const settings = {
-    base_charge: num('base_charge', 100),
-    free_delivery_threshold: num('free_delivery_threshold', 500),
-    express_charge: num('express_charge', 100),
+    base_charge: d.baseCharge,
+    free_delivery_threshold: d.freeThreshold,
+    express_charge: d.expressCharge,
     // Urgent (on-demand) delivery — alternative to time slots.
-    urgent_charge: num('urgent_charge', 0),
-    urgent_eta: (map['urgent_eta'] || '').trim(),
-    urgent_enabled: num('urgent_charge', 0) > 0,
+    urgent_charge: d.urgentCharge,
+    urgent_eta: d.urgentEta,
+    urgent_enabled: d.urgentCharge > 0,
     // % of a TODAY slot's window that may elapse before it becomes unselectable.
-    slot_cutoff_percent: num('slot_cutoff_percent', 60),
+    slot_cutoff_percent: d.slotCutoffPercent,
+    city_id: cityId,
   };
   successResponse(res, settings, 'Delivery settings retrieved');
 }));
@@ -225,7 +220,9 @@ router.get('/time-slots', asyncHandler(async (req, res) => {
   const result = await query(
     `SELECT id, slot_name, start_time, end_time,
             is_free_delivery_slot, is_express_slot,
-            (max_orders - booked_orders) as available_slots
+            CASE WHEN max_orders IS NULL THEN ${UNLIMITED_SLOT_AVAILABLE}
+                 ELSE GREATEST(0, max_orders - booked_orders) END AS available_slots,
+            (max_orders IS NULL) AS is_unlimited
      FROM time_slots
      WHERE status = 'available'
      ${audienceClause}

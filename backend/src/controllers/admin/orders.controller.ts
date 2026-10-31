@@ -21,6 +21,7 @@ import {
 import { evaluateMilestone } from '../../utils/autoCoupons';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
 import { hasRiderTaskArrivedColumn, hasAttaCashColumns } from '../../config/riderSchema';
+import { getDeliverySettings } from '../../utils/deliverySettings';
 import { syncRiderAvailability } from '../../utils/riderAvailability';
 import {
   cancelActiveRiderTasks,
@@ -1187,16 +1188,9 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
       }
 
       // Delivery settings.
-      const sset = await client.query(
-        `SELECT key, value FROM site_settings WHERE key IN ('delivery_base_charge','delivery_free_delivery_threshold','delivery_urgent_charge','delivery_urgent_eta')`
-      );
-      let baseCharge = 100, freeThreshold = 500, urgentCharge = 0, urgentEta = '';
-      for (const r of sset.rows) {
-        if (r.key === 'delivery_base_charge') baseCharge = parseFloat(r.value) || baseCharge;
-        if (r.key === 'delivery_free_delivery_threshold') freeThreshold = parseFloat(r.value) || freeThreshold;
-        if (r.key === 'delivery_urgent_charge') urgentCharge = parseFloat(r.value) || 0;
-        if (r.key === 'delivery_urgent_eta') urgentEta = String(r.value || '').trim();
-      }
+      // Delivery settings of the order's city (global default otherwise).
+      const sset = await getDeliverySettings(orderCityId, client);
+      const { baseCharge, freeThreshold, urgentCharge, urgentEta } = sset;
 
       // Delivery charge — same rules as the website (urgent flat rate; free
       // slot → free; else free only when the eligible subtotal meets the

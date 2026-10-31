@@ -117,10 +117,12 @@ export const Settings: React.FC = () => {
   // Time Slots State
   const [isTimeSlotModalOpen, setIsTimeSlotModalOpen] = useState(false);
   const [editingTimeSlot, setEditingTimeSlot] = useState<TimeSlot | null>(null);
+  // maxOrders as text: empty = no limit (owner rule — a slot is unlimited
+  // unless the admin sets a cap on it).
   const [timeSlotForm, setTimeSlotForm] = useState({
     startTime: '09:00',
     endTime: '12:00',
-    maxOrders: 20,
+    maxOrders: '',
     isActive: true,
     isFreeDeliverySlot: false,
   });
@@ -137,8 +139,9 @@ export const Settings: React.FC = () => {
     bannerTickerItems: [] as string[],
   });
   // Fetch Settings
+  // Delivery prices are per city — refetch when the admin switches city.
   const { data: settings } = useQuery({
-    queryKey: ['settings'],
+    queryKey: ['settings', selectedCityId],
     queryFn: () => settingsService.getSettings(),
   });
 
@@ -198,11 +201,28 @@ export const Settings: React.FC = () => {
 
   // Mutations
   const updateDeliveryMutation = useMutation({
-    mutationFn: settingsService.updateDeliverySettings,
+    mutationFn: (d: DeliverySettings) => {
+      // Only the editable values go to the server.
+      const { scope: _scope, cityId: _cityId, cityName: _cityName, cityOverride: _cityOverride, ...values } = d;
+      return settingsService.updateDeliverySettings(values);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
-      toast.success('Delivery settings updated successfully');
+      toast.success(
+        settings?.delivery?.scope === 'city'
+          ? `Delivery settings saved for ${settings?.delivery?.cityName || 'this city'}`
+          : 'Default delivery settings saved'
+      );
     },
+  });
+
+  const resetDeliveryMutation = useMutation({
+    mutationFn: settingsService.resetDeliveryToGlobal,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('This city now uses the default delivery settings');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to reset'),
   });
 
   const createTimeSlotMutation = useMutation({
@@ -275,8 +295,11 @@ export const Settings: React.FC = () => {
     if (timeSlotForm.startTime >= timeSlotForm.endTime) {
       errors.endTime = 'End time must be after start time';
     }
-    if (timeSlotForm.maxOrders < 1) {
-      errors.maxOrders = 'Max orders must be at least 1';
+    if (timeSlotForm.maxOrders.trim() !== '') {
+      const n = Number(timeSlotForm.maxOrders);
+      if (!Number.isInteger(n) || n < 1) {
+        errors.maxOrders = 'Enter a whole number of at least 1, or leave empty for no limit';
+      }
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -295,7 +318,7 @@ export const Settings: React.FC = () => {
     setTimeSlotForm({
       startTime: '09:00',
       endTime: '12:00',
-      maxOrders: 20,
+      maxOrders: '',
       isActive: true,
       isFreeDeliverySlot: false,
     });
@@ -308,7 +331,7 @@ export const Settings: React.FC = () => {
     setTimeSlotForm({
       startTime: timeSlot.startTime,
       endTime: timeSlot.endTime,
-      maxOrders: timeSlot.maxOrders,
+      maxOrders: timeSlot.maxOrders == null ? '' : String(timeSlot.maxOrders),
       isActive: timeSlot.isActive ?? true,
       isFreeDeliverySlot: timeSlot.isFreeDeliverySlot || false,
     });
@@ -325,10 +348,14 @@ export const Settings: React.FC = () => {
   const handleTimeSlotSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateTimeSlot()) {
+      const payload = {
+        ...timeSlotForm,
+        maxOrders: timeSlotForm.maxOrders.trim() === '' ? null : Number(timeSlotForm.maxOrders),
+      };
       if (editingTimeSlot) {
-        updateTimeSlotMutation.mutate({ id: editingTimeSlot.id, data: timeSlotForm });
+        updateTimeSlotMutation.mutate({ id: editingTimeSlot.id, data: payload });
       } else {
-        createTimeSlotMutation.mutate(timeSlotForm);
+        createTimeSlotMutation.mutate(payload);
       }
     }
   };
@@ -359,8 +386,31 @@ export const Settings: React.FC = () => {
           </div>
           <div>
             <h3 className="text-lg font-medium text-gray-900">Delivery Settings</h3>
-            <p className="text-sm text-gray-500">Configure delivery charges and thresholds</p>
+            <p className="text-sm text-gray-500">
+              {settings?.delivery?.scope === 'city' ? (
+                <>
+                  Prices for <strong>{settings?.delivery?.cityName || selectedCity?.name || 'this city'}</strong>
+                  {settings?.delivery?.cityOverride ? ' (own values)' : ' — currently using the default for all cities; saving here gives this city its own values'}
+                </>
+              ) : (
+                'Default prices for every city that has no values of its own'
+              )}
+            </p>
           </div>
+          {settings?.delivery?.scope === 'city' && settings?.delivery?.cityOverride && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              isLoading={resetDeliveryMutation.isPending}
+              onClick={() => {
+                if (confirm('Remove this city\'s own delivery prices and use the default for all cities?')) resetDeliveryMutation.mutate();
+              }}
+            >
+              Use default
+            </Button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -524,7 +574,7 @@ export const Settings: React.FC = () => {
                     <p className="font-medium text-gray-900">
                       {slot.startTime} - {slot.endTime}
                     </p>
-                    <p className="text-sm text-gray-500">Max {slot.maxOrders} orders</p>
+                    <p className="text-sm text-gray-500">{slot.maxOrders == null ? 'No order limit' : `Max ${slot.maxOrders} orders`}</p>
                   </div>
                   <Badge variant={slot.isActive ? 'success' : 'default'} size="sm">
                     {slot.isActive ? 'Active' : 'Inactive'}
@@ -1082,15 +1132,14 @@ export const Settings: React.FC = () => {
             />
           </div>
           <Input
-            label="Maximum Orders"
+            label="Maximum orders per day (optional)"
             type="number"
+            placeholder="No limit"
             value={timeSlotForm.maxOrders}
-            onChange={(e) =>
-              setTimeSlotForm({ ...timeSlotForm, maxOrders: parseInt(e.target.value) || 0 })
-            }
+            onChange={(e) => setTimeSlotForm({ ...timeSlotForm, maxOrders: e.target.value })}
             error={formErrors.maxOrders}
+            helperText="Leave empty for unlimited orders in this slot."
             min={1}
-            required
           />
           <label className="flex items-center space-x-2 cursor-pointer">
             <input

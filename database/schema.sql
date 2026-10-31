@@ -592,7 +592,7 @@ CREATE TABLE time_slots (
     end_time TIME NOT NULL,
     
     -- Capacity
-    max_orders INTEGER DEFAULT 50,
+    max_orders INTEGER,  -- NULL = unlimited (migration 59)
     booked_orders INTEGER DEFAULT 0,
     
     -- Status

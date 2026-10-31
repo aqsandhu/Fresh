@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
+import { resolvePublicCityId } from '../utils/cityScope';
 import { query, withTransaction } from '../config/database';
 import {
   asyncHandler,
@@ -554,7 +555,9 @@ export const calculateCartDeliveryCharge = asyncHandler(async (req: Request, res
   }
 
   // Calculate delivery charge
-  const deliveryResult = await calculateDeliveryCharge(cart.id, time_slot_id);
+  // Prices of the customer's selected city (falls back to the cart's products' city).
+  const requestCityId = await resolvePublicCityId(req).catch(() => null);
+  const deliveryResult = await calculateDeliveryCharge(cart.id, time_slot_id, new Date(), undefined, requestCityId);
 
   // Update cart with delivery charge
   await updateCartDeliveryCharge(cart.id, deliveryResult.delivery_charge);

@@ -441,6 +441,12 @@ export interface DeliverySettings {
   urgentEta?: string;
   /** % of a today-slot's window allowed to elapse before it locks (default 60). */
   slotCutoffPercent?: number;
+  /** 'city' = the selected city's values; 'global' = the default for every city. */
+  scope?: 'city' | 'global';
+  cityId?: string | null;
+  cityName?: string | null;
+  /** True when the selected city has its own values (otherwise it uses the default). */
+  cityOverride?: boolean;
 }
 
 export interface TimeSlot {
@@ -448,7 +454,8 @@ export interface TimeSlot {
   slotName?: string;
   startTime: string;
   endTime: string;
-  maxOrders: number;
+  /** null = no limit (default). */
+  maxOrders: number | null;
   isActive?: boolean;
   isFreeDeliverySlot?: boolean;
 }

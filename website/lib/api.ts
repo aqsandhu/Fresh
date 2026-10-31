@@ -733,13 +733,14 @@ export const tipsApi = {
 
 // Settings API (public endpoints)
 export const settingsApi = {
+  // Delivery prices are per city (global default when the city has none).
   getDeliverySettings: async (): Promise<{ base_charge: number; free_delivery_threshold: number; express_charge: number }> => {
-    const response = await api.get('/site-settings/delivery')
+    const response = await api.get('/site-settings/delivery', { params: withCityParams() })
     return response.data?.data || response.data
   },
 
-  getTimeSlots: async (date?: string): Promise<{ id: string; slot_name: string; start_time: string; end_time: string; is_free_delivery_slot: boolean; available_slots: number }[]> => {
-    const params = date ? { date } : {}
+  getTimeSlots: async (date?: string): Promise<{ id: string; slot_name: string; start_time: string; end_time: string; is_free_delivery_slot: boolean; available_slots: number; is_unlimited?: boolean }[]> => {
+    const params = withCityParams(date ? { date } : {})
     const response = await api.get('/orders/time-slots', { params })
     return response.data?.data || response.data || []
   },

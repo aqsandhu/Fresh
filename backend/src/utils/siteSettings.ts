@@ -115,7 +115,7 @@ export const SERVICE_AREA_MESSAGE_DEFAULTS: ServiceAreaMessages = {
 
 let cachedCityColumn: boolean | null = null;
 
-async function hasSiteSettingsCityColumn(): Promise<boolean> {
+export async function hasSiteSettingsCityColumn(): Promise<boolean> {
   if (cachedCityColumn !== null) return cachedCityColumn;
   try {
     const r = await query(

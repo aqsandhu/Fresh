@@ -667,6 +667,8 @@ export const adminSchemas = {
     urgent_charge: Joi.number().min(0).max(1000000).optional(),
     urgent_eta: Joi.string().max(100).optional().allow('', null),
     slot_cutoff_percent: Joi.number().min(0).max(100).optional(),
+    // City admins: drop this city's own values and use the global default.
+    reset_to_global: Joi.boolean().optional(),
   }),
 
   bulkUpdateOrderStatus: Joi.object({

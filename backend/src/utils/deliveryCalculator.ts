@@ -20,9 +20,9 @@ import { DeliveryChargeResult } from '../types';
 import logger from './logger';
 import { captureMessage } from '../config/sentry';
 import { FRESH_CART_LINE_UNIT_PRICE_SQL, FRESH_CART_SUBTOTAL_SQL } from './unitPricing';
+import { getDeliverySettings, getCartCityId } from './deliverySettings';
 
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
-const ENV_FREE_DELIVERY_MIN_AMOUNT = parseFloat(process.env.FREE_DELIVERY_MIN_AMOUNT || '500');
 
 
 type DbClient = Pick<PoolClient, 'query'>;
@@ -34,34 +34,6 @@ async function getFreshCartSubtotal(cartId: string, client?: DbClient): Promise<
   const result = await runQuery(client, FRESH_CART_SUBTOTAL_SQL, [cartId]);
   return parseFloat(result.rows[0]?.fresh_subtotal || '0');
 }
-
-const getDeliverySettings = async (
-  client?: DbClient
-): Promise<{ baseCharge: number; freeThreshold: number }> => {
-  try {
-    const result = await runQuery(
-      client,
-      `SELECT key, value FROM site_settings WHERE key IN ('delivery_base_charge', 'delivery_free_delivery_threshold')`
-    );
-    let baseCharge = ENV_DEFAULT_DELIVERY_CHARGE;
-    let freeThreshold = ENV_FREE_DELIVERY_MIN_AMOUNT;
-    for (const row of result.rows) {
-      // Nullish/NaN check (not ||): an admin-set 0 (free delivery / zero
-      // threshold) must be honored instead of falling back to the default.
-      if (row.key === 'delivery_base_charge') {
-        const n = parseFloat(row.value);
-        if (!Number.isNaN(n)) baseCharge = n;
-      }
-      if (row.key === 'delivery_free_delivery_threshold') {
-        const n = parseFloat(row.value);
-        if (!Number.isNaN(n)) freeThreshold = n;
-      }
-    }
-    return { baseCharge, freeThreshold };
-  } catch {
-    return { baseCharge: ENV_DEFAULT_DELIVERY_CHARGE, freeThreshold: ENV_FREE_DELIVERY_MIN_AMOUNT };
-  }
-};
 
 /**
  * Sum of cart items in categories that count toward the free-delivery threshold.
@@ -90,7 +62,9 @@ export const calculateDeliveryCharge = async (
   cartId: string,
   timeSlotId?: string,
   _orderTime: Date = new Date(),
-  client?: PoolClient
+  client?: PoolClient,
+  /** City whose delivery prices apply; derived from the cart's products when omitted. */
+  cityId?: string | null
 ): Promise<DeliveryChargeResult> => {
   try {
     const cartExists = await runQuery(
@@ -118,7 +92,9 @@ export const calculateDeliveryCharge = async (
       };
     }
 
-    const { baseCharge, freeThreshold } = await getDeliverySettings(client);
+    const runner = client ?? { query: (sql: string, params?: unknown[]) => query(sql, params as any[]) };
+    const effectiveCity = cityId ?? (await getCartCityId(cartId, runner));
+    const { baseCharge, freeThreshold } = await getDeliverySettings(effectiveCity, runner);
 
     // Rule 1: Free-delivery time slot wins regardless of cart amount.
     if (timeSlotId) {

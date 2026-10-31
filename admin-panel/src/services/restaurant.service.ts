@@ -124,7 +124,8 @@ export const restaurantService = {
   createTimeSlot: async (data: {
     startTime: string;
     endTime: string;
-    maxOrders?: number;
+    /** null / undefined = no limit. */
+    maxOrders?: number | null;
     isActive?: boolean;
     isFreeDeliverySlot?: boolean;
   }): Promise<any> => {
@@ -133,7 +134,7 @@ export const restaurantService = {
     const res = await api.post<ApiResponse<any>>('/admin/settings/time-slots?audience=restaurant', {
       start_time: data.startTime,
       end_time: data.endTime,
-      max_orders: data.maxOrders ?? 50,
+      max_orders: data.maxOrders ?? null,
       is_active: data.isActive !== false,
       is_free_delivery_slot: data.isFreeDeliverySlot === true,
       audience: 'restaurant',

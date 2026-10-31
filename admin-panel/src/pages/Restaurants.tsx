@@ -201,7 +201,7 @@ function RestaurantTimeSlots() {
   const queryClient = useQueryClient();
   const [start, setStart] = useState('09:00');
   const [end, setEnd] = useState('12:00');
-  const [maxOrders, setMaxOrders] = useState('50');
+  const [maxOrders, setMaxOrders] = useState(''); // empty = no limit
   const [freeDelivery, setFreeDelivery] = useState(false);
 
   const { data: slots = [], isLoading } = useQuery({
@@ -213,7 +213,7 @@ function RestaurantTimeSlots() {
 
   const create = useMutation({
     mutationFn: () => restaurantService.createTimeSlot({
-      startTime: start, endTime: end, maxOrders: parseInt(maxOrders, 10) || 50, isFreeDeliverySlot: freeDelivery,
+      startTime: start, endTime: end, maxOrders: maxOrders.trim() === '' ? null : parseInt(maxOrders, 10), isFreeDeliverySlot: freeDelivery,
     }),
     onSuccess: () => { toast.success('Slot added'); invalidate(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not add slot'),
@@ -251,7 +251,7 @@ function RestaurantTimeSlots() {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Max orders</label>
-          <input type="number" value={maxOrders} onChange={(e) => setMaxOrders(e.target.value)}
+          <input type="number" min={1} value={maxOrders} placeholder="No limit" onChange={(e) => setMaxOrders(e.target.value)}
             className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
         </div>
         <label className="flex items-center gap-1.5 text-sm text-gray-700 pb-1.5 cursor-pointer">
@@ -275,7 +275,7 @@ function RestaurantTimeSlots() {
             <div key={s.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
               <div className="text-sm">
                 <span className="font-medium text-gray-900">{s.slotName || s.slot_name}</span>
-                <span className="text-gray-400"> · max {s.maxOrders ?? s.max_orders}</span>
+                <span className="text-gray-400"> · {(s.maxOrders ?? s.max_orders) == null ? 'no limit' : `max ${s.maxOrders ?? s.max_orders}`}</span>
                 {(s.isFreeDeliverySlot ?? s.is_free_delivery_slot) && (
                   <span className="ml-2 text-green-600 font-medium">Free delivery</span>
                 )}

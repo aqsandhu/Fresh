@@ -18,6 +18,15 @@ export const settingsService = {
     }
   },
 
+  /** Drop the selected city's own delivery values so it uses the default again. */
+  resetDeliveryToGlobal: async (): Promise<void> => {
+    try {
+      await api.put('/admin/settings/delivery', { resetToGlobal: true });
+    } catch (error: any) {
+      throw new Error(error?.response?.data?.message || 'Failed to reset delivery settings');
+    }
+  },
+
   updateDeliverySettings: async (settings: DeliverySettings): Promise<DeliverySettings> => {
     try {
       const response = await api.put<ApiResponse<DeliverySettings>>('/admin/settings/delivery', settings);

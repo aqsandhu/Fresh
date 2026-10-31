@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
+import { slotAvailabilitySql } from '../utils/timeSlots';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
 import { successResponse, createdResponse, errorResponse } from '../utils/response';
@@ -137,13 +138,13 @@ export const getRestaurantTimeSlots = asyncHandler(async (req: Request, res: Res
   const perDate = await hasTimeSlotBookings();
   const bookedExpr = perDate ? 'COALESCE(tsb.booked_count, 0)' : 'ts.booked_orders';
   const join = perDate
-    ? `LEFT JOIN time_slot_bookings tsb ON tsb.time_slot_id = ts.id AND tsb.delivery_date = COALESCE($2::date, CURRENT_DATE)`
+    ? `LEFT JOIN time_slot_bookings tsb ON tsb.time_slot_id = ts.id AND tsb.delivery_date = COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date)`
     : '';
   const params: unknown[] = perDate ? [dayOfWeek, validDate ? dateStr : null] : [dayOfWeek];
   const result = await query(
     `SELECT ts.id, ts.slot_name, ts.start_time, ts.end_time,
             ts.is_free_delivery_slot, ts.is_express_slot,
-            GREATEST(0, ts.max_orders - ${bookedExpr}) AS available_slots
+            ${slotAvailabilitySql(bookedExpr)}
        FROM time_slots ts
        ${join}
       WHERE ts.status = 'available' AND ts.audience = 'restaurant'

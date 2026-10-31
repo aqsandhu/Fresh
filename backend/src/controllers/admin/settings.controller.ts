@@ -3,6 +3,8 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
+import { parseMaxOrders } from '../../utils/timeSlots';
+import { getDeliverySettings, saveDeliverySettings, clearCityDeliverySettings } from '../../utils/deliverySettings';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
@@ -519,87 +521,90 @@ export const updateWhatsAppOrderSettingsBulk = asyncHandler(async (req: Request,
  */
 
 export const getSettings = asyncHandler(async (req: Request, res: Response) => {
-  // Get delivery settings from site_settings table
-  const result = await query(
-    `SELECT key, value FROM site_settings WHERE key LIKE 'delivery_%'`
-  );
-  const map: Record<string, string> = {};
-  for (const row of result.rows) map[row.key.replace('delivery_', '')] = row.value;
-  const num = (k: string, d: number) => {
-    const n = parseFloat(map[k]);
-    return Number.isFinite(n) ? n : d;
-  };
+  // Delivery prices are per city: the selected/assigned city's own values, or
+  // the global default when that city has none (super admin with no city
+  // selected edits the global default).
+  const scope = await resolveCityScope(req);
+  const effective = await getDeliverySettings(scope.cityId);
+  const global = scope.cityId ? await getDeliverySettings(null) : effective;
 
-  const delivery = {
-    base_charge: num('base_charge', 50),
-    free_delivery_threshold: num('free_delivery_threshold', 500),
-    express_charge: num('express_charge', 100),
-    urgent_charge: num('urgent_charge', 0),
-    urgent_eta: (map['urgent_eta'] || '').trim(),
-    slot_cutoff_percent: num('slot_cutoff_percent', 60),
-  };
+  const shape = (d: typeof effective) => ({
+    base_charge: d.baseCharge,
+    free_delivery_threshold: d.freeThreshold,
+    express_charge: d.expressCharge,
+    urgent_charge: d.urgentCharge,
+    urgent_eta: d.urgentEta,
+    slot_cutoff_percent: d.slotCutoffPercent,
+  });
 
-  successResponse(res, { delivery }, 'Settings retrieved');
+  successResponse(res, {
+    delivery: {
+      ...shape(effective),
+      scope: scope.cityId ? 'city' : 'global',
+      city_id: scope.cityId,
+      city_name: scope.cityName,
+      city_override: scope.cityId ? effective.cityOverride : false,
+    },
+    global_delivery: shape(global),
+  }, 'Settings retrieved');
 });
 
 /**
- * Update delivery settings
+ * Update delivery settings for the selected city (or the global default when a
+ * super admin has no city selected).
  * PUT /api/admin/settings/delivery
  */
 
 export const updateDeliverySettings = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.id;
-  const { base_charge, free_delivery_threshold, express_charge, urgent_charge, urgent_eta, slot_cutoff_percent } = req.body;
+  const scope = await resolveCityScope(req);
+  const { base_charge, free_delivery_threshold, express_charge, urgent_charge, urgent_eta, slot_cutoff_percent, reset_to_global } = req.body;
 
-  // Clamp/validate money fields to finite numbers ≥ 0 — a NaN/negative value
-  // used to persist literally ("NaN" string) and break every downstream
-  // parseFloat consumer (checkout charge calculation included).
-  const money = (v: unknown, fallback: number): string => {
+  // A restricted admin without a city can't write anything global.
+  if (!scope.unrestricted && !scope.cityId) {
+    return errorResponse(res, 'Select a city first.', 400);
+  }
+
+  if (reset_to_global === true) {
+    if (!scope.cityId) return errorResponse(res, 'Select a city to reset.', 400);
+    await clearCityDeliverySettings(scope.cityId);
+    return successResponse(res, { reset: true, city_id: scope.cityId }, 'This city now uses the default delivery settings');
+  }
+
+  const money = (v: unknown): string | undefined => {
+    if (v === undefined || v === null || v === '') return undefined;
     const n = parseFloat(String(v));
-    return String(Number.isFinite(n) && n >= 0 ? n : fallback);
+    return Number.isFinite(n) && n >= 0 ? String(n) : undefined;
   };
 
-  const updates = [
-    { key: 'delivery_base_charge', value: money(base_charge, 50) },
-    { key: 'delivery_free_delivery_threshold', value: money(free_delivery_threshold, 500) },
-    { key: 'delivery_express_charge', value: money(express_charge, 100) },
-  ];
-
-  // Slot cutoff % (0–100): how much of a TODAY slot may elapse before it locks.
+  const values: Record<string, string | undefined> = {
+    baseCharge: money(base_charge),
+    freeThreshold: money(free_delivery_threshold),
+    expressCharge: money(express_charge),
+  };
   if (slot_cutoff_percent !== undefined) {
     const n = parseFloat(String(slot_cutoff_percent));
-    const clamped = Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 60;
-    updates.push({ key: 'delivery_slot_cutoff_percent', value: String(clamped) });
+    values.slotCutoffPercent = String(Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 60);
   }
-
-  // Urgent (on-demand) delivery is a SUPER-ADMIN-only setting. Ignore these
-  // fields for any other admin so a city admin can't change the urgent rate.
+  // Urgent (on-demand) delivery stays a SUPER-ADMIN-only setting.
   const isSuperAdmin = req.user?.role === 'super_admin';
   if (isSuperAdmin) {
-    if (urgent_charge !== undefined) {
-      const n = parseFloat(String(urgent_charge));
-      updates.push({ key: 'delivery_urgent_charge', value: String(Number.isFinite(n) && n >= 0 ? n : 0) });
-    }
-    if (urgent_eta !== undefined) {
-      updates.push({ key: 'delivery_urgent_eta', value: String(urgent_eta ?? '').trim().slice(0, 100) });
-    }
+    if (urgent_charge !== undefined) values.urgentCharge = money(urgent_charge) ?? '0';
+    if (urgent_eta !== undefined) values.urgentEta = String(urgent_eta ?? '').trim().slice(0, 100);
   }
 
-  for (const { key, value } of updates) {
-    await upsertGlobalSiteSetting(key, value, userId);
-  }
+  await saveDeliverySettings(scope.cityId ?? null, values, userId);
+  const saved = await getDeliverySettings(scope.cityId ?? null);
 
   successResponse(res, {
-    base_charge: parseFloat(String(base_charge)) || 50,
-    free_delivery_threshold: parseFloat(String(free_delivery_threshold)) || 500,
-    express_charge: parseFloat(String(express_charge)) || 100,
-    ...(isSuperAdmin
-      ? {
-          urgent_charge: parseFloat(String(urgent_charge)) || 0,
-          urgent_eta: String(urgent_eta ?? '').trim(),
-        }
-      : {}),
-  }, 'Delivery settings updated');
+    base_charge: saved.baseCharge,
+    free_delivery_threshold: saved.freeThreshold,
+    express_charge: saved.expressCharge,
+    slot_cutoff_percent: saved.slotCutoffPercent,
+    ...(isSuperAdmin ? { urgent_charge: saved.urgentCharge, urgent_eta: saved.urgentEta } : {}),
+    scope: scope.cityId ? 'city' : 'global',
+    city_id: scope.cityId,
+  }, scope.cityId ? `Delivery settings updated for ${scope.cityName || 'this city'}` : 'Default delivery settings updated');
 });
 
 /**
@@ -640,8 +645,13 @@ export const createTimeSlot = asyncHandler(async (req: Request, res: Response) =
   const audienceReady = await hasRestaurantDeliveryColumns();
   const audience = req.body.audience === 'restaurant' ? 'restaurant' : 'consumer';
 
+  // No limit unless the admin types one (NULL = unlimited).
+  const maxOrders = parseMaxOrders(max_orders);
+  if (maxOrders === undefined) {
+    return errorResponse(res, 'Max orders must be a whole number of at least 1, or empty for no limit.', 400);
+  }
   const cols = ['slot_name', 'start_time', 'end_time', 'max_orders', 'status', 'is_free_delivery_slot'];
-  const vals: any[] = [slotName, start_time, end_time, max_orders || 50, status, is_free_delivery_slot === true];
+  const vals: any[] = [slotName, start_time, end_time, maxOrders, status, is_free_delivery_slot === true];
   if (audienceReady) {
     cols.push('audience');
     vals.push(audience);
@@ -677,7 +687,13 @@ export const updateTimeSlot = asyncHandler(async (req: Request, res: Response) =
   if (slotName) { sets.push(`slot_name = $${idx}`); params.push(slotName); idx++; }
   if (start_time) { sets.push(`start_time = $${idx}`); params.push(start_time); idx++; }
   if (end_time) { sets.push(`end_time = $${idx}`); params.push(end_time); idx++; }
-  if (max_orders !== undefined) { sets.push(`max_orders = $${idx}`); params.push(max_orders); idx++; }
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'max_orders')) {
+    const maxOrders = parseMaxOrders(max_orders);
+    if (maxOrders === undefined) {
+      return errorResponse(res, 'Max orders must be a whole number of at least 1, or empty for no limit.', 400);
+    }
+    sets.push(`max_orders = $${idx}`); params.push(maxOrders); idx++;
+  }
   if (status) { sets.push(`status = $${idx}`); params.push(status); idx++; }
   if (is_free_delivery_slot !== undefined) { sets.push(`is_free_delivery_slot = $${idx}`); params.push(is_free_delivery_slot === true); idx++; }
 
