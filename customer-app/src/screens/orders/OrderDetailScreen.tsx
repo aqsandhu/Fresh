@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -131,6 +132,33 @@ export const OrderDetailScreen: React.FC = () => {
               <MaterialIcons name="chevron-right" size={18} color={COLORS.primary} />
             </TouchableOpacity>
           )}
+          {/* Your rider — call him once he is on the way (website + app guidance). */}
+          {order.rider?.name && order.status === 'out_for_delivery' ? (
+            <View style={styles.riderRow}>
+              <MaterialIcons name="delivery-dining" size={22} color={COLORS.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.riderRowName}>{order.rider.name}</Text>
+                {order.rider.vehicleType || order.rider.vehicleNumber ? (
+                  <Text style={styles.riderRowMeta}>{[order.rider.vehicleType, order.rider.vehicleNumber].filter(Boolean).join(' · ')}</Text>
+                ) : null}
+              </View>
+              {order.rider.phone ? (
+                <TouchableOpacity
+                  style={styles.riderCall}
+                  onPress={() => Linking.openURL(`tel:${order.rider!.phone}`).catch(() => {})}
+                  accessibilityLabel="Call rider"
+                >
+                  <MaterialIcons name="phone" size={18} color={COLORS.white} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+          {order.status === 'delivered' && order.deliveryProofImage ? (
+            <View style={styles.proofBox}>
+              <Text style={styles.riderRowMeta}>Delivery photo taken by the rider</Text>
+              <Image source={{ uri: order.deliveryProofImage }} style={styles.proofImage} resizeMode="cover" />
+            </View>
+          ) : null}
         </View>
 
         {/* Items */}
@@ -286,6 +314,27 @@ export const OrderDetailScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  riderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+    padding: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.gray100,
+  },
+  riderRowName: { fontSize: 14, fontWeight: '600', color: COLORS.gray900 },
+  riderRowMeta: { fontSize: 12, color: COLORS.gray500, marginTop: 2 },
+  riderCall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proofBox: { marginTop: SPACING.md },
+  proofImage: { width: '100%', height: 180, borderRadius: BORDER_RADIUS.md, marginTop: SPACING.xs, backgroundColor: COLORS.gray100 },
   container: {
     flex: 1,
     backgroundColor: COLORS.white,

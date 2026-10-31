@@ -73,6 +73,8 @@ function mapBackendOrder(raw: any): Order {
     id: raw.rider_id,
     name: raw.rider_name || '',
     phone: raw.rider_phone || '',
+    vehicleType: raw.rider_vehicle_type || null,
+    vehicleNumber: raw.rider_vehicle_number || null,
     currentLocation: raw.rider_latitude ? {
       latitude: parseFloat(raw.rider_latitude),
       longitude: parseFloat(raw.rider_longitude),
@@ -106,6 +108,7 @@ function mapBackendOrder(raw: any): Order {
     paymentMethod: (paymentMethodMap[raw.payment_method] || raw.payment_method || 'cash') as any,
     paymentStatus: raw.payment_status || 'pending',
     rider,
+    deliveryProofImage: raw.delivery_proof_image ? resolveImageUrl(raw.delivery_proof_image) : null,
     createdAt: raw.placed_at || raw.created_at || '',
     estimatedDelivery: raw.requested_delivery_date || raw.out_for_delivery_at || '',
     deliveredAt: raw.delivered_at || undefined,

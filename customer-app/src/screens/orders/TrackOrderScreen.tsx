@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -56,6 +57,11 @@ interface TrackingData {
   rider: {
     id: string;
     name: string;
+    phone?: string | null;
+    avatar_url?: string | null;
+    vehicle_type?: string | null;
+    vehicle_number?: string | null;
+    rating?: number | null;
     location: {
       latitude: number;
       longitude: number;
@@ -72,6 +78,8 @@ export const TrackOrderScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSocketConnected, setIsSocketConnected] = useState(false);
+  // Set when the rider taps "I've arrived" — "Aapka order aapke darwaze par hai".
+  const [riderAtDoorAt, setRiderAtDoorAt] = useState<string | null>(null);
   const mapRef = useRef<MapView>(null);
 
   const loadOrder = useCallback(async () => {
@@ -110,6 +118,11 @@ export const TrackOrderScreen: React.FC = () => {
       if (data.orderId === orderId) {
         loadOrder();
       }
+    };
+    const handleRiderArrived = (data: any) => {
+      if (data?.orderId !== orderId) return;
+      setRiderAtDoorAt(data?.arrivedAt || new Date().toISOString());
+      Alert.alert('Rider aa gaya hai', data?.message || 'Aapka order aapke darwaze par hai!');
     };
     const handleDelivered = (data: any) => {
       if (data.orderId === orderId) {
@@ -150,6 +163,9 @@ export const TrackOrderScreen: React.FC = () => {
 
       // Listen for delivery confirmation
       socketService.on('order:delivered', handleDelivered);
+
+      // Rider is at the door (privacy flow — rider never sees our number)
+      socketService.on('order:rider_arrived', handleRiderArrived);
     };
 
     setupSocket();
@@ -169,6 +185,7 @@ export const TrackOrderScreen: React.FC = () => {
       socketService.off('order:rider_assigned', handleRiderAssigned);
       socketService.off('order:status_changed', handleStatusChanged);
       socketService.off('order:delivered', handleDelivered);
+      socketService.off('order:rider_arrived', handleRiderArrived);
       if (handleRiderLocation) socketService.off('rider:location', handleRiderLocation);
       clearInterval(connectionInterval);
       clearInterval(pollInterval);
@@ -179,8 +196,18 @@ export const TrackOrderScreen: React.FC = () => {
     ? statusOrder.indexOf(trackingData.order.status)
     : -1;
 
+  // Website + app guidance: once the rider leaves you can call or message him.
   const handleCallRider = async () => {
-    Alert.alert('Info', 'Rider contact not available from tracking');
+    const phone = trackingData?.rider?.phone;
+    if (!phone) {
+      Alert.alert('Rider', 'Use the chat below to message your rider.');
+      return;
+    }
+    try {
+      await Linking.openURL(`tel:${phone}`);
+    } catch {
+      Alert.alert('Rider', `Call your rider on ${phone}`);
+    }
   };
 
   const riderLocation = trackingData?.rider?.location || null;
@@ -319,6 +346,13 @@ export const TrackOrderScreen: React.FC = () => {
               </View>
               <View style={styles.riderInfo}>
                 <Text style={styles.riderName}>{trackingData.rider.name}</Text>
+                {trackingData.rider.vehicle_type || trackingData.rider.vehicle_number ? (
+                  <Text style={styles.riderVehicle}>
+                    {[trackingData.rider.vehicle_type, trackingData.rider.vehicle_number].filter(Boolean).join(' · ')}
+                    {trackingData.rider.rating ? `  ·  ★ ${Number(trackingData.rider.rating).toFixed(1)}` : ''}
+                  </Text>
+                ) : null}
+                {riderAtDoorAt ? <Text style={styles.atDoor}>Rider aap ke darwaze par hai</Text> : null}
               </View>
               <TouchableOpacity
                 style={styles.callButton}
@@ -513,6 +547,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.gray500,
     marginTop: 2,
+  },
+  atDoor: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.success,
+    marginTop: 4,
   },
   callButton: {
     width: 44,

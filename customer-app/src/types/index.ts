@@ -201,6 +201,8 @@ export interface Rider {
   name?: string;
   fullName?: string;
   phone?: string;
+  vehicleType?: string | null;
+  vehicleNumber?: string | null;
   currentLocation?: { latitude: number; longitude: number };
 }
 
@@ -225,6 +227,8 @@ export interface Order {
   paymentMethod: PaymentMethod | string;
   paymentStatus: PaymentStatus | string;
   rider?: Rider;
+  /** Photo the rider took when handing over the order. */
+  deliveryProofImage?: string | null;
   createdAt: string;
   estimatedDelivery?: string;
   deliveredAt?: string;

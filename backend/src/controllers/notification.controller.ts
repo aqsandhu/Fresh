@@ -73,7 +73,11 @@ export const getNotifications = asyncHandler(async (req: Request, res: Response)
   const limit = Math.min(parseInt(String(req.query.limit || '50'), 10) || 50, 100);
 
   const result = await query(
-    `SELECT id, type, title, message, order_id, is_read, read_at, action_url, created_at
+    `SELECT id,
+            -- "Rider at your door" rows are stored as call_request + action_type
+            -- rider_arrived (enum-safe); the apps key their icon on rider_arrived.
+            CASE WHEN action_type = 'rider_arrived' THEN 'rider_arrived' ELSE type::text END AS type,
+            title, message, order_id, is_read, read_at, action_url, created_at
      FROM notifications
      WHERE user_id = $1
      ORDER BY created_at DESC

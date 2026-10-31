@@ -125,6 +125,21 @@ export default function NotificationProvider({ children }: { children: React.Rea
         },
       },
       {
+        // Rider tapped "I've arrived" — the privacy-protected doorstep alert.
+        event: 'order:rider_arrived',
+        fn: (data) => {
+          const item = fromSocketPayload(
+            'call_request',
+            data,
+            'Rider at your door',
+            data.message ? String(data.message) : 'Aapka order aapke darwaze par hai!'
+          )
+          addNotification(item)
+          toast.success(item.message, { duration: 10000 })
+          scheduleRefresh()
+        },
+      },
+      {
         event: 'order:rider_assigned',
         fn: (data) => {
           const item = fromSocketPayload(
