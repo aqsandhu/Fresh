@@ -14,6 +14,7 @@ import {
   validate,
   riderSchemas,
   uploadDoorPicture as uploadDoorPictureMiddleware,
+  uploadDeliveryProof,
 } from '../middleware';
 
 const router = Router();
@@ -47,6 +48,10 @@ router.put('/tasks/:id/deliver', riderController.confirmDelivery);
 router.post('/tasks/:id/deliver', riderController.confirmDelivery);
 router.put('/tasks/:id/pin-location', validate(riderSchemas.updateLocation), riderController.pinLocation);
 router.post('/tasks/:id/door-picture', uploadDoorPictureMiddleware, riderController.uploadDoorPicture);
+// "I've arrived" — customer gets "Aapka order aapke darwaze par hai" (push + live + inbox).
+router.post('/tasks/:id/arrived', riderController.markArrived);
+// Proof-of-delivery photo (multipart field: delivery_proof; body stage=pickup|delivery).
+router.post('/tasks/:id/proof', uploadDeliveryProof, riderController.uploadProofOfDelivery);
 
 // Call request (privacy protected)
 router.post(
@@ -75,5 +80,9 @@ router.get('/stats/today', riderController.getTodayStats);
 
 // Full stats (daily/weekly/monthly + payment)
 router.get('/stats', riderController.getMyStats);
+
+// Cash handed over to the company + customer reviews about this rider
+router.get('/cash-settlements', riderController.getMyCashSettlements);
+router.get('/reviews', riderController.getMyReviews);
 
 export default router;

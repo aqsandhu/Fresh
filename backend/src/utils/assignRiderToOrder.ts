@@ -12,6 +12,7 @@ import logger from './logger';
 import { isValidOrderTransition } from './orderStatus';
 import { cancelActiveRiderTasks, notifyRiderTasksCancelled, pushNewAssignment } from './riderTaskEvents';
 import { sendExpoPushToUsers } from './expoPush';
+import { syncRiderAvailability } from './riderAvailability';
 
 export interface AssignRiderResult {
   order: any;
@@ -96,17 +97,20 @@ export async function assignRiderToOrder(
         RETURNING *`,
       [riderId, orderId, riderCharge]
     );
-    await client.query("UPDATE riders SET status = 'busy', updated_at = NOW() WHERE id = $1", [riderId]);
     // Close any previous task on this order (reassignment). The displaced
     // rider is told after commit — before this, they drove to an order that
-    // was no longer theirs.
+    // was no longer theirs. cancelActiveRiderTasks also frees that rider.
     const displaced = await cancelActiveRiderTasks(client, orderId, { note: 'Reassigned by admin' });
+    // Queue position: after whatever this rider is already carrying.
     const task = await client.query(
-      `INSERT INTO rider_tasks (rider_id, task_type, order_id, status, assigned_at)
-       VALUES ($1, 'delivery', $2, 'assigned', NOW())
+      `INSERT INTO rider_tasks (rider_id, task_type, order_id, status, assigned_at, sequence_number)
+       VALUES ($1, 'delivery', $2, 'assigned', NOW(),
+               COALESCE((SELECT MAX(sequence_number) FROM rider_tasks
+                          WHERE rider_id = $1 AND status IN ('assigned', 'in_progress')), 0) + 1)
        RETURNING id`,
       [riderId, orderId]
     );
+    await syncRiderAvailability(riderId, client);
     return { order: upd.rows[0], rider, displaced, taskId: task.rows[0]?.id as string | undefined };
   });
 

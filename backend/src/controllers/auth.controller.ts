@@ -1226,7 +1226,7 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
     `SELECT u.id, u.phone, u.full_name, u.email, u.password_hash, u.role, u.status,
             r.id as rider_id, r.status as rider_status, r.verification_status
      FROM users u
-     JOIN riders r ON u.id = r.user_id
+     JOIN riders r ON u.id = r.user_id AND r.deleted_at IS NULL
      WHERE u.phone = $1 AND u.role = 'rider' AND u.deleted_at IS NULL`,
     [normalizedPhone]
   );
@@ -1244,6 +1244,9 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
   }
 
   // Check rider verification status
+  if (user.verification_status === 'rejected') {
+    return unauthorizedResponse(res, 'Your rider account has been blocked. Please contact the Fresh Bazar office.');
+  }
   if (user.verification_status !== 'verified') {
     return unauthorizedResponse(res, 'Rider account is not verified yet');
   }
@@ -1276,11 +1279,9 @@ export const riderLogin = asyncHandler(async (req: Request, res: Response) => {
     [user.id]
   );
 
-  // Update rider status to available
-  await query(
-    "UPDATE riders SET status = 'available', updated_at = NOW() WHERE id = $1",
-    [user.rider_id]
-  );
+  // Signing in is NOT going on duty: the rider stays as he was (offline by
+  // default) until he flips the duty switch in the app. Forcing 'available'
+  // here put riders who never started work on the dispatch list.
 
   logger.info('Rider logged in', { userId: user.id, riderId: user.rider_id });
 

@@ -10,6 +10,7 @@
 import { PoolClient } from 'pg';
 import { emitToUser } from '../config/socket';
 import { sendExpoPushToUsers } from './expoPush';
+import { syncRiderAvailability, syncRidersAvailability } from './riderAvailability';
 import logger from './logger';
 
 export interface CancelledRiderTask {
@@ -50,11 +51,63 @@ export async function cancelActiveRiderTasks(
       RETURNING rt.id AS task_id, rt.rider_id, r.user_id AS rider_user_id`,
     params
   );
-  return result.rows.map((row) => ({
+  const cancelled = result.rows.map((row) => ({
     taskId: row.task_id,
     riderId: row.rider_id,
     riderUserId: row.rider_user_id ?? null,
   }));
+  // A rider whose last task was just taken away is free again (unless off duty).
+  await syncRidersAvailability(cancelled.map((t) => t.riderId), client);
+  return cancelled;
+}
+
+/**
+ * Close every active rider task of an order as completed because an admin
+ * (or the payment fast path) marked the order delivered. Only assigned /
+ * in_progress rows are touched — a cancelled or failed task stays as it was.
+ */
+export async function completeActiveRiderTasks(
+  client: PoolClient,
+  orderId: string
+): Promise<CancelledRiderTask[]> {
+  const result = await client.query(
+    `UPDATE rider_tasks rt
+        SET status = 'completed',
+            completed_at = COALESCE(rt.completed_at, NOW()),
+            notes = COALESCE(rt.notes, 'Marked delivered by admin'),
+            updated_at = NOW()
+       FROM riders r
+      WHERE rt.rider_id = r.id
+        AND rt.order_id = $1
+        AND rt.status IN ('assigned', 'in_progress')
+      RETURNING rt.id AS task_id, rt.rider_id, r.user_id AS rider_user_id`,
+    [orderId]
+  );
+  const closed = result.rows.map((row) => ({
+    taskId: row.task_id,
+    riderId: row.rider_id,
+    riderUserId: row.rider_user_id ?? null,
+  }));
+  await syncRidersAvailability(closed.map((t) => t.riderId), client);
+  return closed;
+}
+
+/** Tell riders their task was closed from the admin side (refreshes the app). Call AFTER commit. */
+export function notifyRiderTasksClosed(
+  tasks: CancelledRiderTask[],
+  order: { id: string; order_number?: string | null },
+  message: string
+): void {
+  for (const task of tasks) {
+    if (!task.riderUserId) continue;
+    emitToUser(task.riderUserId, 'rider:task_updated', {
+      taskId: task.taskId,
+      orderId: order.id,
+      orderNumber: order.order_number ?? null,
+      status: 'completed',
+      message,
+    });
+  }
 }
 
 /** Socket + push to each rider whose task was cancelled. Call AFTER commit. */
@@ -114,6 +167,7 @@ export async function createAttaRiderTask(
     riderId: row.rider_id,
     riderUserId: row.rider_user_id ?? null,
   }));
+  await syncRidersAvailability(displaced.map((t) => t.riderId), client);
 
   // Same rider already holds an active task of this type → keep it.
   const existing = await client.query(
@@ -154,7 +208,7 @@ export async function createAttaRiderTask(
      RETURNING id`,
     params
   );
-  await client.query("UPDATE riders SET status = 'busy', updated_at = NOW() WHERE id = $1 AND status = 'available'", [riderId]);
+  await syncRiderAvailability(riderId, client);
   return { taskId: inserted.rows[0].id, riderUserId, displaced };
 }
 

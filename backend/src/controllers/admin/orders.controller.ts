@@ -23,6 +23,8 @@ import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
 import {
   cancelActiveRiderTasks,
   notifyRiderTasksCancelled,
+  completeActiveRiderTasks,
+  notifyRiderTasksClosed,
   createAttaRiderTask,
   notifyAttaAssignment,
   CancelledRiderTask,
@@ -282,6 +284,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   // as the customer-cancel and webhook paths.
   let updatedRow: any = null;
   let cancelledRiderTasks: CancelledRiderTask[] = [];
+  let closedRiderTasks: CancelledRiderTask[] = [];
   try {
     updatedRow = await withTransaction(async (client) => {
       const orderResult = await client.query(
@@ -349,12 +352,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
       // Admin-confirmed delivery closes the rider's task too (same as the
       // payment-received fast path) so the rider app stops showing it active.
       if (status === 'delivered' && order.status !== 'delivered') {
-        await client.query(
-          `UPDATE rider_tasks SET status = 'completed',
-                  completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
-            WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
-          [id]
-        );
+        closedRiderTasks = await completeActiveRiderTasks(client, id);
       }
 
       // Cancelling releases what the order consumed at creation.
@@ -431,6 +429,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
 
   // Tell the displaced rider (socket + push) — after commit.
   notifyRiderTasksCancelled(cancelledRiderTasks, { id, order_number: order.order_number }, reason);
+  notifyRiderTasksClosed(closedRiderTasks, { id, order_number: order.order_number }, `Order #${order.order_number} was marked delivered by the admin`);
 
   successResponse(res, result.rows[0], 'Order status updated successfully');
 });
@@ -453,6 +452,7 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
   // straight to delivered+paid. The only hard guard is below — a
   // cancelled/refunded order must never flip to delivered (that resurrected
   // dead orders and inflated revenue).
+  let closedRiderTasks: CancelledRiderTask[] = [];
   const result = await withTransaction(async (client) => {
     const updated = await client.query(
       `UPDATE orders
@@ -463,12 +463,9 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
       [id]
     );
     if (updated.rows.length === 0) return updated;
-    await client.query(
-      `UPDATE rider_tasks SET status = 'completed',
-              completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
-       WHERE order_id = $1 AND status != 'completed'`,
-      [id]
-    );
+    // Only live tasks — a cancelled/failed task must keep its real outcome
+    // (the old `status != 'completed'` rewrote those to completed too).
+    closedRiderTasks = await completeActiveRiderTasks(client, id);
     await commitOrderSaleOnDelivery(client, id);
     await deductOcpStockOnDelivery(client, id);
     return updated;
@@ -516,6 +513,7 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
     orderNumber: updatedOrder.order_number,
     message: `Your order #${updatedOrder.order_number} has been delivered!`,
   });
+  notifyRiderTasksClosed(closedRiderTasks, { id, order_number: updatedOrder.order_number }, `Order #${updatedOrder.order_number} was marked delivered by the admin`);
 
   successResponse(res, result.rows[0], 'Payment received and order marked as delivered');
 });
@@ -1269,6 +1267,7 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
   // Orders whose current status can't legally move to the target are skipped
   // (and reported back) instead of being force-jumped.
   const cancelledRiderTasksByOrder: { order: any; tasks: CancelledRiderTask[] }[] = [];
+  const closedRiderTasksByOrder: { order: any; tasks: CancelledRiderTask[] }[] = [];
   const { updatedRows, skipped } = await withTransaction(async (client) => {
     const lockResult = await client.query(
       `SELECT o.id, o.status, o.time_slot_id FROM orders o
@@ -1292,9 +1291,21 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
       return { updatedRows: [] as any[], skipped: skippedLocal };
     }
 
+    // Same COD rule as the single-order path: an admin "delivered" collects
+    // the cash for direct COD orders (otherwise they stay "payment pending"
+    // forever and never reach revenue or the rider's cash-to-hand-over).
+    const bulkCodPaidSql =
+      status === 'delivered'
+        ? `, payment_status = CASE
+               WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN 'completed'::payment_status
+               ELSE payment_status END,
+             paid_amount = CASE
+               WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN total_amount
+               ELSE paid_amount END`
+        : '';
     const result = await client.query(
       `UPDATE orders
-       SET status = $1${timestampValue},
+       SET status = $1${timestampValue}${bulkCodPaidSql},
            cancellation_reason = COALESCE($2, cancellation_reason),
            updated_at = NOW()
        WHERE id = ANY($3::uuid[])
@@ -1318,12 +1329,8 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
         if (order.status !== 'delivered') {
           await commitOrderSaleOnDelivery(client, order.id);
           await deductOcpStockOnDelivery(client, order.id);
-          await client.query(
-            `UPDATE rider_tasks SET status = 'completed',
-                    completed_at = COALESCE(completed_at, NOW()), updated_at = NOW()
-              WHERE order_id = $1 AND status IN ('assigned', 'in_progress')`,
-            [order.id]
-          );
+          const closed = await completeActiveRiderTasks(client, order.id);
+          if (closed.length) closedRiderTasksByOrder.push({ order, tasks: closed });
         }
       }
     }
@@ -1336,6 +1343,10 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
   for (const { order, tasks } of cancelledRiderTasksByOrder) {
     const row = result.rows.find((r: any) => r.id === order.id) ?? order;
     notifyRiderTasksCancelled(tasks, { id: order.id, order_number: row.order_number }, reason);
+  }
+  for (const { order, tasks } of closedRiderTasksByOrder) {
+    const row = result.rows.find((r: any) => r.id === order.id) ?? order;
+    notifyRiderTasksClosed(tasks, { id: order.id, order_number: row.order_number }, `Order #${row.order_number} was marked delivered by the admin`);
   }
 
   for (const order of result.rows) {
