@@ -14,7 +14,7 @@ import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasRestaurantOrderColumns } from '../config/orderSchema';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { hasTimeSlotBookings } from '../config/timeSlotSchema';
-import { emitToAdmins } from '../config/socket';
+import { emitOrderEventToAdmins } from '../config/socket';
 import { placeRestaurantOrder, getRestaurantDelivery } from '../utils/restaurantOrders';
 import logger from '../utils/logger';
 import { pktDateString, weekdayOfDate } from '../utils/businessTime';
@@ -190,7 +190,7 @@ export const createRestaurantOrder = asyncHandler(async (req: Request, res: Resp
   }
 
   logger.info('Restaurant order placed', { orderId: order.id, restaurantId: restaurant.id });
-  emitToAdmins('order:new', {
+  emitOrderEventToAdmins(order.id, 'order:new', {
     orderId: order.id,
     orderNumber: order.order_number,
     status: order.status,

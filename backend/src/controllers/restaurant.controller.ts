@@ -14,7 +14,7 @@ import {
   forbiddenResponse,
 } from '../utils/response';
 import { generateRestaurantToken } from '../config/jwt';
-import { emitToAdmins } from '../config/socket';
+import { emitToCityAdmins } from '../config/socket';
 import { normalizePhoneNumber } from '../utils/validators';
 import { hasRestaurantsTable } from '../config/restaurantSchema';
 import {
@@ -231,7 +231,7 @@ export const registerRestaurant = asyncHandler(async (req: Request, res: Respons
   logger.info('Restaurant registration submitted', { restaurantId: result.rows[0].id, phone: normPhone });
 
   // Notify admins (super + city) of the new restaurant request.
-  emitToAdmins('restaurant:application', {
+  emitToCityAdmins(cityId ?? null, 'restaurant:application', {
     id: result.rows[0].id,
     businessName: String(business_name).trim(),
     city: cityName,

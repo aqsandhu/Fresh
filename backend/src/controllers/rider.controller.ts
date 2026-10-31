@@ -19,7 +19,7 @@ import { isValidOrderTransition } from '../utils/orderStatus';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { deductOcpStockOnDelivery } from '../utils/ocpStock';
 import { commitOrderSaleOnDelivery } from '../utils/systemStock';
-import { emitOrderUpdate, emitToUser, emitToAdmins, emitRiderLocationUpdate } from '../config/socket';
+import { emitOrderUpdate, emitToUser, emitRiderEventToAdmins, emitRiderLocationUpdate } from '../config/socket';
 import { parsePagination } from '../utils/validators';
 import {
   hasOrderCouponColumns,
@@ -586,7 +586,7 @@ async function notifyArrival(riderId: string, taskId: string): Promise<ArrivalOu
 
   if (!customerUserId) {
     // Restaurant (B2B) orders have no customer app account to notify.
-    emitToAdmins('rider:arrived', {
+    emitRiderEventToAdmins(riderId, 'rider:arrived', {
       taskId, orderId: t.order_id, orderNumber: reference, riderName: t.rider_name,
       message: `Rider ${t.rider_name || ''} has arrived for #${reference}`,
     });
@@ -858,12 +858,12 @@ export const confirmDelivery = asyncHandler(async (req: Request, res: Response) 
         data: { type: 'order_delivered', orderId: order.id, orderNumber: order.order_number },
       }).catch(() => {});
     }
-    emitToAdmins('rider:task_completed', { taskId: id, orderId: order.id, orderNumber: order.order_number, riderId });
+    emitRiderEventToAdmins(riderId, 'rider:task_completed', { taskId: id, orderId: order.id, orderNumber: order.order_number, riderId });
   }
   if (attaEvent) {
     const ev = attaEvent as { userId: string; id: string; request_number: string; status: 'at_mill' | 'delivered' };
     notifyAttaCustomer(ev.userId, ev, ev.status);
-    emitToAdmins('rider:task_completed', { taskId: id, attaRequestId: ev.id, orderNumber: ev.request_number, riderId });
+    emitRiderEventToAdmins(riderId, 'rider:task_completed', { taskId: id, attaRequestId: ev.id, orderNumber: ev.request_number, riderId });
   }
 
   successResponse(res, null, 'Delivery confirmed successfully');
@@ -919,7 +919,7 @@ async function announceTaskFailure(riderId: string, task: any, reason: string | 
     );
     const row = info.rows[0] || {};
     const reference = row.order_number || row.request_number || '';
-    emitToAdmins('rider:task_failed', {
+    emitRiderEventToAdmins(riderId, 'rider:task_failed', {
       taskId: task.id,
       taskType: task.task_type,
       orderId: task.order_id || null,
@@ -1130,7 +1130,7 @@ export const updateStatus = asyncHandler(async (req: Request, res: Response) => 
     [finalStatus, riderId]
   );
 
-  emitToAdmins('rider:status', { riderId, status: finalStatus, activeTasks });
+  emitRiderEventToAdmins(riderId, 'rider:status', { riderId, status: finalStatus, activeTasks });
   successResponse(res, { ...result.rows[0], active_tasks: activeTasks }, 'Status updated successfully');
 });
 

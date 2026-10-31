@@ -16,7 +16,7 @@ import {
 import { ensureRiderApplicationsTable } from '../config/riderApplicationSchema';
 import { upsertGlobalSiteSetting } from '../utils/siteSettings';
 import { resolveCityScope, resolvePublicCityId, cityRowInScope } from '../utils/cityScope';
-import { emitToAdmins } from '../config/socket';
+import { emitToCityAdmins } from '../config/socket';
 import { normalizePhoneNumber } from '../utils/validators';
 import logger from '../utils/logger';
 
@@ -129,7 +129,7 @@ export const submitRiderApplication = asyncHandler(async (req: Request, res: Res
   );
 
   logger.info('Rider application submitted', { id: result.rows[0].id, phone });
-  emitToAdmins('rider:application', {
+  emitToCityAdmins(cityId, 'rider:application', {
     title: 'New rider application',
     message: `${fullName}${cityName ? ` · ${cityName}` : ''}`,
     applicationId: result.rows[0].id,

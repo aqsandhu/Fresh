@@ -72,6 +72,26 @@ function extractSocketToken(socket: {
   return cookies.token;
 }
 
+const ADMIN_ROOM_ALL = 'admins';
+const ADMIN_ROOM_SUPER = 'admins:super';
+const adminCityRoom = (cityId: string) => `admins:city:${cityId}`;
+
+/** City of a non-super admin (their role's city) — same rule as resolveCityScope. */
+async function resolveAdminCityId(userId: string): Promise<string | null> {
+  const r = await query(
+    `SELECT sc.id
+       FROM users u
+       JOIN admin_roles r ON r.id = u.admin_role_id
+       LEFT JOIN service_cities sc ON sc.id = COALESCE(
+         r.city_id,
+         (SELECT id FROM service_cities WHERE LOWER(name) = LOWER(r.city) LIMIT 1)
+       )
+      WHERE u.id = $1`,
+    [userId]
+  );
+  return r.rows[0]?.id ?? null;
+}
+
 export const initializeSocket = (httpServer: ReturnType<typeof createServer>) => {
   io = new Server(httpServer, {
     cors: {
@@ -126,10 +146,18 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
         }
       }
 
+      // Admin realtime is city-scoped: a city admin only hears about orders,
+      // riders and tickets of their own city (super admins hear everything).
+      let adminCityId: string | null = null;
+      if (user.role === 'admin') {
+        adminCityId = await resolveAdminCityId(user.id).catch(() => null);
+      }
+
       socket.data.user = {
         ...decoded,
         phone: user.phone,
         role: user.role,
+        adminCityId,
       };
       next();
     } catch (err: any) {
@@ -147,7 +175,11 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
 
     socket.join(`user:${userId}`);
     if (role === 'rider') socket.join('riders');
-    if (role === 'admin' || role === 'super_admin') socket.join('admins');
+    if (role === 'admin' || role === 'super_admin') socket.join(ADMIN_ROOM_ALL);
+    if (role === 'super_admin') socket.join(ADMIN_ROOM_SUPER);
+    if (role === 'admin' && socket.data.user?.adminCityId) {
+      socket.join(adminCityRoom(socket.data.user.adminCityId));
+    }
 
     socket.on('chat:send', async (data: { orderId: string; message: string }) => {
       try {
@@ -362,27 +394,70 @@ export const emitToUser = (userId: string | null | undefined, event: string, dat
   }
 };
 
+/** Every admin (any city). Use only for events that belong to no city. */
 export const emitToAdmins = (event: string, data: any) => {
   try {
-    getIO().to('admins').emit(event, data);
+    getIO().to(ADMIN_ROOM_ALL).emit(event, data);
   } catch (err) {
     logger.error('emitToAdmins error:', err);
   }
 };
 
+/**
+ * Super admins + the admins of ONE city. Before this every admin of every
+ * city got every new-order sound, cancel toast and rider GPS ping (audit F4).
+ * Unknown city (legacy rows) → all admins, the old behaviour.
+ */
+export const emitToCityAdmins = (cityId: string | null | undefined, event: string, data: any) => {
+  try {
+    if (!cityId) {
+      getIO().to(ADMIN_ROOM_ALL).emit(event, data);
+      return;
+    }
+    getIO().to(ADMIN_ROOM_SUPER).to(adminCityRoom(cityId)).emit(event, data);
+  } catch (err) {
+    logger.error('emitToCityAdmins error:', err);
+  }
+};
+
+/** Admin event about an order → that order's city admins + super admins. */
+export const emitOrderEventToAdmins = (orderId: string | null | undefined, event: string, data: any): void => {
+  if (!orderId) {
+    emitToAdmins(event, data);
+    return;
+  }
+  query('SELECT city_id FROM orders WHERE id = $1', [orderId])
+    .then((r) => emitToCityAdmins(r.rows[0]?.city_id ?? null, event, data))
+    .catch(() => emitToAdmins(event, data));
+};
+
+/** Admin event about a rider → the rider's city admins + super admins. */
+export const emitRiderEventToAdmins = (riderId: string | null | undefined, event: string, data: any): void => {
+  if (!riderId) {
+    emitToAdmins(event, data);
+    return;
+  }
+  query('SELECT city_id FROM riders WHERE id = $1', [riderId])
+    .then((r) => emitToCityAdmins(r.rows[0]?.city_id ?? null, event, data))
+    .catch(() => emitToAdmins(event, data));
+};
+
 export const emitRiderLocationUpdate = async (payload: RiderLocationPayload) => {
   try {
     const activeOrders = await query(
-      `SELECT id FROM orders
-       WHERE rider_id = $1
-         AND status IN ('confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery')
-         AND deleted_at IS NULL`,
+      `SELECT o.id, (SELECT city_id FROM riders WHERE id = $1) AS rider_city_id
+         FROM (SELECT 1) one
+         LEFT JOIN orders o
+           ON o.rider_id = $1
+          AND o.status IN ('confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery')
+          AND o.deleted_at IS NULL`,
       [payload.riderId]
     );
     for (const row of activeOrders.rows) {
-      getIO().to(`order:${row.id}`).emit('rider:location', payload);
+      if (row.id) getIO().to(`order:${row.id}`).emit('rider:location', payload);
     }
-    emitToAdmins('rider:location', payload);
+    // Live GPS goes to the rider's own city admins only.
+    emitToCityAdmins(activeOrders.rows[0]?.rider_city_id ?? null, 'rider:location', payload);
   } catch (err) {
     logger.error('emitRiderLocationUpdate error:', err);
   }

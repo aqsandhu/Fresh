@@ -19,7 +19,7 @@ import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { ensureControlColumns } from '../config/controlSchema';
 import { resolveCityScope, resolvePublicCityId } from '../utils/cityScope';
 import { approvalForValue } from '../utils/adminApproval';
-import { emitToAdmins } from '../config/socket';
+import { emitToCityAdmins } from '../config/socket';
 import { notifyCustomer } from '../utils/customerNotify';
 import logger from '../utils/logger';
 
@@ -177,7 +177,7 @@ export const fileComplaint = asyncHandler(async (req: Request, res: Response) =>
   logger.info('Complaint filed', { ticket: ticketNumber, userId: req.user.id, category, images: imageUrls.length });
 
   // Real-time notify admins (the panel shows a toast + bell entry).
-  emitToAdmins('complaint:new', {
+  emitToCityAdmins(result.rows[0].city_id ?? null, 'complaint:new', {
     title: 'New complaint',
     message: `#${ticketNumber}: ${subject}`,
     ticketNumber,

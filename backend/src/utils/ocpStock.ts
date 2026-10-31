@@ -8,7 +8,7 @@ import { PoolClient } from 'pg';
 import { stockUnitsNeeded, qualityStockColumn } from './unitPricing';
 import { reservedColumn, recordStockMovement } from './systemStock';
 import { ensureOcpTables } from '../config/ocpSchema';
-import { emitToAdmins } from '../config/socket';
+import { emitOrderEventToAdmins } from '../config/socket';
 import logger from './logger';
 
 type HttpError = Error & { http: number };
@@ -219,7 +219,7 @@ export async function deductOcpStockOnDelivery(client: PoolClient, orderId: stri
         orderId,
         shortage,
       });
-      emitToAdmins('ocp:shortage', {
+      emitOrderEventToAdmins(orderId, 'ocp:shortage', {
         shortageId,
         ocpId,
         productId: it.product_id,

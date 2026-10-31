@@ -14,7 +14,7 @@ pass=0; fail=0
 check() { if [ "$2" = "$3" ]; then echo "PASS $1"; pass=$((pass+1)); else echo "FAIL $1 — expected [$3] got [$2]"; fail=$((fail+1)); fi; }
 
 CITY=$($PSQL -c "select id from service_cities where name='Gujrat' limit 1")
-CITY2=$($PSQL -c "insert into service_cities (name) values ('Sialkot') returning id" 2>/dev/null || $PSQL -c "select id from service_cities where name='Sialkot'")
+CITY2=$($PSQL -c "insert into service_cities (name, province) values ('Sialkot','Punjab') on conflict do nothing returning id"); [ -n "$CITY2" ] || CITY2=$($PSQL -c "select id from service_cities where name='Sialkot'")
 ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345"}' | jq -r .data.tokens.accessToken)
 AH=(-H "Authorization: Bearer $ATOK" -H 'Content-Type: application/json')
 ACH=("${AH[@]}" -H "X-City-Id: $CITY")
@@ -50,6 +50,7 @@ curl -s -X PUT $API/admin/settings/delivery "${AH[@]}" -d '{"base_charge":100,"f
 R=$(curl -s -X PUT $API/admin/settings/delivery "${ACH[@]}" -d '{"base_charge":70,"free_delivery_threshold":3000}')
 check "T3 city save ok" "$(echo "$R" | jq -r .success)" "true"
 check "T3 public delivery for Gujrat = 70" "$(curl -s "$API/site-settings/delivery?city_id=$CITY" | jq -r .data.base_charge)" "70"
+[ -n "$CITY2" ] || { echo "FAIL second city missing"; fail=$((fail+1)); }
 check "T3 other city keeps default 100" "$(curl -s "$API/site-settings/delivery?city_id=$CITY2" | jq -r .data.base_charge)" "100"
 check "T3 admin GET shows city override" "$(curl -s $API/admin/settings "${ACH[@]}" | jq -r '.data.delivery.city_override')" "true"
 

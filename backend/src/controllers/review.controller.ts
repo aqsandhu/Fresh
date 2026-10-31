@@ -18,7 +18,7 @@ import {
 } from '../utils/response';
 import { ensureFeedbackTables } from '../config/feedbackSchema';
 import { resolveCityScope } from '../utils/cityScope';
-import { emitToAdmins } from '../config/socket';
+import { emitOrderEventToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 
 const VALID_TARGETS = ['product', 'rider', 'service'] as const;
@@ -223,7 +223,7 @@ export const submitReview = asyncHandler(async (req: Request, res: Response) => 
 
     const targetLabel =
       targetType === 'product' ? 'product' : targetType === 'rider' ? 'rider' : 'company service';
-    emitToAdmins('review:new', {
+    emitOrderEventToAdmins(orderId, 'review:new', {
       title: 'New review',
       message: `${rating}★ ${targetLabel} review`,
       reviewId: row.id,

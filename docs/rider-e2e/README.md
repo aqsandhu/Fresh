@@ -22,6 +22,9 @@ npx ts-node --transpile-only src/app.ts &
 JWT_SECRET=<same> bash docs/rider-e2e/rider-flow.sh
 bash docs/rider-e2e/restaurant-and-safeguards.sh
 bash docs/rider-e2e/urgent-rate.sh
+JWT_SECRET=<same> bash docs/rider-e2e/cod-only.sh
+JWT_SECRET=<same> bash docs/rider-e2e/fixes-2026-10-31.sh   # slots, per-city delivery, cutoff, profit, atta, notifications, PKT day
+node docs/rider-e2e/admin-socket-rooms.js                    # city-scoped admin realtime
 ```
 Run against a fresh database — the scripts create riders with fixed phone numbers.
 
@@ -33,3 +36,5 @@ Run against a fresh database — the scripts create riders with fixed phone numb
 - restaurant orders: business name / phone / pin / storefront from the snapshot, call-request number, arrival tells the office, pin update
 - customer tracking returns rider phone + vehicle
 - urgent orders: dedicated per-rider urgent pay, fallback when unset, slot pay untouched
+- 2026-10-31 audit fixes: unlimited slots (9999 + is_unlimited), per-city delivery prices + reset, server slot cutoff, rider pay in profit (no double count), atta charges edit + free-from-threshold, notification preference, single inbox row on admin cancel, complaint reply inbox, Pakistan-day "today"
+- admin realtime: a Gujrat order event reaches the super admin and the Gujrat admin, not the Sialkot admin

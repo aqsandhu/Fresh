@@ -12,7 +12,7 @@ import {
   createdResponse,
 } from '../../utils/response';
 import { resolveCityScope, cityIdClause, cityRowInScope, orderInScope } from '../../utils/cityScope';
-import { emitOrderUpdate, emitToAdmins } from '../../config/socket';
+import { emitOrderUpdate, emitOrderEventToAdmins, emitToCityAdmins } from '../../config/socket';
 import { isValidOrderTransition, ORDER_STATUS_TIMESTAMPS, restoreOrderInventory } from '../../utils/orderStatus';
 import { upsertGlobalSiteSetting } from '../../utils/siteSettings';
 import { placeRestaurantOrder } from '../../utils/restaurantOrders';
@@ -107,7 +107,7 @@ async function setStatus(
 
   logger.info('Restaurant status changed', { restaurantId: id, status: next, by: req.user?.id });
   if (approving) {
-    emitToAdmins('restaurant:approved', { restaurantId: id, businessName: row.business_name });
+    emitToCityAdmins(row.city_id ?? null, 'restaurant:approved', { restaurantId: id, businessName: row.business_name });
   }
   return successResponse(res, result.rows[0], `Restaurant ${next}`);
 }
@@ -245,7 +245,7 @@ export const createAdminRestaurantOrder = asyncHandler(async (req: Request, res:
   }
 
   logger.info('Admin placed restaurant order', { orderId: order.id, restaurantId: restaurant.id, by: req.user?.id });
-  emitToAdmins('order:new', {
+  emitOrderEventToAdmins(order.id, 'order:new', {
     orderId: order.id,
     orderNumber: order.order_number,
     status: order.status,
@@ -279,7 +279,7 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
   if (rider_id) {
     try {
       const { order } = await assignRiderToOrder(id, rider_id, req.user?.id);
-      emitToAdmins('order:status_updated', {
+      emitOrderEventToAdmins(id, 'order:status_updated', {
         orderId: id, orderNumber: order.order_number, status: order.status,
         source: 'restaurant', updatedBy: req.user?.id,
       });
@@ -358,7 +358,7 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
       updatedBy: req.user?.id,
       updatedAt: new Date().toISOString(),
     });
-    emitToAdmins('order:status_updated', {
+    emitOrderEventToAdmins(id, 'order:status_updated', {
       orderId: id,
       orderNumber: updated.order_number,
       status,

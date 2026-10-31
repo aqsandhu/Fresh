@@ -47,7 +47,7 @@ const CATALOG_V2_CONSUMER_COLS =
   ', half_kg_price_b, quarter_kg_price_b, half_dozen_price_b' +
   ', half_kg_price_c, quarter_kg_price_c, half_dozen_price_c';
 import { hasOrderCouponColumns, hasUrgentDeliveryColumns } from '../config/orderSchema';
-import { emitOrderUpdate, emitToUser, emitToAdmins } from '../config/socket';
+import { emitOrderUpdate, emitToUser, emitOrderEventToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 import { normalizePhoneNumber, parsePagination } from '../utils/validators';
 
@@ -960,7 +960,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   logger.info('Order created', { userId: req.user.id, orderId: order.id });
 
   // Emit real-time events
-  emitToAdmins('order:new', {
+  emitOrderEventToAdmins(order.id, 'order:new', {
     orderId: order.id,
     orderNumber: order.order_number,
     status: order.status,
@@ -1087,7 +1087,7 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     message: `Order #${cancelledOrder.order_number} has been cancelled`,
   });
 
-  emitToAdmins('order:cancelled', {
+  emitOrderEventToAdmins(id, 'order:cancelled', {
     orderId: id,
     orderNumber: cancelledOrder.order_number,
     reason,

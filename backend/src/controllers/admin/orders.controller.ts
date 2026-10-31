@@ -6,7 +6,7 @@ import { Request, Response } from 'express';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
-import { emitOrderUpdate, emitToUser, emitToAdmins } from '../../config/socket';
+import { emitOrderUpdate, emitToUser, emitOrderEventToAdmins } from '../../config/socket';
 import logger from '../../utils/logger';
 import { localDate } from '../../utils/businessTime';
 import { notifyOrderStatus, pushToCustomers } from '../../utils/customerNotify';
@@ -455,7 +455,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   notifyOrderStatus(order, status, reason).catch(() => {});
 
   // Notify admins
-  emitToAdmins('order:status_updated', {
+  emitOrderEventToAdmins(id, 'order:status_updated', {
     orderId: id,
     orderNumber: order.order_number,
     status,
@@ -843,7 +843,7 @@ export const returnOrderToStore = asyncHandler(async (req: Request, res: Respons
 
   const order = out!.order;
   emitOrderUpdate(id, { orderId: id, status: 'ready_for_pickup', message: `Order #${order.order_number} returned to store` });
-  emitToAdmins('order:status_updated', { orderId: id, orderNumber: order.order_number, status: 'ready_for_pickup', updatedBy: req.user?.id });
+  emitOrderEventToAdmins(id, 'order:status_updated', { orderId: id, orderNumber: order.order_number, status: 'ready_for_pickup', updatedBy: req.user?.id });
   logger.info('Order returned to store after failed delivery', { orderId: id, previousRiderId: out!.previousRiderId, by: req.user?.id });
   successResponse(res, order, 'Order returned to store — assign a new rider or cancel it');
 });
@@ -950,7 +950,7 @@ export const assignOrderToOcp = asyncHandler(async (req: Request, res: Response)
     return errorResponse(res, e.message, e.http);
   }
   logger.info('Order assigned to OCP', { orderId: id, ocpId: ocp_id, by: req.user?.id });
-  emitToAdmins('order:status_updated', { orderId: id, message: 'Order assigned to a collection point' });
+  emitOrderEventToAdmins(id, 'order:status_updated', { orderId: id, message: 'Order assigned to a collection point' });
   return successResponse(res, result, 'Order assigned to OCP');
 });
 
@@ -1336,7 +1336,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
   }
 
   logger.info('WhatsApp order placed as real order', { orderId: order.id, by: req.user?.id });
-  emitToAdmins('order:new', {
+  emitOrderEventToAdmins(order.id, 'order:new', {
     orderId: order.id,
     orderNumber: order.order_number,
     status: order.status,
@@ -1484,7 +1484,7 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
     });
     notifyOrderStatus(order, status, reason).catch(() => {});
 
-    emitToAdmins('order:status_updated', {
+    emitOrderEventToAdmins(order.id, 'order:status_updated', {
       orderId: order.id,
       orderNumber: order.order_number,
       status,
