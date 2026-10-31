@@ -31,18 +31,18 @@ Legend: TODO · WIP · DONE · DEFERRED
 | # | Area | Item | Status |
 |---|---|---|---|
 | 0 | all | Audit (customer website + customer app + admin + backend + rider app) and this log | DONE |
-| B1 | backend | Rider login no longer forces `available`; soft-deleted riders cannot log in | TODO |
-| B2 | backend | Rider availability helper (busy/available respecting off-duty) used by assign / deliver / fail / cancel / status | TODO |
-| B3 | backend | "I've arrived" + hidden-phone call → customer push/socket/in-app "Aapka order aapke darwaze par hai" | TODO |
-| B4 | backend | Proof-of-delivery photo upload + stored on task + shown to admin | TODO |
-| B5 | backend | Earnings/stats in Asia/Karachi on delivery time (rider + admin) | TODO |
-| B6 | backend | Task queries: restaurant name/phone/front image/pin, final weight, atta details + amount | TODO |
-| B7 | backend | Weight edit while out for delivery reaches the rider (socket + push) | TODO |
-| B8 | backend | Rider problem report reaches admins for every task type (+ stored notification) | TODO |
-| B9 | backend | Atta: assign pickup/delivery rider without faking status; atta COD collected by rider + settlement | TODO |
-| B10 | backend | Customer tracking returns rider phone/vehicle (customer "call rider") | TODO |
-| B11 | backend | Admin: `GET /admin/riders/:id`, list limit/search/active-task counts, slot id in charges, block/unblock, delete closes tasks, rider tasks/history/reviews endpoints, order rider-task timeline | TODO |
-| B12 | backend | Rider: own reviews endpoint, richer profile | TODO |
+| B1 | backend | Rider login no longer forces `available`; soft-deleted riders cannot log in | DONE |
+| B2 | backend | Rider availability helper (busy/available respecting off-duty) used by assign / deliver / fail / cancel / status | DONE |
+| B3 | backend | "I've arrived" + hidden-phone call → customer push/socket/in-app "Aapka order aapke darwaze par hai" | DONE |
+| B4 | backend | Proof-of-delivery photo upload + stored on task + shown to admin | DONE |
+| B5 | backend | Earnings/stats in Asia/Karachi on delivery time (rider + admin) | DONE |
+| B6 | backend | Task queries: restaurant name/phone/front image/pin, final weight, atta details + amount | DONE |
+| B7 | backend | Weight edit while out for delivery reaches the rider (socket + push) | DONE |
+| B8 | backend | Rider problem report reaches admins for every task type (+ stored notification) | DONE |
+| B9 | backend | Atta: assign pickup/delivery rider without faking status; atta COD collected by rider + settlement | DONE |
+| B10 | backend | Customer tracking returns rider phone/vehicle (customer "call rider") | DONE |
+| B11 | backend | Admin: `GET /admin/riders/:id`, list limit/search/active-task counts, slot id in charges, block/unblock, delete closes tasks, rider tasks/history/reviews endpoints, order rider-task timeline | DONE |
+| B12 | backend | Rider: own reviews endpoint, richer profile | DONE |
 | A1 | admin | Riders page: all riders (not 20), full edit form, charges prefilled, block/unblock, detail view (tasks, history, settlements, reviews) | TODO |
 | A2 | admin | Orders: rider problem alerts, rider-task timeline + proof photo in order detail, dispatch dropdown with load | TODO |
 | A3 | admin | Atta page: assign pickup/delivery rider, show riders + task state | TODO |
@@ -111,6 +111,23 @@ Legend: TODO · WIP · DONE · DEFERRED
 - A*/R*/C* UI work as listed in §1.
 
 ## 5. Work log (newest first)
+### 2026-10-31 — Session 1: backend (commits `0f2e40d`, next)
+- **B1** `auth.controller.riderLogin`: JOIN riders `deleted_at IS NULL`; no status write on login; blocked riders get a clear message.
+- **B2** `utils/riderAvailability.ts` (`syncRiderAvailability`, `resolveDutyStatus`) used by deliver, fail, assign, `cancelActiveRiderTasks`, `createAttaRiderTask`, admin completion, return-to-store; `PUT /rider/status` accepts only available/offline/on_leave and stores busy when tasks remain.
+- **B3** `POST /rider/tasks/:id/arrived`; `call-request` with hidden phone now notifies instead of 403. Customer gets push + `order:rider_arrived` + inbox row (`type call_request`, `action_type rider_arrived`). 2-min repeat guard. Restaurant orders (no app account) alert admins.
+- **B4** `POST /rider/tasks/:id/proof` (`delivery_proof` field, `stage`); mirrored to `orders.delivery_proof_image` / atta proof columns; admin order detail `rider_tasks[]` shows it; customer order detail returns it.
+- **B5** `utils/riderStats.ts` — Asia/Karachi periods on `delivered_at`; unsettled-line cash model incl. atta. Used by rider + admin. Tests added.
+- **B6** one `taskSelect()` for list/detail: restaurant snapshot (name/phone/pin/front photo), atta address/house/landmark/pin/door photo via `atta_requests.address_id`, atta quality/flour/instructions/amount, OCP name/address, `arrived_at`, `final_weight_kg`. Pin/door photo now work for atta + restaurant tasks.
+- **B7** weight edit + phone toggle → `rider:task_updated` (+ push for amount).
+- **B8** `rider:task_failed` for every task type with rider name/reference; reason required (≥3 chars).
+- **B9** `PUT /admin/atta-requests/:id/assign-rider`; rider pickup/deliver keep the atta state machine; atta COD collected on delivery (`paid_amount`, `collected_by_rider_id`); settlement includes atta; customer push on atta progress; manual admin moves close rider tasks.
+- **B10** tracking payload + order detail: rider phone, vehicle, avatar, rating.
+- **B11** admin riders: list (200/500, search, online, active tasks), `GET /:id`, `/tasks`, `/feedback`, block (verify=rejected) + session revoke + `rider:account_blocked`, safe delete, status override event, `time_slot_id` in charges; orders: latest task on list, `rider_tasks` in detail, `POST /orders/:id/return-to-store`; admin delivered paths only close live tasks (old `status != 'completed'` rewrote cancelled/failed tasks); bulk delivered marks direct COD paid.
+- **B12** `GET /rider/reviews`, `GET /rider/cash-settlements`, richer `/rider/profile`.
+- Migration 57 (arrived_at, atta cash columns, `rider_cash_settlement_atta`, index); probes in `config/riderSchema.ts` keep old DBs working.
+- Gates: backend typecheck ✅ lint ✅ unit 14/14 ✅.
+- **Push blocked:** `git push` → 403 "Claude doesn't have GitHub access to aqsandhu/Fresh" — commits are local; owner must reconnect GitHub / install the Claude GitHub App.
+
 ### 2026-10-31 — Session 1: audit
 - Read: rider-app (all screens/stores/services), backend rider/admin-rider/OCP/atta/order/socket/review code, admin Riders/RidersHub/RiderApplications/Orders/Atta pages, customer-app tracking/notifications/reviews/complaints, website track/help/faq/terms/privacy/atta/addresses/restaurant checkout.
 - Wrote §2–§4.
