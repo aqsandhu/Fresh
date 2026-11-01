@@ -93,6 +93,15 @@ Full tables with file:line, WHY and fix: `docs/audits/2026-10-05-findings.md`. S
 9. Re-run the three dead audit sweeps (customer-app, admin main, backend 28-item verification) when the session limit allows; fix what they find.
 
 ## 5. Work log (newest first)
+### 2026-11-01 — Storefront parity: customer app vs website (real app + real DB)
+Full write-up: `docs/audits/2026-11-01-storefront-parity.md`. Verified in the real customer app
+(Expo web build, iPhone viewport) and the website (390 px) against the live DB: home shows
+Featured → **Shop by Category** with real DB categories on both. Fixed: blank tiles on dead images
+(app `SmartImage`), Shop list cut at 100 products (app pages through all), filter request race,
+placeholder phone / WhatsApp / "10AM-2PM" ribbon (now admin settings + real slots only), unstable
+paging (`ORDER BY …, p.id`), fake seed products + dead `cdn.example.com` URLs (schema.sql, `08b`,
+**migration 61**), duplicated website listing code (`components/shop/ProductListing`), dead
+duplicate files in both apps. New E2E: `docs/rider-e2e/catalog-2026-11-01.sh`.
 ### 2026-10-05 — Session 4: backend prior-audit items (row 4.1), all on `main`
 Each item: WHAT was wrong → WHY it matters → HOW fixed (file).
 - **B-1 admin tokens outlived `admins.is_active=false`.** `verifyAdminActive` only checked `users`; adminLogin JOINs `admins`. Now LEFT JOINs `admins` and rejects missing/inactive rows (`middleware/auth.ts`).
