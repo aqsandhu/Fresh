@@ -24,7 +24,12 @@ jobs:
       - run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
       - run: pnpm --filter freshbazar-admin typecheck
       - run: pnpm --filter freshbazar-admin test
-      - run: pnpm --filter freshbazar-admin build
+      # vite.config.ts refuses a production build without VITE_API_URL (so a
+      # bundle can never silently point at localhost) — CI must supply one.
+      - name: Build admin panel
+        run: pnpm --filter freshbazar-admin build
+        env:
+          VITE_API_URL: https://api.example.invalid/api
       - uses: actions/upload-artifact@v4
         with:
           name: admin-coverage
@@ -71,63 +76,7 @@ jobs:
       - run: pnpm --filter @freshbazar/customer-app test
       - run: pnpm --filter @freshbazar/rider-app test
 
-  deploy-website:
-    needs: test-website
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 10.12.3
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-      - run: pnpm install
-      - run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
-      - name: Build website
-        run: pnpm --filter freshbazar-website build
-        env:
-          # Build-time inlined by Next — must match website/vercel.json.
-          NEXT_PUBLIC_API_URL: https://freshbazar-backend.onrender.com/api
-      # Deploy via the official Vercel CLI (the vercel/action-deploy action
-      # does not exist). The CLI reads VERCEL_ORG_ID / VERCEL_PROJECT_ID from
-      # the environment automatically.
-      - name: Deploy to Vercel
-        working-directory: website
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_WEBSITE_PROJECT_ID }}
-        run: |
-          npm install -g vercel@latest
-          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-          vercel deploy --prod --token="$VERCEL_TOKEN"
-
-  deploy-admin:
-    needs: test-admin
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 10.12.3
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-      - run: pnpm install
-      - run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
-      - run: pnpm --filter freshbazar-admin build
-      - name: Deploy to Netlify
-        uses: nwtgck/actions-netlify@v3.0
-        with:
-          publish-dir: admin-panel/dist
-          production-branch: main
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          deploy-message: "Deploy from GitHub Actions"
-        env:
-          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_ADMIN_SITE_ID }}
+# No deploy jobs here: the website (Vercel project "freshbazar") and the admin
+# panel (Vercel project "fresh-admin-panel") are deployed by Vercel's GitHub
+# integration on every push to main, using website/vercel.json and
+# admin-panel/vercel.json. The backend is deployed by Render (render.yaml).

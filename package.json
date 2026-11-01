@@ -59,7 +59,8 @@
       "source-map-js@1": "^1.2.2",
       "sharp": "^0.35.5",
       "qs@6": "^6.17.1",
-      "postcss-selector-parser@6": "^6.1.5"
+      "postcss-selector-parser@6": "^6.1.5",
+      "handlebars@4": "^4.7.10"
     },
     "auditConfig": {
       "ignoreGhsas": [

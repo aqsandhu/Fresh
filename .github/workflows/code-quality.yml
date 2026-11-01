@@ -60,9 +60,9 @@ jobs:
         run: pnpm install
 
       # Hard-fail on any CRITICAL advisory (currently 0) so a new one blocks the
-      # PR instead of silently accumulating. Moderate/high are reported but not
-      # blocking yet — the remaining highs are non-reachable (glob CLI) or need
-      # the Next 15 major bump, tracked separately.
+      # PR instead of silently accumulating. Unlike ci.yml's `--prod` audit this
+      # includes dev/test tooling (e.g. handlebars via ts-jest, pinned by a
+      # pnpm override). Moderate/high are reported but not blocking here.
       - name: Audit dependencies (block on critical)
         run: pnpm audit --audit-level critical
 
