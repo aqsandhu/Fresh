@@ -36,6 +36,9 @@ function resolveImageUrl(path: string | null | undefined): string {
   const absMatch = path.match(/^https?:\/\/([^/]+)(\/.*)?$/);
   if (absMatch) {
     const host = absMatch[1].split(':')[0];
+    // Placeholder seed URLs (cdn.example.com) never serve an image — treat as
+    // "no image" so tiles show their fallback (same rule as the website).
+    if (host.endsWith('example.com')) return '';
     const rest = absMatch[2] || '';
     const isLocalOrLan = host === 'localhost' || host === '127.0.0.1' || /^\d+\.\d+\.\d+\.\d+$/.test(host);
     if (isLocalOrLan) return `${BACKEND_URL}${rest}`;
@@ -154,6 +157,11 @@ function mapBackendProduct(raw: any): StoreProduct {
 // SERVICE
 // ============================================================================
 
+/** Server-side page cap for GET /products (backend parsePagination maxLimit). */
+const PRODUCTS_PAGE_LIMIT = 100;
+/** Safety stop for getAllProducts: 50 × 100 = 5,000 products. */
+const MAX_PRODUCT_PAGES = 50;
+
 interface GetProductsParams {
   category?: string;
   search?: string;
@@ -255,14 +263,45 @@ class ProductService {
     }
   }
 
+  /**
+   * Every product matching the filters. The backend caps one page at
+   * PRODUCTS_PAGE_LIMIT, so a single `limit: 2000` request silently dropped
+   * everything past the first 100 — page through instead (website parity:
+   * it pages with "Load more").
+   */
+  async getAllProducts(
+    params: Omit<GetProductsParams, 'page' | 'limit'> = {}
+  ): Promise<ApiResponse<StoreProduct[]>> {
+    if (!hasSelectedCity()) return { success: true, data: [] };
+    const all: StoreProduct[] = [];
+    const seen = new Set<string>();
+    for (let page = 1; page <= MAX_PRODUCT_PAGES; page++) {
+      const res = await this.getProducts({ ...params, page, limit: PRODUCTS_PAGE_LIMIT });
+      if (!res.success) break;
+      for (const p of res.data.data) {
+        if (!seen.has(p.id)) {
+          seen.add(p.id);
+          all.push(p);
+        }
+      }
+      if (page >= (res.data.totalPages || 1) || res.data.data.length < PRODUCTS_PAGE_LIMIT) break;
+    }
+    return { success: true, data: all };
+  }
+
   async getProductsByCategory(
     categoryId: string,
     params: Omit<GetProductsParams, 'category'> = {}
   ): Promise<ApiResponse<StoreProduct[]>> {
     if (!hasSelectedCity()) return { success: true, data: [] };
+    // No explicit limit → the whole category (all pages), never truncated.
+    if (!params.limit) {
+      const { page: _page, ...rest } = params;
+      return this.getAllProducts({ ...rest, category: categoryId });
+    }
     try {
       const response = await apiClient.get('/products', {
-        params: withCityParams({ category: categoryId, ...params, limit: params.limit || 200 }),
+        params: withCityParams({ category: categoryId, ...params }),
       });
       const raw = response.data;
       const items = (raw.data || []).map(mapBackendProduct);
@@ -327,8 +366,10 @@ class ProductService {
       return {
         success: true,
         data: {
-          leftText: raw.banner_left_text || raw.leftText || '0300-1234567',
-          middleText: raw.banner_middle_text || raw.middleText || 'Free Delivery 10AM-2PM',
+          // Phone + delivery line come ONLY from the admin banner settings —
+          // never a placeholder number that a customer could dial (website parity).
+          leftText: String(raw.banner_left_text || raw.leftText || '').trim(),
+          middleText: String(raw.banner_middle_text || raw.middleText || '').trim(),
           rightTextEn: raw.banner_right_text_en || raw.rightTextEn || 'Fresh Sabzi at Your Doorstep',
           rightTextUr: raw.banner_right_text_ur || raw.rightTextUr || 'تازہ سبزیاں آپ کے دروازے پر',
           tickerItems: parseTickerItems(raw.banner_ticker_items ?? raw.tickerItems),
@@ -339,8 +380,8 @@ class ProductService {
       return {
         success: true,
         data: {
-          leftText: '0300-1234567',
-          middleText: 'Free Delivery 10AM-2PM',
+          leftText: '',
+          middleText: '',
           rightTextEn: 'Fresh Sabzi at Your Doorstep',
           rightTextUr: 'تازہ سبزیاں آپ کے دروازے پر',
           tickerItems: [],

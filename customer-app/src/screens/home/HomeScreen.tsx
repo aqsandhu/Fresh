@@ -59,7 +59,7 @@ export const HomeScreen: React.FC = () => {
     cartService.markCouponsSeen();
   };
 
-  const goToShop = (screen: 'ProductsMain' | 'CategoriesList' = 'ProductsMain') => {
+  const goToShop = (screen: 'ProductsMain' = 'ProductsMain') => {
     (navigation.getParent() as { navigate: (name: string, params?: object) => void } | undefined)?.navigate('Shop', { screen });
   };
 

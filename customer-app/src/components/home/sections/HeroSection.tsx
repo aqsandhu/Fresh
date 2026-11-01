@@ -15,6 +15,13 @@ const STATIC_FEATURES = [
   { icon: 'phone' as const, key: 'phone' },
 ];
 
+type HeroFeature = {
+  icon: (typeof STATIC_FEATURES)[number]['icon'];
+  key: string;
+  text: string;
+  dialable: boolean;
+};
+
 const DEFAULT_HERO_IMAGE =
   'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800&h=800&fit=crop';
 
@@ -39,10 +46,13 @@ function phoneDigits(raw: string): string {
 export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow }) => {
   const cityName = useOptionalCityName();
   const { selectedCityId } = useCityContext();
-  const [phoneText, setPhoneText] = useState('0300-1234567');
+  // Phone comes only from admin settings — never a placeholder number.
+  const [phoneText, setPhoneText] = useState('');
   const [freeThreshold, setFreeThreshold] = useState(500);
   const [whatsappOrderUrl, setWhatsappOrderUrl] = useState('');
   const [heroImageUrl, setHeroImageUrl] = useState(DEFAULT_HERO_IMAGE);
+  // Label of the first admin-configured free-delivery slot ('' = none).
+  const [freeSlotLabel, setFreeSlotLabel] = useState('');
 
   useEffect(() => {
     if (!selectedCityId) return;
@@ -63,22 +73,35 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow }) => {
         setFreeThreshold(res.data.free_delivery_threshold);
       }
     });
+    // The "Free Delivery" ribbon mirrors the admin's real slots instead of a
+    // hard-coded window that could contradict the slot list below it.
+    orderService
+      .getDeliverySlots()
+      .then((res) => {
+        const free = res.success ? (res.data || []).find((s) => s.isFreeDelivery) : undefined;
+        setFreeSlotLabel(free?.label || '');
+      })
+      .catch(() => setFreeSlotLabel(''));
   }, [selectedCityId]);
 
-  const features = useMemo(
+  const features = useMemo<HeroFeature[]>(
     () =>
-      STATIC_FEATURES.map((f) => {
+      STATIC_FEATURES.flatMap((f): HeroFeature[] => {
         if (f.key === 'free-delivery') {
-          return {
-            ...f,
-            text: `Free Delivery on Rs. ${freeThreshold}+ Sabzi/Fruits`,
-            dialable: false,
-          };
+          return [
+            {
+              icon: f.icon,
+              key: f.key,
+              text: `Free Delivery on Rs. ${freeThreshold}+ Sabzi/Fruits`,
+              dialable: false,
+            },
+          ];
         }
         if (f.key === 'phone') {
-          return { ...f, text: phoneText, dialable: true };
+          // No admin phone → no phone chip (nothing fake to dial).
+          return phoneText ? [{ icon: f.icon, key: f.key, text: phoneText, dialable: true }] : [];
         }
-        return { ...f, dialable: false };
+        return [{ icon: f.icon, key: f.key, text: f.text ?? '', dialable: false }];
       }),
     [freeThreshold, phoneText]
   );
@@ -106,7 +129,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow }) => {
         <View style={styles.content}>
           <View style={styles.badge}>
             <View style={styles.dot} />
-            <Text style={styles.badgeText}>Now Delivering in {cityName || 'Gujrat'}</Text>
+            <Text style={styles.badgeText}>Now Delivering in {cityName}</Text>
           </View>
 
           <Text style={styles.title}>
@@ -158,16 +181,18 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow }) => {
         {/* Window where the hero image shows through clearly */}
         <View style={styles.imageWindow} />
 
-        {/* Free-delivery ribbon */}
-        <View style={styles.ribbon}>
-          <View>
-            <Text style={styles.ribbonLabel}>Free Delivery</Text>
-            <Text style={styles.ribbonTime}>10AM - 2PM</Text>
+        {/* Free-delivery ribbon — only when the admin has a free slot */}
+        {freeSlotLabel ? (
+          <View style={styles.ribbon}>
+            <View>
+              <Text style={styles.ribbonLabel}>Free Delivery</Text>
+              <Text style={styles.ribbonTime}>{freeSlotLabel}</Text>
+            </View>
+            <View style={styles.ribbonIcon}>
+              <MaterialIcons name="local-shipping" size={20} color={COLORS.primary600} />
+            </View>
           </View>
-          <View style={styles.ribbonIcon}>
-            <MaterialIcons name="local-shipping" size={20} color={COLORS.primary600} />
-          </View>
-        </View>
+        ) : null}
       </View>
     </View>
   );

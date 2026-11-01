@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,6 +11,7 @@ import { navigationRef } from '@/navigation/navigationUtils';
 import { TodaysBasketModal } from '@components/home/TodaysBasketModal';
 import { useActiveRouteName } from '@/lib/activeRoute';
 import { EdgeDrawer } from './EdgeDrawer';
+import { SmartImage } from '@components/common/SmartImage';
 import type { Category } from '@app-types';
 
 const HIDE_ON = new Set(['SelectCity', 'CartMain', 'Checkout', 'AddAddress', 'ChangePin', 'SetPin']);
@@ -60,13 +61,15 @@ export const CategoriesDrawer: React.FC = () => {
               activeOpacity={0.85}
             >
               <View style={styles.chip}>
-                {uri ? (
-                  <Image source={{ uri }} style={styles.chipImg} />
-                ) : (
-                  <View style={[styles.chipImg, styles.chipFallback]}>
-                    <Text style={styles.chipFallbackText}>{c.name.charAt(0)}</Text>
-                  </View>
-                )}
+                <SmartImage
+                  uri={uri}
+                  style={styles.chipImg}
+                  fallback={
+                    <View style={[styles.chipImg, styles.chipFallback]}>
+                      <Text style={styles.chipFallbackText}>{c.name.charAt(0)}</Text>
+                    </View>
+                  }
+                />
               </View>
               <Text style={styles.itemLabel} numberOfLines={2}>
                 {c.nameUrdu || c.name}

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
 
@@ -65,7 +65,12 @@ export const ProductsScreen: React.FC = () => {
 
 
 
+  // Only the newest request may write the list — an older, slower response
+  // (previous sort / filter / city) must never overwrite newer results.
+  const requestSeq = useRef(0);
+
   const loadProducts = useCallback(async () => {
+    const seq = ++requestSeq.current;
     if (!selectedCityId) {
       setProducts([]);
       setLoading(false);
@@ -75,37 +80,22 @@ export const ProductsScreen: React.FC = () => {
     setLoading(true);
 
     try {
-
       const apiSort = sortBy === 'relevance' ? sortMap['name-asc'] : sortMap[sortBy];
-
-      const res = await productService.getProducts({
-
-        limit: 2000,
-
+      // All pages — the API caps one page at 100, so a single big request
+      // silently hid the rest of the catalog.
+      const res = await productService.getAllProducts({
         sortBy: apiSort.sortBy,
-
         sortOrder: apiSort.sortOrder,
-
         ...(minPrice ? { minPrice: parseInt(minPrice, 10) } : {}),
-
         ...(maxPrice ? { maxPrice: parseInt(maxPrice, 10) } : {}),
-
         ...(inStockOnly ? { inStock: 'true' } : {}),
-
       });
-
-      if (res.success) {
-
-        setProducts(res.data.data);
-
+      if (seq === requestSeq.current && res.success) {
+        setProducts(res.data);
       }
-
     } finally {
-
-      setLoading(false);
-
+      if (seq === requestSeq.current) setLoading(false);
     }
-
   }, [sortBy, minPrice, maxPrice, inStockOnly, selectedCityId]);
 
 
@@ -187,8 +177,6 @@ export const ProductsScreen: React.FC = () => {
         onMaxPriceChange={setMaxPrice}
 
         onInStockOnlyChange={setInStockOnly}
-
-        onApply={loadProducts}
 
         onClear={clearFilters}
 

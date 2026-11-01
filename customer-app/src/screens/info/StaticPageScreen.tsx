@@ -6,7 +6,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { STATIC_PAGES, StaticPageId } from '@/content/staticPages';
+import { STATIC_PAGES, StaticPageId, StaticSection } from '@/content/staticPages';
+import { useSupportContact } from '@/lib/useSupportContact';
 
 type StaticPageRoute = RouteProp<ProfileStackParamList, 'StaticPage'>;
 
@@ -15,16 +16,25 @@ export const StaticPageScreen: React.FC = () => {
   const route = useRoute<StaticPageRoute>();
   const pageId = route.params.pageId as StaticPageId;
   const content = STATIC_PAGES[pageId];
+  const support = useSupportContact();
 
   if (!content) {
     return null;
   }
 
-  const handleSectionPress = (body: string) => {
-    const phoneMatch = body.match(/03\d{2}[-\s]?\d{7}/);
-    const emailMatch = body.match(/[\w.-]+@[\w.-]+\.\w+/);
-    if (phoneMatch) Linking.openURL(`tel:${phoneMatch[0].replace(/\D/g, '')}`);
-    else if (emailMatch) Linking.openURL(`mailto:${emailMatch[0]}`);
+  // Resolve the live support phone into its section (hidden when unset).
+  const sections = content.sections.flatMap((section) => {
+    if (section.kind !== 'support-phone') return [section];
+    return support.phone ? [{ ...section, body: `${support.phone} — ${section.body}` }] : [];
+  });
+
+  const handleSectionPress = (section: StaticSection) => {
+    if (section.kind === 'support-phone') {
+      if (support.phoneDigits) Linking.openURL(`tel:${support.phoneDigits}`);
+      return;
+    }
+    const emailMatch = section.body.match(/[\w.-]+@[\w.-]+\.\w+/);
+    if (emailMatch) Linking.openURL(`mailto:${emailMatch[0]}`);
   };
 
   return (
@@ -47,12 +57,12 @@ export const StaticPageScreen: React.FC = () => {
           ) : null}
         </View>
 
-        {content.sections.map((section) => (
+        {sections.map((section) => (
           <TouchableOpacity
             key={section.title}
             style={styles.sectionCard}
             activeOpacity={pageId === 'contact' ? 0.7 : 1}
-            onPress={() => pageId === 'contact' && handleSectionPress(section.body)}
+            onPress={() => pageId === 'contact' && handleSectionPress(section)}
           >
             <Text style={styles.sectionTitle}>{section.title}</Text>
             <Text style={styles.sectionBody}>{section.body}</Text>

@@ -13,6 +13,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
+import { useSupportContact } from '@/lib/useSupportContact';
 
 const FAQ_SECTIONS = [
   {
@@ -63,6 +64,7 @@ const FAQ_SECTIONS = [
 export const HelpScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const support = useSupportContact();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -77,19 +79,22 @@ export const HelpScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.contactCard}>
           <Text style={styles.contactTitle}>Need more help?</Text>
+          {/* Phone only when the admin has set one — never a placeholder. */}
+          {support.phoneDigits ? (
+            <TouchableOpacity
+              style={styles.contactRow}
+              onPress={() => Linking.openURL(`tel:${support.phoneDigits}`)}
+            >
+              <MaterialIcons name="phone" size={20} color={COLORS.primary600} />
+              <Text style={styles.contactText}>{support.phone}</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={styles.contactRow}
-            onPress={() => Linking.openURL('tel:03001234567')}
-          >
-            <MaterialIcons name="phone" size={20} color={COLORS.primary600} />
-            <Text style={styles.contactText}>0300-1234567</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.contactRow}
-            onPress={() => Linking.openURL('mailto:support@freshbazar.pk')}
+            onPress={() => Linking.openURL(`mailto:${support.email}`)}
           >
             <MaterialIcons name="email" size={20} color={COLORS.primary600} />
-            <Text style={styles.contactText}>support@freshbazar.pk</Text>
+            <Text style={styles.contactText}>{support.email}</Text>
           </TouchableOpacity>
         </View>
 

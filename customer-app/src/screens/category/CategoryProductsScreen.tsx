@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -41,7 +41,12 @@ export const CategoryProductsScreen: React.FC = () => {
   const [maxPrice, setMaxPrice] = useState('');
   const [inStockOnly, setInStockOnly] = useState(false);
 
+  // Only the newest request may write the list — an older, slower response
+  // (previous sort / filter) must never overwrite newer results.
+  const requestSeq = useRef(0);
+
   const loadProducts = useCallback(async () => {
+    const seq = ++requestSeq.current;
     if (!selectedCityId) {
       setProducts([]);
       setLoading(false);
@@ -58,14 +63,17 @@ export const CategoryProductsScreen: React.FC = () => {
         ...(maxPrice ? { maxPrice: parseInt(maxPrice, 10) } : {}),
         ...(inStockOnly ? { inStock: 'true' } : {}),
       });
+      if (seq !== requestSeq.current) return;
       if (response.success) {
         setProducts(response.data as StoreProduct[]);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to load products');
+      if (seq === requestSeq.current) setError(err.message || 'Failed to load products');
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (seq === requestSeq.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [categoryId, sortBy, minPrice, maxPrice, inStockOnly, selectedCityId]);
 
@@ -127,7 +135,6 @@ export const CategoryProductsScreen: React.FC = () => {
         onMinPriceChange={setMinPrice}
         onMaxPriceChange={setMaxPrice}
         onInStockOnlyChange={setInStockOnly}
-        onApply={loadProducts}
         onClear={clearFilters}
       />
 

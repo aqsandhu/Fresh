@@ -36,7 +36,8 @@ interface ProductFiltersToolbarProps {
   onMinPriceChange: (v: string) => void;
   onMaxPriceChange: (v: string) => void;
   onInStockOnlyChange: (v: boolean) => void;
-  onApply: () => void;
+  /** Optional extra hook after Apply commits the draft values. */
+  onApply?: () => void;
   onClear: () => void;
   /** Hide relevance option on non-search screens */
   hideRelevance?: boolean;
@@ -57,11 +58,32 @@ export const ProductFiltersToolbar: React.FC<ProductFiltersToolbarProps> = ({
 }) => {
   const [showFilters, setShowFilters] = React.useState(false);
   const [showSort, setShowSort] = React.useState(false);
+  // Draft values while the sheet is open: typing "1200" must not fire four
+  // list requests (1, 12, 120, 1200) behind the sheet — the screen only sees
+  // the values once, on Apply. Close discards the draft.
+  const [draftMin, setDraftMin] = React.useState(minPrice);
+  const [draftMax, setDraftMax] = React.useState(maxPrice);
+  const [draftInStock, setDraftInStock] = React.useState(inStockOnly);
+
+  const openFilters = () => {
+    setDraftMin(minPrice);
+    setDraftMax(maxPrice);
+    setDraftInStock(inStockOnly);
+    setShowFilters(true);
+  };
+
+  const applyFilters = () => {
+    setShowFilters(false);
+    onMinPriceChange(draftMin);
+    onMaxPriceChange(draftMax);
+    onInStockOnlyChange(draftInStock);
+    onApply?.();
+  };
 
   return (
     <>
       <View style={styles.toolbar}>
-        <TouchableOpacity style={styles.filterBtn} onPress={() => setShowFilters(true)}>
+        <TouchableOpacity style={styles.filterBtn} onPress={openFilters}>
           <MaterialIcons name="filter-list" size={18} color={COLORS.gray700} />
           <Text style={styles.filterBtnText}>Filters</Text>
         </TouchableOpacity>
@@ -82,24 +104,24 @@ export const ProductFiltersToolbar: React.FC<ProductFiltersToolbarProps> = ({
                 style={styles.priceInput}
                 placeholder="Min"
                 keyboardType="numeric"
-                value={minPrice}
-                onChangeText={onMinPriceChange}
+                value={draftMin}
+                onChangeText={setDraftMin}
               />
               <Text style={styles.dash}>-</Text>
               <TextInput
                 style={styles.priceInput}
                 placeholder="Max"
                 keyboardType="numeric"
-                value={maxPrice}
-                onChangeText={onMaxPriceChange}
+                value={draftMax}
+                onChangeText={setDraftMax}
               />
             </View>
             <TouchableOpacity
               style={styles.checkRow}
-              onPress={() => onInStockOnlyChange(!inStockOnly)}
+              onPress={() => setDraftInStock(!draftInStock)}
             >
               <MaterialIcons
-                name={inStockOnly ? 'check-box' : 'check-box-outline-blank'}
+                name={draftInStock ? 'check-box' : 'check-box-outline-blank'}
                 size={22}
                 color={COLORS.primary600}
               />
@@ -114,13 +136,7 @@ export const ProductFiltersToolbar: React.FC<ProductFiltersToolbarProps> = ({
               >
                 <Text style={styles.clearText}>Clear All Filters</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.applyBtn}
-                onPress={() => {
-                  setShowFilters(false);
-                  onApply();
-                }}
-              >
+              <TouchableOpacity style={styles.applyBtn} onPress={applyFilters}>
                 <Text style={styles.applyBtnText}>Apply</Text>
               </TouchableOpacity>
             </View>
@@ -145,9 +161,10 @@ export const ProductFiltersToolbar: React.FC<ProductFiltersToolbarProps> = ({
                 key={key}
                 style={[styles.sortOption, sortBy === key && styles.sortOptionActive]}
                 onPress={() => {
+                  // The screen refetches when its sort state changes — no
+                  // extra call here (it used to fire a stale duplicate).
                   onSortChange(key);
                   setShowSort(false);
-                  onApply();
                 }}
               >
                 <Text style={[styles.sortOptionText, sortBy === key && styles.sortOptionTextActive]}>

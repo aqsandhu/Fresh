@@ -344,7 +344,6 @@ export type ShopStackParamList = {
   Search: { query?: string } | undefined;
   ProductDetail: { productId: string };
   CategoryProducts: { categoryId: string; categoryName: string };
-  CategoriesList: undefined;
 };
 
 /** @deprecated Use ShopStackParamList */

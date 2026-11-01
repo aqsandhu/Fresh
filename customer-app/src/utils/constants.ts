@@ -144,7 +144,10 @@ export const BORDER_RADIUS = {
   full: 9999,
 };
 
-// Delivery Configuration
+// Delivery Configuration — OFFLINE FALLBACKS ONLY. The live, per-city values
+// come from GET /site-settings/delivery (admin panel) and are passed into the
+// delivery helpers by the cart/checkout screens; free slots come from
+// GET /orders/time-slots. Never render these as if they were the real settings.
 export const DELIVERY = {
   FREE_DELIVERY_START_TIME: '10:00',
   FREE_DELIVERY_END_TIME: '14:00',
@@ -163,14 +166,6 @@ export const ATTA_CHAKKI = {
   GRINDING_TIME_HOURS: 2,
 };
 
-// Categories
-export const CATEGORIES = [
-  { id: 'sabzi', name: 'Sabzi', nameUrdu: 'سبزی', icon: 'leaf', color: COLORS.sabzi },
-  { id: 'fruit', name: 'Fruit', nameUrdu: 'پھل', icon: 'apple-alt', color: COLORS.fruit },
-  { id: 'dry-fruit', name: 'Dry Fruit', nameUrdu: 'خشک میوہ', icon: 'seedling', color: COLORS.dryFruit },
-  { id: 'chicken', name: 'Chicken', nameUrdu: 'مرغی', icon: 'drumstick-bite', color: COLORS.chicken },
-  { id: 'atta', name: 'Atta Chakki', nameUrdu: 'آٹا چکی', icon: 'wheat-awn', color: COLORS.atta },
-];
 
 // Order Status Messages in Urdu
 export const ORDER_STATUS_MESSAGES: Record<string, { en: string; ur: string }> = {
@@ -207,15 +202,6 @@ export const STORAGE_KEYS = {
   FIRST_LAUNCH: '@firstLaunch',
 };
 
-// Time Slots
-export const TIME_SLOTS = [
-  { id: '1', startTime: '09:00', endTime: '11:00', label: '9:00 AM - 11:00 AM' },
-  { id: '2', startTime: '11:00', endTime: '13:00', label: '11:00 AM - 1:00 PM' },
-  { id: '3', startTime: '13:00', endTime: '15:00', label: '1:00 PM - 3:00 PM' },
-  { id: '4', startTime: '15:00', endTime: '17:00', label: '3:00 PM - 5:00 PM' },
-  { id: '5', startTime: '17:00', endTime: '19:00', label: '5:00 PM - 7:00 PM' },
-  { id: '6', startTime: '19:00', endTime: '21:00', label: '7:00 PM - 9:00 PM' },
-];
 
 // Validation Patterns
 export const VALIDATION = {

@@ -9,6 +9,12 @@ export type StaticPageId =
 export interface StaticSection {
   title: string;
   body: string;
+  /**
+   * 'support-phone': the body is prefixed with the admin-configured support
+   * phone at render time, and the section is hidden when none is set — no
+   * placeholder number is ever shown or dialled.
+   */
+  kind?: 'support-phone';
 }
 
 export interface StaticPageContent {
@@ -142,7 +148,8 @@ export const STATIC_PAGES: Record<StaticPageId, StaticPageContent> = {
     sections: [
       {
         title: 'Phone',
-        body: '0300-1234567 — Available 9AM to 9PM daily.',
+        body: 'Available 9AM to 9PM daily.',
+        kind: 'support-phone',
       },
       {
         title: 'Email',

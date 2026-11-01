@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -7,6 +7,7 @@ import { Category } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { useCityContext } from '@/context/CityContext';
 import { productService } from '@services/product.service';
+import { SmartImage } from '@components/common/SmartImage';
 
 interface CategoriesSectionProps {
   onCategoryPress: (category: Category) => void;
@@ -67,13 +68,17 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({ onCategory
                 accessibilityRole="button"
                 accessibilityLabel={category.name}
               >
-                {imageUri ? (
-                  <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                ) : (
-                  <View style={[StyleSheet.absoluteFill, styles.tileFallback]}>
-                    <Text style={styles.tileFallbackText}>{category.name.charAt(0)}</Text>
-                  </View>
-                )}
+                {/* Missing OR broken image → letter tile (website TileFallback). */}
+                <SmartImage
+                  uri={imageUri}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                  fallback={
+                    <View style={[StyleSheet.absoluteFill, styles.tileFallback]}>
+                      <Text style={styles.tileFallbackText}>{category.name.charAt(0)}</Text>
+                    </View>
+                  }
+                />
                 <LinearGradient
                   colors={['transparent', 'rgba(0,0,0,0.25)', 'rgba(0,0,0,0.8)']}
                   style={StyleSheet.absoluteFill}

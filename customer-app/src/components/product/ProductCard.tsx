@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { truncateText, formatCurrency } from '@utils/helpers';
 import { ProductPrice } from './ProductPrice';
+import { SmartImage } from '@components/common/SmartImage';
 import { ProductQuality, ProductUnit, StoreProduct } from '@app-types';
 import { useCartStore } from '@store';
 import { useVariableWeightNotice } from '@store/variableWeightNotice';
@@ -198,7 +199,15 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         onPress={() => onPress?.(product)}
         activeOpacity={0.9}
       >
-        <Image source={{ uri: product.images[0] }} style={styles.horizontalImage} />
+        <SmartImage
+          uri={product.images[0]}
+          style={styles.horizontalImage}
+          fallback={
+            <View style={[styles.horizontalImage, styles.imageFallback]}>
+              <MaterialIcons name="shopping-cart" size={24} color={COLORS.gray300} />
+            </View>
+          }
+        />
         <View style={styles.horizontalContent}>
           <Text style={styles.name}>{truncateText(product.name, 25)}</Text>
           {qualitySelector}
@@ -223,13 +232,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       activeOpacity={0.9}
     >
       <View style={styles.imageWrap}>
-        {product.images[0] ? (
-          <Image source={{ uri: product.images[0] }} style={styles.image} />
-        ) : (
-          <View style={[styles.image, styles.imageFallback]}>
-            <MaterialIcons name="shopping-cart" size={32} color={COLORS.gray300} />
-          </View>
-        )}
+        {/* Missing OR broken image → cart-icon placeholder (never a blank box). */}
+        <SmartImage
+          uri={product.images[0]}
+          style={styles.image}
+          fallback={
+            <View style={[styles.image, styles.imageFallback]}>
+              <MaterialIcons name="shopping-cart" size={32} color={COLORS.gray300} />
+            </View>
+          }
+        />
         <View style={styles.badgeStack}>
           {product.isFresh !== false && inStock && (
             <View style={styles.freshBadge}>

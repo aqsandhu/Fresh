@@ -133,7 +133,6 @@ export const SearchScreen: React.FC = () => {
             onMinPriceChange={setMinPrice}
             onMaxPriceChange={setMaxPrice}
             onInStockOnlyChange={setInStockOnly}
-            onApply={() => {}}
             onClear={clearFilters}
             hideRelevance={false}
           />

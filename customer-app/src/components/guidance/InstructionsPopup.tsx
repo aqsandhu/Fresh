@@ -46,7 +46,6 @@ function guidanceForRoute(route: string): { page: string; fallback: string[] } {
     case 'HomeMain':
       return { page: 'home', fallback: HOME_FALLBACK };
     case 'ProductsMain':
-    case 'CategoriesList':
     case 'CategoryProducts':
     case 'Search':
       return { page: 'shop', fallback: SHOP_FALLBACK };

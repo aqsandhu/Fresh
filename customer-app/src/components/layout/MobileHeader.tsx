@@ -35,9 +35,11 @@ interface BannerSettings {
   tickerItems: string[];
 }
 
+// Phone + delivery line come ONLY from the admin banner settings — no
+// placeholder number/hours ever render (or get dialled). Website parity.
 const DEFAULT_BANNER: BannerSettings = {
-  leftText: '0300-1234567',
-  middleText: 'Free Delivery 10AM-2PM',
+  leftText: '',
+  middleText: '',
   rightTextEn: 'Fresh Sabzi at Your Doorstep',
   rightTextUr: 'تازہ سبزیاں آپ کے دروازے پر',
   tickerItems: [],
@@ -96,6 +98,8 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       loadNotifications();
     }
   }, [isAuthenticated, loadNotifications]);
+
+  const bannerPhoneDigits = (banner.leftText || '').replace(/\D/g, '');
 
   // Continuous news strip: the four admin texts + any extra admin lines,
   // joined into one line that flows right-to-left in an endless loop.
@@ -232,7 +236,10 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
         {showTopBar && tickerText.length > 0 && (
           <Pressable
             style={styles.topBar}
-            onPress={() => Linking.openURL(`tel:${banner.leftText.replace(/\D/g, '')}`)}
+            disabled={!bannerPhoneDigits}
+            onPress={() => {
+              if (bannerPhoneDigits) Linking.openURL(`tel:${bannerPhoneDigits}`);
+            }}
             android_ripple={{ color: 'rgba(255,255,255,0.15)' }}
           >
             <Animated.View

@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Image,
   TouchableOpacity,
   Share,
 } from 'react-native';
@@ -22,6 +21,7 @@ import {
   ProductReviews,
 } from '@components';
 import { UnitSelector, getSelectedUnitPrice } from '@components/product/UnitSelector';
+import { SmartImage } from '@components/common/SmartImage';
 import { offeredQualities, qualityStock } from '@/lib/unitPricing';
 import { productService } from '@services/product.service';
 import { orderService } from '@services/order.service';
@@ -205,13 +205,15 @@ export const ProductDetailScreen: React.FC = () => {
 
         <View style={styles.productSection}>
           <View style={styles.imageSection}>
-            {product.images[currentImageIndex] ? (
-              <Image source={{ uri: product.images[currentImageIndex] }} style={styles.image} />
-            ) : (
-              <View style={[styles.image, styles.imageFallback]}>
-                <MaterialIcons name="shopping-cart" size={48} color={COLORS.gray300} />
-              </View>
-            )}
+            <SmartImage
+              uri={product.images[currentImageIndex]}
+              style={styles.image}
+              fallback={
+                <View style={[styles.image, styles.imageFallback]}>
+                  <MaterialIcons name="shopping-cart" size={48} color={COLORS.gray300} />
+                </View>
+              }
+            />
             {product.isFresh && product.inStock && (
               <View style={styles.freshBadge}>
                 <MaterialIcons name="eco" size={12} color={COLORS.white} />
