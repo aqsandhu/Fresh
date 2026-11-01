@@ -34,6 +34,7 @@ bash docs/rider-e2e/urgent-rate.sh
 JWT_SECRET=<same> bash docs/rider-e2e/cod-only.sh
 JWT_SECRET=<same> bash docs/rider-e2e/fixes-2026-10-31.sh   # slots, per-city delivery, cutoff, profit, atta, notifications, PKT day
 node docs/rider-e2e/admin-socket-rooms.js                    # city-scoped admin realtime
+bash docs/rider-e2e/catalog-2026-11-01.sh                    # no placeholder seed data, stable product paging
 ```
 Run against a fresh database — the scripts create riders with fixed phone numbers.
 

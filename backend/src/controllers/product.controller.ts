@@ -213,7 +213,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
       p.view_count, p.order_count,
       p.created_at, p.updated_at
     ${sql}
-    ORDER BY p.${sortField} ${order}
+    ORDER BY p.${sortField} ${order}, p.id ${order}
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 

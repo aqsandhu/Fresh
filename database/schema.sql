@@ -2010,18 +2010,20 @@ COMMENT ON TRIGGER trg_update_cart_weight ON cart_items IS
 -- SEED DATA
 -- ============================================================================
 
--- Categories (Pakistani grocery categories)
-INSERT INTO categories (name_ur, name_en, slug, icon_url, display_order, qualifies_for_free_delivery, minimum_order_for_free_delivery) VALUES
-('سبزیاں', 'Vegetables', 'vegetables', 'https://cdn.example.com/icons/vegetables.png', 1, TRUE, 500.00),
-('پھل', 'Fruits', 'fruits', 'https://cdn.example.com/icons/fruits.png', 2, TRUE, 500.00),
-('خشک میوہ', 'Dry Fruits', 'dry-fruits', 'https://cdn.example.com/icons/dry-fruits.png', 3, TRUE, 1000.00),
-('چکن', 'Chicken', 'chicken', 'https://cdn.example.com/icons/chicken.png', 4, FALSE, NULL),
-('گوشت', 'Meat', 'meat', 'https://cdn.example.com/icons/meat.png', 5, FALSE, NULL),
-('دودھ اور ڈیری', 'Dairy', 'dairy', 'https://cdn.example.com/icons/dairy.png', 6, TRUE, 500.00),
-('گروسری', 'Grocery', 'grocery', 'https://cdn.example.com/icons/grocery.png', 7, TRUE, 500.00),
-('مشروبات', 'Beverages', 'beverages', 'https://cdn.example.com/icons/beverages.png', 8, TRUE, 500.00),
-('اسنیکس', 'Snacks', 'snacks', 'https://cdn.example.com/icons/snacks.png', 9, TRUE, 500.00),
-('گھریلو سامان', 'Household', 'household', 'https://cdn.example.com/icons/household.png', 10, TRUE, 500.00);
+-- Categories (Pakistani grocery categories). No icon URLs: the storefronts
+-- show a letter tile until the admin uploads a real image (a placeholder URL
+-- would only render as a broken image).
+INSERT INTO categories (name_ur, name_en, slug, display_order, qualifies_for_free_delivery, minimum_order_for_free_delivery) VALUES
+('سبزیاں', 'Vegetables', 'vegetables', 1, TRUE, 500.00),
+('پھل', 'Fruits', 'fruits', 2, TRUE, 500.00),
+('خشک میوہ', 'Dry Fruits', 'dry-fruits', 3, TRUE, 1000.00),
+('چکن', 'Chicken', 'chicken', 4, FALSE, NULL),
+('گوشت', 'Meat', 'meat', 5, FALSE, NULL),
+('دودھ اور ڈیری', 'Dairy', 'dairy', 6, TRUE, 500.00),
+('گروسری', 'Grocery', 'grocery', 7, TRUE, 500.00),
+('مشروبات', 'Beverages', 'beverages', 8, TRUE, 500.00),
+('اسنیکس', 'Snacks', 'snacks', 9, TRUE, 500.00),
+('گھریلو سامان', 'Household', 'household', 10, TRUE, 500.00);
 
 -- Time slots
 INSERT INTO time_slots (slot_name, start_time, end_time, max_orders, is_free_delivery_slot, applicable_days) VALUES
@@ -2104,41 +2106,9 @@ INSERT INTO delivery_charges_config (
     TRUE
 );
 
--- Sample products (for reference)
-INSERT INTO products (name_ur, name_en, slug, category_id, price, unit_type, unit_value, stock_quantity, primary_image, description_en) 
-SELECT 
-    'آلو', 'Potato', 'potato', c.id, 80.00, 'kg', 1.000, 100,
-    'https://cdn.example.com/products/potato.jpg',
-    'Fresh farm potatoes, perfect for curries and fries'
-FROM categories c WHERE c.slug = 'vegetables';
-
-INSERT INTO products (name_ur, name_en, slug, category_id, price, unit_type, unit_value, stock_quantity, primary_image, description_en) 
-SELECT 
-    'ٹماٹر', 'Tomato', 'tomato', c.id, 120.00, 'kg', 1.000, 80,
-    'https://cdn.example.com/products/tomato.jpg',
-    'Fresh red tomatoes for salads and cooking'
-FROM categories c WHERE c.slug = 'vegetables';
-
-INSERT INTO products (name_ur, name_en, slug, category_id, price, unit_type, unit_value, stock_quantity, primary_image, description_en) 
-SELECT 
-    'سیب', 'Apple', 'apple', c.id, 250.00, 'kg', 1.000, 50,
-    'https://cdn.example.com/products/apple.jpg',
-    'Fresh imported apples, crisp and sweet'
-FROM categories c WHERE c.slug = 'fruits';
-
-INSERT INTO products (name_ur, name_en, slug, category_id, price, unit_type, unit_value, stock_quantity, primary_image, description_en) 
-SELECT 
-    'بادام', 'Almonds', 'almonds', c.id, 1200.00, 'kg', 0.500, 30,
-    'https://cdn.example.com/products/almonds.jpg',
-    'Premium quality almonds'
-FROM categories c WHERE c.slug = 'dry-fruits';
-
-INSERT INTO products (name_ur, name_en, slug, category_id, price, unit_type, unit_value, stock_quantity, primary_image, description_en) 
-SELECT 
-    'چکن بریسٹ', 'Chicken Breast', 'chicken-breast', c.id, 450.00, 'kg', 1.000, 40,
-    'https://cdn.example.com/products/chicken-breast.jpg',
-    'Fresh chicken breast, boneless'
-FROM categories c WHERE c.slug = 'chicken';
+-- No sample products: every product a customer sees must be one the admin
+-- created (real price, real stock). Fake seed rows used to go live in the
+-- store with invented stock and placeholder images.
 
 -- Initial service city (more can be added later from the admin panel).
 INSERT INTO service_cities (name, province, is_active) VALUES
