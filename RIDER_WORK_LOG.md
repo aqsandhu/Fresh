@@ -112,6 +112,13 @@ Legend: TODO · WIP · DONE · DEFERRED
 - A*/R*/C* UI work as listed in §1.
 
 ## 5. Work log (newest first)
+### 2026-11-01 — Session 3: human-style QA + anti-corruption controls
+Owner: "aik aik button, page, link check kero … maal ki purchasing ke baad corruption ka chance nahi rehna chahye … production readiness … playstore/apple store".
+- Ran the production builds of website + admin in Chromium against PostgreSQL and used them like a customer / admin / restaurant / OCP / shareholder; contract-checked 463 API calls against 350 routes. Report: `docs/audits/2026-11-01-human-qa-report.md`.
+- Bugs fixed (commit `fix(qa)`): restaurant products could never be enabled (validator stripped catalog-v2 fields), shareholder add 500, wrong confirmation password logged admins out, dashboard counted cancelled orders, track ETA midnight, ½ kg label, dead Language row, guest /settings, worker 500, 28 dead admin calls; rider login "apply" link; customer app iPad off.
+- Controls added (commit `feat(controls)`, migration 60): blind shelf count, daily second-admin limit, Owner checks page (watchdog + cash by admin + counts + audit log), downward-weight and purchase alerts, coupon caps, office cash receiver, back-dating limit, no deleting delivered orders, OCP must confirm received stock.
+- Verified: real-DB suite 153/153 on a fresh DB (new `qa-2026-11-01.sh`), unit 292/204/65/51/7, builds, crawls 34 admin + 90 website pages clean.
+
 ### 2026-10-31 — Session 2: audit fixes (owner: "time slot capacity by default unlimited", "abandoned-cart reminders push hona chahye", "ye sab bugs b theek kero")
 Full detail + fix status per finding: `docs/audits/2026-10-31-full-audit.md` §4.
 - **Slots** unlimited unless the admin sets a limit (migration 59, NULL = no limit, lists return 9999 + `is_unlimited`); existing slots keep their limit until the admin clears it. Server enforces the slot cutoff %.
