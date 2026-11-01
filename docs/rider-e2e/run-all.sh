@@ -6,7 +6,7 @@ set -u
 DIR="$(cd "$(dirname "$0")" && pwd)"
 status=0
 # fixes-2026-10-31 first: it creates the time slots the other scripts use.
-for s in fixes-2026-10-31 rider-flow restaurant-and-safeguards urgent-rate cod-only; do
+for s in fixes-2026-10-31 rider-flow restaurant-and-safeguards urgent-rate cod-only qa-2026-11-01; do
   echo "::group::$s"
   bash "$DIR/$s.sh"
   rc=$?

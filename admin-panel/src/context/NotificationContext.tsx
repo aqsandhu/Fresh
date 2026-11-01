@@ -37,7 +37,8 @@ export interface AdminNotification {
     | 'restaurant:application'
     | 'ocp:shortage'
     | 'rider:task_failed'
-    | 'rider:arrived';
+    | 'rider:arrived'
+    | 'reconciliation:alert';
   title: string;
   message: string;
   orderId?: string;
@@ -289,6 +290,21 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['badge-counts'] });
     };
 
+    // Owner watchdog found something (sent to super admins only).
+    const handleReconciliationAlert = (data: Record<string, unknown>) => {
+      const count = Number(data.anomalyCount) || 0;
+      const item = buildNotification(
+        'reconciliation:alert',
+        { ...data, link: '/admin/owner-checks' },
+        'Owner checks: please review',
+        `${count} issue(s) found in the stock & cash check`
+      );
+      pushNotification(item);
+      playNotificationSound();
+      toast(item.message, { icon: <Bell className="w-4 h-4 text-red-500" />, duration: 8000 });
+      queryClient.invalidateQueries({ queryKey: ['owner-watchdog'] });
+    };
+
     const handleOcpShortage = (data: Record<string, unknown>) => {
       const item = buildNotification(
         'ocp:shortage',
@@ -385,6 +401,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       onSocketEvent('ocp:shortage', handleOcpShortage);
       onSocketEvent('rider:task_failed', handleRiderTaskFailed);
       onSocketEvent('rider:arrived', handleRiderArrived);
+      onSocketEvent('reconciliation:alert', handleReconciliationAlert);
 
       connectionInterval = setInterval(() => {
         setIsSocketConnected(socket.connected);
@@ -407,6 +424,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       offSocketEvent('ocp:shortage', handleOcpShortage);
       offSocketEvent('rider:task_failed', handleRiderTaskFailed);
       offSocketEvent('rider:arrived', handleRiderArrived);
+      offSocketEvent('reconciliation:alert', handleReconciliationAlert);
       flashTimers.forEach((t) => clearTimeout(t));
       flashTimers.clear();
       disconnectSocket();

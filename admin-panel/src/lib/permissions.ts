@@ -82,6 +82,8 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   // Today's Basket combos (API is super-admin only) — product management codes.
   '/admin/baskets': ['products.view', 'products.update'],
   '/admin/franchise-inquiries': ['franchise.view', 'franchise.manage'],
+  // Super admin only ('*'); no grantable code on purpose.
+  '/admin/owner-checks': ['owner.checks'],
   '/admin/abandoned-carts': ['marketing.view', 'marketing.manage'],
   '/admin/settings': ALL_SETTINGS_VIEW_CODES,
 };

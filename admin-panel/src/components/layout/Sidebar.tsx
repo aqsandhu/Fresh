@@ -2,6 +2,7 @@ import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
+  ShieldCheck,
   LayoutDashboard,
   ShoppingCart,
   Package,
@@ -46,6 +47,7 @@ const navItems: NavItem[] = [
   { path: '/admin/orders', label: 'Orders', icon: <ShoppingCart className="w-5 h-5" />, badge: 'orders' },
   { path: '/admin/catalog', label: 'Catalog', icon: <Package className="w-5 h-5" /> },
   { path: '/admin/management', label: 'Management', icon: <Boxes className="w-5 h-5" /> },
+  { path: '/admin/owner-checks', label: 'Owner checks', icon: <ShieldCheck className="w-5 h-5" /> },
   { path: '/admin/customers', label: 'Customers', icon: <Users className="w-5 h-5" /> },
   { path: '/admin/abandoned-carts', label: 'Abandoned Carts', icon: <ShoppingCart className="w-5 h-5" /> },
   { path: '/admin/riders-hub', label: 'Riders', icon: <Bike className="w-5 h-5" />, badge: 'riderApplications' },
@@ -118,6 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onToggle }) => {
           {navItems
             .filter((item) => {
               if (item.path === '/admin/roles' && user?.role !== 'super_admin') return false;
+              if (item.path === '/admin/owner-checks' && user?.role !== 'super_admin') return false;
               if (item.path === '/admin/platform' && user?.role !== 'super_admin') return false;
               if (item.path === '/admin/service-areas' && user?.role !== 'super_admin') return false;
               if (item.path === '/admin/baskets' && user?.role !== 'super_admin') return false;

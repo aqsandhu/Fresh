@@ -124,7 +124,8 @@ function resolveRequiredPermissions(
       p === '/stock/convert' ||
       p === '/stock/shift' ||
       p === '/stock/return' ||
-      p === '/stock/transfer'
+      p === '/stock/transfer' ||
+      p === '/stock/count'
     ) {
       return ['stock.adjust'];
     }

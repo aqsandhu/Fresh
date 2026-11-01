@@ -362,11 +362,14 @@ router.post('/stock/convert', adminRateLimiter, stockController.convertQuality);
 router.post('/stock/shift', adminRateLimiter, stockController.shiftToOcp);
 router.post('/stock/return', adminRateLimiter, stockController.returnFromOcp);
 router.post('/stock/transfer', adminRateLimiter, stockController.transferOcpToOcp);
+router.post('/stock/count', adminRateLimiter, stockController.countStock);
+router.get('/stock/counts', stockController.listStockCounts);
 router.get('/stock/:productId/movements', stockController.getStockMovements);
 
 // Reconciliation watchdog (super-admin only; role-checked in the controller).
 router.get('/reconciliation', reconciliationController.getReconciliation);
 router.post('/reconciliation/run', adminRateLimiter, reconciliationController.runReconciliationNow);
+router.get('/audit-logs', reconciliationController.getAuditLogs);
 
 // User guidance tips (per-city; global tips are super-admin only)
 router.get('/tips', tipsController.listTips);

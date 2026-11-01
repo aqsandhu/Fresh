@@ -394,6 +394,18 @@ export const emitToUser = (userId: string | null | undefined, event: string, dat
   }
 };
 
+/**
+ * Super admins only — the owner's watchdog findings must not be broadcast to
+ * the city admins whose own actions they may be about.
+ */
+export const emitToSuperAdmins = (event: string, data: any) => {
+  try {
+    getIO().to(ADMIN_ROOM_SUPER).emit(event, data);
+  } catch (err) {
+    logger.error('emitToSuperAdmins error:', err);
+  }
+};
+
 /** Every admin (any city). Use only for events that belong to no city. */
 export const emitToAdmins = (event: string, data: any) => {
   try {

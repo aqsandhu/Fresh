@@ -4,16 +4,40 @@
 // ============================================================================
 
 import { jest } from '@jest/globals';
+
+// Migration-60 probe: default ON for these tests; one test turns it off.
+let logReady = true;
+jest.mock('@/config/controlsSchema', () => ({
+  hasApprovalValueLog: async () => logReady,
+}));
+
 import { approvalForValue, verifySecondApprover, APPROVAL_VALUE_THRESHOLD } from '@/utils/adminApproval';
 
 const fakeReq = (over: any = {}) => ({ user: { id: 'admin-self' }, body: {}, ...over }) as any;
 
 describe('approvalForValue', () => {
-  it('does not require a second admin below the threshold', async () => {
+  it('does not require a second admin below the threshold (no log table yet)', async () => {
+    logReady = false;
     const client = { query: jest.fn() } as any;
     const out = await approvalForValue(client, fakeReq(), APPROVAL_VALUE_THRESHOLD - 1);
     expect(out).toEqual({ approvedBy: null, approvedAt: null });
     expect(client.query).not.toHaveBeenCalled();
+    logReady = true;
+  });
+
+  it('logs a small value-out action without asking for approval', async () => {
+    const client = { query: jest.fn<any>().mockResolvedValueOnce({ rows: [{ total: '0' }] }).mockResolvedValue({ rows: [] }) } as any;
+    const out = await approvalForValue(client, fakeReq(), 1000, { kind: 'waste' });
+    expect(out.approvedBy).toBeNull();
+    expect(String(client.query.mock.calls[1][0])).toContain('INSERT INTO approval_value_log');
+    expect(client.query.mock.calls[1][1]).toEqual(['admin-self', 'waste', 1000, null]);
+  });
+
+  it('salami-slicing: small actions that add up past the DAILY limit need a second admin', async () => {
+    const already = APPROVAL_VALUE_THRESHOLD - 100; // today's un-approved total so far
+    const client = { query: jest.fn<any>().mockResolvedValueOnce({ rows: [{ total: String(already) }] }) } as any;
+    await expect(approvalForValue(client, fakeReq({ body: {} }), 200, { kind: 'convert' }))
+      .rejects.toMatchObject({ http: 400, message: expect.stringContaining('per day') });
   });
 
   it('requires approver phone + password at/above the threshold', async () => {

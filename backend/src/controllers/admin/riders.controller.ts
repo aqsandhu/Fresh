@@ -27,6 +27,7 @@ import {
   hasRiderTaskArrivedColumn,
   hasRiderUrgentChargeColumn,
 } from '../../config/riderSchema';
+import { hasOrderCashReceivedColumn } from '../../config/controlsSchema';
 import { hasFeedbackTables } from '../../config/feedbackSchema';
 import { computeRiderStats } from '../../utils/riderStats';
 import { resolveDutyStatus } from '../../utils/riderAvailability';
@@ -750,6 +751,7 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
   }
 
   const attaReady = await hasAttaCashColumns();
+  const officeCashCol = await hasOrderCashReceivedColumn();
   let out: any;
   try {
     out = await withTransaction(async (client) => {
@@ -764,7 +766,7 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
             AND o.status = 'delivered'
             AND o.payment_method = 'cash_on_delivery'
             AND o.payment_status = 'completed'
-            AND o.ocp_id IS NULL
+            AND o.ocp_id IS NULL${officeCashCol ? '\n            AND o.cash_received_by IS NULL' : ''}
             AND NOT EXISTS (
               SELECT 1 FROM rider_cash_settlement_orders so WHERE so.order_id = o.id
             )

@@ -55,6 +55,7 @@ import { ensureTimeSlotBookings } from '../../config/timeSlotSchema';
 import { ensureControlColumns } from '../../config/controlSchema';
 import { validateAndClaimTimeSlot } from '../../utils/timeSlots';
 import { approvalForValue } from '../../utils/adminApproval';
+import { hasOrderCashReceivedColumn } from '../../config/controlsSchema';
 import { hasUrgentDeliveryColumns, hasRestaurantOrderColumns } from '../../config/orderSchema';
 import { hasOcpTables } from '../../config/ocpSchema';
 
@@ -475,14 +476,23 @@ export const markPaymentReceived = asyncHandler(async (req: Request, res: Respon
   // cancelled/refunded order must never flip to delivered (that resurrected
   // dead orders and inflated revenue).
   let closedRiderTasks: CancelledRiderTask[] = [];
+  // Who took the cash (only when the office is the one collecting it — an
+  // order the rider already collected keeps the rider as the holder).
+  const cashCol = await hasOrderCashReceivedColumn();
   const result = await withTransaction(async (client) => {
     const updated = await client.query(
       `UPDATE orders
        SET payment_status = 'completed', paid_amount = total_amount,
-           status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW()
+           status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW()${
+             cashCol
+               ? `,
+           cash_received_by = CASE WHEN payment_status <> 'completed' THEN $2::uuid ELSE cash_received_by END,
+           cash_received_at = CASE WHEN payment_status <> 'completed' THEN NOW() ELSE cash_received_at END`
+               : ''
+           }
        WHERE id = $1 AND deleted_at IS NULL AND status NOT IN ('cancelled', 'refunded')
        RETURNING *`,
-      [id]
+      cashCol ? [id, req.user?.id ?? null] : [id]
     );
     if (updated.rows.length === 0) return updated;
     // Only live tasks — a cancelled/failed task must keep its real outcome
@@ -1183,7 +1193,7 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
       // admin to co-sign (anti-fraud) — one admin can't hand out big free stock.
       let discountApproval: { approvedBy: string | null; approvedAt: string | null } = { approvedBy: null, approvedAt: null };
       if (discountValueTotal > 0) {
-        discountApproval = await approvalForValue(client, req, discountValueTotal, { label: 'a free/discounted order' });
+        discountApproval = await approvalForValue(client, req, discountValueTotal, { label: 'a free/discounted order', kind: 'discount' });
       }
 
       // Delivery settings.
@@ -1512,6 +1522,7 @@ export const deleteOrder = asyncHandler(async (req: Request, res: Response) => {
   // rider keeps driving to an order nobody can see any more.
   let deletedRow: any = null;
   let cancelledRiderTasks: CancelledRiderTask[] = [];
+  try {
   await withTransaction(async (client) => {
     const cur = await client.query(
       `SELECT id, order_number, status, time_slot_id, requested_delivery_date
@@ -1520,6 +1531,12 @@ export const deleteOrder = asyncHandler(async (req: Request, res: Response) => {
     );
     if (cur.rows.length === 0) return;
     const order = cur.rows[0];
+    // A delivered/refunded order is a financial record: deleting it removed
+    // the sale from profit and from the rider's cash due while its stock had
+    // already left. Cancel/refund paths keep the trail instead.
+    if (order.status === 'delivered' || order.status === 'refunded') {
+      throw Object.assign(new Error(`A ${order.status} order cannot be deleted — it is part of the books.`), { http: 409 });
+    }
     if (!['delivered', 'cancelled', 'refunded'].includes(order.status)) {
       cancelledRiderTasks = await cancelActiveRiderTasks(client, id, { note: 'Order deleted by admin' });
       await restoreOrderInventory(client, order);
@@ -1532,6 +1549,10 @@ export const deleteOrder = asyncHandler(async (req: Request, res: Response) => {
     );
     deletedRow = result.rows[0] ?? null;
   });
+  } catch (err: any) {
+    if (err?.http === 409) return errorResponse(res, err.message, 409);
+    throw err;
+  }
 
   if (!deletedRow) {
     return notFoundResponse(res, 'Order not found');

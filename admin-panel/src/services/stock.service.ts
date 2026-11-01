@@ -88,10 +88,42 @@ export const stockService = {
       approval_phone: p.approvalPhone,
       approval_password: p.approvalPassword,
     }),
+  /** Blind physical count: the server compares it with the system and posts the difference. */
+  count: async (p: { productId: string; quality: Quality; countedQuantity: number; note?: string; approvalPhone?: string; approvalPassword?: string }) => {
+    const res = await api.post<ApiResponse<StockCountResult>>('/admin/stock/count', {
+      product_id: p.productId,
+      quality: p.quality,
+      counted_quantity: p.countedQuantity,
+      note: p.note,
+      approval_phone: p.approvalPhone,
+      approval_password: p.approvalPassword,
+    });
+    return res as unknown as ApiResponse<StockCountResult>;
+  },
+  listCounts: async (date?: string): Promise<StockCountRow[]> => {
+    const res = await api.get<ApiResponse<StockCountRow[]>>('/admin/stock/counts', date ? { date } : undefined);
+    return res.data || [];
+  },
+  // Goes out as a stock request the OCP must RECEIVE in its portal — the OCP
+  // confirms what actually arrived (a direct shift let 5 kg be entered while
+  // 3 kg was sent, and the shortage later landed on the OCP).
   shift: async (p: { productId: string; ocpId: string; quality: Quality; quantity: number }) =>
-    api.post('/admin/stock/shift', { product_id: p.productId, ocp_id: p.ocpId, quality: p.quality, quantity: p.quantity }),
+    api.post(`/admin/ocp/${p.ocpId}/stock-requests`, {
+      items: [{ product_id: p.productId, quality: p.quality, quantity: p.quantity }],
+      note: 'Sent from Stock page',
+    }),
   returnFromOcp: async (p: { productId: string; ocpId: string; quality: Quality; quantity: number }) =>
     api.post('/admin/stock/return', { product_id: p.productId, ocp_id: p.ocpId, quality: p.quality, quantity: p.quantity }),
   transfer: async (p: { productId: string; fromOcpId: string; toOcpId: string; quality: Quality; quantity: number }) =>
     api.post('/admin/stock/transfer', { product_id: p.productId, from_ocp_id: p.fromOcpId, to_ocp_id: p.toOcpId, quality: p.quality, quantity: p.quantity }),
 };
+
+export interface StockCountResult {
+  id: string; product: string; quality: Quality; expected: number; counted: number;
+  variance: number; value: number; outWithRiders: number; atOcps: number;
+}
+export interface StockCountRow {
+  id: string; productId: string; productName: string; quality: Quality;
+  expectedQty: number; countedQty: number; variance: number; varianceValue: number;
+  note: string | null; createdAt: string; countedByName: string | null; approvedByName: string | null;
+}

@@ -20,6 +20,7 @@
 
 import { query } from '../config/database';
 import { hasAttaCashColumns, hasRiderCashSettlementTables } from '../config/riderSchema';
+import { hasOrderCashReceivedColumn } from '../config/controlsSchema';
 
 import { BUSINESS_TZ } from './businessTime';
 
@@ -103,7 +104,12 @@ export async function computeRiderStats(riderId: string): Promise<RiderStatsResu
             COALESCE(SUM(o.rider_delivery_charge) FILTER (WHERE ${op[p]}), 0) AS ${p}_earnings`
   ).join(',\n');
 
-  const directCod = `o.payment_method = 'cash_on_delivery' AND o.payment_status = 'completed' AND o.ocp_id IS NULL`;
+  // Cash the rider actually holds: direct COD he delivered, unless the office
+  // marked "Payment received" itself (then the cash is with that admin).
+  const officeCashCol = await hasOrderCashReceivedColumn();
+  const directCod = `o.payment_method = 'cash_on_delivery' AND o.payment_status = 'completed' AND o.ocp_id IS NULL${
+    officeCashCol ? ' AND o.cash_received_by IS NULL' : ''
+  }`;
   const unsettledOrder = settlementsReady
     ? `NOT EXISTS (SELECT 1 FROM rider_cash_settlement_orders so WHERE so.order_id = o.id)`
     : 'TRUE';

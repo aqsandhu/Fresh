@@ -16,7 +16,8 @@
 // ============================================================================
 
 import { query } from '../config/database';
-import { emitToAdmins } from '../config/socket';
+import { emitToSuperAdmins } from '../config/socket';
+import { hasStockCounts, hasOrderCashReceivedColumn } from '../config/controlsSchema';
 import logger from './logger';
 import { ensureReconciliationTables } from '../config/reconciliationSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
@@ -25,6 +26,10 @@ import { hasOcpTables } from '../config/ocpSchema';
 const EPS = 0.01;
 const OCP_CASH_OVERDUE_DAYS = Math.max(1, Number(process.env.OCP_CASH_OVERDUE_DAYS || 3));
 const WEIGHT_BIAS_ALERT_VALUE = Math.max(0, Number(process.env.WEIGHT_BIAS_ALERT_VALUE || 1000));
+const WEIGHT_BIAS_WINDOW_DAYS = Math.max(1, Number(process.env.WEIGHT_BIAS_WINDOW_DAYS || 7));
+const PURCHASE_WASTE_ALERT_PCT = Math.max(0, Number(process.env.PURCHASE_WASTE_ALERT_PCT || 15));
+const PURCHASE_RATE_ALERT_PCT = Math.max(0, Number(process.env.PURCHASE_RATE_ALERT_PCT || 25));
+const STOCK_COUNT_ALERT_VALUE = Math.max(0, Number(process.env.STOCK_COUNT_ALERT_VALUE || 500));
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -127,24 +132,167 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
     discountedOrders = { count: Number(d.rows[0].count) || 0 };
   } catch { /* column may not exist yet */ }
 
+  // Weight edits per editor over a ROLLING window (default 7 days, not just
+  // since the last run — small daily skims would otherwise never add up),
+  // both directions: billing MORE than packed
+  // (customer overcharged) and packing MORE than billed (goods given away —
+  // the extra weight is even added back to system stock).
   const weightBias: any[] = [];
   try {
     const wb = await query(
-      `SELECT edited_by, COUNT(*)::int AS edits, COALESCE(SUM(new_total - old_total), 0) AS net_value
-         FROM order_item_weight_edits
-        WHERE ($1::timestamptz IS NULL OR created_at > $1)
-        GROUP BY edited_by`,
-      [since]
+      `SELECT e.edited_by, u.full_name AS editor, COUNT(*)::int AS edits,
+              COALESCE(SUM(e.new_total - e.old_total), 0) AS net_value
+         FROM order_item_weight_edits e
+         LEFT JOIN users u ON u.id = e.edited_by
+        WHERE e.created_at > NOW() - ($1 || ' days')::interval
+        GROUP BY e.edited_by, u.full_name`,
+      [String(WEIGHT_BIAS_WINDOW_DAYS)]
     );
     for (const r of wb.rows) {
       const net = round2(parseFloat(r.net_value) || 0);
       if (net >= WEIGHT_BIAS_ALERT_VALUE) {
-        const entry = { edited_by: r.edited_by, edits: Number(r.edits), net_upward_value: net };
+        const entry = { edited_by: r.edited_by, editor: r.editor, edits: Number(r.edits), net_upward_value: net };
         weightBias.push(entry);
         anomalies.push({ type: 'weight_upward_bias', ...entry });
+      } else if (net <= -WEIGHT_BIAS_ALERT_VALUE) {
+        const entry = { edited_by: r.edited_by, editor: r.editor, edits: Number(r.edits), net_downward_value: -net };
+        weightBias.push(entry);
+        anomalies.push({ type: 'weight_downward_bias', ...entry });
       }
     }
   } catch { /* table may not exist yet */ }
+
+  // Coupons that give away a lot (created since the last run) + how much
+  // coupon discount was actually used.
+  const coupons: any = { risky: [], discount_total: 0 };
+  try {
+    const rc = await query(
+      `SELECT c.id, c.code, c.discount_type, c.discount_value, c.max_discount_amount, c.usage_limit,
+              c.created_by, u.full_name AS created_by_name
+         FROM coupons c LEFT JOIN users u ON u.id = c.created_by
+        WHERE ($1::timestamptz IS NULL OR c.created_at > $1)
+          AND (
+            (c.discount_type = 'percentage' AND (c.discount_value >= 50 OR (c.max_discount_amount IS NULL AND c.usage_limit IS NULL)))
+            OR (c.discount_type = 'fixed' AND c.discount_value >= 1000)
+          )`,
+      [since]
+    );
+    coupons.risky = rc.rows.map((r: any) => ({ ...r, discount_value: parseFloat(r.discount_value) || 0 }));
+    for (const c of coupons.risky) anomalies.push({ type: 'risky_coupon', code: c.code, discount_type: c.discount_type, discount_value: c.discount_value, created_by: c.created_by, created_by_name: c.created_by_name });
+    const used = await query(
+      `SELECT COALESCE(SUM(coupon_discount), 0) AS total FROM orders
+        WHERE deleted_at IS NULL AND status NOT IN ('cancelled', 'refunded')
+          AND ($1::timestamptz IS NULL OR placed_at > $1)`,
+      [since]
+    );
+    coupons.discount_total = round2(parseFloat(used.rows[0].total) || 0);
+  } catch { /* coupon columns may not exist yet */ }
+
+  // Stock purchases far off normal: waste share, or a buying rate well above
+  // the product's own 30-day average (price inflated / A-grade entered as C).
+  const purchases: any[] = [];
+  try {
+    const pr = await query(
+      `SELECT sp.id, sp.product_id, p.name_en AS product, sp.raw_weight, sp.purchase_price, sp.waste,
+              (sp.grade_a + sp.grade_b + sp.grade_c) AS sellable, sp.created_by, u.full_name AS created_by_name,
+              (SELECT AVG(x.purchase_price / NULLIF(x.grade_a + x.grade_b + x.grade_c, 0))
+                 FROM stock_purchases x
+                WHERE x.product_id = sp.product_id AND x.id <> sp.id
+                  AND x.purchased_at < sp.purchased_at
+                  AND x.purchased_at > sp.purchased_at - INTERVAL '30 days') AS avg_rate
+         FROM stock_purchases sp
+         JOIN products p ON p.id = sp.product_id
+         LEFT JOIN users u ON u.id = sp.created_by
+        WHERE ($1::timestamptz IS NULL OR sp.created_at > $1)`,
+      [since]
+    );
+    for (const r of pr.rows) {
+      const raw = parseFloat(r.raw_weight) || 0;
+      const waste = parseFloat(r.waste) || 0;
+      const sellable = parseFloat(r.sellable) || 0;
+      const price = parseFloat(r.purchase_price) || 0;
+      const rate = sellable > 0 ? price / sellable : 0;
+      const avg = parseFloat(r.avg_rate) || 0;
+      const base = { purchase_id: r.id, product: r.product, created_by: r.created_by, created_by_name: r.created_by_name };
+      if (raw > 0 && (waste / raw) * 100 > PURCHASE_WASTE_ALERT_PCT) {
+        const a = { type: 'purchase_waste_high', ...base, waste_pct: round2((waste / raw) * 100) };
+        purchases.push(a); anomalies.push(a);
+      }
+      if (avg > 0 && rate > avg * (1 + PURCHASE_RATE_ALERT_PCT / 100)) {
+        const a = { type: 'purchase_rate_high', ...base, rate_per_unit: round2(rate), avg_rate: round2(avg), above_pct: round2(((rate - avg) / avg) * 100) };
+        purchases.push(a); anomalies.push(a);
+      }
+    }
+  } catch { /* finance tables may not exist yet */ }
+
+  // Physical counts that found less on the shelf than the system says.
+  const stockCounts: any = { count: 0, shortage_value: 0, shortages: [] };
+  if (await hasStockCounts()) {
+    try {
+      const sc = await query(
+        `SELECT sc.id, p.name_en AS product, sc.quality, sc.expected_qty, sc.counted_qty, sc.variance, sc.variance_value,
+                sc.counted_by, cu.full_name AS counted_by_name, au.full_name AS approved_by_name, sc.created_at
+           FROM stock_counts sc
+           LEFT JOIN products p ON p.id = sc.product_id
+           LEFT JOIN users cu ON cu.id = sc.counted_by
+           LEFT JOIN users au ON au.id = sc.approved_by
+          WHERE ($1::timestamptz IS NULL OR sc.created_at > $1)
+          ORDER BY sc.created_at DESC`,
+        [since]
+      );
+      stockCounts.count = sc.rows.length;
+      for (const r of sc.rows) {
+        const v = parseFloat(r.variance_value) || 0;
+        if (v < 0) stockCounts.shortage_value = round2(stockCounts.shortage_value - v);
+        if (v <= -STOCK_COUNT_ALERT_VALUE) {
+          const a = { type: 'stock_count_shortage', product: r.product, quality: r.quality, expected: parseFloat(r.expected_qty), counted: parseFloat(r.counted_qty), value: round2(-v), counted_by_name: r.counted_by_name, approved_by_name: r.approved_by_name };
+          stockCounts.shortages.push(a); anomalies.push(a);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Cash each admin took in since the last run (rider hand-overs, OCP
+  // settlements, office "Payment received"). The owner compares this with
+  // what actually reached him — no other report shows who holds cash.
+  const cashByAdmin: any[] = [];
+  try {
+    const officeCash = (await hasOrderCashReceivedColumn())
+      ? `UNION ALL
+         SELECT o.cash_received_by AS admin_id, 'office' AS source, o.paid_amount AS amount
+           FROM orders o
+          WHERE o.cash_received_by IS NOT NULL AND o.deleted_at IS NULL
+            AND ($1::timestamptz IS NULL OR o.cash_received_at > $1)`
+      : '';
+    const cb = await query(
+      `SELECT x.admin_id, u.full_name AS admin_name,
+              COALESCE(SUM(x.amount) FILTER (WHERE x.source = 'rider'), 0) AS rider_cash,
+              COALESCE(SUM(x.amount) FILTER (WHERE x.source = 'ocp'), 0) AS ocp_cash,
+              COALESCE(SUM(x.amount) FILTER (WHERE x.source = 'office'), 0) AS office_cash,
+              COALESCE(SUM(x.amount), 0) AS total
+         FROM (
+           SELECT s.received_by AS admin_id, 'rider' AS source, s.amount
+             FROM rider_cash_settlements s
+            WHERE s.received_by IS NOT NULL AND ($1::timestamptz IS NULL OR s.received_at > $1)
+           UNION ALL
+           SELECT s.received_by AS admin_id, 'ocp' AS source, s.amount
+             FROM ocp_settlements s
+            WHERE s.status = 'received' AND s.received_by IS NOT NULL AND ($1::timestamptz IS NULL OR s.received_at > $1)
+           ${officeCash}
+         ) x
+         LEFT JOIN users u ON u.id = x.admin_id
+        GROUP BY x.admin_id, u.full_name
+        ORDER BY total DESC`,
+      [since]
+    );
+    for (const r of cb.rows) {
+      cashByAdmin.push({
+        admin_id: r.admin_id, admin_name: r.admin_name,
+        rider_cash: round2(parseFloat(r.rider_cash) || 0), ocp_cash: round2(parseFloat(r.ocp_cash) || 0),
+        office_cash: round2(parseFloat(r.office_cash) || 0), total: round2(parseFloat(r.total) || 0),
+      });
+    }
+  } catch { /* settlement tables may not exist yet */ }
 
   // ── 3) OCP CASH / SHORTAGES ────────────────────────────────────────────────
   const ocp: any = { overdue: [], open_shortages: 0 };
@@ -174,7 +322,11 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
     refunds,
     waste,
     discounted_orders: discountedOrders,
-    weight_upward_bias: weightBias,
+    weight_bias: weightBias,
+    coupons,
+    purchases,
+    stock_counts: stockCounts,
+    cash_by_admin: cashByAdmin,
     ocp,
   };
   const anomalyCount = anomalies.length;
@@ -188,7 +340,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
 
   // Owner alert — only when something doesn't add up (so it's signal, not noise).
   if (anomalyCount > 0) {
-    emitToAdmins('reconciliation:alert', { runId, anomalyCount, anomalies });
+    emitToSuperAdmins('reconciliation:alert', { runId, anomalyCount });
     try {
       const supers = await query(
         `SELECT id FROM users WHERE role = 'super_admin' AND status = 'active' AND deleted_at IS NULL`

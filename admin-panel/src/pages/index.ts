@@ -31,4 +31,5 @@ export { Platform } from './Platform';
 export { ServiceAreas } from './ServiceAreas';
 export { Baskets } from './Baskets';
 export { FranchiseInquiries } from './FranchiseInquiries';
+export { OwnerChecks } from './OwnerChecks';
 export { AbandonedCarts } from './AbandonedCarts';

@@ -19,6 +19,7 @@ import { generateOcpToken } from '../config/jwt';
 import { normalizePhoneNumber } from '../utils/validators';
 import { ensureOcpTables, hasOcpTables } from '../config/ocpSchema';
 import { assertNoOpenOcpShortages, moveCentralToOcp } from '../utils/ocpStock';
+import { hasOrderCashReceivedColumn } from '../config/controlsSchema';
 import { assignRiderToOrder } from '../utils/assignRiderToOrder';
 import {
   getPinLockoutState,
@@ -417,6 +418,8 @@ export const getOcpSettlements = asyncHandler(async (req: Request, res: Response
     [ocpId]
   );
   const openShortages = Number(shortageRows.rows[0]?.count || 0);
+  // Cash the office took itself ("Payment received") is not the OCP's to hand over.
+  const officeCash = (await hasOrderCashReceivedColumn()) ? ' AND o.cash_received_by IS NULL' : '';
   // Due = collected cash NOT yet tied to any settlement.
   const due = await query(
     `SELECT COALESCE(SUM(o.paid_amount), 0) AS amount, COUNT(*) AS orders
@@ -424,7 +427,7 @@ export const getOcpSettlements = asyncHandler(async (req: Request, res: Response
       WHERE o.ocp_id = $1 AND o.deleted_at IS NULL AND o.paid_amount > 0
         AND o.status = 'delivered'
         AND o.payment_method = 'cash_on_delivery'
-        AND o.payment_status = 'completed'
+        AND o.payment_status = 'completed'${officeCash}
         AND NOT EXISTS (SELECT 1 FROM ocp_settlement_orders so WHERE so.order_id = o.id)`,
     [ocpId]
   );
@@ -450,6 +453,7 @@ export const getOcpSettlements = asyncHandler(async (req: Request, res: Response
 export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response) => {
   if (!(await ensureOcpTables())) return errorResponse(res, 'OCP system not ready.', 503);
   const ocpId = req.ocp!.id;
+  const officeCash = (await hasOrderCashReceivedColumn()) ? ' AND o.cash_received_by IS NULL' : '';
   let out: any;
   try {
     out = await withTransaction(async (client) => {
@@ -461,7 +465,7 @@ export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response
           WHERE o.ocp_id = $1 AND o.deleted_at IS NULL AND o.paid_amount > 0
             AND o.status = 'delivered'
             AND o.payment_method = 'cash_on_delivery'
-            AND o.payment_status = 'completed'
+            AND o.payment_status = 'completed'${officeCash}
             AND NOT EXISTS (SELECT 1 FROM ocp_settlement_orders so WHERE so.order_id = o.id)
           FOR UPDATE`,
         [ocpId]

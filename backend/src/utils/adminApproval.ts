@@ -11,6 +11,8 @@ import { Request } from 'express';
 import bcrypt from 'bcryptjs';
 import { PoolClient } from 'pg';
 import { normalizePhoneNumber } from './validators';
+import { hasApprovalValueLog } from '../config/controlsSchema';
+import { TODAY_SQL, localDate } from './businessTime';
 
 /** Money value (Rs.) at/above which a second active admin must co-approve. */
 export const APPROVAL_VALUE_THRESHOLD = Math.max(
@@ -57,29 +59,64 @@ export async function verifySecondApprover(
 }
 
 /**
- * If `value` is at/above the approval threshold, require a second admin to
- * co-approve (approval_phone + approval_password in the request body). Returns
- * the approver id + timestamp, or {null,null} when below threshold. Throws
- * { http } when approval is required but missing/invalid.
+ * Second-admin rule for value leaving the business (waste, conversion,
+ * refund, discount, stock-count shortage).
+ *
+ * The threshold applies to the acting admin's whole Pakistan DAY of
+ * un-approved value, not to one action: five Rs 4,900 wastes used to pass
+ * with no second admin (Rs 24,500 out). Every value-out action is written to
+ * approval_value_log inside the caller's transaction (so a failed action
+ * leaves no row). Without migration 60 it falls back to per-action.
+ *
+ * Returns the approver id + timestamp, or {null,null} when no approval was
+ * needed. Throws { http } when approval is required but missing/invalid.
  */
 export async function approvalForValue(
   client: Pick<PoolClient, 'query'>,
   req: Request,
   value: number,
-  opts: { threshold?: number; label?: string } = {}
+  opts: { threshold?: number; label?: string; kind?: string } = {}
 ): Promise<{ approvedBy: string | null; approvedAt: string | null }> {
   const threshold = opts.threshold ?? APPROVAL_VALUE_THRESHOLD;
-  if (!(value >= threshold)) return { approvedBy: null, approvedAt: null };
-  const phone = String(req.body?.approval_phone || req.body?.approvalPhone || '');
-  const password = String(req.body?.approval_password || req.body?.approvalPassword || req.body?.password || '');
-  if (!phone || !password) {
-    throw Object.assign(
-      new Error(
-        `A second admin's approval is required for ${opts.label || 'this action'} worth Rs. ${threshold.toLocaleString('en-PK')} or more.`
-      ),
-      { http: 400 }
+  const amount = Number.isFinite(value) && value > 0 ? value : 0;
+  const adminId = req.user?.id ?? null;
+  const logReady = adminId ? await hasApprovalValueLog() : false;
+
+  let todayBefore = 0;
+  if (logReady && amount > 0) {
+    const r = await client.query(
+      `SELECT COALESCE(SUM(value), 0) AS total
+         FROM approval_value_log
+        WHERE admin_id = $1 AND approved_by IS NULL
+          AND ${localDate('created_at')} = ${TODAY_SQL}`,
+      [adminId]
+    );
+    todayBefore = parseFloat(r?.rows?.[0]?.total) || 0;
+  }
+
+  const singleOver = amount >= threshold;
+  const dayOver = amount > 0 && todayBefore + amount >= threshold;
+  let result: { approvedBy: string | null; approvedAt: string | null } = { approvedBy: null, approvedAt: null };
+
+  if (singleOver || dayOver) {
+    const phone = String(req.body?.approval_phone || req.body?.approvalPhone || '');
+    const password = String(req.body?.approval_password || req.body?.approvalPassword || req.body?.password || '');
+    if (!phone || !password) {
+      const limit = threshold.toLocaleString('en-PK');
+      const msg = singleOver
+        ? `A second admin's approval is required for ${opts.label || 'this action'} worth Rs. ${limit} or more.`
+        : `A second admin's approval is required: your un-approved stock/money changes today would reach Rs. ${Math.round(todayBefore + amount).toLocaleString('en-PK')} (limit Rs. ${limit} per day).`;
+      throw Object.assign(new Error(msg), { http: 400 });
+    }
+    const approvedBy = await verifySecondApprover(client, req, phone, password);
+    result = { approvedBy, approvedAt: new Date().toISOString() };
+  }
+
+  if (logReady && amount > 0) {
+    await client.query(
+      `INSERT INTO approval_value_log (admin_id, kind, value, approved_by) VALUES ($1, $2, $3, $4)`,
+      [adminId, String(opts.kind || opts.label || 'value').slice(0, 40), Math.round(amount * 100) / 100, result.approvedBy]
     );
   }
-  const approvedBy = await verifySecondApprover(client, req, phone, password);
-  return { approvedBy, approvedAt: new Date().toISOString() };
+  return result;
 }

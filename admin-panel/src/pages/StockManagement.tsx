@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Loader2, Send, Undo2, Trash2, Repeat, ArrowLeftRight, History, FileText } from 'lucide-react';
+import { Search, Loader2, Send, Undo2, Trash2, Repeat, ArrowLeftRight, History, FileText, ClipboardCheck } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -18,7 +18,7 @@ const todayInput = () => {
 
 // Stock is only ever ADDED through Expenses → Stock Purchasing (with grading).
 // Here the admin only MANAGES existing stock (move/convert/waste).
-type Action = 'waste' | 'convert' | 'shift' | 'return' | 'transfer';
+type Action = 'waste' | 'convert' | 'shift' | 'return' | 'transfer' | 'count';
 
 interface ActionCtx { action: Action; product: StockProduct; quality: Quality }
 
@@ -130,6 +130,7 @@ function QualityRow({ q, onAction }: { p: StockProduct; q: StockQuality; onActio
           <IconBtn title="Return from OCP" onClick={() => onAction('return')}><Undo2 className="w-3.5 h-3.5" /></IconBtn>
           <IconBtn title="Transfer OCP→OCP" onClick={() => onAction('transfer')}><ArrowLeftRight className="w-3.5 h-3.5" /></IconBtn>
           <IconBtn title="Convert quality" onClick={() => onAction('convert')}><Repeat className="w-3.5 h-3.5" /></IconBtn>
+          <IconBtn title="Count stock" onClick={() => onAction('count')}><ClipboardCheck className="w-3.5 h-3.5" /></IconBtn>
           <IconBtn title="Waste" danger onClick={() => onAction('waste')}><Trash2 className="w-3.5 h-3.5" /></IconBtn>
         </div>
       </td>
@@ -152,6 +153,7 @@ const ACTION_META: Record<Action, { title: string; verb: string }> = {
   shift: { title: 'Send stock to an OCP', verb: 'Send' },
   return: { title: 'Return stock from an OCP', verb: 'Return' },
   transfer: { title: 'Transfer stock between OCPs', verb: 'Transfer' },
+  count: { title: 'Count stock (physical)', verb: 'Save count' },
 };
 
 function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { id: string; name: string }[]; onClose: () => void; onDone: () => void }) {
@@ -192,16 +194,28 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
         case 'shift': return stockService.shift({ ...base, ocpId });
         case 'return': return stockService.returnFromOcp({ ...base, ocpId });
         case 'transfer': return stockService.transfer({ productId: product.id, quality, quantity, fromOcpId: ocpId, toOcpId });
+        case 'count': return stockService.count({
+          productId: product.id,
+          quality,
+          countedQuantity: quantity,
+          note: reason.trim() || undefined,
+          approvalPhone: approvalPhone.trim() || undefined,
+          approvalPassword: approvalPassword.trim() || undefined,
+        });
       }
     },
-    onSuccess: () => { toast.success(`${meta.verb} done`); onDone(); },
+    onSuccess: (res: any) => {
+      if (action === 'count') toast.success(res?.message || 'Count saved');
+      else toast.success(action === 'shift' ? 'Sent — the OCP must confirm receipt in its portal' : `${meta.verb} done`);
+      onDone();
+    },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
 
   const needsOcp = action === 'shift' || action === 'return' || action === 'transfer';
   const needsToOcp = action === 'transfer';
   const valid =
-    parseFloat(qty) > 0 &&
+    (action === 'count' ? qty.trim() !== '' && parseFloat(qty) >= 0 : parseFloat(qty) > 0) &&
     (!needsOcp || ocpId) &&
     (!needsToOcp || (toOcpId && toOcpId !== ocpId)) &&
     (action !== 'convert' || (toQuality !== quality && reason.trim().length > 0)) &&
@@ -243,7 +257,9 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
           </div>
         )}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Quantity ({product.unitType})</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {action === 'count' ? `Quantity you counted — shelf + packed bags in the store (${product.unitType})` : `Quantity (${product.unitType})`}
+          </label>
           <input type="number" min={0} step="0.001" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
         </div>
@@ -260,6 +276,17 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
                 className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200" />
             </div>
           </div>
+        )}
+        {action === 'count' && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300}
+                placeholder="Who counted with you, which shelf…" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            </div>
+            <Input label="Approver phone (if a big shortage)" value={approvalPhone} onChange={(e) => setApprovalPhone(e.target.value)} />
+            <Input label="Approver password (if a big shortage)" type="password" value={approvalPassword} onChange={(e) => setApprovalPassword(e.target.value)} />
+          </>
         )}
         {(action === 'waste' || action === 'convert') && (
           <>
@@ -279,6 +306,7 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
           {action === 'shift' && 'Moves stock to the OCP. City total is unchanged (it just relocates).'}
           {action === 'return' && 'Brings stock back from the OCP to central. City total unchanged.'}
           {action === 'transfer' && 'Moves stock from one OCP to another. City total unchanged.'}
+          {action === 'count' && 'Count first, then type the number — the system does not show what it expects (so the count is honest). Any difference is posted to the books with your name; shortages count toward the daily second-admin limit and appear in Owner checks.'}
         </p>
       </div>
     </Modal>

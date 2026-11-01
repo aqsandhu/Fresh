@@ -6,6 +6,9 @@ jest.mock('../../config/riderSchema', () => ({
   hasRiderCashSettlementTables: jest.fn().mockResolvedValue(true),
   hasAttaCashColumns: jest.fn().mockResolvedValue(true),
 }));
+jest.mock('../../config/controlsSchema', () => ({
+  hasOrderCashReceivedColumn: jest.fn().mockResolvedValue(true),
+}));
 
 const mockedQuery = query as jest.Mock;
 

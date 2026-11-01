@@ -43,6 +43,22 @@ export function sanitizeLedgerDate(value: unknown): string {
   return new Date().toISOString();
 }
 
+/**
+ * Ledger date for this request. A non-super admin may back-date at most
+ * LEDGER_BACKDATE_DAYS (default 7): older entries would silently change a
+ * period whose profit may already have been paid out to shareholders.
+ */
+export const LEDGER_BACKDATE_DAYS = Math.max(0, Number(process.env.LEDGER_BACKDATE_DAYS || 7));
+export function ledgerDateFor(req: Request, value: unknown): { iso: string; error?: undefined } | { iso?: undefined; error: string } {
+  const iso = sanitizeLedgerDate(value);
+  if (req.user?.role === 'super_admin') return { iso };
+  const oldest = Date.now() - LEDGER_BACKDATE_DAYS * 24 * 60 * 60 * 1000;
+  if (new Date(iso).getTime() < oldest) {
+    return { error: `Entries dated more than ${LEDGER_BACKDATE_DAYS} days back change a closed period — ask the super admin.` };
+  }
+  return { iso };
+}
+
 /** The city an expense belongs to: a scoped admin's city, else the body's city. */
 function effectiveCityId(scope: { cityId: string | null; unrestricted: boolean }, bodyCityId?: unknown): string | null {
   if (!scope.unrestricted && scope.cityId) return scope.cityId;
@@ -125,7 +141,9 @@ export const createExpense = asyncHandler(async (req: Request, res: Response) =>
   if (!category) return errorResponse(res, 'Choose an expense type.', 400);
   if (!Number.isFinite(amount) || amount < 0) return errorResponse(res, 'Enter a valid amount.', 400);
   const cityId = effectiveCityId(scope, req.body?.city_id);
-  const incurredAt = sanitizeLedgerDate(req.body?.incurred_at);
+  const ledger = ledgerDateFor(req, req.body?.incurred_at);
+  if (ledger.error) return errorResponse(res, ledger.error, 400);
+  const incurredAt = ledger.iso;
 
   const r = await query(
     `INSERT INTO expenses (city_id, type, category, amount, comment, incurred_at, created_by)
@@ -158,7 +176,9 @@ export const createStockPurchase = asyncHandler(async (req: Request, res: Respon
   if (Math.abs(gradedTotal - rawRounded) > 0.001) {
     return errorResponse(res, `Quality A + B + C + waste (${gradedTotal}) must equal the raw weight (${rawRounded}).`, 400);
   }
-  const purchasedAt = sanitizeLedgerDate(req.body?.purchased_at);
+  const ledger = ledgerDateFor(req, req.body?.purchased_at);
+  if (ledger.error) return errorResponse(res, ledger.error, 400);
+  const purchasedAt = ledger.iso;
 
   let out: any;
   try {
@@ -223,7 +243,9 @@ export const createRiderPayment = asyncHandler(async (req: Request, res: Respons
   if (!scope.unrestricted && scope.cityId && riderCity && riderCity !== scope.cityId) {
     return notFoundResponse(res, 'Rider not found');
   }
-  const incurredAt = sanitizeLedgerDate(req.body?.paid_at);
+  const ledger = ledgerDateFor(req, req.body?.paid_at);
+  if (ledger.error) return errorResponse(res, ledger.error, 400);
+  const incurredAt = ledger.iso;
 
   const r = await query(
     `INSERT INTO expenses (city_id, type, category, amount, comment, ref_type, ref_id, for_month, incurred_at, created_by)

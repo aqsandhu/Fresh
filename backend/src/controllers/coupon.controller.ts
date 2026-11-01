@@ -61,6 +61,32 @@ function toDateOrNull(v: unknown): string | null {
 }
 
 /** Validate + normalise a coupon payload. Returns either the parsed value or an error string. */
+// A coupon is money leaving the business, and nobody approves it: a city
+// admin used to be able to create a 100 %-off, no-limit, never-expiring code
+// and hand it out. Anything bigger than these caps needs the super admin.
+const COUPON_MAX_PERCENT_NON_SUPER = Number(process.env.COUPON_MAX_PERCENT_NON_SUPER || 30);
+const COUPON_MAX_RS_NON_SUPER = Number(process.env.COUPON_MAX_RS_NON_SUPER || 1000);
+const COUPON_MAX_USES_NON_SUPER = Number(process.env.COUPON_MAX_USES_NON_SUPER || 500);
+
+export function couponLimitError(parsed: ParsedCoupon, role: string | undefined): string | null {
+  if (role === 'super_admin') return null;
+  if (parsed.discount_type === 'percentage') {
+    if (parsed.discount_value > COUPON_MAX_PERCENT_NON_SUPER) {
+      return `Coupons above ${COUPON_MAX_PERCENT_NON_SUPER}% off need the super admin.`;
+    }
+    if (parsed.max_discount_amount == null || parsed.max_discount_amount > COUPON_MAX_RS_NON_SUPER) {
+      return `Set a maximum discount of Rs. ${COUPON_MAX_RS_NON_SUPER} or less (bigger caps need the super admin).`;
+    }
+  }
+  if (parsed.discount_type === 'fixed' && parsed.discount_value > COUPON_MAX_RS_NON_SUPER) {
+    return `Fixed discounts above Rs. ${COUPON_MAX_RS_NON_SUPER} need the super admin.`;
+  }
+  if (parsed.trigger_type === 'manual' && (parsed.usage_limit == null || parsed.usage_limit > COUPON_MAX_USES_NON_SUPER)) {
+    return `Set a total usage limit of ${COUPON_MAX_USES_NON_SUPER} or less (unlimited coupons need the super admin).`;
+  }
+  return null;
+}
+
 function parseCouponBody(body: Record<string, unknown>): ParsedCoupon | string {
   const rawCode = String(body.code ?? '').trim().toUpperCase();
   if (!/^[A-Z0-9][A-Z0-9_-]{1,49}$/.test(rawCode)) {
@@ -272,6 +298,8 @@ export const listCoupons = asyncHandler(async (req: Request, res: Response) => {
 export const createCoupon = asyncHandler(async (req: Request, res: Response) => {
   const parsed = parseCouponBody(req.body as Record<string, unknown>);
   if (typeof parsed === 'string') return errorResponse(res, parsed, 400);
+  const limitErr = couponLimitError(parsed, req.user?.role);
+  if (limitErr) return errorResponse(res, limitErr, 400);
 
   const scope = await resolveCityScope(req);
   // Scoped (non-super) admins MUST have a city; super admins may create a
@@ -356,6 +384,8 @@ export const updateCoupon = asyncHandler(async (req: Request, res: Response) => 
 
   const parsed = parseCouponBody(req.body as Record<string, unknown>);
   if (typeof parsed === 'string') return errorResponse(res, parsed, 400);
+  const limitErr = couponLimitError(parsed, req.user?.role);
+  if (limitErr) return errorResponse(res, limitErr, 400);
 
   const autoReady = await hasUserCouponsTable();
   if (!autoReady && parsed.trigger_type !== 'manual') {

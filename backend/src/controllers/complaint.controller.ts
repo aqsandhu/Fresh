@@ -359,7 +359,7 @@ export const refundComplaint = asyncHandler(async (req: Request, res: Response) 
       }
       // High-value refunds need a SECOND admin to co-sign (anti-fraud): one admin
       // can't quietly cash out a fabricated complaint.
-      const approval = await approvalForValue(client, req, amount, { label: 'a refund' });
+      const approval = await approvalForValue(client, req, amount, { label: 'a refund', kind: 'refund' });
       const ins = await client.query(
         `INSERT INTO refunds
            (order_id, complaint_id, amount, original_payment_source, note, reason, proof_url, refunded_by, approved_by, approved_at)

@@ -23,6 +23,7 @@ import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
 import { hasOcpTables } from '../../config/ocpSchema';
 import logger from '../../utils/logger';
 import { isTodaySql, localDate } from '../../utils/businessTime';
+import { hasStockCounts } from '../../config/controlsSchema';
 
 const QUALITIES = ['A', 'B', 'C'] as const;
 const num = (v: unknown): number => {
@@ -58,8 +59,8 @@ function priceForQuality(product: any, quality: string): number {
 }
 
 /** High-value stock changes (waste/convert) require a second admin (shared util). */
-const approvalForStock = (client: any, req: Request, value: number) =>
-  approvalForValue(client, req, value, { label: 'a stock change' });
+const approvalForStock = (client: any, req: Request, value: number, kind: string) =>
+  approvalForValue(client, req, value, { label: 'a stock change', kind });
 
 /** Σ of a product+quality across all OCPs (physical breakdown). */
 async function sumOcpStock(client: any, productId: string, quality: string): Promise<number> {
@@ -288,7 +289,7 @@ export const wasteStock = asyncHandler(async (req: Request, res: Response) => {
       const movable = (parseFloat(p[stockCol]) || 0) - (parseFloat(p[resCol]) || 0) - atOcps;
       if (qty > movable) throw Object.assign(new Error(`Only ${movable} available to waste (rest is reserved or at an OCP).`), { http: 400 });
       const value = qty * priceForQuality(p, quality);
-      const approval = await approvalForStock(client, req, value);
+      const approval = await approvalForStock(client, req, value, 'waste');
       await client.query(`UPDATE products SET ${stockCol} = ${stockCol} - $1, updated_at = NOW() WHERE id = $2`, [qty, product_id]);
       await recordStockMovement(client, {
         productId: product_id, quality, cityId: p.city_id, delta: -qty, reason: 'waste',
@@ -330,7 +331,7 @@ export const convertQuality = asyncHandler(async (req: Request, res: Response) =
       const movable = (parseFloat(p[fromCol]) || 0) - (parseFloat(p[fromRes]) || 0) - atOcps;
       if (qty > movable) throw Object.assign(new Error(`Only ${movable} of Quality ${from} can be converted (rest is reserved or at an OCP).`), { http: 400 });
       const value = qty * priceForQuality(p, from);
-      const approval = await approvalForStock(client, req, value);
+      const approval = await approvalForStock(client, req, value, 'convert');
       await client.query(
         `UPDATE products SET ${fromCol} = ${fromCol} - $1, ${toCol} = ${toCol} + $1, updated_at = NOW() WHERE id = $2`,
         [qty, product_id]
@@ -361,6 +362,11 @@ export const convertQuality = asyncHandler(async (req: Request, res: Response) =
 // ── POST /api/admin/stock/shift — central → OCP (on_hand unchanged) ──────────
 export const shiftToOcp = asyncHandler(async (req: Request, res: Response) => {
   if (!(await hasOcpTables())) return errorResponse(res, 'OCP system not ready.', 503);
+  // Normal sends go through a stock request the OCP must receive (it confirms
+  // what arrived). A direct shift skips that, so it is a super-admin correction.
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Send stock to an OCP as a stock request — the OCP confirms receipt.', 400);
+  }
   const { product_id, ocp_id } = req.body;
   const quality = normalizeQuality(req.body.quality);
   const qty = num(req.body.quantity);
@@ -455,4 +461,111 @@ export const transferOcpToOcp = asyncHandler(async (req: Request, res: Response)
   }
   logger.info('Stock transferred OCP→OCP', { product_id, from_ocp_id, to_ocp_id, quality, qty, by: req.user?.id });
   return successResponse(res, { product_id, from_ocp_id, to_ocp_id, quality, qty }, 'Stock transferred');
+});
+
+// ── POST /api/admin/stock/count — physical shelf count (blind) ───────────────
+// The only control that catches goods walking out of the store: the system
+// can only compare itself with itself. Someone counts what is physically in
+// the store (shelf + packed bags waiting); the system compares it with what
+// should be there (on hand − at OCPs − out with riders), posts the
+// difference to the ledger so the books match the shelf, and keeps who
+// counted and — for a shortage — who co-approved (daily second-admin rule).
+// The expected number is NOT shown before counting (the counter would copy it).
+export const countStock = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await hasStockCounts())) return errorResponse(res, 'Stock counting needs migration 60 — run the database migrations.', 503);
+  const { product_id } = req.body;
+  const quality = normalizeQuality(req.body.quality);
+  const counted = num(req.body.counted_quantity ?? req.body.countedQuantity);
+  if (!product_id || !Number.isFinite(counted) || counted < 0) return errorResponse(res, 'Enter the quantity you counted.', 400);
+  const note = typeof req.body.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
+  const scope = await resolveCityScope(req);
+
+  let out: any;
+  try {
+    out = await withTransaction(async (client) => {
+      const p = await lockProductInScope(client, product_id, scope);
+      const stockCol = qualityStockColumn(quality);
+      const onHand = parseFloat(p[stockCol]) || 0;
+      const atOcps = await sumOcpStock(client, product_id, quality);
+      // Packed goods already out with riders (still on hand until delivered).
+      const withRiders = await client.query(
+        `SELECT COALESCE(SUM(oi.quantity * CASE COALESCE(oi.unit, 'full')
+                  WHEN 'half_kg' THEN 0.5 WHEN 'quarter_kg' THEN 0.25 WHEN 'half_dozen' THEN 0.5 ELSE 1 END), 0) AS units
+           FROM order_items oi
+           JOIN orders o ON o.id = oi.order_id
+          WHERE oi.product_id = $1 AND COALESCE(oi.quality, 'A') = $2
+            AND o.status = 'out_for_delivery' AND o.stock_reserved = TRUE
+            AND o.ocp_id IS NULL AND o.deleted_at IS NULL`,
+        [product_id, quality]
+      );
+      const outWithRiders = parseFloat(withRiders.rows[0].units) || 0;
+      const expected = Math.round((onHand - atOcps - outWithRiders) * 1000) / 1000;
+      const variance = Math.round((counted - expected) * 1000) / 1000;
+      const value = round2(variance * priceForQuality(p, quality));
+
+      // A shortage is value leaving the business → daily second-admin rule.
+      const approval = variance < 0
+        ? await approvalForStock(client, req, -value, 'stock_count')
+        : { approvedBy: null, approvedAt: null };
+
+      if (Math.abs(variance) > 0.0005) {
+        const statusSet = stockCol === 'stock_quantity'
+          ? `, stock_status = CASE WHEN stock_quantity + $1 > 0 THEN 'active'::product_status ELSE 'out_of_stock'::product_status END`
+          : '';
+        await client.query(`UPDATE products SET ${stockCol} = ${stockCol} + $1${statusSet}, updated_at = NOW() WHERE id = $2`, [variance, product_id]);
+        await recordStockMovement(client, {
+          productId: product_id, quality, cityId: p.city_id, delta: variance, reason: 'adjust',
+          createdBy: req.user?.id ?? null,
+          note: `stock count: counted ${counted}, expected ${expected} | value Rs. ${value}${note ? ` | ${note}` : ''}`,
+          approvedBy: approval.approvedBy, approvedAt: approval.approvedAt,
+        });
+      }
+      const ins = await client.query(
+        `INSERT INTO stock_counts (city_id, product_id, quality, expected_qty, counted_qty, variance, variance_value, note, counted_by, approved_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, created_at`,
+        [p.city_id, product_id, quality, expected, counted, variance, value, note || null, req.user?.id ?? null, approval.approvedBy]
+      );
+      return { id: ins.rows[0].id, product: p.name_en, quality, expected, counted, variance, value, outWithRiders, atOcps };
+    });
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
+  }
+  logger.info('Stock counted', { ...out, by: req.user?.id });
+  const msg = Math.abs(out.variance) < 0.0005
+    ? 'Count matches the system'
+    : out.variance < 0
+      ? `Shortage of ${Math.abs(out.variance)} (Rs. ${Math.abs(out.value)}) recorded`
+      : `Surplus of ${out.variance} recorded`;
+  return successResponse(res, out, msg);
+});
+
+// ── GET /api/admin/stock/counts?date=YYYY-MM-DD — counts for a Pakistan day ──
+export const listStockCounts = asyncHandler(async (req: Request, res: Response) => {
+  if (!(await hasStockCounts())) return successResponse(res, [], 'Stock counts');
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) return successResponse(res, [], 'Stock counts');
+  const params: any[] = [];
+  const where: string[] = [];
+  if (!scope.unrestricted && scope.cityId) { params.push(scope.cityId); where.push(`sc.city_id = $${params.length}`); }
+  const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : null;
+  if (date) { params.push(date); where.push(`${localDate('sc.created_at')} = $${params.length}::date`); }
+  else where.push(isTodaySql('sc.created_at'));
+  const r = await query(
+    `SELECT sc.id, sc.product_id, p.name_en AS product_name, sc.quality, sc.expected_qty, sc.counted_qty,
+            sc.variance, sc.variance_value, sc.note, sc.created_at,
+            cu.full_name AS counted_by_name, au.full_name AS approved_by_name
+       FROM stock_counts sc
+       LEFT JOIN products p ON p.id = sc.product_id
+       LEFT JOIN users cu ON cu.id = sc.counted_by
+       LEFT JOIN users au ON au.id = sc.approved_by
+      WHERE ${where.join(' AND ')}
+      ORDER BY sc.created_at DESC LIMIT 500`,
+    params
+  );
+  return successResponse(res, r.rows.map((x: any) => ({
+    ...x,
+    expected_qty: parseFloat(x.expected_qty), counted_qty: parseFloat(x.counted_qty),
+    variance: parseFloat(x.variance), variance_value: parseFloat(x.variance_value),
+  })), 'Stock counts');
 });
