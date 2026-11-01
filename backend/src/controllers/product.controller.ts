@@ -350,15 +350,31 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
  * GET /api/products/featured/list
  */
 export const getFeaturedProducts = asyncHandler(async (req: Request, res: Response) => {
-  const requested = parseInt((req.query.limit as string) || '20', 10);
-  const limit = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), 100) : 20;
+  // `page` is optional: without it this returns the first `limit` rows exactly
+  // as before (limit 1..100, default 20). With it, the storefronts' "View More
+  // Products" button walks through EVERY featured product — the old hard cap
+  // of 100 with no offset made anything past the 100th unreachable.
+  const { page, limit, offset } = parsePagination(req.query.page, req.query.limit);
   const publicCityId = await resolvePublicCityId(req);
   const varCols = await variableWeightCols();
   const rateCols = await ratingCols();
   const toggleCols = await unitToggleCols();
   const qCols = await qualityCols();
 
-  let sql = `
+  let where = `
+    FROM products p
+    JOIN categories c ON p.category_id = c.id
+    WHERE p.is_active = TRUE AND p.is_featured = TRUE`;
+  const params: any[] = [];
+  if (publicCityId) {
+    where += ` AND p.city_id = $1`;
+    params.push(publicCityId);
+  }
+
+  const countResult = await query(`SELECT COUNT(*) ${where}`, params);
+  const total = parseInt(countResult.rows[0].count, 10) || 0;
+
+  const sql = `
     SELECT
       p.id, p.name_ur, p.name_en, p.slug, p.price, p.compare_at_price,
       p.half_kg_price, p.quarter_kg_price, p.half_dozen_price,
@@ -369,19 +385,14 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
       p.unit_type, p.unit_value, p.stock_quantity, p.primary_image,
       c.name_en as category_name, c.slug as category_slug,
       c.qualifies_for_free_delivery
-    FROM products p
-    JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE AND p.is_featured = TRUE`;  const params: any[] = [];
-  if (publicCityId) {
-    sql += ` AND p.city_id = $1`;
-    params.push(publicCityId);
-  }
-  sql += ` ORDER BY p.order_count DESC, p.created_at DESC LIMIT $${params.length + 1}`;
-  params.push(limit);
+    ${where}
+    ORDER BY p.order_count DESC, p.created_at DESC, p.id DESC
+    LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
 
-  const result = await query(sql, params);
+  const result = await query(sql, [...params, limit, offset]);
 
-  successResponse(res, result.rows, 'Featured products retrieved successfully');
+  // data stays a plain array (old callers unchanged); meta adds paging info.
+  paginatedResponse(res, result.rows, page, limit, total, 'Featured products retrieved successfully');
 });
 
 /**

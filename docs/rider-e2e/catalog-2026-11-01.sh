@@ -6,7 +6,9 @@
 #    by price, come back exactly once each (ORDER BY …, p.id tie-breaker) —
 #    the customer app pages through every page and the website's "Load more"
 #    must never repeat or skip a product;
-#  - the page cap the clients rely on (100) holds even for limit=2000.
+#  - the page cap the clients rely on (100) holds even for limit=2000;
+#  - featured products page in batches (home "View More Products") and every
+#    featured product is reachable — the old endpoint stopped at 100.
 # Needs: backend on :3999 against a fresh database, curl, jq, psql.
 set -u
 API=http://localhost:3999/api
@@ -35,6 +37,16 @@ check "page 2 size" "$(echo "$P2" | jq '.data | length')" "50"
 check "pages hold 150 DISTINCT products" "$( (echo "$P1"; echo "$P2") | jq -r '.data[].id' | sort -u | wc -l | tr -d ' ')" "150"
 check "limit=2000 still capped at 100" "$(curl -s "$API/products?city_id=$CITY&limit=2000" | jq -r .meta.limit)" "100"
 check "minPrice filter applies" "$(curl -s "$API/products?category=$CAT&city_id=$CITY&minPrice=100" | jq -r .meta.total)" "0"
+
+# --- featured "View More Products" paging -------------------------------------
+$PSQL -c "update products set is_featured = true where category_id='$CAT' and slug in (select 'same-price-'||g from generate_series(1,45) g)" >/dev/null
+FEAT=$($PSQL -c "select count(*) from products where city_id='$CITY' and is_active and is_featured")
+F="$API/products/featured/list?city_id=$CITY&limit=20"
+check "featured: no page → first batch, data is an array" "$(curl -s "$F" | jq '.data | length')" "20"
+check "featured: meta.total = every featured product" "$(curl -s "$F&page=1" | jq -r .meta.total)" "$FEAT"
+FPAGES=$(curl -s "$F&page=1" | jq -r .meta.totalPages)
+check "featured: all batches hold every featured product once" "$(for pg in $(seq 1 "$FPAGES"); do curl -s "$F&page=$pg" | jq -r '.data[].id'; done | sort -u | wc -l | tr -d ' ')" "$FEAT"
+check "featured: page past the end is empty" "$(curl -s "$F&page=$((FPAGES + 1))" | jq '.data | length')" "0"
 
 $PSQL -c "delete from products where category_id='$CAT'; delete from categories where id='$CAT'" >/dev/null
 echo "RESULT pass=$pass fail=$fail"

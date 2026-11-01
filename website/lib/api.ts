@@ -252,9 +252,14 @@ export const productsApi = {
     return (response.data.data || []).map(mapBackendProduct)
   },
 
-  getFeatured: async (limit: number = 10): Promise<Product[]> => {
-    const response = await api.get('/products/featured/list', { params: withCityParams({ limit }) })
-    return (response.data.data || []).map(mapBackendProduct)
+  /**
+   * One batch of featured products (home "View More Products"). `meta` carries
+   * page / totalPages / total; use nextProductPage(meta) for the next batch.
+   */
+  getFeaturedPage: async (page: number, limit: number): Promise<{ products: Product[]; meta: any }> => {
+    const response = await api.get('/products/featured/list', { params: withCityParams({ page, limit }) })
+    const body = response.data
+    return { products: (body.data || []).map(mapBackendProduct), meta: body.meta }
   },
 
   getByCategory: async (categoryId: string, params?: { page?: number; limit?: number; sortBy?: string; sortOrder?: string }): Promise<{ products: Product[]; meta: any }> => {

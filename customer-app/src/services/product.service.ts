@@ -162,6 +162,13 @@ const PRODUCTS_PAGE_LIMIT = 100;
 /** Safety stop for getAllProducts: 50 × 100 = 5,000 products. */
 const MAX_PRODUCT_PAGES = 50;
 
+export interface FeaturedPage {
+  items: StoreProduct[];
+  page: number;
+  totalPages: number;
+  total: number;
+}
+
 interface GetProductsParams {
   category?: string;
   search?: string;
@@ -249,15 +256,27 @@ class ProductService {
     }
   }
 
-  async getFeaturedProducts(limit = 500): Promise<ApiResponse<StoreProduct[]>> {
-    if (!hasSelectedCity()) return { success: true, data: [] };
+  /**
+   * One page of featured products for the Home "View More Products" button.
+   * `total` / `totalPages` come from the API meta; an older API without meta
+   * is treated as a single page (button stays hidden).
+   */
+  async getFeaturedPage(page: number, limit: number): Promise<FeaturedPage> {
+    if (!hasSelectedCity()) return { items: [], page: 1, totalPages: 1, total: 0 };
     try {
       const response = await apiClient.get('/products/featured/list', {
-        params: withCityParams({ limit }),
+        params: withCityParams({ page, limit }),
       });
       const raw = response.data;
       const items = (raw.data || []).map(mapBackendProduct);
-      return { success: true, data: items };
+      const meta = raw.meta || {};
+      const total = Number(meta.total) || items.length;
+      return {
+        items,
+        page: Number(meta.page) || page,
+        totalPages: Number(meta.totalPages) || 1,
+        total,
+      };
     } catch (error) {
       throw handleApiError(error);
     }
