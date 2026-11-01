@@ -41,9 +41,24 @@
 | S7 | website | `/products` and `/category/[slug]` each carried a copy of the sort map, filter bar/panel and grid + "Load more". Empty states told **shoppers** to "add products from the admin panel". | Shared `components/shop/ProductListing` (filters, query params, grid, empty state). Customer-friendly empty states ("No products match these filters" + Clear, "This category is not available" + Browse all). |
 | S8 | both | Dead duplicate code that made the codebase confusing. | Removed (nothing imported them — typecheck/lint/tests/builds prove it). App: `CategoryNavigator`, `AttaNavigator`, unreachable `CategoriesListScreen` (a third category design), `CategoryCard`, `FreeDeliveryCard` (hard-coded Rs 500), `BannerCarousel`, `SectionHeader`, `AppDownloadSection`, `FloatingCityButton`, dummy `CATEGORIES` and `TIME_SLOTS` constants. Website: `ui/CategoryCard`, `providers/QueryProvider` (duplicate of `AppProviders`), `ui/LoadingSpinner`, `ui/QuantitySelector`, `sections/HowItWorksSection`. `DELIVERY` constants documented as offline fallbacks only. |
 
+## Follow-up (owner request): "View More Products" under Featured
+> **Roman Urdu:** Home par pehle 20 featured products, un ke neeche aur categories se pehle bara
+> hara **"View More Products"** button. Har click par agle 20 featured products (jo pehle nahi
+> dikhe) aa jate hain, yahan tak ke saare featured products dikh jayen — phir button khud gayab.
+> App aur website dono par same. Categories neeche nahi dabti aur saare featured dekhne ka raasta hai.
+
+| Part | Change |
+|---|---|
+| backend | `GET /products/featured/list` takes an optional `page` and returns `meta` (page, limit, total, totalPages); `data` stays a plain array, so a caller without `page` gets exactly what it got before. Order gains an `id` tie-breaker. **Before this, the endpoint stopped at 100 with no offset — the 101st featured product could never be shown anywhere.** |
+| customer app | `FeaturedProductsSection` loads batches of 20 (react-query infinite query); big green full-width button with Urdu label and a "+N more" badge, spinner while loading, hidden once everything is shown; duplicates across batches dropped. `productService.getFeaturedPage()` replaces the old single call. |
+| website | Same batches of 20 and the same button (full-width on mobile, wide centred on desktop); `productsApi.getFeaturedPage()` replaces `getFeatured(100)`. |
+| E2E | `catalog-2026-11-01.sh` +4 checks: first batch without `page`, `meta.total` = every featured product, all batches hold each featured product exactly once, page past the end is empty. |
+
+Verified with 48 featured products: real app (iPhone viewport) and website (390 px and 1366 px)
+both go **20 → 40 → 48**, all distinct, button disappears after the last batch, "Shop by
+Category" stays directly below, no horizontal overflow, no console errors.
+
 ## Deliberately unchanged
-- App home shows **20** featured products (website 100) — an earlier, documented decision so the
-  category wall stays reachable on a 2-column phone grid; "View All" opens the full list.
 - App search filters client-side on `/products/search` results (no request race there).
 - `logger.ts` and `lib/cityScope.ts` in the app are unused utilities, not duplicates or dummy data;
   left for a later cleanup.
@@ -55,6 +70,18 @@
 3. Admin panel → **Settings → WhatsApp**: save the real WhatsApp order link if the button should
    show (it stays hidden until a real link is saved).
 4. Upload category images (until then every storefront shows a clean letter tile).
+
+## Production readiness — latest (excluding gateways, Render free plan, OTP bypass)
+| Area | 1 Nov QA report | Now | Why not 100 % |
+|---|---|---|---|
+| Backend API & data integrity | 92 % | 93 % | boot-time DDL (F11), public atta tracking (F12), AI-chat spend cap (F13), no load test |
+| Stock & cash controls | 90 % | 90 % | needs the owner's supervision routine; no bill photo yet |
+| Admin panel | 90 % | 90 % | tokens in localStorage / no 2FA for super admin (F10), a11y labels |
+| Website | 91 % | 93 % | wishlist device-only, hero images hot-linked |
+| Customer app | 80 % | 85 % | ran as the real app build in a phone viewport, but **still not on a real phone**; push needs FCM/APNs setup |
+| Rider app | 79 % | 79 % | not on a real phone; Google background-location declaration + video; Apple 3.2 risk |
+| QA / CI / Ops | 85 % | 89 % | all 5 GitHub workflows (incl. real-DB E2E) now seen green on `main`; still no load/soak test or monitoring alerts |
+| **Overall (weighted)** | **≈ 88 %** | **≈ 90 %** | The last ~10 % is mostly outside the code: real-device test day for both apps, store submission paperwork, monitoring, the owner steps above (phone, WhatsApp link, category images) and the supervision routine. |
 
 ## Gates (all green)
 - backend: `tsc`, eslint, **292/292** jest, build.

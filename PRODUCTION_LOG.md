@@ -93,6 +93,13 @@ Full tables with file:line, WHY and fix: `docs/audits/2026-10-05-findings.md`. S
 9. Re-run the three dead audit sweeps (customer-app, admin main, backend 28-item verification) when the session limit allows; fix what they find.
 
 ## 5. Work log (newest first)
+### 2026-11-01 — Featured "View More Products" (app + website)
+Home shows 20 featured products, then a large "View More Products" button right above the
+category wall; each tap adds the next 20 not shown yet until every featured product is on
+screen (button then hides). Backend `GET /products/featured/list` gained optional `page` + `meta`
+(old callers unchanged) — before, it stopped at 100 with no offset. Verified 20 → 40 → 48 in the
+real app build and the website (mobile + desktop); +4 E2E checks in `catalog-2026-11-01.sh`.
+Readiness ≈ 90 % (table in `docs/audits/2026-11-01-storefront-parity.md`).
 ### 2026-11-01 — Storefront parity: customer app vs website (real app + real DB)
 Full write-up: `docs/audits/2026-11-01-storefront-parity.md`. Verified in the real customer app
 (Expo web build, iPhone viewport) and the website (390 px) against the live DB: home shows
