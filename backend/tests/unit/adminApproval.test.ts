@@ -30,10 +30,12 @@ describe('verifySecondApprover', () => {
       .rejects.toMatchObject({ http: 400 });
   });
 
-  it('rejects when no matching active admin is found (401)', async () => {
+  // 400, not 401: a wrong approver password must not look like an expired
+  // session (the admin panel logs the acting admin out on 401).
+  it('rejects when no matching active admin is found (400)', async () => {
     const client = { query: jest.fn<any>().mockResolvedValue({ rows: [] }) } as any;
     await expect(verifySecondApprover(client, fakeReq(), '03001234567', 'pw'))
-      .rejects.toMatchObject({ http: 401 });
+      .rejects.toMatchObject({ http: 400 });
   });
 
   it('requires login (401) when there is no acting admin', async () => {

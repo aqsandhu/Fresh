@@ -26,16 +26,6 @@ export const attaService = {
     }
   },
 
-  getAttaRequestById: async (id: string): Promise<AttaRequest> => {
-    try {
-      const response = await api.get<ApiResponse<AttaRequest>>(`/admin/atta-requests/${id}`);
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error fetching atta request:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch atta request');
-    }
-  },
-
   updateStatus: async (id: string, status: AttaRequestStatus, notes?: string): Promise<AttaRequest> => {
     try {
       const response = await api.put<ApiResponse<AttaRequest>>(`/admin/atta-requests/${id}/status`, {
@@ -70,19 +60,6 @@ export const attaService = {
     }
   },
 
-  updatePricing: async (id: string, millingCharge: number, deliveryCharge: number): Promise<AttaRequest> => {
-    try {
-      const response = await api.put<ApiResponse<AttaRequest>>(`/admin/atta-requests/${id}/pricing`, {
-        millingCharge,
-        deliveryCharge,
-      });
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error updating atta request pricing:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to update pricing');
-    }
-  },
-
   getAttaStats: async (period: 'today' | 'week' | 'month' | 'year' = 'today'): Promise<{
     totalRequests: number;
     pendingRequests: number;
@@ -105,15 +82,4 @@ export const attaService = {
     }
   },
 
-  cancelRequest: async (id: string, reason: string): Promise<AttaRequest> => {
-    try {
-      const response = await api.put<ApiResponse<AttaRequest>>(`/admin/atta-requests/${id}/cancel`, {
-        reason,
-      });
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error cancelling atta request:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to cancel request');
-    }
-  },
 };

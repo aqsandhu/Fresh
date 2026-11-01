@@ -48,7 +48,7 @@ export async function verifySecondApprover(
   );
   const approver = u.rows[0];
   if (!approver?.password_hash || !(await bcrypt.compare(password, approver.password_hash))) {
-    throw Object.assign(new Error('Incorrect approver password.'), { http: 401 });
+    throw Object.assign(new Error('Incorrect approver password.'), { http: 400 });
   }
   if (approver.id === req.user.id) {
     throw Object.assign(new Error('A different active admin must approve this action.'), { http: 400 });

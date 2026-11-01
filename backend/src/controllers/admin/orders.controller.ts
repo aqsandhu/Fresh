@@ -307,6 +307,13 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   const { id } = req.params;
   const { status, reason } = req.body;
 
+  // Money never leaves through a bare status flip: a refund must go through
+  // the complaint refund (reason + cap + second admin for large amounts) so it
+  // is recorded with who did it. (The validator rejects 'refunded' too.)
+  if (status === 'refunded') {
+    return errorResponse(res, 'Use the complaint refund to return money (it records the reason and approval).', 400);
+  }
+
   const scope = await resolveCityScope(req);
   if (!(await orderInScope(scope, id))) {
     return notFoundResponse(res, 'Order not found');
@@ -361,26 +368,6 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
          RETURNING *`,
         [status, reason, id]
       );
-
-      // delivered → refunded: money goes back. Record the refunds-ledger row
-      // (same shape as cancellation) and flip the payment status so finance
-      // and the customer's order page both reflect it.
-      if (status === 'refunded' && order.status !== 'refunded') {
-        const paidOut = parseFloat(String(order.paid_amount ?? '0')) || 0;
-        if (paidOut > 0 && (await hasCatalogV2Columns())) {
-          await client.query(
-            `INSERT INTO refunds
-               (order_id, complaint_id, amount, original_payment_source, note, reason)
-             VALUES ($1, NULL, $2, 'admin', $3, $3)`,
-            [id, roundMoney(paidOut), reason ? `Refunded by admin: ${reason}` : 'Refunded by admin']
-          );
-        }
-        await client.query(
-          `UPDATE orders SET payment_status = 'refunded'::payment_status, updated_at = NOW() WHERE id = $1`,
-          [id]
-        );
-        result.rows[0].payment_status = 'refunded';
-      }
 
       // Admin-confirmed delivery closes the rider's task too (same as the
       // payment-received fast path) so the rider app stops showing it active.

@@ -11,6 +11,7 @@ import {
   Lock,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import api, { authApi } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
@@ -123,6 +124,13 @@ function LinkRow({ href, label }: { href: string; label: string }) {
 }
 
 export default function SettingsPage() {
+  // Account settings are private: a guest is sent to login (same as /profile)
+  // instead of seeing "User" with switches that can't save.
+  const router = useRouter()
+  const { isAuthenticated, hasHydrated } = useAuthStore()
+  useEffect(() => {
+    if (hasHydrated && !isAuthenticated) router.replace('/login?redirect=/settings')
+  }, [hasHydrated, isAuthenticated, router])
   const { user } = useAuthStore()
   const { prefs, saving, update } = useProfilePrefs()
 

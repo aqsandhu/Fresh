@@ -746,7 +746,7 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
   const u = await query('SELECT password_hash FROM users WHERE id = $1', [req.user?.id]);
   const hash = u.rows[0]?.password_hash;
   if (!hash || !(await bcrypt.compare(password, hash))) {
-    return errorResponse(res, 'Incorrect password.', 401);
+    return errorResponse(res, 'Incorrect password.', 400);
   }
 
   const attaReady = await hasAttaCashColumns();

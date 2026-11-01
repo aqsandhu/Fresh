@@ -8,6 +8,7 @@ import {
   Platform,
   ScrollView,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,7 +19,7 @@ import { BrandLogo } from '../../components/BrandLogo';
 import { Banner } from '../../components/ui';
 import { colors, radius, spacing, typography, shadow, TOUCH_TARGET } from '../../theme';
 import { isValidPhoneNumber } from '../../utils/helpers';
-import { APP_VERSION } from '../../utils/constants';
+import { APP_VERSION, RIDER_APPLY_URL } from '../../utils/constants';
 
 const LoginScreen: React.FC = () => {
   const { t } = useT();
@@ -166,6 +167,17 @@ const LoginScreen: React.FC = () => {
             />
 
             <Text style={styles.help}>{t('auth.help')}</Text>
+            {/* Public path in: the app is not staff-only (App Store 3.2) —
+                anyone can apply on the website and gets an account once
+                the office approves. */}
+            <TouchableOpacity
+              onPress={() => Linking.openURL(RIDER_APPLY_URL).catch(() => undefined)}
+              accessibilityRole="link"
+              style={styles.applyLink}
+              testID="login-apply"
+            >
+              <Text style={styles.applyText}>{t('auth.apply')}</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.version}>{t('common.version', { version: APP_VERSION })}</Text>
@@ -176,6 +188,8 @@ const LoginScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  applyLink: { marginTop: spacing.md, alignItems: 'center', paddingVertical: spacing.sm, minHeight: TOUCH_TARGET, justifyContent: 'center' },
+  applyText: { fontSize: typography.size.sm, color: colors.primary, fontWeight: typography.weight.semibold, textAlign: 'center' },
   container: { flex: 1, backgroundColor: colors.gray900 },
   flex: { flex: 1 },
   scrollContent: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl },

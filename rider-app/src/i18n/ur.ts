@@ -40,6 +40,7 @@ const ur: Record<TranslationKey, string> = {
   'auth.login': 'لاگ ان',
   'auth.loggingIn': 'لاگ ان ہو رہا ہے…',
   'auth.help': 'لاگ ان میں مسئلہ؟ اپنے فریش بازار ایڈمن سے رابطہ کریں۔',
+  'auth.apply': 'ابھی رائیڈر نہیں؟ فریش بازار کے ساتھ ڈیلیوری کے لیے اپلائی کریں',
   'auth.errorTitle': 'لاگ ان ناکام',
   'auth.phoneRequired': 'فون نمبر درج کریں',
   'auth.phoneInvalid': 'درست پاکستانی موبائل نمبر درج کریں',

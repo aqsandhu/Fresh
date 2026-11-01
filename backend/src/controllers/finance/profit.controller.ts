@@ -195,11 +195,13 @@ export const createShareholder = asyncHandler(async (req: Request, res: Response
   let out: any;
   try {
     out = await withTransaction(async (client) => {
-      // Lock the city's shareholders so concurrent adds can't both slip past the
-      // 100% cap. Sum is over ALL shareholders (active + inactive) — reactivating
-      // one must never push the city total over 100%.
+      // Serialise share changes per city so concurrent adds can't both slip
+      // past the 100% cap. (PostgreSQL rejects FOR UPDATE on an aggregate —
+      // the old query 500'd on every add.) Sum is over ALL shareholders
+      // (active + inactive) — reactivating one must never exceed 100%.
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('shareholders:' || $1::text))`, [cityId]);
       const sumRow = await client.query(
-        `SELECT COALESCE(SUM(share_percent),0) AS total FROM shareholders WHERE city_id = $1 FOR UPDATE`,
+        `SELECT COALESCE(SUM(share_percent),0) AS total FROM shareholders WHERE city_id = $1`,
         [cityId]
       );
       const currentTotal = parseFloat(sumRow.rows[0].total) || 0;

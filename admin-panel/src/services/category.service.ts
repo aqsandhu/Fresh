@@ -90,18 +90,4 @@ export const categoryService = {
     }
   },
 
-  uploadCategoryImage: async (id: string, image: File): Promise<string> => {
-    try {
-      const formData = new FormData();
-      formData.append('image', image);
-      const response = await api.postForm<ApiResponse<{ imageUrl: string }>>(
-        `/admin/categories/${id}/image`,
-        formData
-      );
-      return unwrap(response).imageUrl;
-    } catch (error: any) {
-      console.error('Error uploading category image:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to upload image');
-    }
-  },
 };

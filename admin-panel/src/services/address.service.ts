@@ -26,16 +26,6 @@ export const addressService = {
     }
   },
 
-  getAddressById: async (id: string): Promise<Address> => {
-    try {
-      const response = await api.get<ApiResponse<Address>>(`/admin/addresses/${id}`);
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error fetching address:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch address');
-    }
-  },
-
   assignHouseNumber: async (id: string, houseNumber: string): Promise<Address> => {
     try {
       const response = await api.put<ApiResponse<Address>>(`/admin/addresses/${id}/house-number`, {
@@ -45,16 +35,6 @@ export const addressService = {
     } catch (error: any) {
       console.error('Error assigning house number:', error);
       throw new Error(error?.response?.data?.message || 'Failed to assign house number');
-    }
-  },
-
-  updateAddress: async (id: string, data: Partial<Address>): Promise<Address> => {
-    try {
-      const response = await api.put<ApiResponse<Address>>(`/admin/addresses/${id}`, data);
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error updating address:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to update address');
     }
   },
 
@@ -84,49 +64,6 @@ export const addressService = {
     } catch (error: any) {
       console.error('Error removing location:', error);
       throw new Error(error?.response?.data?.message || 'Failed to remove location');
-    }
-  },
-
-  searchAddresses: async (query: string, limit: number = 10): Promise<Address[]> => {
-    try {
-      const response = await api.get<ApiResponse<Address[]>>('/admin/addresses/search', {
-        query,
-        limit,
-      });
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error searching addresses:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to search addresses');
-    }
-  },
-
-  getAddressesByArea: async (area: string): Promise<Address[]> => {
-    try {
-      const response = await api.get<ApiResponse<Address[]>>(`/admin/addresses/area/${area}`);
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error fetching addresses by area:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch addresses by area');
-    }
-  },
-
-  getAreas: async (): Promise<string[]> => {
-    try {
-      const response = await api.get<ApiResponse<string[]>>('/admin/addresses/areas');
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error fetching areas:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch areas');
-    }
-  },
-
-  getCities: async (): Promise<string[]> => {
-    try {
-      const response = await api.get<ApiResponse<string[]>>('/admin/addresses/cities');
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error fetching cities:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch cities');
     }
   },
 

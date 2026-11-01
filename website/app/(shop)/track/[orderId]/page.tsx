@@ -72,6 +72,25 @@ function parseOrderAmount(value: unknown): number {
   return Number.isFinite(n) ? n : 0
 }
 
+/**
+ * "Sun, 1 Nov · by 2:00 PM" from the order's delivery DATE and the slot end.
+ * requested_delivery_date is a calendar date; formatting it as a date-time
+ * showed midnight ("Estimated by … 12:00 AM").
+ */
+function buildEtaLabel(raw: any, slotEnd: string): string | null {
+  if (raw?.is_urgent_delivery && raw?.urgent_delivery_eta) return String(raw.urgent_delivery_eta)
+  const ymd = typeof raw?.requested_delivery_date === 'string' ? raw.requested_delivery_date.slice(0, 10) : ''
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
+  const day = new Date(`${ymd}T00:00:00Z`).toLocaleDateString('en-PK', {
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC',
+  })
+  const m = /^(\d{1,2}):(\d{2})/.exec(slotEnd || '')
+  if (!m) return day
+  const h = Number(m[1])
+  const time = `${((h + 11) % 12) + 1}:${m[2]} ${h >= 12 ? 'PM' : 'AM'}`
+  return `${day} · by ${time}`
+}
+
 export default function TrackOrderPage() {
   const params = useParams()
   const router = useRouter()
@@ -116,7 +135,7 @@ export default function TrackOrderPage() {
         slotStart,
         slotEnd,
         slotFallback,
-        estimatedDelivery: raw.requested_delivery_date,
+        estimatedDelivery: buildEtaLabel(raw, slotEnd),
         address: {
           label: snapshot.area_name || snapshot.label || 'Delivery Address',
           fullAddress: [snapshot.written_address, snapshot.area_name, snapshot.city].filter(Boolean).join(', '),
@@ -269,7 +288,7 @@ export default function TrackOrderPage() {
                           <p className="font-medium">{step.label}</p>
                           {isCurrent && order.estimatedDelivery && (
                             <p className="text-sm text-primary-600">
-                              Estimated by {formatDateTime(order.estimatedDelivery)}
+                              Expected {order.estimatedDelivery}
                             </p>
                           )}
                         </div>

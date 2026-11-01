@@ -16,7 +16,10 @@ import logger from '../../utils/logger';
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return Number.isFinite(n) ? n : NaN; };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function workerInScope(scope: { cityId: string | null; unrestricted: boolean }, id: string): Promise<any | null> {
+  if (!UUID_RE.test(String(id))) return null; // malformed id → 404, not a 22P02 500
   const r = await query('SELECT * FROM workers WHERE id = $1', [id]);
   const w = r.rows[0];
   if (!w) return null;

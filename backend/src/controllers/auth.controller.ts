@@ -645,6 +645,9 @@ export const updateProfile = asyncHandler(async (req: Request, res: Response) =>
   }
 
   if (preferred_language !== undefined) {
+    if (preferred_language !== 'en' && preferred_language !== 'ur') {
+      return errorResponse(res, 'preferred_language must be en or ur', 400);
+    }
     updates.push(`preferred_language = $${paramIndex++}`);
     values.push(preferred_language);
   }
@@ -716,7 +719,9 @@ export const changePassword = asyncHandler(async (req: Request, res: Response) =
   const isCurrentValid = await bcrypt.compare(currentPassword, user.password_hash);
 
   if (!isCurrentValid) {
-    return unauthorizedResponse(res, 'Current password is incorrect');
+    // 400, not 401: the session is fine — a 401 makes the clients log the
+    // user out for a typo in a confirmation field.
+    return errorResponse(res, 'Current password is incorrect', 400);
   }
 
   // Hash new password

@@ -256,6 +256,31 @@ const positivePrice = Joi.number().greater(0).max(999999.99).messages({
 });
 
 // Product validation schemas
+const fractionPrice = () => commonSchemas.price.allow(null, '', 0).optional();
+const CATALOG_V2_PRODUCT_FIELDS = {
+  consumer_enabled_a: Joi.boolean().optional(),
+  consumer_enabled_b: Joi.boolean().optional(),
+  consumer_enabled_c: Joi.boolean().optional(),
+  restaurant_enabled_a: Joi.boolean().optional(),
+  restaurant_enabled_b: Joi.boolean().optional(),
+  restaurant_enabled_c: Joi.boolean().optional(),
+  half_kg_price_b: fractionPrice(),
+  quarter_kg_price_b: fractionPrice(),
+  half_dozen_price_b: fractionPrice(),
+  half_kg_price_c: fractionPrice(),
+  quarter_kg_price_c: fractionPrice(),
+  half_dozen_price_c: fractionPrice(),
+  restaurant_half_kg_price_a: fractionPrice(),
+  restaurant_quarter_kg_price_a: fractionPrice(),
+  restaurant_half_dozen_price_a: fractionPrice(),
+  restaurant_half_kg_price_b: fractionPrice(),
+  restaurant_quarter_kg_price_b: fractionPrice(),
+  restaurant_half_dozen_price_b: fractionPrice(),
+  restaurant_half_kg_price_c: fractionPrice(),
+  restaurant_quarter_kg_price_c: fractionPrice(),
+  restaurant_half_dozen_price_c: fractionPrice(),
+};
+
 export const productSchemas = {
   list: Joi.object({
     category: commonSchemas.uuid,
@@ -324,6 +349,11 @@ export const productSchemas = {
     restaurant_price_a: commonSchemas.price.allow(null, '', 0).optional(),
     restaurant_price_b: commonSchemas.price.allow(null, '', 0).optional(),
     restaurant_price_c: commonSchemas.price.allow(null, '', 0).optional(),
+    // Catalog v2 (migration 37). Without these keys stripUnknown silently
+    // dropped them: "Allow for restaurants" / "Allow for consumers" per quality
+    // and every B/C + restaurant fraction price never saved — so the
+    // restaurant shop stayed empty.
+    ...CATALOG_V2_PRODUCT_FIELDS,
   }),
 
   update: Joi.object({
@@ -348,6 +378,11 @@ export const productSchemas = {
     restaurant_price_a: commonSchemas.price.allow(null, '', 0).optional(),
     restaurant_price_b: commonSchemas.price.allow(null, '', 0).optional(),
     restaurant_price_c: commonSchemas.price.allow(null, '', 0).optional(),
+    // Catalog v2 (migration 37). Without these keys stripUnknown silently
+    // dropped them: "Allow for restaurants" / "Allow for consumers" per quality
+    // and every B/C + restaurant fraction price never saved — so the
+    // restaurant shop stayed empty.
+    ...CATALOG_V2_PRODUCT_FIELDS,
     unit_type: Joi.string().valid('kg', 'gram', 'piece', 'dozen', 'liter', 'ml', 'pack'),
     unit_value: Joi.number().positive(),
     description_ur: Joi.string().allow('', null),

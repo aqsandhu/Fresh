@@ -85,3 +85,7 @@ export const MAP_CONFIG = {
 
 /** Background location task identifier (expo-task-manager). */
 export const LOCATION_TASK_NAME = 'background-location-task';
+
+/** Public website (for "apply to become a rider" and policy links). */
+export const WEBSITE_URL = (process.env.EXPO_PUBLIC_WEBSITE_URL?.trim() || 'https://freshbazar.pk').replace(/\/$/, '');
+export const RIDER_APPLY_URL = `${WEBSITE_URL}/work-as-rider`;

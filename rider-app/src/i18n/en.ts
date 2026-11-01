@@ -43,6 +43,7 @@ const en = {
   'auth.login': 'Sign in',
   'auth.loggingIn': 'Signing in…',
   'auth.help': 'Trouble signing in? Contact your Fresh Bazar admin.',
+  'auth.apply': 'Not a rider yet? Apply to deliver with Fresh Bazar',
   'auth.errorTitle': 'Sign-in failed',
   'auth.phoneRequired': 'Enter your phone number',
   'auth.phoneInvalid': 'Enter a valid Pakistani mobile number',

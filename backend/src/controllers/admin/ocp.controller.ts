@@ -296,7 +296,7 @@ export const resolveShortage = asyncHandler(async (req: Request, res: Response) 
   const u = await query('SELECT password_hash FROM users WHERE id = $1', [req.user?.id]);
   const hash = u.rows[0]?.password_hash;
   if (!hash || !(await bcrypt.compare(password, hash))) {
-    return errorResponse(res, 'Incorrect password.', 401);
+    return errorResponse(res, 'Incorrect password.', 400);
   }
 
   const scope = await resolveCityScope(req);
@@ -395,7 +395,7 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
   const u = await query('SELECT password_hash FROM users WHERE id = $1', [req.user?.id]);
   const hash = u.rows[0]?.password_hash;
   if (!hash || !(await bcrypt.compare(password, hash))) {
-    return errorResponse(res, 'Incorrect password.', 401);
+    return errorResponse(res, 'Incorrect password.', 400);
   }
 
   let out: any;

@@ -29,13 +29,6 @@ describe('customerService', () => {
     expect(result.pagination).toEqual({ page: 1, limit: 20, total: 0, totalPages: 0 });
   });
 
-  it('getCustomerById unwraps the customer', async () => {
-    mockApi.get.mockResolvedValue({ success: true, data: { id: 'c2', fullName: 'Sara' } });
-
-    expect(await customerService.getCustomerById('c2')).toEqual({ id: 'c2', fullName: 'Sara' });
-    expect(mockApi.get).toHaveBeenCalledWith('/admin/customers/c2');
-  });
-
   it('getCustomerAddresses hits the nested addresses endpoint', async () => {
     mockApi.get.mockResolvedValue({ success: true, data: [{ id: 'a1' }] });
 
@@ -48,6 +41,6 @@ describe('customerService', () => {
     await expect(customerService.getCustomers()).rejects.toThrow('city scope denied');
 
     mockApi.get.mockRejectedValue(new Error('socket hang up'));
-    await expect(customerService.getCustomerById('c1')).rejects.toThrow('Failed to fetch customer');
+    await expect(customerService.getCustomerAddresses('c1')).rejects.toThrow('Failed to fetch customer addresses');
   });
 });

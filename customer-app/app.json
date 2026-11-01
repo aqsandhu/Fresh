@@ -15,7 +15,7 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "icon": "./assets/ios-icon.png",
       "bundleIdentifier": "com.freshbazar.customer",
       "config": {

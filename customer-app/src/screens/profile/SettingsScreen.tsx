@@ -37,6 +37,9 @@ export const SettingsScreen: React.FC = () => {
   // delivery, cart reminders); the in-app inbox still keeps them.
   const [notifications, setNotifications] = useState(true);
   const [savingNotifications, setSavingNotifications] = useState(false);
+  // Language for SMS / WhatsApp / push messages (users.preferred_language),
+  // the same setting as the website's "Language for messages".
+  const [language, setLanguage] = useState<'en' | 'ur'>('en');
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -45,7 +48,10 @@ export const SettingsScreen: React.FC = () => {
     authService
       .getProfile()
       .then((res: any) => {
-        if (active && res?.data) setNotifications(res.data.notification_enabled !== false);
+        if (active && res?.data) {
+          setNotifications(res.data.notification_enabled !== false);
+          setLanguage(res.data.preferred_language === 'ur' ? 'ur' : 'en');
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -118,6 +124,31 @@ export const SettingsScreen: React.FC = () => {
     );
   };
 
+  const saveLanguage = async (next: 'en' | 'ur') => {
+    if (next === language) return;
+    const previous = language;
+    setLanguage(next);
+    try {
+      await authService.updateProfile({ preferred_language: next } as any);
+      Toast.show({ type: 'success', text1: next === 'ur' ? 'پیغامات اب اردو میں' : 'Messages will be in English' });
+    } catch (err: any) {
+      setLanguage(previous);
+      Toast.show({ type: 'error', text1: err?.message || 'Could not save — please try again' });
+    }
+  };
+
+  const chooseLanguage = () => {
+    if (!isAuthenticated) {
+      Toast.show({ type: 'info', text1: 'Please log in to change the message language' });
+      return;
+    }
+    Alert.alert('Language for messages', 'SMS / WhatsApp / notification messages are sent in this language.', [
+      { text: 'English', onPress: () => saveLanguage('en') },
+      { text: 'اردو', onPress: () => saveLanguage('ur') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const settings: SettingItem[] = [
     {
       icon: 'notifications',
@@ -136,10 +167,10 @@ export const SettingsScreen: React.FC = () => {
     },
     {
       icon: 'language',
-      title: 'Language',
-      subtitle: 'English',
+      title: 'Language for messages',
+      subtitle: language === 'ur' ? 'اردو' : 'English',
       type: 'link',
-      onPress: () => {},
+      onPress: chooseLanguage,
     },
     {
       icon: 'privacy-tip',

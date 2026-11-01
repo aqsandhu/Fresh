@@ -45,7 +45,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
   const todayStats = await query(
     `SELECT 
       COUNT(*) as total_orders,
-      COALESCE(SUM(total_amount), 0) as total_sales,
+      COALESCE(SUM(total_amount) FILTER (WHERE status NOT IN ('cancelled', 'refunded')), 0) as total_sales,
       COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_orders,
       COUNT(CASE WHEN status = 'confirmed' THEN 1 END) as confirmed_orders,
       COUNT(CASE WHEN status = 'preparing' THEN 1 END) as preparing_orders,
@@ -61,7 +61,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
   const weeklyStats = await query(
     `SELECT 
       COUNT(*) as total_orders,
-      COALESCE(SUM(total_amount), 0) as total_sales
+      COALESCE(SUM(total_amount) FILTER (WHERE status NOT IN ('cancelled', 'refunded')), 0) as total_sales
     FROM orders
     WHERE placed_at >= ${localMidnight(`${TODAY_SQL} - 7`)}
     AND deleted_at IS NULL${orderFilter}`,
@@ -72,7 +72,7 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
   const monthlyStats = await query(
     `SELECT 
       COUNT(*) as total_orders,
-      COALESCE(SUM(total_amount), 0) as total_sales
+      COALESCE(SUM(total_amount) FILTER (WHERE status NOT IN ('cancelled', 'refunded')), 0) as total_sales
     FROM orders
     WHERE placed_at >= ${localMidnight(`${TODAY_SQL} - 30`)}
     AND deleted_at IS NULL${orderFilter}`,

@@ -95,18 +95,6 @@ export const orderService = {
     return unwrap(response);
   },
 
-  cancelOrder: async (id: string, reason: string): Promise<Order> => {
-    try {
-      const response = await api.put<ApiResponse<Order>>(`/admin/orders/${id}/cancel`, {
-        reason,
-      });
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error cancelling order:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to cancel order');
-    }
-  },
-
   getOrderTimeline: async (id: string): Promise<{
     status: OrderStatus;
     timestamp: string;
@@ -142,31 +130,6 @@ export const orderService = {
     } catch (error: any) {
       console.error('Error fetching order stats:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch order stats');
-    }
-  },
-
-  refundOrder: async (id: string, amount: number, reason: string): Promise<Order> => {
-    try {
-      const response = await api.post<ApiResponse<Order>>(`/admin/orders/${id}/refund`, {
-        amount,
-        reason,
-      });
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error refunding order:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to refund order');
-    }
-  },
-
-  updateOrderNotes: async (id: string, notes: string): Promise<Order> => {
-    try {
-      const response = await api.put<ApiResponse<Order>>(`/admin/orders/${id}/notes`, {
-        notes,
-      });
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error updating order notes:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to update order notes');
     }
   },
 

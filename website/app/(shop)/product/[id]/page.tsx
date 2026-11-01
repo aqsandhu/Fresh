@@ -301,7 +301,7 @@ export default function ProductDetailPage() {
             <div className="flex-1 min-w-0">
               <ProductPrice
                 price={displayPrice}
-                unit={product.unit}
+                unit={selectedUnit !== 'full' ? unitLabelShort(selectedUnit) || product.unit : product.unit}
                 size="lg"
                 compareAtPrice={product.compareAtPrice}
               />

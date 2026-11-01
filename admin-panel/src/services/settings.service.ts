@@ -144,19 +144,6 @@ export const settingsService = {
     }
   },
 
-  updateAppSettings: async (settings: {
-    appName?: string;
-    maintenanceMode?: boolean;
-    minAppVersion?: string;
-  }): Promise<void> => {
-    try {
-      await api.put<ApiResponse<void>>('/admin/settings/app', settings);
-    } catch (error: any) {
-      console.error('Error updating app settings:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to update app settings');
-    }
-  },
-
   getNotificationSettings: async (): Promise<{
     emailNotifications: boolean;
     smsNotifications: boolean;
@@ -176,21 +163,6 @@ export const settingsService = {
     } catch (error: any) {
       console.error('Error fetching notification settings:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch notification settings');
-    }
-  },
-
-  updateNotificationSettings: async (settings: {
-    emailNotifications?: boolean;
-    smsNotifications?: boolean;
-    pushNotifications?: boolean;
-    orderConfirmationTemplate?: string;
-    orderDeliveryTemplate?: string;
-  }): Promise<void> => {
-    try {
-      await api.put<ApiResponse<void>>('/admin/settings/notifications', settings);
-    } catch (error: any) {
-      console.error('Error updating notification settings:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to update notification settings');
     }
   },
 
