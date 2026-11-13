@@ -38,7 +38,7 @@ export const financeService = {
     const res = await api.get<ApiResponse<ExpenseList>>('/finance/expenses', params);
     return (res.data || { expenses: [], total: 0, byType: {} }) as ExpenseList;
   },
-  addExpense: async (d: { category: string; amount: number; comment?: string; incurredAt?: string }) => {
+  addExpense: async (d: { category: string; amount: number; comment?: string; incurredAt?: string; approvalPhone?: string; approvalPassword?: string }) => {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/expenses', d);
     return unwrap(res);
   },
@@ -49,7 +49,7 @@ export const financeService = {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/stock-purchase', d);
     return unwrap(res);
   },
-  addRiderPayment: async (d: { riderId: string; category: 'salary' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string; paidAt?: string }) => {
+  addRiderPayment: async (d: { riderId: string; category: 'salary' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string; paidAt?: string; approvalPhone?: string; approvalPassword?: string }) => {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/rider-payment', d);
     return unwrap(res);
   },
@@ -91,7 +91,7 @@ export const financeService = {
     const res = await api.post<ApiResponse<any>>(`/finance/workers/${id}/increment`, d);
     return unwrap(res);
   },
-  payWorker: async (id: string, d: { category: 'salary' | 'bonus' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string }) => {
+  payWorker: async (id: string, d: { category: 'salary' | 'bonus' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string; approvalPhone?: string; approvalPassword?: string }) => {
     const res = await api.post<ApiResponse<{ id: string }>>(`/finance/workers/${id}/pay`, d);
     return unwrap(res);
   },

@@ -20,6 +20,9 @@ import { hasVariableWeightColumns, hasUnitToggleColumns, hasQualityCatalogColumn
 import { hasCatalogV2Columns } from '../../config/catalogV2Schema';
 import { hasOcpTables } from '../../config/ocpSchema';
 
+/** Largest single price cut (%) a non-super admin may make. */
+const PRICE_CUT_LIMIT_PCT = Math.min(95, Math.max(5, Number(process.env.PRICE_CUT_LIMIT_PCT || 40)));
+
 // Catalog v2 (migration 37) column groups — reused by create + update.
 const CATALOG_V2_ENABLE_FLAGS = [
   'consumer_enabled_a', 'consumer_enabled_b', 'consumer_enabled_c',
@@ -365,11 +368,31 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 
   // City isolation: a scoped admin may only edit products in their own city.
   const scope = await resolveCityScope(req);
-  const existing = await query('SELECT city_id FROM products WHERE id = $1', [id]);
+  const existing = await query('SELECT * FROM products WHERE id = $1', [id]);
   if (existing.rows.length === 0 || !cityRowInScope(scope, existing.rows[0].city_id)) {
     return notFoundResponse(res, 'Product not found');
   }
   const productCityId = existing.rows[0].city_id;
+
+  // "Price dip": drop a price to almost nothing, let a friend order, put it
+  // back. Orders lock the price at order time, so the sale then looks normal.
+  // A staff admin may not cut any selling price by more than the limit in one
+  // change — a real clearance is the owner's call (super admin is not capped).
+  if (req.user?.role !== 'super_admin') {
+    for (const [key, value] of Object.entries(updates)) {
+      if (!/price/.test(key) || key === 'compare_at_price' || key === 'cost_price') continue;
+      const before = parseFloat(String(existing.rows[0][key] ?? ''));
+      const after = parseFloat(String(value));
+      if (!(before > 0) || !(after > 0)) continue;
+      if (after < before * (1 - PRICE_CUT_LIMIT_PCT / 100)) {
+        return errorResponse(
+          res,
+          `A price cut of more than ${PRICE_CUT_LIMIT_PCT}% (${key}: Rs. ${before} → Rs. ${after}) needs the super admin.`,
+          400
+        );
+      }
+    }
+  }
 
   // Validate a category change: must exist and stay inside the admin's city
   // scope — same guard as moveProductsCategory.

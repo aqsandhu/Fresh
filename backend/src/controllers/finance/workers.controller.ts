@@ -6,12 +6,13 @@
 // ============================================================================
 
 import { Request, Response } from 'express';
-import { query } from '../../config/database';
+import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
 import { ensureFinanceTables } from '../../config/financeSchema';
-import { ledgerDateFor } from './expenses.controller';
+import { ledgerDateFor, approvalForExpense } from './expenses.controller';
+import { localTs } from '../../utils/businessTime';
 import logger from '../../utils/logger';
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return Number.isFinite(n) ? n : NaN; };
@@ -174,11 +175,42 @@ export const payWorker = asyncHandler(async (req: Request, res: Response) => {
   const ledger = ledgerDateFor(req, req.body?.paid_at);
   if (ledger.error) return errorResponse(res, ledger.error, 400);
   const incurredAt = ledger.iso;
-  const r = await query(
-    `INSERT INTO expenses (city_id, type, category, amount, comment, ref_type, ref_id, for_month, incurred_at, created_by)
-     VALUES ($1, 'worker_payment', $2, $3, $4, 'worker_payment', $5, $6, $7, $8) RETURNING id`,
-    [w.city_id, kind, amount, req.body?.comment || null, req.params.id, req.body?.for_month || null, incurredAt, req.user?.id ?? null]
-  );
+  let r: any;
+  try {
+    r = await withTransaction(async (client) => {
+      // One salary per month: a "salary" that takes the worker's total for
+      // that month above the basic salary is refused for staff admins
+      // (duplicate / inflated salary). Bonus and other stay possible, under
+      // the second-admin rule below.
+      if (kind === 'salary' && req.user?.role !== 'super_admin') {
+        await client.query('SELECT id FROM workers WHERE id = $1 FOR UPDATE', [req.params.id]);
+        const paid = await client.query(
+          `SELECT COALESCE(SUM(amount), 0) AS total FROM expenses
+            WHERE type = 'worker_payment' AND ref_id = $1 AND category = 'salary'
+              AND date_trunc('month', ${localTs('incurred_at')}) = date_trunc('month', ${localTs('$2::timestamptz')})`,
+          [req.params.id, incurredAt]
+        );
+        const already = parseFloat(paid.rows[0].total) || 0;
+        const basic = parseFloat(w.basic_salary) || 0;
+        if (already + amount > basic + 0.005) {
+          const fmt = (n: number) => Math.round(n).toLocaleString('en-PK');
+          throw Object.assign(
+            new Error(`Salary for this month would be Rs. ${fmt(already + amount)} — more than the basic salary (Rs. ${fmt(basic)}). Add an increment first, or ask the super admin.`),
+            { http: 400 }
+          );
+        }
+      }
+      await approvalForExpense(client, req, amount, 'a worker payment');
+      return client.query(
+        `INSERT INTO expenses (city_id, type, category, amount, comment, ref_type, ref_id, for_month, incurred_at, created_by)
+         VALUES ($1, 'worker_payment', $2, $3, $4, 'worker_payment', $5, $6, $7, $8) RETURNING id`,
+        [w.city_id, kind, amount, req.body?.comment || null, req.params.id, req.body?.for_month || null, incurredAt, req.user?.id ?? null]
+      );
+    });
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
+  }
   logger.info('Worker payment', { id: r.rows[0].id, worker: req.params.id, amount, kind, by: req.user?.id });
   return successResponse(res, { id: r.rows[0].id }, 'Payment recorded');
 });

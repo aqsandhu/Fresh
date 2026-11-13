@@ -326,6 +326,7 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
   let updatedRow: any = null;
   let cancelledRiderTasks: CancelledRiderTask[] = [];
   let closedRiderTasks: CancelledRiderTask[] = [];
+  const cashCol = await hasOrderCashReceivedColumn();
   try {
     updatedRow = await withTransaction(async (client) => {
       const orderResult = await client.query(
@@ -350,24 +351,43 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
       // the rider's own "delivered" path does (OCP orders are collected by the
       // OCP, so they are left alone). Without this the order sat "delivered /
       // payment pending" forever and never counted in revenue.
+      // No rider and no OCP means the office itself handed the goods over and
+      // took the cash: stamp the admin as the holder, exactly like "Payment
+      // received". Before this the order became "paid" with NOBODY recorded
+      // as holding the money (not in any rider's dues, not in cash-by-admin).
+      const officeCashSql =
+        status === 'delivered' && order.status !== 'delivered' && cashCol
+          ? `, cash_received_by = CASE
+                 WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL AND rider_id IS NULL
+                      AND payment_status <> 'completed' THEN $4::uuid
+                 ELSE cash_received_by END,
+               cash_received_at = CASE
+                 WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL AND rider_id IS NULL
+                      AND payment_status <> 'completed' THEN NOW()
+                 ELSE cash_received_at END`
+          : '';
       const codPaidSql =
         status === 'delivered'
-          ? `, payment_status = CASE
+          ? `${officeCashSql}, payment_status = CASE
                  WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN 'completed'::payment_status
                  ELSE payment_status END,
                paid_amount = CASE
                  WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN total_amount
                  ELSE paid_amount END`
           : '';
+      // Who cancelled it (the column existed but the admin path never set it).
+      const cancelledBySql =
+        status === 'cancelled' && order.status !== 'cancelled' ? ', cancelled_by = $4::uuid' : '';
+      const actorParam = officeCashSql || cancelledBySql ? [req.user?.id ?? null] : [];
 
       const result = await client.query(
         `UPDATE orders
-         SET status = $1${timestampValue}${codPaidSql},
+         SET status = $1${timestampValue}${codPaidSql}${cancelledBySql},
              cancellation_reason = COALESCE($2, cancellation_reason),
              updated_at = NOW()
          WHERE id = $3
          RETURNING *`,
-        [status, reason, id]
+        [status, reason, id, ...actorParam]
       );
 
       // Admin-confirmed delivery closes the rider's task too (same as the
@@ -1409,23 +1429,39 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
     // Same COD rule as the single-order path: an admin "delivered" collects
     // the cash for direct COD orders (otherwise they stay "payment pending"
     // forever and never reach revenue or the rider's cash-to-hand-over).
+    // Same holder/actor stamps as the single-order path.
+    const bulkCashCol = await hasOrderCashReceivedColumn();
+    const bulkOfficeCashSql =
+      status === 'delivered' && bulkCashCol
+        ? `, cash_received_by = CASE
+               WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL AND rider_id IS NULL
+                    AND status <> 'delivered' AND payment_status <> 'completed' THEN $4::uuid
+               ELSE cash_received_by END,
+             cash_received_at = CASE
+               WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL AND rider_id IS NULL
+                    AND status <> 'delivered' AND payment_status <> 'completed' THEN NOW()
+               ELSE cash_received_at END`
+        : '';
     const bulkCodPaidSql =
       status === 'delivered'
-        ? `, payment_status = CASE
+        ? `${bulkOfficeCashSql}, payment_status = CASE
                WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN 'completed'::payment_status
                ELSE payment_status END,
              paid_amount = CASE
                WHEN payment_method = 'cash_on_delivery' AND ocp_id IS NULL THEN total_amount
                ELSE paid_amount END`
         : '';
+    const bulkCancelledBySql =
+      status === 'cancelled' ? `, cancelled_by = CASE WHEN status <> 'cancelled' THEN $4::uuid ELSE cancelled_by END` : '';
+    const bulkActorParam = bulkOfficeCashSql || bulkCancelledBySql ? [req.user?.id ?? null] : [];
     const result = await client.query(
       `UPDATE orders
-       SET status = $1${timestampValue}${bulkCodPaidSql},
+       SET status = $1${timestampValue}${bulkCodPaidSql}${bulkCancelledBySql},
            cancellation_reason = COALESCE($2, cancellation_reason),
            updated_at = NOW()
        WHERE id = ANY($3::uuid[])
        RETURNING *`,
-      [status, reason || null, allowed.map((o) => o.id)]
+      [status, reason || null, allowed.map((o) => o.id), ...bulkActorParam]
     );
 
     if (status === 'cancelled') {

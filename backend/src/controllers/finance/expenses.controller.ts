@@ -17,6 +17,27 @@ import { recordStockMovement } from '../../utils/systemStock';
 import { ensureFinanceTables } from '../../config/financeSchema';
 import logger from '../../utils/logger';
 import { isThisMonthSql, isTodaySql, localDate, localTs } from '../../utils/businessTime';
+import { approvalForValue } from '../../utils/adminApproval';
+
+/**
+ * Money leaving through the expense ledger (other expenses, rider and worker
+ * payments) follows the same second-admin rule as waste and refunds. Before
+ * this a single admin could book any amount with no proof and no co-signer —
+ * the simplest way to explain away missing cash. The owner (super admin) is
+ * not asked for a co-signer; stock purchases are not covered here because the
+ * goods they bring in are checked by the grading mass balance + shelf counts.
+ */
+export async function approvalForExpense(
+  client: Parameters<typeof approvalForValue>[0],
+  req: Request,
+  amount: number,
+  label: string
+): Promise<string | null> {
+  if (req.user?.role === 'super_admin') return null;
+  const a = await approvalForValue(client, req, amount, { label, kind: 'expense' });
+  return a.approvedBy;
+}
+
 
 const num = (v: unknown): number => {
   const n = parseFloat(String(v));
@@ -145,11 +166,20 @@ export const createExpense = asyncHandler(async (req: Request, res: Response) =>
   if (ledger.error) return errorResponse(res, ledger.error, 400);
   const incurredAt = ledger.iso;
 
-  const r = await query(
-    `INSERT INTO expenses (city_id, type, category, amount, comment, incurred_at, created_by)
-     VALUES ($1, 'other', $2, $3, $4, $5, $6) RETURNING id`,
-    [cityId, category, amount, req.body?.comment || null, incurredAt, req.user?.id ?? null]
-  );
+  let r: any;
+  try {
+    r = await withTransaction(async (client) => {
+      await approvalForExpense(client, req, amount, 'an expense');
+      return client.query(
+        `INSERT INTO expenses (city_id, type, category, amount, comment, incurred_at, created_by)
+         VALUES ($1, 'other', $2, $3, $4, $5, $6) RETURNING id`,
+        [cityId, category, amount, req.body?.comment || null, incurredAt, req.user?.id ?? null]
+      );
+    });
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
+  }
   logger.info('Expense added', { id: r.rows[0].id, category, amount, by: req.user?.id });
   return successResponse(res, { id: r.rows[0].id }, 'Expense added');
 });
@@ -247,11 +277,20 @@ export const createRiderPayment = asyncHandler(async (req: Request, res: Respons
   if (ledger.error) return errorResponse(res, ledger.error, 400);
   const incurredAt = ledger.iso;
 
-  const r = await query(
-    `INSERT INTO expenses (city_id, type, category, amount, comment, ref_type, ref_id, for_month, incurred_at, created_by)
-     VALUES ($1, 'rider_payment', $2, $3, $4, 'rider_payment', $5, $6, $7, $8) RETURNING id`,
-    [riderCity || effectiveCityId(scope), kind, amount, req.body?.comment || null, rider_id, req.body?.for_month || null, incurredAt, req.user?.id ?? null]
-  );
+  let r: any;
+  try {
+    r = await withTransaction(async (client) => {
+      await approvalForExpense(client, req, amount, 'a rider payment');
+      return client.query(
+        `INSERT INTO expenses (city_id, type, category, amount, comment, ref_type, ref_id, for_month, incurred_at, created_by)
+         VALUES ($1, 'rider_payment', $2, $3, $4, 'rider_payment', $5, $6, $7, $8) RETURNING id`,
+        [riderCity || effectiveCityId(scope), kind, amount, req.body?.comment || null, rider_id, req.body?.for_month || null, incurredAt, req.user?.id ?? null]
+      );
+    });
+  } catch (err: any) {
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
+  }
   logger.info('Rider payment recorded', { id: r.rows[0].id, rider_id, amount, kind, by: req.user?.id });
   return successResponse(res, { id: r.rows[0].id }, 'Rider payment recorded');
 });

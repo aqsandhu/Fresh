@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 export class QueryClient {
   invalidateQueries = jest.fn(() => Promise.resolve());
   clear = jest.fn();
+  setQueryData = jest.fn();
 }
 
 const sharedQueryClient = new QueryClient();
@@ -66,7 +67,7 @@ export function useQuery(options?: {
 
 export function useMutation(options?: {
   mutationFn?: (vars: unknown) => Promise<unknown>;
-  onSuccess?: () => void;
+  onSuccess?: (data: any, vars: unknown) => void;
   onError?: (err: unknown) => void;
 }) {
   const [isPending, setIsPending] = useState(false);
@@ -78,8 +79,9 @@ export function useMutation(options?: {
       setIsPending(true);
       options
         .mutationFn(vars)
-        .then(() => {
-          options.onSuccess?.();
+        .then((result) => {
+          // Like the real library: the result and the variables are passed on.
+          options.onSuccess?.(result, vars);
         })
         .catch((err) => {
           options.onError?.(err);

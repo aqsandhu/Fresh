@@ -14,6 +14,7 @@ import * as restaurantsController from '../controllers/admin/restaurants.control
 import * as ocpController from '../controllers/admin/ocp.controller';
 import * as stockController from '../controllers/admin/stock.controller';
 import * as reconciliationController from '../controllers/admin/reconciliation.controller';
+import * as corruptionAuditController from '../controllers/admin/corruptionAudit.controller';
 import * as serviceAreasController from '../controllers/admin/serviceAreas.controller';
 import * as basketsController from '../controllers/admin/baskets.controller';
 import * as franchiseController from '../controllers/franchise.controller';
@@ -370,6 +371,17 @@ router.get('/stock/:productId/movements', stockController.getStockMovements);
 router.get('/reconciliation', reconciliationController.getReconciliation);
 router.post('/reconciliation/run', adminRateLimiter, reconciliationController.runReconciliationNow);
 router.get('/audit-logs', reconciliationController.getAuditLogs);
+
+// AI corruption audit (super-admin only; role-checked in the controller, and
+// the path is unmapped in adminPermissions so every other admin is denied).
+router.get('/corruption-audit/settings', corruptionAuditController.getAuditSettings);
+router.put('/corruption-audit/settings', adminRateLimiter, corruptionAuditController.updateAuditSettings);
+router.post('/corruption-audit/settings/test', adminRateLimiter, corruptionAuditController.testAuditSettings);
+router.post('/corruption-audit/run', adminRateLimiter, corruptionAuditController.runAudit);
+router.get('/corruption-audit/runs', corruptionAuditController.listAuditRuns);
+router.get('/corruption-audit/runs/:id', corruptionAuditController.getAuditRun);
+router.get('/corruption-audit/cash', corruptionAuditController.getCashPosition);
+router.post('/corruption-audit/cash-handovers', adminRateLimiter, corruptionAuditController.recordCashHandover);
 
 // User guidance tips (per-city; global tips are super-admin only)
 router.get('/tips', tipsController.listTips);

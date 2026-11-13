@@ -53,6 +53,40 @@ describe('Audit Logger Middleware', () => {
     expect(nextFunction).toHaveBeenCalled();
   });
 
+  // The middleware is mounted with router.use(): at that moment req.route and
+  // req.params are empty and req.path is relative to the router. It used to
+  // store resource "unknown"/the record id, no resource_id and never an old
+  // value — so a price change could not be traced.
+  it('names the resource and record from the path and keeps the old value', async () => {
+    const id = '0ddd2483-44c8-4514-a0a7-fd1453d219b6';
+    (query as jest.Mock).mockResolvedValue({ rows: [{ id, price: '1000.00' }] });
+    mockReq = { ...mockReq, path: `/products/${id}`, route: undefined, params: {}, body: { price: 1 } };
+
+    await auditLogger()(mockReq as Request, mockRes as Response, nextFunction);
+    await new Promise((r) => setImmediate(r));
+
+    const calls = (query as jest.Mock).mock.calls;
+    expect(calls[0][0]).toContain('FROM products');
+    expect(calls[0][1]).toEqual([id]);
+    const insert = calls.find((c) => String(c[0]).includes('INSERT INTO audit_logs'))!;
+    expect(insert[1][3]).toBe('products'); // resource
+    expect(insert[1][4]).toBe(id); // resource_id
+    expect(JSON.parse(insert[1][5])).toMatchObject({ price: '1000.00' }); // old value
+    expect(JSON.parse(insert[1][6])).toEqual({ price: 1 }); // new value
+  });
+
+  it('names finance resources that have no id in the path', async () => {
+    (query as jest.Mock).mockResolvedValue({ rows: [] });
+    mockReq = { ...mockReq, method: 'POST', path: '/expenses', route: undefined, params: {}, body: { amount: 500 } };
+
+    await auditLogger()(mockReq as Request, mockRes as Response, nextFunction);
+    await new Promise((r) => setImmediate(r));
+
+    const insert = (query as jest.Mock).mock.calls.find((c) => String(c[0]).includes('INSERT INTO audit_logs'))!;
+    expect(insert[1][3]).toBe('expenses');
+    expect(insert[1][4]).toBeNull();
+  });
+
   it('should log admin action manually', async () => {
     (query as jest.Mock).mockResolvedValue({ rows: [] });
 

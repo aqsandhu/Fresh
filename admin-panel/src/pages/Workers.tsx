@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/Badge';
 import { financeService, type Worker } from '@/services/finance.service';
 import { formatDateTime } from '@/utils/formatters';
 import toast from 'react-hot-toast';
+import { ApproverFields } from '@/components/ui/ApproverFields';
+import { needsSecondAdmin } from '@/utils/auditPeriod';
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -118,10 +120,24 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
     onSuccess: () => { toast.success('Increment applied'); setIncSalary(''); refreshWorker(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
+  const [needApproval, setNeedApproval] = useState(false);
+  const [approvalPhone, setApprovalPhone] = useState('');
+  const [approvalPassword, setApprovalPassword] = useState('');
   const payMut = useMutation({
-    mutationFn: () => financeService.payWorker(workerId, { category: payKind, amount: parseFloat(payAmount) || 0, comment: payComment.trim() || undefined }),
-    onSuccess: () => { toast.success('Payment recorded in Expenses'); setPayAmount(''); setPayComment(''); refreshWorker(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    mutationFn: () => financeService.payWorker(workerId, {
+      category: payKind, amount: parseFloat(payAmount) || 0, comment: payComment.trim() || undefined,
+      approvalPhone: approvalPhone.trim() || undefined, approvalPassword: approvalPassword || undefined,
+    }),
+    onSuccess: () => {
+      toast.success('Payment recorded in Expenses');
+      setPayAmount(''); setPayComment(''); setNeedApproval(false); setApprovalPassword('');
+      refreshWorker();
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message || 'Failed';
+      if (needsSecondAdmin(msg)) setNeedApproval(true);
+      toast.error(msg);
+    },
   });
 
   return (
@@ -186,6 +202,9 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
               <Input label="Comment" value={payComment} onChange={(e) => setPayComment(e.target.value)} />
               <Button size="sm" onClick={() => payMut.mutate()} disabled={!(parseFloat(payAmount) > 0) || payMut.isPending} isLoading={payMut.isPending}>Pay</Button>
             </div>
+            {needApproval && (
+              <div className="mt-3"><ApproverFields phone={approvalPhone} password={approvalPassword} onPhone={setApprovalPhone} onPassword={setApprovalPassword} /></div>
+            )}
             {w.payments.length > 0 && (
               <ul className="mt-2 text-xs text-gray-500 space-y-0.5 max-h-40 overflow-y-auto">
                 {w.payments.map((p) => <li key={p.id}>{money(p.amount)} · {p.category} · {formatDateTime(p.incurredAt)}{p.comment ? ` · ${p.comment}` : ''}</li>)}

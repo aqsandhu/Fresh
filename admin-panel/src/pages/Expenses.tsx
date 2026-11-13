@@ -10,6 +10,8 @@ import { financeService, type ExpenseFilters } from '@/services/finance.service'
 import { formatDateTime } from '@/utils/formatters';
 import { getStockPurchaseBalance } from '@/utils/stockPurchase';
 import toast from 'react-hot-toast';
+import { ApproverFields } from '@/components/ui/ApproverFields';
+import { needsSecondAdmin } from '@/utils/auditPeriod';
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
 const TYPE_LABEL: Record<string, string> = {
@@ -232,10 +234,21 @@ function AddExpenseModal({ onClose, onDone }: { onClose: () => void; onDone: () 
   const [comment, setComment] = useState('');
   const [incurredAt, setIncurredAt] = useState(nowLocal());
 
+  const [needApproval, setNeedApproval] = useState(false);
+  const [approvalPhone, setApprovalPhone] = useState('');
+  const [approvalPassword, setApprovalPassword] = useState('');
+
   const mut = useMutation({
-    mutationFn: () => financeService.addExpense({ category: category.trim(), amount: parseFloat(amount) || 0, comment: comment.trim() || undefined, incurredAt: new Date(incurredAt).toISOString() }),
+    mutationFn: () => financeService.addExpense({
+      category: category.trim(), amount: parseFloat(amount) || 0, comment: comment.trim() || undefined, incurredAt: new Date(incurredAt).toISOString(),
+      approvalPhone: approvalPhone.trim() || undefined, approvalPassword: approvalPassword || undefined,
+    }),
     onSuccess: () => { toast.success('Expense added'); onDone(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message || 'Failed';
+      if (needsSecondAdmin(msg)) setNeedApproval(true);
+      toast.error(msg);
+    },
   });
   const valid = category.trim() && parseFloat(amount) >= 0;
 
@@ -260,6 +273,7 @@ function AddExpenseModal({ onClose, onDone }: { onClose: () => void; onDone: () 
           <input type="datetime-local" value={incurredAt} onChange={(e) => setIncurredAt(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
         </div>
         <Input label="Comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
+        {needApproval && <ApproverFields phone={approvalPhone} password={approvalPassword} onPhone={setApprovalPhone} onPassword={setApprovalPassword} />}
       </div>
     </Modal>
   );

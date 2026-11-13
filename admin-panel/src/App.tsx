@@ -47,6 +47,7 @@ const ServiceAreas = React.lazy(() => import('@/pages/ServiceAreas').then((m) =>
 const Baskets = React.lazy(() => import('@/pages/Baskets').then((m) => ({ default: m.Baskets })));
 const FranchiseInquiries = React.lazy(() => import('@/pages/FranchiseInquiries').then((m) => ({ default: m.FranchiseInquiries })));
 const OwnerChecks = React.lazy(() => import('@/pages/OwnerChecks').then((m) => ({ default: m.OwnerChecks })));
+const CorruptionAudit = React.lazy(() => import('@/pages/CorruptionAudit').then((m) => ({ default: m.CorruptionAudit })));
 const AbandonedCarts = React.lazy(() => import('@/pages/AbandonedCarts').then((m) => ({ default: m.AbandonedCarts })));
 
 // Same spinner the auth gates use — shown while a page chunk downloads.
@@ -438,6 +439,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <OwnerChecks />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/corruption-audit"
+        element={
+          <ProtectedRoute>
+            <CorruptionAudit />
           </ProtectedRoute>
         }
       />

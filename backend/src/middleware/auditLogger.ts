@@ -76,24 +76,26 @@ export interface AuditLogEntry {
  * e.g., "/api/admin/orders/123/status" -> { resource: "orders", resourceId: "123" }
  */
 const extractResourceInfo = (req: Request): { resource: string; resourceId?: string } => {
-  const path = req.route?.path || req.path || '';
-  const segments = path.split('/').filter(Boolean);
+  // This middleware is mounted with router.use(), so it runs BEFORE the route
+  // is matched: req.route and req.params are still empty and req.path is
+  // relative to the router ("/products/<uuid>", "/expenses"). The old code
+  // read "the segment after admin" and the route params, so every row was
+  // stored with resource = "unknown" (or the record's own id), no
+  // resource_id and — because the table lookup keys on the resource — never
+  // an old value. Parse the path itself instead.
+  const path: string = String(req.path || req.route?.path || '');
+  const segments: string[] = path.split('/').filter(Boolean);
+  const isId = (s: string) => /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(s) || /^\d+$/.test(s);
 
-  // Admin routes typically start with /admin or are under /api/admin
-  // Find the resource segment (usually after 'admin')
-  let resourceIndex = segments.indexOf('admin');
-  if (resourceIndex === -1) {
-    // Fallback: use the first non-parameter segment
-    resourceIndex = 0;
-  }
+  const adminIndex = segments.indexOf('admin');
+  const named = (adminIndex === -1 ? segments : segments.slice(adminIndex + 1))
+    .filter((s) => s !== 'api' && !s.startsWith(':'));
+  const resource = named.find((s) => !isId(s)) || 'unknown';
 
-  const resource = segments[resourceIndex + 1] || 'unknown';
-
-  // Look for UUID or numeric ID in path parameters
-  const paramValues = Object.values(req.params || {});
-  const resourceId = paramValues.find(
-    (v) => typeof v === 'string' && (/^[0-9a-f-]{36}$/i.test(v) || /^\d+$/.test(v))
-  );
+  const paramValues = Object.values(req.params || {}) as unknown[];
+  const resourceId =
+    (paramValues.find((v) => typeof v === 'string' && isId(v)) as string | undefined) ||
+    segments.find(isId);
 
   return { resource, resourceId };
 };

@@ -6,6 +6,8 @@ import {
   Star, Phone, Navigation2, Image as ImageIcon, Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { ApproverFields } from '@/components/ui/ApproverFields';
+import { needsSecondAdmin } from '@/utils/auditPeriod';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -456,10 +458,20 @@ export function RiderPaymentModal({ rider, onClose }: { rider: Rider; onClose: (
   const [category, setCategory] = useState<'salary' | 'commission' | 'other'>('salary');
   const [amount, setAmount] = useState('');
   const [comment, setComment] = useState('');
+  const [needApproval, setNeedApproval] = useState(false);
+  const [approvalPhone, setApprovalPhone] = useState('');
+  const [approvalPassword, setApprovalPassword] = useState('');
   const mut = useMutation({
-    mutationFn: () => financeService.addRiderPayment({ riderId: rider.id, category, amount: parseFloat(amount) || 0, comment: comment.trim() || undefined }),
+    mutationFn: () => financeService.addRiderPayment({
+      riderId: rider.id, category, amount: parseFloat(amount) || 0, comment: comment.trim() || undefined,
+      approvalPhone: approvalPhone.trim() || undefined, approvalPassword: approvalPassword || undefined,
+    }),
     onSuccess: () => { toast.success('Payment recorded in Expenses'); onClose(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message || 'Failed';
+      if (needsSecondAdmin(msg)) setNeedApproval(true);
+      toast.error(msg);
+    },
   });
   return (
     <Modal isOpen onClose={onClose} title={`Pay ${rider.fullName}`}
@@ -485,6 +497,7 @@ export function RiderPaymentModal({ rider, onClose }: { rider: Rider; onClose: (
         </div>
         <Input label="Amount (Rs.)" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         <Input label="Comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
+        {needApproval && <ApproverFields phone={approvalPhone} password={approvalPassword} onPhone={setApprovalPhone} onPassword={setApprovalPassword} />}
       </div>
     </Modal>
   );
