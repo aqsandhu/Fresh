@@ -8,7 +8,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let varWeightCached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
@@ -117,6 +118,7 @@ async function runUnitToggleAlter(connectionString: string): Promise<void> {
 
 /** Apply migration 25 if needed. Returns true when the columns exist. */
 export async function ensureUnitToggleColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasUnitToggleColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (unitToggleCached === true) return true;
   if (unitTogglePromise) return unitTogglePromise;
 
@@ -149,6 +151,7 @@ export async function ensureUnitToggleColumns(): Promise<boolean> {
 
 /** Apply migration 23 if needed. Returns true when the columns exist. */
 export async function ensureVariableWeightColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasVariableWeightColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (varWeightCached === true) return true;
   if (ensurePromise) return ensurePromise;
 
@@ -259,6 +262,7 @@ async function runQualityCatalogAlter(connectionString: string): Promise<void> {
 
 /** Apply migration 34 if needed. Returns true when the new columns exist. */
 export async function ensureQualityCatalogColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasQualityCatalogColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (qualityCatalogCached === true) return true;
   if (qualityCatalogPromise) return qualityCatalogPromise;
 

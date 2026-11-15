@@ -420,12 +420,20 @@ export const listReviewsAdmin = asyncHandler(async (req: Request, res: Response)
     where.push(`r.target_type = $${params.length}`);
   }
 
+  // Reviews customers reported (since the admin last decided on them).
+  const reported = req.query.reported ?? req.query.reported_only;
+  if (reported === 'true' || reported === '1') {
+    where.push(`EXISTS (SELECT 1 FROM review_reports rr WHERE rr.review_id = r.id AND (r.reports_reviewed_at IS NULL OR rr.created_at > r.reports_reviewed_at))`);
+  }
+
   const whereSql = where.join(' AND ');
 
   const [rowsRes, countsRes] = await Promise.all([
     query(
       `SELECT r.*, COALESCE(p.name_en, p.name_ur) AS product_name, o.order_number,
-              u.full_name AS author_name, ru.full_name AS rider_name
+              u.full_name AS author_name, ru.full_name AS rider_name,
+              (SELECT COUNT(*)::int FROM review_reports rr
+                WHERE rr.review_id = r.id AND (r.reports_reviewed_at IS NULL OR rr.created_at > r.reports_reviewed_at)) AS report_count
          FROM reviews r
          LEFT JOIN products p ON p.id = r.product_id
          LEFT JOIN orders o ON o.id = r.order_id
@@ -456,6 +464,7 @@ export const listReviewsAdmin = asyncHandler(async (req: Request, res: Response)
         orderNumber: r.order_number,
         authorName: r.author_name,
         riderName: r.rider_name,
+        reportCount: Number(r.report_count) || 0,
       })),
       counts,
     },
@@ -488,6 +497,8 @@ export const updateReviewAdmin = asyncHandler(async (req: Request, res: Response
     const val = req.body.isPublished ?? req.body.is_published;
     params.push(val === true || val === 'true');
     sets.push(`is_published = $${params.length}`);
+    // The admin has decided: reports so far are dealt with.
+    sets.push('reports_reviewed_at = NOW()');
   }
   if (req.body.adminReply !== undefined || req.body.admin_reply !== undefined) {
     const reply = req.body.adminReply ?? req.body.admin_reply;
@@ -518,4 +529,66 @@ export const updateReviewAdmin = asyncHandler(async (req: Request, res: Response
 
   logger.info('Review moderated', { reviewId: id, by: req.user?.id });
   return successResponse(res, mapReview(row), 'Review updated');
+});
+
+// ============================================================================
+// REPORTING A REVIEW (App Store guideline 1.2 — user-generated content)
+// ============================================================================
+const REPORT_REASONS = ['offensive', 'spam', 'false', 'personal_info', 'other'] as const;
+const AUTO_HIDE_AFTER = Math.max(1, Number(process.env.REVIEW_AUTO_HIDE_REPORTS || 3));
+
+/**
+ * POST /api/reviews/:id/report  { reason?, note? }
+ * A signed-in customer reports a published review. One report per customer
+ * (a repeat answers "already reported"); a customer cannot report their own.
+ * Once AUTO_HIDE_AFTER different customers have reported it, the review is
+ * unpublished until an admin looks at it (Reviews page shows the count).
+ */
+export const reportReview = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?.id;
+  const { id } = req.params;
+  if (!userId) return errorResponse(res, 'Please sign in to report a review.', 401);
+  if (!isUuid(id)) return notFoundResponse(res, 'Review not found');
+  const reason = REPORT_REASONS.includes(req.body?.reason) ? req.body.reason : 'other';
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 500) || null : null;
+
+  const result = await withTransaction(async (client: PoolClient) => {
+    const found = await client.query(
+      `SELECT id, user_id, is_published, target_type, product_id, rider_id FROM reviews WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
+    const review = found.rows[0];
+    if (!review || !review.is_published) return { status: 'missing' as const };
+    if (review.user_id === userId) return { status: 'own' as const };
+    const inserted = await client.query(
+      `INSERT INTO review_reports (review_id, reporter_id, reason, note) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (review_id, reporter_id) DO NOTHING RETURNING id`,
+      [id, userId, reason, note]
+    );
+    if (inserted.rowCount === 0) return { status: 'already' as const };
+    // Only reports made since the admin last cleared this review count.
+    const counted = await client.query(
+      `SELECT COUNT(*)::int AS n FROM review_reports rr JOIN reviews r ON r.id = rr.review_id
+        WHERE rr.review_id = $1 AND (r.reports_reviewed_at IS NULL OR rr.created_at > r.reports_reviewed_at)`,
+      [id]
+    );
+    const reports = counted.rows[0].n as number;
+    let hidden = false;
+    if (reports >= AUTO_HIDE_AFTER) {
+      await client.query(`UPDATE reviews SET is_published = FALSE, updated_at = NOW() WHERE id = $1`, [id]);
+      if (review.target_type === 'product' && review.product_id) await recomputeProductRating(client, review.product_id);
+      if (review.target_type === 'rider' && review.rider_id) await recomputeRiderRating(client, review.rider_id);
+      hidden = true;
+    }
+    return { status: 'reported' as const, reports, hidden };
+  });
+
+  if (result.status === 'missing') return notFoundResponse(res, 'Review not found');
+  if (result.status === 'own') return errorResponse(res, 'You cannot report your own review.', 400);
+  if (result.status === 'already') return successResponse(res, { alreadyReported: true }, 'You have already reported this review.');
+  if (result.hidden) {
+    logger.warn('Review hidden after reports', { reviewId: id, reports: result.reports });
+    emitOrderEventToAdmins(null, 'review:reported', { reviewId: id, reports: result.reports, hidden: true });
+  }
+  return successResponse(res, { reported: true }, 'Thank you. We will look at this review.');
 });

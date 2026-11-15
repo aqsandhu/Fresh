@@ -29,7 +29,7 @@ const check = (name, got, want) => { if (got === want) { pass++; console.log('PA
   };
   mkAdmin('+923007770011', gujrat, 'Gujrat Admin');
   mkAdmin('+923007770012', sialkot, 'Sialkot Admin');
-  const login = async (phone) => (await post('/api/admin/login', { phone, password: 'Admin12345' })).data?.tokens?.accessToken;
+  const login = async (phone) => (await post('/api/admin/login', { phone, password: 'Admin12345', otp: '123789' })).data?.tokens?.accessToken;
   const tokens = { super: await login('03001112222'), gujrat: await login('03007770011'), sialkot: await login('03007770012') };
   check('city admins can log in', Boolean(tokens.gujrat && tokens.sialkot), true);
 

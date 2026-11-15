@@ -17,4 +17,8 @@ echo "::group::admin-socket-rooms"
 node "$DIR/admin-socket-rooms.js"; rc=$?
 echo "::endgroup::"
 if [ $rc -ne 0 ]; then echo "✗ admin-socket-rooms failed"; status=1; else echo "✓ admin-socket-rooms"; fi
+echo "::group::regressions-2026-11"
+node "$DIR/regressions-2026-11.js"; rc=$?
+echo "::endgroup::"
+if [ $rc -ne 0 ]; then echo "✗ regressions-2026-11 failed"; status=1; else echo "✓ regressions-2026-11"; fi
 exit $status

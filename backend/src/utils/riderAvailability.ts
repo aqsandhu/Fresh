@@ -19,8 +19,6 @@ export type Queryable = { query: (sql: string, params?: unknown[]) => Promise<Qu
 
 const defaultRunner: Queryable = { query: (sql, params) => poolQuery(sql, params as any[]) };
 
-export const ACTIVE_TASK_STATUSES = ['assigned', 'in_progress'] as const;
-
 /**
  * Recompute riders.status for one rider from his active tasks. Returns the
  * resulting status (or null when the rider does not exist).

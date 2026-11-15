@@ -39,6 +39,10 @@ import {
 import { commitOrderSaleOnDelivery, reserveProductStock, adjustStockForWeightDelta } from '../../utils/systemStock';
 import { deductOcpStockOnDelivery } from '../../utils/ocpStock';
 import { roundMoney } from '../../utils/money';
+import { unitStockMultiplier } from '../../utils/unitPricing';
+import { unitNotOfferedMessage } from '../../utils/unitOffer';
+import { recordRefundDueOnCancel } from '../../utils/refundDue';
+import { computeCouponDiscount, hasCouponsTable } from '../../utils/coupons';
 import {
   resolveUnitPrice,
   resolveConsumerUnitPrice,
@@ -64,6 +68,48 @@ import { hasOcpTables } from '../../config/ocpSchema';
  * customer has earned an order-milestone coupon (grants + notifies). Never
  * blocks or fails the request that triggered the delivery.
  */
+/**
+ * Coupon discount for an order whose subtotal just changed (weigh-in).
+ * The coupon row is looked up through the order's redemption (or its code) and
+ * applied to the new subtotal with the normal rules (percentage, cap, fixed
+ * amount never above the subtotal). When the coupon no longer exists the old
+ * discount keeps its share of the subtotal, never growing past either.
+ * The redemption row follows, so reports show what was really given.
+ */
+async function couponDiscountForNewSubtotal(
+  client: { query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }> },
+  o: { orderId: string; couponCode: string | null; oldDiscount: number; oldSubtotal: number; newSubtotal: number }
+): Promise<number> {
+  if (!(o.oldDiscount > 0) && !o.couponCode) return 0;
+  let discount: number;
+  let coupon: any = null;
+  if (await hasCouponsTable()) {
+    const viaRedemption = await client.query(
+      `SELECT c.* FROM coupon_redemptions cr JOIN coupons c ON c.id = cr.coupon_id WHERE cr.order_id = $1 LIMIT 1`,
+      [o.orderId]
+    );
+    coupon = viaRedemption.rows[0] ?? null;
+    if (!coupon && o.couponCode) {
+      const viaCode = await client.query(
+        `SELECT * FROM coupons WHERE UPPER(code) = UPPER($1) ORDER BY created_at DESC LIMIT 1`,
+        [o.couponCode]
+      );
+      coupon = viaCode.rows[0] ?? null;
+    }
+  }
+  if (coupon) {
+    discount = computeCouponDiscount(coupon, o.newSubtotal).productDiscount;
+  } else {
+    const share = o.oldSubtotal > 0 ? o.oldDiscount / o.oldSubtotal : 0;
+    discount = Math.min(o.oldDiscount, o.newSubtotal * Math.min(1, share));
+  }
+  discount = roundMoney(Math.max(0, Math.min(discount, o.newSubtotal)));
+  if (coupon && discount !== roundMoney(o.oldDiscount)) {
+    await client.query(`UPDATE coupon_redemptions SET discount_amount = $1 WHERE order_id = $2`, [discount, o.orderId]);
+  }
+  return discount;
+}
+
 function gradeMilestoneOnDelivery(order: { user_id?: string; city_id?: string | null }): void {
   if (!order?.user_id) return;
   evaluateMilestone(order.user_id, order.city_id ?? null).catch(() => undefined);
@@ -406,15 +452,9 @@ export const updateOrderStatus = asyncHandler(async (req: Request, res: Response
         // row (same shape as the complaint refund insert) so finance can
         // reconcile; never blocks the cancellation. Runs exactly once thanks
         // to the FOR UPDATE lock + transition guard above.
-        const paidOut = parseFloat(String(order.paid_amount ?? '0')) || 0;
-        if (order.payment_status === 'completed' && paidOut > 0 && (await hasCatalogV2Columns())) {
-          await client.query(
-            `INSERT INTO refunds
-               (order_id, complaint_id, amount, original_payment_source, note, reason)
-             VALUES ($1, NULL, $2, 'admin', $3, $3)`,
-            [id, roundMoney(paidOut), 'Auto-created on order cancellation — refund due']
-          );
-        }
+        // Only what has not been refunded yet (utils/refundDue.ts): a Rs 1000
+        // order with a Rs 300 complaint refund owes Rs 700 back, not Rs 1000.
+        await recordRefundDueOnCancel(client, order);
         await restoreOrderInventory(client, order);
       }
 
@@ -597,7 +637,8 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
   try {
     updatedOrder = await withTransaction(async (client) => {
       const orderRes = await client.query(
-        `SELECT id, user_id, status, payment_status, delivery_charge, discount_amount, coupon_discount, tax_amount, city_id
+        `SELECT id, user_id, status, payment_status, subtotal, delivery_charge, discount_amount,
+                coupon_discount, coupon_code, tax_amount, city_id
            FROM orders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
         [id]
       );
@@ -622,7 +663,7 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
 
       const qualityCol = (await hasQualityCatalogColumns()) ? ', oi.quality' : '';
       const itemRes = await client.query(
-        `SELECT oi.id, oi.unit_price, oi.product_id, oi.product_name,
+        `SELECT oi.id, oi.unit_price, oi.product_id, oi.product_name, oi.quantity, oi.unit,
                 oi.weight_kg AS prev_weight, oi.total_price AS prev_total,
                 COALESCE(p.unit_value, 1) AS unit_value,
                 COALESCE(p.is_variable_weight, FALSE) AS is_variable_weight
@@ -644,12 +685,19 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
         );
       }
 
-      // Price per kg = unit price ÷ the product's per-unit weight; the new line
-      // total is that × the actual weighed amount. Never client-supplied.
+      // Price per kg = the line's unit price ÷ the weight ONE sale-unit stands
+      // for. A "half kg" line is priced per half kg, so its sale-unit weighs
+      // unit_value × 0.5 — dividing by unit_value alone (as before) halved
+      // the bill of every half-kg line that was weighed. Never client-supplied.
       const unitValue = parseFloat(item.unit_value) || 1;
       const unitPrice = parseFloat(item.unit_price) || 0;
-      const pricePerKg = unitValue > 0 ? unitPrice / unitValue : unitPrice;
+      const saleUnitKg = unitValue * unitStockMultiplier(item.unit);
+      const pricePerKg = saleUnitKg > 0 ? unitPrice / saleUnitKg : unitPrice;
       const newTotal = roundMoney(pricePerKg * weight);
+      // What the line was assumed to weigh when it was ordered. Orders store
+      // no weight at placement, so the FIRST weigh-in compares with this
+      // estimate — otherwise the extra (or missing) weight never reached stock.
+      const estimatedKg = (parseFloat(item.quantity) || 1) * saleUnitKg;
 
       await client.query(
         `UPDATE order_items
@@ -662,8 +710,9 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
       // ESTIMATED weight; reconcile the (actual − estimated) delta against
       // on-hand now. Incremental per edit (prev recorded weight → new), so
       // repeated weigh-ins never double-apply.
-      const prevWeightNum = parseFloat(item.prev_weight);
-      if (item.product_id && Number.isFinite(prevWeightNum) && unitValue > 0 && weight !== prevWeightNum) {
+      const storedWeight = parseFloat(item.prev_weight);
+      const prevWeightNum = Number.isFinite(storedWeight) ? storedWeight : estimatedKg;
+      if (item.product_id && unitValue > 0 && weight !== prevWeightNum) {
         await adjustStockForWeightDelta(client, {
           productId: item.product_id,
           quality: item.quality ?? 'A',
@@ -681,20 +730,30 @@ export const updateOrderItemWeight = asyncHandler(async (req: Request, res: Resp
       const subtotal = roundMoney(parseFloat(sumRes.rows[0].subtotal) || 0);
       const delivery = parseFloat(order.delivery_charge) || 0;
       const discount = parseFloat(order.discount_amount) || 0;
-      const coupon = parseFloat(order.coupon_discount) || 0;
       const tax = parseFloat(order.tax_amount) || 0;
+      // The coupon is worked out again on the NEW subtotal. Re-using the
+      // amount from checkout made the order free: Rs 1000 of goods with a
+      // 50 % coupon (Rs 500 off), weighed down to Rs 200, still took Rs 500
+      // off — total Rs 0.
+      const coupon = await couponDiscountForNewSubtotal(client, {
+        orderId: id,
+        couponCode: order.coupon_code,
+        oldDiscount: parseFloat(order.coupon_discount) || 0,
+        oldSubtotal: parseFloat(order.subtotal) || 0,
+        newSubtotal: subtotal,
+      });
       const total = roundMoney(Math.max(0, subtotal + delivery - discount - coupon + tax));
 
       const upd = await client.query(
-        `UPDATE orders SET subtotal = $1, total_amount = $2, updated_at = NOW()
+        `UPDATE orders SET subtotal = $1, total_amount = $2, coupon_discount = $4, updated_at = NOW()
           WHERE id = $3 RETURNING *`,
-        [subtotal, total, id]
+        [subtotal, total, id, coupon]
       );
 
       // Audit EVERY weight edit (old→new + value delta). No single edit is
       // suspicious; the per-editor cumulative upward bias is what the owner's
       // daily reconciliation flags — this is the data it reads.
-      const prevWeight = parseFloat(item.prev_weight);
+      const prevWeight = prevWeightNum; // the stored weight, or the ordered estimate on the first weigh-in
       const prevTotal = parseFloat(item.prev_total) || 0;
       await client.query(
         `INSERT INTO order_item_weight_edits
@@ -881,7 +940,14 @@ export const assignRider = asyncHandler(async (req: Request, res: Response) => {
 
   try {
     const { order, rider } = await assignRiderToOrder(id, rider_id, req.user?.id);
-    successResponse(res, { order, rider }, 'Rider assigned successfully');
+    // No per-order pay is set for this rider (no slot rate, no urgent rate, no
+    // earlier rate to fall back on): the delivery is recorded at Rs 0. Say so —
+    // it used to happen silently and showed up only at settlement time.
+    const riderPay = parseFloat(String(order?.rider_delivery_charge ?? '0')) || 0;
+    const payWarning = riderPay > 0
+      ? null
+      : `${rider?.name || 'This rider'} has no per-order pay set, so this delivery is recorded at Rs 0. Set it under Riders → Delivery pay.`;
+    successResponse(res, { order, rider, rider_pay: riderPay, pay_warning: payWarning }, 'Rider assigned successfully');
   } catch (err: any) {
     if (err?.http === 404) return notFoundResponse(res, err.message || 'Order not found');
     if (err?.http === 400) return errorResponse(res, err.message, 400);
@@ -1176,6 +1242,8 @@ export const createWhatsappOrder = asyncHandler(async (req: Request, res: Respon
           throw Object.assign(new Error(`${p.name_en} is not available in this city.`), { http: 400 });
         }
         const unit = normalizeProductUnit(item.unit);
+        const unitProblem = await unitNotOfferedMessage(client, p.id, unit);
+        if (unitProblem) throw Object.assign(new Error(unitProblem), { http: 400 });
         const quality = qualityReady ? normalizeQuality(item.quality) : 'A';
         if (qualityReady && !consumerQualities(p).includes(quality)) {
           throw Object.assign(new Error(`Quality ${quality} not available for ${p.name_en}.`), { http: 400 });
@@ -1405,7 +1473,7 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
   const closedRiderTasksByOrder: { order: any; tasks: CancelledRiderTask[] }[] = [];
   const { updatedRows, skipped } = await withTransaction(async (client) => {
     const lockResult = await client.query(
-      `SELECT o.id, o.status, o.time_slot_id FROM orders o
+      `SELECT o.id, o.status, o.time_slot_id, o.payment_status, o.paid_amount FROM orders o
         LEFT JOIN addresses addr ON o.address_id = addr.id
         WHERE o.id = ANY($1::uuid[]) AND o.deleted_at IS NULL${scopeSql}
         FOR UPDATE OF o`,
@@ -1467,6 +1535,8 @@ export const bulkUpdateOrderStatus = asyncHandler(async (req: Request, res: Resp
     if (status === 'cancelled') {
       for (const order of allowed) {
         if (order.status !== 'cancelled') {
+          // Same refund-due rule as the single-order cancel (it was missing here).
+          await recordRefundDueOnCancel(client, order);
           await restoreOrderInventory(client, order);
           const tasks = await cancelActiveRiderTasks(client, order.id, {
             note: reason ? `Order cancelled: ${reason}` : 'Order cancelled by admin',

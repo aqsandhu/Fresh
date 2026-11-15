@@ -122,17 +122,27 @@ export async function commitProductSale(
     stockCol === 'stock_quantity'
       ? `, stock_status = CASE WHEN GREATEST(0, stock_quantity - $1) <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
       : '';
-  await client.query(
-    `UPDATE products
-        SET ${resCol} = GREATEST(0, ${resCol} - $1),
-            ${stockCol} = GREATEST(0, ${stockCol} - $1)${statusSet},
+  // On-hand never goes below 0, so the ledger must record what REALLY left
+  // (it used to record the full amount even when the floor cut it short, and
+  // the watchdog then reported a stock drift that nobody caused).
+  const upd = await client.query(
+    `UPDATE products p
+        SET ${resCol} = GREATEST(0, p.${resCol} - $1),
+            ${stockCol} = GREATEST(0, p.${stockCol} - $1)${statusSet},
             updated_at = NOW()
-      WHERE id = $2`,
+       FROM (SELECT id, ${stockCol} AS on_hand FROM products WHERE id = $2 FOR UPDATE) before
+      WHERE p.id = before.id
+      RETURNING before.on_hand AS was, p.${stockCol} AS now`,
     [need, productId]
   );
+  const was = parseFloat(upd.rows[0]?.was);
+  const now = parseFloat(upd.rows[0]?.now);
+  const taken = Number.isFinite(was) && Number.isFinite(now) ? round3(was - now) : need;
+  const short = round3(need - taken);
   await recordStockMovement(client, {
-    productId, quality, cityId: opts.cityId, delta: -need, reason: 'sale',
-    refOrderId: opts.orderId, note: `sale ${need}`,
+    productId, quality, cityId: opts.cityId, delta: -taken, reason: 'sale',
+    refOrderId: opts.orderId,
+    note: short > 0 ? `sale ${need} — books held only ${taken}, short by ${short}` : `sale ${need}`,
   });
 }
 
@@ -151,18 +161,25 @@ export async function adjustStockForWeightDelta(
   const { productId, quality, deltaUnits } = opts;
   if (!Number.isFinite(deltaUnits) || deltaUnits === 0) return;
   const stockCol = qualityStockColumn(quality);
+  let applied = -deltaUnits; // ledger delta; corrected below when the floor bites
   if (deltaUnits > 0) {
     const statusSet =
       stockCol === 'stock_quantity'
         ? `, stock_status = CASE WHEN GREATEST(0, stock_quantity - $1) <= 0 THEN 'out_of_stock'::product_status ELSE 'active'::product_status END`
         : '';
-    await client.query(
-      `UPDATE products
-          SET ${stockCol} = GREATEST(0, ${stockCol} - $1)${statusSet},
+    const upd = await client.query(
+      `UPDATE products p
+          SET ${stockCol} = GREATEST(0, p.${stockCol} - $1)${statusSet},
               updated_at = NOW()
-        WHERE id = $2`,
+         FROM (SELECT id, ${stockCol} AS on_hand FROM products WHERE id = $2 FOR UPDATE) before
+        WHERE p.id = before.id
+        RETURNING before.on_hand AS was, p.${stockCol} AS now`,
       [deltaUnits, productId]
     );
+    // Record what really left (the floor at 0 may have cut it short).
+    const was = parseFloat(upd.rows[0]?.was);
+    const now = parseFloat(upd.rows[0]?.now);
+    if (Number.isFinite(was) && Number.isFinite(now)) applied = -round3(was - now);
   } else {
     const back = -deltaUnits;
     const statusSet =
@@ -178,7 +195,7 @@ export async function adjustStockForWeightDelta(
     );
   }
   await recordStockMovement(client, {
-    productId, quality, cityId: opts.cityId, delta: -deltaUnits, reason: 'adjust',
+    productId, quality, cityId: opts.cityId, delta: applied, reason: 'adjust',
     refOrderId: opts.orderId, createdBy: opts.createdBy,
     note: `variable-weight delta ${deltaUnits > 0 ? '+' : ''}${round3(deltaUnits)} units`,
   });

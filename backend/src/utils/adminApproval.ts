@@ -13,6 +13,62 @@ import { PoolClient } from 'pg';
 import { normalizePhoneNumber } from './validators';
 import { hasApprovalValueLog } from '../config/controlsSchema';
 import { TODAY_SQL, localDate } from './businessTime';
+import { query as autocommitQuery } from '../config/database';
+
+/** Approval code from the approver's own phone: valid this long, this many wrong tries. */
+export const APPROVAL_CODE_TTL_SECONDS = 180;
+export const APPROVAL_CODE_MAX_ATTEMPTS = 5;
+/**
+ * Owner's decision (15 Nov 2026, Q7): a second admin approves ONLY with an
+ * approval code made on their own device — never by typing their password on
+ * someone else's screen. APPROVAL_PASSWORDS=on is an emergency switch only
+ * (e.g. the approver's phone is lost); it is off unless set.
+ */
+const passwordsAllowed = (): boolean => process.env.APPROVAL_PASSWORDS === 'on';
+
+/**
+ * Does this 6-digit code match one of the approver's open codes? A match is
+ * marked used INSIDE the caller's transaction (a failed action leaves the code
+ * unused). A miss counts a wrong try OUTSIDE it — the caller's rollback must
+ * not wipe the count, or codes could be guessed without limit.
+ */
+async function useApprovalCode(
+  client: Pick<PoolClient, 'query'>,
+  approverId: string,
+  code: string,
+  usedBy: string,
+  usedFor: string
+): Promise<boolean> {
+  if (!/^\d{6}$/.test(code)) return false;
+  let open: { rows: Array<{ id: string; code_hash: string }> };
+  try {
+    open = await client.query(
+      `SELECT id, code_hash FROM approval_codes
+        WHERE approver_id = $1 AND used_at IS NULL AND expires_at > NOW() AND attempts < $2
+        ORDER BY created_at DESC LIMIT 3`,
+      [approverId, APPROVAL_CODE_MAX_ATTEMPTS]
+    );
+  } catch (err) {
+    if ((err as { code?: string }).code === '42P01') return false; // migration 66 not applied yet
+    throw err;
+  }
+  for (const row of open.rows) {
+    if (await bcrypt.compare(code, row.code_hash)) {
+      // Atomic single use (no row lock is taken above: a lock would make the
+      // wrong-try counter below wait on this very transaction).
+      const taken = await client.query(
+        `UPDATE approval_codes SET used_at = NOW(), used_by = $2, used_for = $3
+          WHERE id = $1 AND used_at IS NULL AND expires_at > NOW() RETURNING id`,
+        [row.id, usedBy, usedFor.slice(0, 80)]
+      );
+      return (taken.rowCount ?? 0) > 0;
+    }
+  }
+  if (open.rows.length > 0) {
+    await autocommitQuery(`UPDATE approval_codes SET attempts = attempts + 1 WHERE id = ANY($1::uuid[])`, [open.rows.map((r) => r.id)]).catch(() => undefined);
+  }
+  return false;
+}
 
 /** Money value (Rs.) at/above which a second active admin must co-approve. */
 export const APPROVAL_VALUE_THRESHOLD = Math.max(
@@ -29,7 +85,8 @@ export async function verifySecondApprover(
   client: Pick<PoolClient, 'query'>,
   req: Request,
   phone: string,
-  password: string
+  password: string,
+  usedFor = 'approval'
 ): Promise<string> {
   if (!req.user?.id) throw Object.assign(new Error('Please login again.'), { http: 401 });
   let normalizedPhone: string;
@@ -49,13 +106,21 @@ export async function verifySecondApprover(
     [normalizedPhone]
   );
   const approver = u.rows[0];
-  if (!approver?.password_hash || !(await bcrypt.compare(password, approver.password_hash))) {
-    throw Object.assign(new Error('Incorrect approver password.'), { http: 400 });
-  }
-  if (approver.id === req.user.id) {
+  if (approver && approver.id === req.user.id) {
     throw Object.assign(new Error('A different active admin must approve this action.'), { http: 400 });
   }
-  return approver.id;
+  // 1) An approval code the approver made on their own phone.
+  if (approver && (await useApprovalCode(client, approver.id, password.trim(), req.user.id, usedFor))) {
+    return approver.id;
+  }
+  // 2) Their password (unless the owner switched passwords off).
+  if (passwordsAllowed() && approver?.password_hash && (await bcrypt.compare(password, approver.password_hash))) {
+    return approver.id;
+  }
+  throw Object.assign(
+    new Error(passwordsAllowed() ? 'Incorrect approver password or approval code.' : 'Incorrect or expired approval code. Ask the approver for a new one.'),
+    { http: 400 }
+  );
 }
 
 /**
@@ -108,7 +173,7 @@ export async function approvalForValue(
         : `A second admin's approval is required: your un-approved stock/money changes today would reach Rs. ${Math.round(todayBefore + amount).toLocaleString('en-PK')} (limit Rs. ${limit} per day).`;
       throw Object.assign(new Error(msg), { http: 400 });
     }
-    const approvedBy = await verifySecondApprover(client, req, phone, password);
+    const approvedBy = await verifySecondApprover(client, req, phone, password, String(opts.label || opts.kind || 'approval'));
     result = { approvedBy, approvedAt: new Date().toISOString() };
   }
 

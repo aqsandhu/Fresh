@@ -63,11 +63,19 @@ logs, system settings, atta seed). Run with
 `pgmigrations`). **Frozen — do not add new migrations here**; use
 `migrations/NN-*.sql` + `migrate:sql` instead.
 
-## Runtime self-healing
-`backend/src/config/pinAuth.ts`, `addressSchema.ts` and `orderSchema.ts` add
-their columns at runtime if missing (`ADD COLUMN IF NOT EXISTS`), so those
-features survive a missed migration. This is a safety net, not the source of
-truth — keep `schema.sql` and `migrations/` authoritative.
+## Runtime self-healing — OFF (since 15 Nov 2026)
+The `ensure*()` helpers in `backend/src/config/*Schema.ts` used to run
+`CREATE TABLE` / `ALTER TABLE ... IF NOT EXISTS` from inside the API — on the first
+request of every process, in production too. `ALTER TABLE` takes the strongest table
+lock even when the column already exists, so after a restart one request could freeze
+every query on `orders` behind any open transaction. They now only CHECK.
+
+**`schema.sql` + `migrations/` are the only source of the schema.** A database built
+from them was compared with one the helpers had "healed": identical. At boot the API
+logs an error naming any migration not yet applied.
+
+`SCHEMA_SELF_HEAL=true` turns the old behaviour back on — for an emergency on a
+database whose migrations cannot be run, never as a habit.
 
 ## Recommended order for a new environment
 1. `schema.sql`

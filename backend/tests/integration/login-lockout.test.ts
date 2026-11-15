@@ -219,3 +219,76 @@ describe('Customer password login per-account lockout', () => {
     expect(locking.status).toBe(429);
   });
 });
+
+// Admin two-step login (config/admin2fa.ts). It follows the OTP rule used
+// everywhere else: with OTP bypass on, the fixed bypass code is the second step.
+describe('Admin two-step login (OTP bypass rule)', () => {
+  const saved = { ...process.env };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.OTP_BYPASS_ENABLED = 'true';
+    process.env.OTP_BYPASS_CODE = '246810';
+    delete process.env.ADMIN_2FA_ENABLED;
+  });
+  afterEach(() => {
+    process.env.OTP_BYPASS_ENABLED = saved.OTP_BYPASS_ENABLED;
+    process.env.OTP_BYPASS_CODE = saved.OTP_BYPASS_CODE;
+    process.env.ADMIN_2FA_ENABLED = saved.ADMIN_2FA_ENABLED;
+    if (saved.OTP_BYPASS_ENABLED === undefined) delete process.env.OTP_BYPASS_ENABLED;
+    if (saved.OTP_BYPASS_CODE === undefined) delete process.env.OTP_BYPASS_CODE;
+    if (saved.ADMIN_2FA_ENABLED === undefined) delete process.env.ADMIN_2FA_ENABLED;
+  });
+
+  it('a correct password alone returns a challenge and NO tokens', async () => {
+    const phone = uniquePhone();
+    mockAdminDb(phone);
+    const res = await request(adminApp).post('/api/admin/login').send({ phone, password: PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.data.requires_otp).toBe(true);
+    expect(res.body.data.otp_bypass).toBe(true);
+    expect(res.body.data.tokens).toBeUndefined();
+    expect(res.body.data.user).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain('246810'); // the code is never echoed
+  });
+
+  it('password + the bypass code signs in; a wrong code does not', async () => {
+    const phone = uniquePhone();
+    mockAdminDb(phone);
+    const wrong = await request(adminApp).post('/api/admin/login').send({ phone, password: PASSWORD, otp: '000000' });
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.data?.tokens).toBeUndefined();
+
+    const right = await request(adminApp).post('/api/admin/login').send({ phone, password: PASSWORD, otp: '246810' });
+    expect(right.status).toBe(200);
+    expect(right.body.data.tokens.accessToken).toBeTruthy();
+  });
+
+  it('wrong codes count towards the lockout even though the password is right', async () => {
+    const phone = uniquePhone();
+    mockAdminDb(phone);
+    let last = 0;
+    for (let i = 0; i < PIN_FAIL_THRESHOLD; i++) {
+      last = (await request(adminApp).post('/api/admin/login').send({ phone, password: PASSWORD, otp: '111111' })).status;
+    }
+    expect(last).toBe(429);
+    // Locked: even the right code is refused now.
+    const res = await request(adminApp).post('/api/admin/login').send({ phone, password: PASSWORD, otp: '246810' });
+    expect(res.status).toBe(429);
+  });
+
+  it('the code is ignored when the wrong password is sent with it', async () => {
+    const phone = uniquePhone();
+    mockAdminDb(phone);
+    const res = await request(adminApp).post('/api/admin/login').send({ phone, password: 'wrong-password', otp: '246810' });
+    expect(res.status).toBe(401);
+  });
+
+  it('ADMIN_2FA_ENABLED=false switches the second step off', async () => {
+    process.env.ADMIN_2FA_ENABLED = 'false';
+    const phone = uniquePhone();
+    mockAdminDb(phone);
+    const res = await request(adminApp).post('/api/admin/login').send({ phone, password: PASSWORD });
+    expect(res.status).toBe(200);
+    expect(res.body.data.tokens.accessToken).toBeTruthy();
+  });
+});

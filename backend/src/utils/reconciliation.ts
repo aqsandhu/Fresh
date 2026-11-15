@@ -58,8 +58,11 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
     for (const r of snapRes.rows) snap.set(`${r.product_id}:${r.quality}`, parseFloat(r.on_hand) || 0);
 
     const prodRes = await query(
+      // Every product, switched on or off: stock of a product that was
+      // switched off used to be skipped by both the comparison and the
+      // snapshot, so goods could leave it unseen.
       `SELECT id, name_en, stock_quantity, stock_quantity_b, stock_quantity_c
-         FROM products WHERE is_active = TRUE`
+         FROM products`
     );
     const ledgerRes = await query(
       `SELECT product_id, quality, COALESCE(SUM(delta), 0) AS total
@@ -303,7 +306,12 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
            FROM orders od JOIN order_collection_points o ON o.id = od.ocp_id
           WHERE od.deleted_at IS NULL AND od.paid_amount > 0 AND od.status = 'delivered'
             AND od.payment_method = 'cash_on_delivery' AND od.payment_status = 'completed'
-            AND NOT EXISTS (SELECT 1 FROM ocp_settlement_orders so WHERE so.order_id = od.id)
+            -- Only cash the OFFICE HAS CONFIRMED counts as settled. A settlement the
+            -- OCP merely sent (still pending) — or one that was rejected — used to
+            -- silence this alert for ever, although the money had not arrived.
+            AND NOT EXISTS (SELECT 1 FROM ocp_settlement_orders so
+                              JOIN ocp_settlements st ON st.id = so.settlement_id
+                             WHERE so.order_id = od.id AND st.status = 'received')
             AND od.delivered_at < NOW() - ($1 || ' days')::interval
           GROUP BY o.id, o.name HAVING COALESCE(SUM(od.paid_amount), 0) > 0`,
         [String(OCP_CASH_OVERDUE_DAYS)]
@@ -315,6 +323,30 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
       if (ocp.open_shortages > 0) anomalies.push({ type: 'ocp_open_shortages', count: ocp.open_shortages });
     } catch { /* ignore */ }
   }
+
+  // ── 4) DATABASE RULES (migration 63) ───────────────────────────────────────
+  // The database refuses negative stock, totals that do not add up and paid >
+  // total — but a rule is only switched on when no old row breaks it. A rule
+  // that is still off is reported here with the number of rows in its way.
+  const integrity: any[] = [];
+  try {
+    const adds = `ABS(total_amount - GREATEST(0, COALESCE(subtotal, 0) + COALESCE(delivery_charge, 0) + COALESCE(tax_amount, 0)
+                    - COALESCE(discount_amount, 0) - COALESCE(coupon_discount, 0))) > 0.05`;
+    const rules: [string, string][] = [
+      ['products_stock_nonnegative', `SELECT COUNT(*)::int AS c FROM products WHERE stock_quantity < 0 OR COALESCE(stock_quantity_b, 0) < 0 OR COALESCE(stock_quantity_c, 0) < 0`],
+      ['orders_total_adds_up', `SELECT COUNT(*)::int AS c FROM orders WHERE ${adds}`],
+      ['orders_paid_within_total', `SELECT COUNT(*)::int AS c FROM orders WHERE COALESCE(paid_amount, 0) > total_amount + 0.05`],
+    ];
+    const on = await query(`SELECT conname FROM pg_constraint WHERE conname = ANY($1::text[])`, [rules.map((r) => r[0])]);
+    const active = new Set(on.rows.map((r: any) => r.conname));
+    for (const [rule, countSql] of rules) {
+      if (active.has(rule)) continue;
+      const c = await query(countSql);
+      const entry = { type: 'integrity_rule_off', rule, breaking_rows: Number(c.rows[0].c) || 0 };
+      integrity.push(entry);
+      anomalies.push(entry);
+    }
+  } catch { /* catalog not readable — skip */ }
 
   const summary = {
     window_from: windowFrom,
@@ -328,6 +360,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
     stock_counts: stockCounts,
     cash_by_admin: cashByAdmin,
     ocp,
+    integrity,
   };
   const anomalyCount = anomalies.length;
 

@@ -32,10 +32,6 @@ export async function hasUserCouponsTable(): Promise<boolean> {
   return userCouponsTableCached;
 }
 
-export function resetUserCouponsTableCache(): void {
-  userCouponsTableCached = null;
-}
-
 const COUPON_COLUMNS = `id, code, description, discount_type, discount_value,
   max_discount_amount, min_order_amount, usage_limit, usage_limit_per_user,
   used_count, first_order_only, valid_from, valid_until, is_active, city_id,

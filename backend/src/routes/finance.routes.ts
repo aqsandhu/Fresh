@@ -15,7 +15,8 @@ import {
 } from '../middleware';
 import * as expenses from '../controllers/finance/expenses.controller';
 import * as workers from '../controllers/finance/workers.controller';
-import * as profit from '../controllers/finance/profit.controller';
+import * as profit from '../controllers/finance/profit.controller';
+import { uploadSingle } from '../middleware/upload';
 
 const router = Router();
 
@@ -39,7 +40,8 @@ router.use(auditLogger());
 // Expenses ledger + sources.
 router.get('/expenses', requireFinancePermission(['finance.expenses.view']), expenses.listExpenses);
 router.post('/expenses', requireFinancePermission(['finance.expenses.create']), expenses.createExpense);
-router.post('/stock-purchase', requireFinancePermission(['finance.stock_purchase.create']), expenses.createStockPurchase);
+// JSON, or multipart with the bill photo in 'bill_photo' (refused 503 if file storage is not set up).
+router.post('/stock-purchase', requireFinancePermission(['finance.stock_purchase.create']), ...uploadSingle('bill_photo', 'purchases/bills'), expenses.createStockPurchase);
 router.post('/rider-payment', requireFinancePermission(['finance.rider_payments.create']), expenses.createRiderPayment);
 router.get('/products', requireFinancePermission(['finance.stock_purchase.create']), expenses.listFinanceProducts);
 router.get('/riders', requireFinancePermission(['finance.rider_payments.create']), expenses.listFinanceRiders);

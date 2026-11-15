@@ -4,9 +4,22 @@
 #
 # Production deploys via Render (backend) + Vercel (website/admin); this file is
 # only for spinning up the whole stack locally with `docker compose up`.
+#
+# First run:  cp .env.example .env  → set JWT_SECRET and JWT_REFRESH_SECRET
+#             (two DIFFERENT values, 32+ characters), ADMIN_PHONE and
+#             ADMIN_PASSWORD (the first owner login), then `docker compose up --build`.
+# Database:   the empty database gets database/schema.sql on its first start;
+#             the backend then applies database/migrations/*.sql itself before
+#             it starts (the same runner Render uses as its pre-deploy step).
+# Addresses:  API http://localhost:3000 · website http://localhost:3001 ·
+#             admin http://localhost:5173
+# Limits:     pictures need SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in .env
+#             (without them an upload is refused with a clear message).
+#             The website's live order updates (socket) connect to the API
+#             address baked into its build; inside compose that is
+#             http://backend:3000, which a browser cannot reach — run the
+#             website with `pnpm --filter website dev` when you need them.
 # ============================================================================
-
-version: '3.8'
 
 services:
   # ── PostgreSQL Database ─────────────────────────────────────────────────
@@ -20,7 +33,10 @@ services:
       POSTGRES_DB: ${DB_NAME:-freshbazar}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database:/docker-entrypoint-initdb.d:ro
+      # ONLY the schema. Mounting the whole database/ folder (as before) also ran
+      # 00-reset.sql and the retired rider_system_migration.sql — the latter
+      # BEFORE schema.sql — so the very first start failed.
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -59,9 +75,14 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    # Apply pending migrations, then start. Without this the API ran on
+    # schema.sql alone and ~29 later tables were missing (500s everywhere).
+    command: ["sh", "-c", "node backend/dist/scripts/runSqlMigrations.js && node backend/dist/app.js"]
     environment:
       - NODE_ENV=production
       - PORT=3000
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-freshbazar}
+      - DB_SSL=false
       - DB_HOST=db
       - DB_PORT=5432
       - DB_USER=${DB_USER:-postgres}
@@ -72,7 +93,7 @@ services:
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
       - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-15m}
       - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
-      - CORS_ORIGIN=${CORS_ORIGIN}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3001,http://localhost:5173}
       - CORS_CREDENTIALS=true
       - SENTRY_DSN=${SENTRY_DSN}
       - FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID}
@@ -86,7 +107,8 @@ services:
       redis:
         condition: service_healthy
     env_file:
-      - .env
+      - path: .env
+        required: false
     volumes:
       - backend_uploads:/app/uploads
     networks:

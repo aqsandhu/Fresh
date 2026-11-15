@@ -12,7 +12,7 @@ check() { if [ "$2" = "$3" ]; then echo "PASS $1"; pass=$((pass+1)); else echo "
 code() { curl -s -o /dev/null -w "%{http_code}" "$@"; }
 
 CITY=$($PSQL -c "select id from service_cities where name='Gujrat' limit 1")
-ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345"}' | jq -r .data.tokens.accessToken)
+ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345","otp":"123789"}' | jq -r .data.tokens.accessToken)
 AH=(-H "Authorization: Bearer $ATOK" -H "X-City-Id: $CITY" -H 'Content-Type: application/json')
 CAT=$($PSQL -c "select id from categories where city_id='$CITY' or city_id is null order by name_en limit 1")
 
@@ -35,7 +35,7 @@ RID=$($PSQL -c "insert into admin_roles (name, city_id) values ('QA City Manager
 $PSQL -c "insert into admin_role_permissions (role_id, permission_id) select '$RID', id from permissions" >/dev/null
 MID=$(echo "insert into users (phone, full_name, role, password_hash, admin_role_id, is_phone_verified) values ('+923007770077','QA City Manager','admin',:'h','$RID',true) returning id" | $PSQL -v h="$HASH")
 $PSQL -c "insert into admins (user_id) values ('$MID')" >/dev/null
-MTOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03007770077","password":"Manager123"}' | jq -r .data.tokens.accessToken)
+MTOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03007770077","password":"Manager123","otp":"123789"}' | jq -r .data.tokens.accessToken)
 MH=(-H "Authorization: Bearer $MTOK" -H 'Content-Type: application/json')
 
 # ── Z3: wrong confirmation password is 400 (not 401 → no forced logout) ─────
@@ -101,7 +101,7 @@ check "K12 audit log: super admin ok" "$(curl -s $API/admin/audit-logs "${AH[@]}
 check "K3 watchdog: city admin refused" "$(code $API/admin/reconciliation "${MH[@]}")" "403"
 
 # ── K9 + K5: watchdog flags an odd purchase and downward weight edits ────────
-curl -s -X POST $API/finance/stock-purchase "${MH[@]}" -d "{\"product_id\":\"$PROD\",\"raw_weight\":40,\"purchase_price\":6000,\"grade_a\":20,\"grade_b\":6,\"grade_c\":4,\"waste\":10}" >/dev/null
+curl -s -X POST $API/finance/stock-purchase "${MH[@]}" -d "{\"product_id\":\"$PROD\",\"raw_weight\":40,\"purchase_price\":6000,\"grade_a\":20,\"grade_b\":6,\"grade_c\":4,\"waste\":10,\"supplier_name\":\"QA Mandi\"}" >/dev/null
 OI=$($PSQL -c "select id from order_items limit 1"); OID=$($PSQL -c "select order_id from order_items limit 1")
 if [ -n "$OI" ]; then
   $PSQL -c "insert into order_item_weight_edits (order_id, order_item_id, edited_by, old_weight, new_weight, delta, old_total, new_total) values ('$OID','$OI','$MID',10,2,-8,2000,400)" >/dev/null

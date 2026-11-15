@@ -471,9 +471,30 @@ export const deleteCoupon = asyncHandler(async (req: Request, res: Response) => 
     return errorResponse(res, 'You can only delete coupons for your assigned city.', 403);
   }
 
+  // A coupon that was ever redeemed is a record of money given away. Deleting
+  // it cascaded to coupon_redemptions — who used it, on which order, for how
+  // much — so a coupon could be created, handed to friends and then erased
+  // together with its trail. A used coupon is switched off instead and its
+  // history stays; only a never-used coupon is really deleted.
+  const used = await query(
+    `SELECT (SELECT COUNT(*) FROM coupon_redemptions WHERE coupon_id = $1)::int AS redemptions,
+            (SELECT COUNT(*) FROM orders o JOIN coupons c ON c.id = $1
+              WHERE UPPER(o.coupon_code) = UPPER(c.code) AND COALESCE(o.coupon_discount, 0) > 0)::int AS orders`,
+    [id]
+  );
+  if (used.rows[0].redemptions > 0 || used.rows[0].orders > 0) {
+    await query('UPDATE coupons SET is_active = FALSE, updated_at = NOW() WHERE id = $1', [id]);
+    logger.info('Used coupon deactivated instead of deleted', { couponId: id, by: req.user?.id });
+    return successResponse(
+      res,
+      { id, deactivated: true },
+      'This coupon has already been used, so it was switched off instead of deleted — its history is kept.'
+    );
+  }
+
   await query('DELETE FROM coupons WHERE id = $1', [id]);
   logger.info('Coupon deleted', { couponId: id, deletedBy: req.user?.id });
-  return successResponse(res, { id }, 'Coupon deleted');
+  return successResponse(res, { id, deactivated: false }, 'Coupon deleted');
 });
 
 // ============================================================================

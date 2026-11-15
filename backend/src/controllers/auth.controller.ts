@@ -23,13 +23,15 @@ import {
 } from '../utils/response';
 import { normalizePhoneNumber } from '../utils/validators';
 import { verifyPhoneFromRequest } from '../services/otp.service';
-import { isOtpBypassEnabled } from '../config/otpBypass';
+import { isOtpBypassEnabled, verifyOtpBypassCode } from '../config/otpBypass';
+import { admin2faMode } from '../config/admin2fa';
 import { getOtpMode, OTP_RESEND_COOLDOWN_SECONDS } from '../config/otpProvider';
 import {
   ensureOtpTable,
   checkSendAllowed,
   generateOtpCode,
   persistOtp,
+  verifyStoredOtp,
 } from '../services/otpStore.service';
 import { deliverOtp } from '../services/otpSender.service';
 import { getPinStatusForPhone, ensurePinColumns, hasPinColumns } from '../config/pinAuth';
@@ -544,7 +546,12 @@ export const logout = asyncHandler(async (req: Request, res: Response) => {
   if (refreshTokenValue) {
     await revokeRefreshToken(refreshTokenValue);
   }
-  if (req.body?.all === true && req.user?.id) {
+  // App builds from before November 2026 call logout WITHOUT the refresh
+  // token, so there is no way to tell which session to end. Leaving the token
+  // alive after "logout" is the worse outcome: for an authenticated caller
+  // that presents no token, end every session of that user.
+  const noTokenPresented = !refreshTokenValue && Boolean(req.user?.id);
+  if ((req.body?.all === true || noTokenPresented) && req.user?.id) {
     await revokeAllUserRefreshTokens(req.user.id);
   }
 
@@ -1151,14 +1158,65 @@ export const adminLogin = asyncHandler(async (req: Request, res: Response) => {
     return unauthorizedResponse(res, 'Invalid credentials');
   }
 
-  // Correct password — reset the brute-force counter.
-  await clearPinFailures(lockKey);
-
   // SECURITY FIX: enforce account status (was missing — suspended admins could log in).
   if (user.status !== 'active') {
+    await clearPinFailures(lockKey);
     logger.warn('Admin login blocked: account not active', { userId: user.id, status: user.status });
     return unauthorizedResponse(res, 'Account is not active. Please contact support.');
   }
+
+  // ── Second step: one-time code (see config/admin2fa.ts) ───────────────────
+  // The password alone no longer opens the panel. The failure counter is NOT
+  // reset by a correct password while this step is on: otherwise someone who
+  // has the password could guess codes for ever.
+  const twoStep = admin2faMode();
+  if (twoStep !== 'off') {
+    const otp = typeof req.body.otp === 'string' ? req.body.otp.trim() : '';
+    if (!otp) {
+      const challenge: Record<string, unknown> = {
+        requires_otp: true,
+        otp_bypass: twoStep === 'bypass',
+        phone_hint: `${user.phone.slice(0, 5)}…${user.phone.slice(-2)}`,
+      };
+      if (twoStep === 'code') {
+        if (!(await ensureOtpTable())) {
+          return errorResponse(res, 'Verification is temporarily unavailable. Please try again.', 503);
+        }
+        const gate = await checkSendAllowed(user.phone, req.ip || null);
+        if (gate.allowed) {
+          const code = generateOtpCode();
+          const delivery = await deliverOtp(user.phone, code);
+          if (!delivery.ok) {
+            logger.error('Admin login code could not be delivered', { userId: user.id, error: delivery.error });
+            return errorResponse(res, 'Could not send the verification code right now. Please try again.', 502);
+          }
+          const { expiresInSec } = await persistOtp(user.phone, code, delivery.channel, req.ip || null);
+          challenge.channel = delivery.channel;
+          challenge.expires_in = expiresInSec;
+        } else {
+          // A code was sent moments ago (or the hourly cap is reached): do not
+          // send another, the one already delivered is still valid.
+          challenge.resend_in = gate.retryAfterSec;
+        }
+      }
+      logger.info('Admin login: password accepted, verification code required', { userId: user.id, mode: twoStep });
+      return successResponse(res, challenge, 'Enter the verification code to finish signing in');
+    }
+
+    const codeOk =
+      twoStep === 'bypass'
+        ? verifyOtpBypassCode(otp)
+        : (await verifyStoredOtp(user.phone, otp)).success;
+    if (!codeOk) {
+      const { lockedUntil } = await registerPinFailure(lockKey);
+      logger.warn('Admin login failed: wrong verification code', { userId: user.id, lockedUntil });
+      if (lockedUntil) return respondAccountLocked(res, lockedUntil);
+      return unauthorizedResponse(res, 'Incorrect verification code');
+    }
+  }
+
+  // Password (and code) correct — reset the brute-force counter.
+  await clearPinFailures(lockKey);
 
   // Generate tokens (short-lived access for admin panel — see ADMIN_JWT_EXPIRES_IN)
   const tokens = await issueAdminTokenPair(user.id, user.phone, user.role);

@@ -7,7 +7,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let tipsCached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
@@ -137,6 +138,7 @@ async function runDdlAndSeed(connectionString: string): Promise<void> {
 
 /** Apply migration 26 (table + seed) if needed. */
 export async function ensureTipsTable(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasTipsTable(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (tipsCached === true) return true;
   if (ensurePromise) return ensurePromise;
 

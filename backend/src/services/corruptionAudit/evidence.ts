@@ -695,7 +695,7 @@ export async function buildEvidence(period: AuditPeriod): Promise<BuiltEvidence>
   await safe('stock purchases', async () => {
     const r = await query(
       `SELECT sp.id, sp.created_by, sp.purchase_price, sp.raw_weight, sp.waste, (sp.grade_a + sp.grade_b + sp.grade_c) AS sellable,
-              ${day('sp.purchased_at')} AS d, p.name_en, u.role,
+              ${day('sp.purchased_at')} AS d, p.name_en, u.role, sp.supplier_name, sp.bill_number, sp.bill_photo_url,
               (SELECT AVG(x.purchase_price / NULLIF(x.grade_a + x.grade_b + x.grade_c, 0))
                  FROM stock_purchases x
                 WHERE x.product_id = sp.product_id AND x.id <> sp.id AND x.purchased_at < sp.purchased_at
@@ -715,7 +715,7 @@ export async function buildEvidence(period: AuditPeriod): Promise<BuiltEvidence>
     for (const [adminId, rows] of by) {
       if (!isAdmin(adminId)) continue;
       const total = rows.reduce((a, x) => a + num(x.purchase_price), 0);
-      let excess = 0; let highRate = 0; let highWaste = 0;
+      let excess = 0; let highRate = 0; let highWaste = 0; let noSupplier = 0; let noBill = 0;
       const lines: string[] = [];
       for (const x of rows) {
         const sellable = num(x.sellable);
@@ -728,6 +728,13 @@ export async function buildEvidence(period: AuditPeriod): Promise<BuiltEvidence>
           notes.push(`rate ${rs(rate)}/unit vs usual ${rs(avg)}`);
         }
         if (wastePct > 15) { highWaste++; notes.push(`${r2(wastePct)}% declared waste`); }
+        // Purchases from before migration 65 have no supplier at all — counted, but
+        // only as 'not recorded', never as a finding on their own.
+        if (!x.supplier_name) noSupplier++;
+        if (!x.bill_number && !x.bill_photo_url) noBill++;
+        // Only WHETHER a seller and a bill were recorded — never the seller's name:
+        // it is free text typed by the person under audit (see prompt.ts).
+        notes.push(`${x.supplier_name ? 'seller recorded' : 'NO seller recorded'}, ${x.bill_photo_url ? 'bill photo' : x.bill_number ? 'bill no.' : 'no bill'}`);
         lines.push(`${x.d} ${cleanLabel(x.name_en)} ${rs(num(x.purchase_price))}${notes.length ? ` — ${notes.join(', ')}` : ''}`);
       }
       signal({
@@ -737,6 +744,7 @@ export async function buildEvidence(period: AuditPeriod): Promise<BuiltEvidence>
         facts: {
           purchases_entered: rows.length, purchases_value: r0(total), above_usual_rate: highRate,
           paid_above_usual_rate: r0(excess), with_waste_over_15_pct: highWaste,
+          without_supplier_recorded: noSupplier, without_bill_number_or_photo: noBill,
         },
         examples: lines.sort((a, b) => Number(b.includes('—')) - Number(a.includes('—'))),
         innocent: ['The owner dictated the figures and this person only typed them in.', 'Mandi rates move a lot from day to day.'],

@@ -69,14 +69,6 @@ export const createdResponse = <T>(res: Response, data: T, message: string = 'Cr
   successResponse(res, data, message, 201);
 };
 
-export const noContentResponse = (res: Response): void => {
-  res.status(204).send();
-};
-
-export const badRequestResponse = (res: Response, message: string, error?: any): void => {
-  errorResponse(res, message, 400, error);
-};
-
 export const unauthorizedResponse = (res: Response, message: string = 'Unauthorized'): void => {
   errorResponse(res, message, 401);
 };
@@ -91,12 +83,4 @@ export const notFoundResponse = (res: Response, message: string = 'Not found'): 
 
 export const conflictResponse = (res: Response, message: string): void => {
   errorResponse(res, message, 409);
-};
-
-export const validationErrorResponse = (res: Response, errors: any[]): void => {
-  errorResponse(res, 'Validation failed', 422, errors);
-};
-
-export const tooManyRequestsResponse = (res: Response, message: string = 'Too many requests'): void => {
-  errorResponse(res, message, 429);
 };

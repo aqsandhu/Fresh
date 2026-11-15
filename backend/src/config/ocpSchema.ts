@@ -7,7 +7,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let cached: boolean | null = null;
 let ddlEnsured = false;
@@ -51,6 +52,7 @@ export async function hasOcpTables(): Promise<boolean> {
 }
 
 export async function ensureOcpTables(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasOcpTables(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (ddlEnsured) return true;
   if (ensurePromise) return ensurePromise;
 

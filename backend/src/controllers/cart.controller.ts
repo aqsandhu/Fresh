@@ -35,6 +35,7 @@ import {
   isAutoCoupon,
 } from '../utils/coupons';
 import { hasUserCouponsTable } from '../utils/autoCoupons';
+import { unitNotOfferedMessage } from '../utils/unitOffer';
 
 /**
  * Get or create cart for user
@@ -172,11 +173,14 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
 
   const transactionResult = await withTransaction(async (client) => {
     // Get or create cart
+    // FOR UPDATE: a checkout holds this same lock, so an item can no longer
+    // slip into the cart between the checkout reading its lines and its total.
     let cartResult = await client.query(
       `SELECT * FROM carts 
        WHERE user_id = $1 AND status = 'active'
        ORDER BY created_at DESC
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE`,
       [req.user!.id]
     );
 
@@ -209,6 +213,10 @@ export const addToCart = asyncHandler(async (req: Request, res: Response) => {
     }
 
     const product = productResult.rows[0];
+
+    // The unit must be one this product is actually sold in (see utils/unitOffer).
+    const unitProblem = await unitNotOfferedMessage(client, product_id, unit);
+    if (unitProblem) throw new BadRequestError(unitProblem);
 
     // The chosen quality tier must be offered to CONSUMERS (price set + enabled).
     if (qualityReady && !consumerQualities(product).includes(quality)) {
@@ -341,6 +349,9 @@ export const syncCart = asyncHandler(async (req: Request, res: Response) => {
       }
 
       const product = productResult.rows[0];
+
+      const unitProblem = await unitNotOfferedMessage(client, item.product_id, unit);
+      if (unitProblem) throw new BadRequestError(unitProblem);
 
       if (qualityReady && !consumerQualities(product).includes(quality)) {
         throw new BadRequestError(`Selected quality is not available: ${product.name_en}`);

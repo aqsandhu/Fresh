@@ -18,13 +18,11 @@ import { PoolClient } from 'pg';
 import { query } from '../config/database';
 import { DeliveryChargeResult } from '../types';
 import logger from './logger';
-import { TODAY_SQL } from './businessTime';
 import { captureMessage } from '../config/sentry';
 import { FRESH_CART_LINE_UNIT_PRICE_SQL, FRESH_CART_SUBTOTAL_SQL } from './unitPricing';
 import { getDeliverySettings, getCartCityId } from './deliverySettings';
 
 const ENV_DEFAULT_DELIVERY_CHARGE = parseFloat(process.env.DEFAULT_DELIVERY_CHARGE || '100');
-
 
 type DbClient = Pick<PoolClient, 'query'>;
 
@@ -152,20 +150,6 @@ export const calculateDeliveryCharge = async (
   }
 };
 
-export const getDeliveryChargeExplanation = (
-  _charge: number,
-  ruleCode: string
-): string => {
-  const explanations: Record<string, string> = {
-    FREE_DELIVERY_SLOT: 'Free delivery for selected time slot',
-    FREE_VEG_FRUIT_MIN: 'Free delivery — vegetables/fruits subtotal meets the minimum',
-    STANDARD_DELIVERY: 'Standard delivery charge applies',
-    EMPTY_CART: 'No items in cart',
-  };
-
-  return explanations[ruleCode] || 'Standard delivery charge applies';
-};
-
 export const updateCartDeliveryCharge = async (
   cartId: string,
   deliveryCharge: number
@@ -178,15 +162,4 @@ export const updateCartDeliveryCharge = async (
      WHERE id = $2`,
     [deliveryCharge, cartId]
   );
-};
-
-export const getDeliveryChargeRules = async () => {
-  const result = await query(
-    `SELECT * FROM delivery_charges_config 
-     WHERE is_active = TRUE 
-     AND (valid_from IS NULL OR valid_from <= ${TODAY_SQL})
-     AND (valid_until IS NULL OR valid_until >= ${TODAY_SQL})
-     ORDER BY priority DESC`
-  );
-  return result.rows;
 };

@@ -12,7 +12,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let cached: boolean | null = null;
 let ddlEnsured = false;
@@ -156,6 +157,7 @@ async function runCatalogV2Ddl(connectionString: string): Promise<void> {
 
 /** Apply migration 37 if needed. Returns true when the columns exist. */
 export async function ensureCatalogV2Columns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasCatalogV2Columns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (ddlEnsured) return true;
   if (ensurePromise) return ensurePromise;
 

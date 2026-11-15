@@ -2,6 +2,7 @@
 // ADMIN CONTROLLER — site settings, cities, delivery zones, time slots
 // ============================================================================
 
+import crypto from 'crypto';
 import { Request, Response } from 'express';
 import { parseMaxOrders } from '../../utils/timeSlots';
 import { getDeliverySettings, saveDeliverySettings, clearCityDeliverySettings } from '../../utils/deliverySettings';
@@ -41,6 +42,7 @@ import {
 } from '../../utils/siteSettings';
 import { hasRestaurantDeliveryColumns } from '../../config/restaurantSchema';
 import { AI_KEYS, getAiConfig, aiEnabled } from '../../services/aiChat.service';
+import { encryptSecret } from '../../utils/secretBox';
 
 export const getBrandLogoSettings = asyncHandler(async (req: Request, res: Response) => {
   const brand = await fetchBrandLogoSettings();
@@ -726,6 +728,24 @@ export const updateTimeSlot = asyncHandler(async (req: Request, res: Response) =
 
 export const deleteTimeSlot = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  // Orders keep their slot (it is printed on slips, used for rider pay and
+  // for delivery history), so a slot that orders used cannot be erased —
+  // the attempt used to end in a database error (500) and the panel showed
+  // nothing. Such a slot is switched off instead: no new bookings, history
+  // intact. A slot no order ever used is really deleted.
+  const used = await query('SELECT 1 FROM orders WHERE time_slot_id = $1 LIMIT 1', [id]);
+  if (used.rows.length > 0) {
+    const off = await query(
+      `UPDATE time_slots SET status = 'blocked', updated_at = NOW() WHERE id = $1 RETURNING id`,
+      [id]
+    );
+    if (off.rows.length === 0) return notFoundResponse(res, 'Time slot not found');
+    return successResponse(
+      res,
+      { id, deactivated: true },
+      'Orders were placed in this slot, so it was switched off instead of deleted — customers can no longer book it.'
+    );
+  }
   const result = await query(
     'DELETE FROM time_slots WHERE id = $1 RETURNING id',
     [id]
@@ -735,7 +755,7 @@ export const deleteTimeSlot = asyncHandler(async (req: Request, res: Response) =
     return notFoundResponse(res, 'Time slot not found');
   }
 
-  successResponse(res, { id }, 'Time slot deleted');
+  successResponse(res, { id, deactivated: false }, 'Time slot deleted');
 });
 
 /**
@@ -895,7 +915,8 @@ export const updateAiChatSettings = asyncHandler(async (req: Request, res: Respo
   if (req.body.clear_key === true || req.body.clear_key === 'true') {
     await upsertGlobalSiteSetting(AI_KEYS.apiKey, '', userId);
   } else if (typeof req.body.api_key === 'string' && req.body.api_key.trim()) {
-    await upsertGlobalSiteSetting(AI_KEYS.apiKey, req.body.api_key.trim(), userId);
+    // Stored encrypted — never as the working key in plain text.
+    await upsertGlobalSiteSetting(AI_KEYS.apiKey, encryptSecret(req.body.api_key.trim()), userId);
   }
 
   logger.info('AI chat settings updated', { updatedBy: userId });
@@ -1040,92 +1061,96 @@ export const importCityCatalog = asyncHandler(async (req: Request, res: Response
   }
 
   const summary = await withTransaction(async (client) => {
+    // Every column is copied INSIDE the database (INSERT … SELECT), so the
+    // copy keeps exact types and picks up columns added later by itself. The
+    // old version listed columns by hand and silently dropped 23 product
+    // columns (quality B/C prices, half/quarter switches, variable weight,
+    // restaurant prices and visibility) and every category's parent.
+    // Only these are NOT copied:
+    //   ids, created/updated times, rating/review/view/order counters → defaults
+    //   slug → made unique in the new city; city → the new city
+    //   category / sub-category / parent → the new city's copies
+    //   stock (all qualities) and reservations → 0, status out_of_stock:
+    //     a catalogue copy brings the product LIST, not its goods (stock used
+    //     to be copied with no purchase and no ledger row — stock from nowhere)
+    //   SKU → empty (unique across cities: one SKU made the whole import fail)
+    const columnsOf = async (table: string): Promise<string[]> =>
+      (
+        await client.query(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = $1 AND is_generated = 'NEVER'
+            ORDER BY ordinal_position`,
+          [table]
+        )
+      ).rows.map((r: { column_name: string }) => r.column_name);
+    const ident = (c: string) => `"${c.replace(/"/g, '""')}"`;
+    const LEFT_TO_DEFAULTS = new Set(['id', 'created_at', 'updated_at', 'rating_average', 'review_count', 'view_count', 'order_count']);
+
+    const buildCopy = (table: string, cols: string[], set: Record<string, string>) => {
+      const target = cols.filter((c) => !LEFT_TO_DEFAULTS.has(c));
+      const exprs = target.map((c) => {
+        if (c in set) return set[c];
+        if (/^(stock_quantity|reserved_quantity)(_[a-z])?$/.test(c)) return '0';
+        return ident(c);
+      });
+      return `INSERT INTO ${table} (${target.map(ident).join(', ')})
+              SELECT ${exprs.join(', ')} FROM ${table} WHERE id = $1 RETURNING id`;
+    };
+
+    const categoryCols = await columnsOf('categories');
+    const productCols = await columnsOf('products');
+    const updatedBy: Record<string, string> = categoryCols.includes('updated_by') ? { updated_by: 'NULL' } : {};
+    const copyCategory = buildCopy('categories', categoryCols, {
+      slug: '$2', city_id: '$3', parent_id: 'NULL', created_by: '$4', ...updatedBy,
+    });
+    const copyProduct = buildCopy('products', productCols, {
+      slug: '$2', city_id: '$3', category_id: '$4', subcategory_id: '$5', created_by: '$6',
+      sku: 'NULL', stock_status: `'out_of_stock'`, ...(productCols.includes('updated_by') ? { updated_by: 'NULL' } : {}),
+    });
+
+    const uniqueSlug = async (table: string, slug: string): Promise<string> => {
+      const taken = await client.query(`SELECT 1 FROM ${table} WHERE slug = $1 AND city_id = $2`, [slug, targetCityId]);
+      return taken.rows.length > 0 ? `${slug}-${crypto.randomBytes(3).toString('hex')}` : slug;
+    };
+
     const categories = await client.query(
-      `SELECT * FROM categories WHERE city_id = $1 ORDER BY display_order, name_en`,
+      `SELECT id, slug, parent_id FROM categories WHERE city_id = $1 ORDER BY display_order, name_en`,
       [sourceCityId]
     );
-
     const categoryMap = new Map<string, string>();
-    let categoriesCopied = 0;
-    let productsCopied = 0;
-
     for (const cat of categories.rows) {
-      let slug = cat.slug;
-      const slugCheck = await client.query(
-        'SELECT id FROM categories WHERE slug = $1 AND city_id = $2',
-        [slug, targetCityId]
-      );
-      if (slugCheck.rows.length > 0) {
-        slug = `${slug}-${Date.now()}`;
-      }
-
-      const inserted = await client.query(
-        `INSERT INTO categories (
-          name_ur, name_en, slug, icon_url, image_url,
-          parent_id, display_order, is_active,
-          qualifies_for_free_delivery, minimum_order_for_free_delivery,
-          city_id, created_by
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-        RETURNING id`,
-        [
-          cat.name_ur, cat.name_en, slug, cat.icon_url, cat.image_url,
-          null, cat.display_order, cat.is_active,
-          cat.qualifies_for_free_delivery, cat.minimum_order_for_free_delivery,
-          targetCityId, req.user?.id || null,
-        ]
-      );
+      const inserted = await client.query(copyCategory, [cat.id, await uniqueSlug('categories', cat.slug), targetCityId, req.user?.id || null]);
       categoryMap.set(cat.id, inserted.rows[0].id);
-      categoriesCopied++;
+    }
+    // Parents once every copy exists (a child can be listed before its parent).
+    for (const cat of categories.rows) {
+      if (!cat.parent_id) continue;
+      await client.query(`UPDATE categories SET parent_id = $1 WHERE id = $2`, [
+        categoryMap.get(cat.parent_id) ?? null,
+        categoryMap.get(cat.id),
+      ]);
     }
 
     const products = await client.query(
-      `SELECT * FROM products WHERE city_id = $1`,
+      `SELECT id, slug, category_id, subcategory_id FROM products WHERE city_id = $1`,
       [sourceCityId]
     );
-
+    let productsCopied = 0;
     for (const prod of products.rows) {
       const newCategoryId = categoryMap.get(prod.category_id);
       if (!newCategoryId) continue;
-
-      let slug = prod.slug;
-      const slugCheck = await client.query(
-        'SELECT id FROM products WHERE slug = $1 AND city_id = $2',
-        [slug, targetCityId]
-      );
-      if (slugCheck.rows.length > 0) {
-        slug = `${slug}-${Date.now()}`;
-      }
-
-      await client.query(
-        `INSERT INTO products (
-          name_ur, name_en, slug, sku, barcode, category_id, subcategory_id,
-          price, compare_at_price, cost_price,
-          half_kg_price, quarter_kg_price, half_dozen_price,
-          unit_type, unit_value, stock_quantity, low_stock_threshold,
-          stock_status, track_inventory, primary_image, images,
-          short_description, description_ur, description_en,
-          attributes, meta_title, meta_description, tags,
-          is_active, is_featured, is_new_arrival, city_id
-        ) VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-          $22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32
-        )`,
-        [
-          prod.name_ur, prod.name_en, slug, prod.sku, prod.barcode,
-          newCategoryId, null,
-          prod.price, prod.compare_at_price, prod.cost_price,
-          prod.half_kg_price, prod.quarter_kg_price, prod.half_dozen_price,
-          prod.unit_type, prod.unit_value, prod.stock_quantity, prod.low_stock_threshold,
-          prod.stock_status, prod.track_inventory, prod.primary_image, prod.images,
-          prod.short_description, prod.description_ur, prod.description_en,
-          prod.attributes, prod.meta_title, prod.meta_description, prod.tags,
-          prod.is_active, prod.is_featured, prod.is_new_arrival, targetCityId,
-        ]
-      );
+      await client.query(copyProduct, [
+        prod.id,
+        await uniqueSlug('products', prod.slug),
+        targetCityId,
+        newCategoryId,
+        prod.subcategory_id ? categoryMap.get(prod.subcategory_id) ?? null : null,
+        req.user?.id || null,
+      ]);
       productsCopied++;
     }
 
-    return { categoriesCopied, productsCopied };
+    return { categoriesCopied: categoryMap.size, productsCopied };
   });
 
   logger.info('City catalog imported', {

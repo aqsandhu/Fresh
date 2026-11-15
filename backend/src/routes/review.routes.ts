@@ -11,6 +11,7 @@ import {
   getMyReviews,
   getOrderReviewables,
   getProductReviews,
+  reportReview,
 } from '../controllers/review.controller';
 
 const router = Router();
@@ -31,5 +32,7 @@ router.use(authenticate);
 router.get('/mine', getMyReviews);
 router.get('/order/:orderId', getOrderReviewables);
 router.post('/', reviewWriteLimiter, verifyUserActive, submitReview);
+// Report someone else's published review (App Store 1.2).
+router.post('/:id/report', reviewWriteLimiter, verifyUserActive, reportReview);
 
 export default router;

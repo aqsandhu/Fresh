@@ -45,7 +45,7 @@
       "engine.io@6": "^6.6.11",
       "fast-uri@3": "^3.1.9",
       "ip-address@10": "^10.7.5",
-      "node-forge@1": "^1.4.2",
+      "node-forge@1": "^1.4.3",
       "@fastify/busboy@3": "^3.2.4",
       "@grpc/grpc-js@1": "^1.14.7",
       "brace-expansion@1": "^1.1.20",
@@ -73,7 +73,8 @@
         "GHSA-337j-9hxr-rhxg",
         "GHSA-gcqx-w48m-w2h4",
         "GHSA-g3hv-75wg-m249",
-        "GHSA-3g3m-2fjr-6pw4"
+        "GHSA-3g3m-2fjr-6pw4",
+        "GHSA-474x-hrwr-fgx4"
       ]
     }
   }

@@ -7,7 +7,8 @@ import { verifyAccessToken } from '../config/jwt';
 import { query } from '../config/database';
 import { UserRole, JwtPayload } from '../types';
 import { UnauthorizedError, ForbiddenError } from './errorHandler';
-import logger from '../utils/logger';
+import logger from '../utils/logger';
+import { markAuthGuard } from '../config/openapiRoutes';
 
 // Extend Express Request to include user
 declare global {
@@ -225,7 +226,7 @@ export const verifyRiderActive = async (
 
 // Role-based authorization middleware
 export const authorize = (...allowedRoles: UserRole[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return markAuthGuard((req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       next(new UnauthorizedError('Authentication required'));
       return;
@@ -237,7 +238,7 @@ export const authorize = (...allowedRoles: UserRole[]) => {
     }
     
     next();
-  };
+  });
 };
 
 // Admin authorization middleware
@@ -299,3 +300,6 @@ export const requireOwnershipOrAdmin = (
     next();
   };
 };
+
+// The API docs (config/openapiRoutes.ts) mark routes behind these as "sign-in needed".
+markAuthGuard(authenticate);

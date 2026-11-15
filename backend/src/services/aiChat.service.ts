@@ -5,7 +5,8 @@
 // The key NEVER leaves the server. Replies are short + low-token to bound cost.
 // ============================================================================
 
-import { fetchGlobalSettings, fetchWhatsAppOrderSettings, WHATSAPP_ORDER_URL_KEY } from '../utils/siteSettings';
+import { fetchGlobalSettings, fetchWhatsAppOrderSettings, upsertGlobalSiteSetting, WHATSAPP_ORDER_URL_KEY } from '../utils/siteSettings';
+import { decryptSecret, encryptSecret, isEncryptedSecret } from '../utils/secretBox';
 import { query } from '../config/database';
 import { isMissingTable } from '../utils/dbErrors';
 import logger from '../utils/logger';
@@ -670,9 +671,20 @@ export async function getAiConfig(): Promise<AiConfig> {
     AI_KEYS.disabled,
   ]);
   const env = (k: string) => (process.env[k] || '').trim();
+  // The key is stored encrypted (utils/secretBox). A key saved before that
+  // change is still plain text: it keeps working and is re-saved encrypted.
+  const stored = (map[AI_KEYS.apiKey] || '').trim();
+  let dbKey = '';
+  if (stored && isEncryptedSecret(stored)) {
+    dbKey = decryptSecret(stored) || '';
+    if (!dbKey) logger.warn('AI chat key could not be decrypted (JWT_SECRET / AUDIT_AI_SECRET changed?) — enter it again in Settings');
+  } else if (stored) {
+    dbKey = stored;
+    upsertGlobalSiteSetting(AI_KEYS.apiKey, encryptSecret(stored)).catch(() => undefined);
+  }
   return {
     provider: (env('AI_CHAT_PROVIDER') || map[AI_KEYS.provider] || 'anthropic').toLowerCase(),
-    apiKey: env('AI_CHAT_API_KEY') || (map[AI_KEYS.apiKey] || '').trim(),
+    apiKey: env('AI_CHAT_API_KEY') || dbKey,
     model: env('AI_CHAT_MODEL') || (map[AI_KEYS.model] || '').trim(),
     baseUrl: (env('AI_CHAT_BASE_URL') || map[AI_KEYS.baseUrl] || '').replace(/\/+$/, ''),
     disabled: env('AI_CHAT_DISABLED') === 'true' || (map[AI_KEYS.disabled] || '') === 'true',

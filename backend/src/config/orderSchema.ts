@@ -9,7 +9,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let couponColumnsCached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
@@ -93,6 +94,7 @@ async function runAlterOnConnection(connectionString: string): Promise<void> {
 
 /** Apply migration 18 if needed. Returns true when the columns exist. */
 export async function ensureOrderCouponColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasOrderCouponColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (couponColumnsCached === true) return true;
   if (ensurePromise) return ensurePromise;
 
@@ -143,6 +145,7 @@ export async function hasUrgentDeliveryColumns(): Promise<boolean> {
 
 /** Add urgent-delivery columns to orders (migration 28). */
 export async function ensureUrgentDeliveryColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasUrgentDeliveryColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (urgentColumnsCached === true) return true;
   if (urgentEnsurePromise) return urgentEnsurePromise;
 
@@ -199,6 +202,7 @@ export async function hasRestaurantOrderColumns(): Promise<boolean> {
 }
 
 export async function ensureRestaurantOrderColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasRestaurantOrderColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (restaurantOrderCached === true) return true;
   if (restaurantOrderPromise) return restaurantOrderPromise;
 
@@ -236,6 +240,7 @@ export async function ensureRestaurantOrderColumns(): Promise<boolean> {
 }
 
 export async function ensureOrderStatusNotificationTrigger(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return true; // migrations own the schema (config/schemaSelfHeal.ts)
   if (orderStatusNotificationTriggerEnsured) return true;
   if (orderStatusNotificationTriggerPromise) return orderStatusNotificationTriggerPromise;
 

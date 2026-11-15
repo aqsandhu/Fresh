@@ -8,7 +8,8 @@ import { Request, Response, NextFunction } from 'express';
 import { query } from '../config/database';
 import { verifyRestaurantToken } from '../config/jwt';
 import { unauthorizedResponse, forbiddenResponse } from '../utils/response';
-import { asyncHandler } from './errorHandler';
+import { asyncHandler } from './errorHandler';
+import { markAuthGuard } from '../config/openapiRoutes';
 
 export interface AuthedRestaurant {
   id: string;
@@ -83,3 +84,5 @@ export const authenticateRestaurant = asyncHandler(
     next();
   }
 );
+
+markAuthGuard(authenticateRestaurant);

@@ -285,6 +285,17 @@ export const loginRestaurant = asyncHandler(async (req: Request, res: Response) 
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
 
+  // PIN first, account status after: the status message ("under review",
+  // "banned") used to come back for any phone number without a PIN, which
+  // told anyone whether a number is a restaurant here and in what state.
+  const valid = Boolean(restaurant.pin_hash) && (await bcrypt.compare(String(pin), restaurant.pin_hash));
+  if (!valid) {
+    const { lockedUntil } = await registerPinFailure(lockKey);
+    logger.warn('Restaurant PIN verify failed', { restaurantId: restaurant.id, lockedUntil });
+    if (lockedUntil) return pinLockedResponse(res, lockedUntil);
+    return unauthorizedResponse(res, 'Invalid phone or PIN');
+  }
+
   if (restaurant.status === 'pending') {
     return forbiddenResponse(res, 'Your restaurant request is still under review.');
   }
@@ -293,14 +304,6 @@ export const loginRestaurant = asyncHandler(async (req: Request, res: Response) 
   }
   if (restaurant.status === 'banned') {
     return forbiddenResponse(res, 'This restaurant account has been banned.');
-  }
-
-  const valid = await bcrypt.compare(String(pin), restaurant.pin_hash);
-  if (!valid) {
-    const { lockedUntil } = await registerPinFailure(lockKey);
-    logger.warn('Restaurant PIN verify failed', { restaurantId: restaurant.id, lockedUntil });
-    if (lockedUntil) return pinLockedResponse(res, lockedUntil);
-    return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
 
   // Successful login resets the failure counter.

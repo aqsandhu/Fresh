@@ -16,7 +16,7 @@ R=$(curl -s -X POST $API/orders -H "Authorization: Bearer $CTOK" -H 'Content-Typ
 check "card order refused" "$(echo "$R" | jq -r '.success')" "false"
 echo "   message: $(echo "$R" | jq -r '.message, (.errors // [] | tostring)' | head -2 | tr '\n' ' ')"
 
-ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345"}' | jq -r .data.tokens.accessToken)
+ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345","otp":"123789"}' | jq -r .data.tokens.accessToken)
 AH=(-H "Authorization: Bearer $ATOK" -H "X-City-Id: $CITY")
 RID=$(curl -s -X POST $API/admin/riders "${AH[@]}" -F full_name='Cod Rider' -F phone=03131234567 -F password=rider123 -F cnic=3520233344451 -F vehicle_type=bike -F vehicle_number=cod-1 | jq -r .data.id)
 RTOK=$(curl -s -X POST $API/rider/login -H 'Content-Type: application/json' -d '{"phone":"03131234567","password":"rider123"}' | jq -r .data.tokens.accessToken)

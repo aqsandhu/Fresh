@@ -12,13 +12,16 @@ import {
 
 const router = Router();
 
-// Track atta request (public)
-router.get('/track/:id', attaController.trackAttaRequest);
 // Public: live charge configuration so storefront copy never hard-codes rates.
 router.get('/charges', attaController.getAttaChargesPublic);
 
 // Protected routes
 router.use(authenticate);
+
+// Track an atta request — signed-in owner only. It used to be open to anyone
+// who had (or guessed) the id and returned its status, times and rider ids;
+// the only caller is the customer app, which is always signed in.
+router.get('/track/:id', attaController.trackAttaRequest);
 
 router.get('/', attaController.getAttaRequests);
 router.get('/:id', attaController.getAttaRequestById);

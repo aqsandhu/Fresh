@@ -44,6 +44,8 @@ export async function validateAndClaimTimeSlot(client: PoolClient, opts: SlotCla
   const v = await client.query(
     `SELECT
         ts.max_orders,
+        -- to_jsonb keeps this working on a database without the audience column.
+        (COALESCE(to_jsonb(ts)->>'audience', 'consumer') = 'restaurant')        AS restaurant_only,
         (ts.status <> 'available')                                            AS disabled,
         (COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) < (NOW() AT TIME ZONE 'Asia/Karachi')::date) AS past,
         (ts.applicable_days IS NOT NULL
@@ -64,6 +66,10 @@ export async function validateAndClaimTimeSlot(client: PoolClient, opts: SlotCla
   const row = v.rows[0];
   if (!trusted) {
     if (row.disabled) throw new BadRequestError('Selected time slot is not available.');
+    // Restaurant slots are hidden from the consumer slot list, but the id
+    // could still be posted: a customer then took a restaurant seat and — on a
+    // free-delivery restaurant slot — paid no delivery charge.
+    if (row.restaurant_only) throw new BadRequestError('Selected time slot is not available.');
     if (row.past) throw new BadRequestError('Delivery date cannot be in the past.');
     if (row.wrong_day) throw new BadRequestError('Selected time slot is not available on that day.');
     if (row.passed) throw new BadRequestError('Selected time slot has already passed for today.');

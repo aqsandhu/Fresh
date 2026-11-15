@@ -50,6 +50,8 @@ import { hasOrderCouponColumns, hasUrgentDeliveryColumns } from '../config/order
 import { emitOrderUpdate, emitToUser, emitOrderEventToAdmins } from '../config/socket';
 import logger from '../utils/logger';
 import { normalizePhoneNumber, parsePagination } from '../utils/validators';
+import { unitNotOfferedMessage } from '../utils/unitOffer';
+import { recordRefundDueOnCancel } from '../utils/refundDue';
 
 /**
  * Get user's orders
@@ -382,6 +384,11 @@ export const trackOrderPublic = asyncHandler(async (req: Request, res: Response)
  * Place new order
  * POST /api/orders
  */
+/** A checkout failure caused by the cart's coupon (handled after the rollback, see createOrder). */
+function couponNoLongerValid(message: string): BadRequestError {
+  return Object.assign(new BadRequestError(message), { couponProblem: true });
+}
+
 export const createOrder = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) {
     return errorResponse(res, 'Authentication required', 401);
@@ -541,6 +548,10 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         throw new BadRequestError(`Out of stock: ${product.name_en}`);
       }
 
+      // A line saved before the admin switched a size off must not be sold.
+      const unitProblem = await unitNotOfferedMessage(client, item.product_id, item.unit);
+      if (unitProblem) throw new BadRequestError(`${unitProblem} Remove it from the cart and add it again.`);
+
       const freshUnitPrice = qualityReady
         ? (resolveConsumerUnitPrice(product, quality, item.unit) ?? resolveUnitPrice(product, item.unit))
         : resolveUnitPrice(product, item.unit);
@@ -631,9 +642,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         [couponCode, orderCityId]
       );
       if (couponRes.rows.length === 0) {
-        throw new BadRequestError(
-          `Coupon "${couponCode}" is no longer available. Please remove it and try again.`
-        );
+        throw couponNoLongerValid(`Coupon "${couponCode}" is no longer available.`);
       }
       const coupon = couponRes.rows[0];
 
@@ -642,7 +651,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       let grantId: string | null = null;
       if (isAutoCoupon(coupon)) {
         if (!(await hasUserCouponsTable())) {
-          throw new BadRequestError(`Coupon "${couponCode}" is not available.`);
+          throw couponNoLongerValid(`Coupon "${couponCode}" is not available.`);
         }
         const grantRes = await client.query(
           `SELECT id FROM user_coupons
@@ -676,7 +685,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
         isFirstOrder: priorOrderRes.rows.length === 0,
       });
       if (reason) {
-        throw new BadRequestError(`Coupon "${couponCode}": ${reason}`);
+        throw couponNoLongerValid(`Coupon "${couponCode}": ${reason}`);
       }
 
       const { productDiscount, freeDelivery } = computeCouponDiscount(coupon, subtotal);
@@ -902,6 +911,21 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
       );
     }
 
+    // The amount charged (subtotal) was read from the cart a moment after the
+    // lines above were read. If the cart was changed in between — the same
+    // account adding or removing an item from a second device — the customer
+    // would be billed for something that is not in the order. Refuse instead;
+    // the whole order rolls back and the app shows the cart again.
+    const linesTotal = roundMoney(
+      cartItemsResult.rows.reduce(
+        (sum: number, item: any) => sum + (parseFloat(String(item.unit_price)) || 0) * (Number(item.quantity) || 0),
+        0
+      )
+    );
+    if (Math.abs(linesTotal - subtotal) > 0.05) {
+      throw new ConflictError('Your cart changed while the order was being placed. Please check your cart and try again.');
+    }
+
     // Mark the order as holding soft reservations so delivery commits the sale
     // and a pre-delivery cancel releases the hold (vs. the legacy hard-deduct).
     if (catalogV2Ready) {
@@ -955,6 +979,23 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     }
 
     return order;
+  }).catch(async (err: any) => {
+    // The coupon saved on the cart stopped being valid (switched off, expired,
+    // used up, order now below its minimum). The order was rolled back; a
+    // retry would fail the same way until the customer found and removed the
+    // coupon by hand. Take it off the cart here and say so, so the next press
+    // of "Place order" goes through at the full price.
+    if (err?.couponProblem) {
+      await query(
+        `UPDATE carts SET coupon_code = NULL, coupon_discount = 0, updated_at = NOW()
+          WHERE user_id = $1 AND status = 'active'`,
+        [req.user!.id]
+      ).catch(() => undefined);
+      throw new BadRequestError(
+        `${err.message} It has been removed from your cart — please check the total and place the order again.`
+      );
+    }
+    throw err;
   });
 
   logger.info('Order created', { userId: req.user.id, orderId: order.id });
@@ -1055,14 +1096,9 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     // refunds-ledger row (same shape as complaint.controller's refund insert)
     // so finance can reconcile the outflow; never blocks the cancellation.
     // The FOR UPDATE row lock + status check above make this run exactly once.
-    const cancelledPaid = parseFloat(String(order.paid_amount ?? '0')) || 0;
-    if (order.payment_status === 'completed' && cancelledPaid > 0 && (await hasCatalogV2Columns())) {
-      await client.query(
-        `INSERT INTO refunds
-           (order_id, complaint_id, amount, original_payment_source, note, reason)
-         VALUES ($1, NULL, $2, 'admin', $3, $3)`,
-        [id, roundMoney(cancelledPaid), 'Auto-created on order cancellation — refund due']
-      );
+    // Only what was paid and not already refunded (utils/refundDue.ts).
+    {
+      await recordRefundDueOnCancel(client, { id, payment_status: order.payment_status, paid_amount: order.paid_amount });
     }
 
     // Restore time-slot seat + stock (shared with admin/webhook cancel paths).

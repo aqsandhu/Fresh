@@ -10,7 +10,8 @@ import { Request, Response, NextFunction } from 'express';
 import { query } from '../config/database';
 import { verifyShareholderToken } from '../config/jwt';
 import { unauthorizedResponse, forbiddenResponse } from '../utils/response';
-import { asyncHandler } from './errorHandler';
+import { asyncHandler } from './errorHandler';
+import { markAuthGuard } from '../config/openapiRoutes';
 
 export interface AuthedShareholder {
   id: string;
@@ -81,3 +82,5 @@ export const authenticateShareholder = asyncHandler(
     next();
   }
 );
+
+markAuthGuard(authenticateShareholder);

@@ -89,6 +89,8 @@ function resolveRequiredPermissions(
   }
   // Sidebar badge counts — any authenticated admin may read their own counts.
   if (p === '/badge-counts') return ANY_ADMIN;
+  // Any active admin may give a second-admin approval code (their own).
+  if (p === '/approval-codes') return ANY_ADMIN;
   if (p.startsWith('/orders')) {
     if (m === 'GET') return ['orders.view'];
     if (p === '/orders/bulk-status' || p.endsWith('/status')) {

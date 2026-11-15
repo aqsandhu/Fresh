@@ -6,6 +6,7 @@ import { Router } from 'express';
 import * as authController from '../controllers/auth.controller';
 import {
   authenticate,
+  optionalAuth,
   verifyUserActive,
   authRateLimiter,
   registerRateLimiter,
@@ -91,7 +92,11 @@ router.post(
 );
 
 // ── Protected routes ────────────────────────────────────────────────────
-router.post('/logout', authenticate, authController.logout);
+// Logout must work even when the access token has already expired (the
+// usual case after a night's sleep): the refresh token in the body / cookie is
+// what gets revoked, and holding it is proof enough. With `authenticate` here
+// an expired access token answered 401 and the refresh token stayed alive.
+router.post('/logout', optionalAuth, authController.logout);
 router.get('/me', authenticate, verifyUserActive, authController.getMe);
 router.get('/socket-token', authenticate, verifyUserActive, authController.getSocketToken);
 router.put('/profile', authenticate, verifyUserActive, authController.updateProfile);

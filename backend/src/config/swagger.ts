@@ -5,6 +5,7 @@
 // Uses swagger-jsdoc to generate specs from JSDoc comments in route files.
 // ============================================================================
 
+import { createHash, timingSafeEqual } from 'crypto';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { Application, Request, Response, NextFunction } from 'express';
@@ -358,12 +359,21 @@ export const setupSwagger = (app: Application): void => {
   const swaggerGuard = (req: Request, res: Response, next: NextFunction) => {
     if (process.env.NODE_ENV !== 'production') return next();
     const pwd = req.headers['x-swagger-password'];
-    if (pwd && pwd === process.env.SWAGGER_PASSWORD) return next();
+    const expected = process.env.SWAGGER_PASSWORD;
+    // Constant-time compare (a plain === answers faster the earlier it differs).
+    if (typeof pwd === 'string' && expected) {
+      const a = createHash('sha256').update(pwd).digest();
+      const b = createHash('sha256').update(expected).digest();
+      if (timingSafeEqual(a, b)) return next();
+    }
     return res.status(401).json({ message: 'Unauthorized' });
   };
 
   // Serve Swagger UI
-  app.use('/api/docs', swaggerGuard, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  // The page loads the spec from /api/docs.json (not a copy made now): the
+  // paths are filled in from the real router AFTER the routes are mounted.
+  app.use('/api/docs', swaggerGuard, swaggerUi.serve, swaggerUi.setup(undefined, {
+    swaggerOptions: { url: '/api/docs.json' },
     explorer: true,
     customCss: '.swagger-ui .topbar { display: none }',
     customSiteTitle: 'FreshBazar API Documentation',

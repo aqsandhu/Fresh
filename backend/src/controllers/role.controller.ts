@@ -258,6 +258,16 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
   if (check.rows[0].is_system) {
     return errorResponse(res, 'System roles cannot be deleted', 400);
   }
+  // Deleting a role that admins still hold left them with no role at all —
+  // signed in but unable to do anything, with no message saying why.
+  const holders = await query(
+    `SELECT COUNT(*)::int AS n FROM users WHERE admin_role_id = $1 AND deleted_at IS NULL`,
+    [id]
+  );
+  const n = Number(holders.rows[0]?.n) || 0;
+  if (n > 0) {
+    return errorResponse(res, `${n} admin(s) still have this role. Give them another role first, then delete it.`, 409);
+  }
   await query(`DELETE FROM admin_roles WHERE id = $1`, [id]);
   successResponse(res, null, 'Role deleted');
 });

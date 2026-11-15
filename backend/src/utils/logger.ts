@@ -3,6 +3,7 @@
 // ============================================================================
 
 import winston from 'winston';
+import { redactLogInfo } from './redact';
 
 // Log level from environment
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
@@ -48,9 +49,17 @@ if (NODE_ENV === 'production') {
   );
 }
 
+// Phone numbers, CNICs, passwords, codes and tokens are hidden from EVERY
+// entry before any transport sees it (see utils/redact.ts).
+const redactPii = winston.format((info) => {
+  redactLogInfo(info as unknown as Record<string, unknown>);
+  return info;
+});
+
 // Create logger instance
 const logger = winston.createLogger({
   level: LOG_LEVEL,
+  format: redactPii(),
   defaultMeta: { service: 'freshbazar-api' },
   transports,
   // Don't exit on error

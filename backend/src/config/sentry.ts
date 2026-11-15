@@ -13,6 +13,63 @@
 import * as Sentry from '@sentry/node';
 import { Application, Request, Response, NextFunction } from 'express';
 import logger from '../utils/logger';
+import { redactLogValue, redactQueryString, redactString, redactUrl, summarizeForTracker } from '../utils/redact';
+
+/**
+ * Stricter than the logs, because this leaves for a third party: no phone
+ * number, CNIC, email, password, code, token, cookie — and no free text the
+ * customer typed (a door-photo upload used to send the whole form, home
+ * address included). A JSON body keeps its field names and the shape of the
+ * values; any other body (multipart uploads) is dropped.
+ */
+function redactBody(data: unknown): unknown {
+  if (typeof data !== 'string') return summarizeForTracker(data);
+  try {
+    return JSON.stringify(summarizeForTracker(JSON.parse(data)));
+  } catch {
+    return `[non-JSON body not sent, ${data.length} chars]`;
+  }
+}
+
+function redactQuery(q: unknown): unknown {
+  if (typeof q === 'string') return redactQueryString(q, true);
+  if (Array.isArray(q)) return q.map((pair) => (Array.isArray(pair) ? [pair[0], summarizeForTracker(pair[1], String(pair[0]))] : '[query]'));
+  return summarizeForTracker(q);
+}
+
+export function scrubSentryEvent<T extends Sentry.Event>(event: T): T {
+  if (event.request) {
+    const { data, cookies, query_string: query, url, ...rest } = event.request;
+    event.request = {
+      ...(redactLogValue(rest) as typeof rest),
+      ...(url ? { url: redactUrl(url, true) } : {}),
+      ...(query !== undefined ? { query_string: redactQuery(query) as typeof query } : {}),
+      ...(cookies ? { cookies: Object.fromEntries(Object.keys(cookies).map((k) => [k, '[redacted]'])) } : {}),
+      ...(data !== undefined ? { data: redactBody(data) } : {}),
+    };
+  }
+  if (event.extra) event.extra = redactLogValue(event.extra) as typeof event.extra;
+  if (event.message) event.message = redactString(event.message);
+  for (const v of event.exception?.values ?? []) {
+    if (v.value) v.value = redactString(v.value);
+  }
+  if (event.breadcrumbs) event.breadcrumbs = event.breadcrumbs.map(scrubSentryBreadcrumb);
+  return event;
+}
+
+export function scrubSentryBreadcrumb(b: Sentry.Breadcrumb): Sentry.Breadcrumb {
+  let data = b.data ? (redactLogValue(b.data) as Record<string, unknown>) : undefined;
+  if (data) {
+    // Outgoing HTTP calls (WhatsApp, Firebase, storage) carry their URL here.
+    if (typeof data.url === 'string') data = { ...data, url: redactUrl(data.url, true) };
+    if (typeof data['http.query'] === 'string') data = { ...data, 'http.query': redactQueryString(data['http.query'] as string, true) };
+  }
+  return {
+    ...b,
+    ...(b.message ? { message: redactUrl(b.message, true) } : {}),
+    ...(data ? { data } : {}),
+  };
+}
 
 /**
  * Initialize Sentry for error tracking.
@@ -35,6 +92,10 @@ export const initSentry = (): void => {
       sampleRate: 1.0,
       debug: process.env.NODE_ENV === 'development',
       attachStacktrace: true,
+      sendDefaultPii: false,
+      beforeSend: (event) => scrubSentryEvent(event),
+      beforeSendTransaction: (event) => scrubSentryEvent(event),
+      beforeBreadcrumb: (breadcrumb) => scrubSentryBreadcrumb(breadcrumb),
     });
 
     logger.info('Sentry initialized');
@@ -80,6 +141,8 @@ export const setupSentryErrorHandler = (app: Application): void => {
       Sentry.withScope((scope) => {
         scope.setTag('path', req.path);
         scope.setTag('method', req.method);
+        const requestId = (req as { requestId?: string }).requestId;
+        if (requestId) scope.setTag('request_id', requestId);
         const userId = (req as { user?: { id?: string } }).user?.id;
         if (userId) scope.setUser({ id: userId });
         Sentry.captureException(err);

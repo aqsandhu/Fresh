@@ -291,7 +291,11 @@ export interface RiderTask {
 // Notification Types
 // ---------------------------------------------------------------------------
 
-export type NotificationType = 'order' | 'delivery' | 'promotion' | 'system' | 'chat';
+/** The SQL notification_type enum (schema.sql + migration 48) — checked by tests/unit/enumContract.test.ts. */
+export type NotificationType =
+  | 'order_placed' | 'order_confirmed' | 'order_ready' | 'out_for_delivery' | 'delivered' | 'cancelled'
+  | 'payment_received' | 'rider_assigned' | 'call_request' | 'promotion' | 'system'
+  | 'order_amount_updated' | 'reconciliation_alert';
 
 export interface Notification {
   id: string;

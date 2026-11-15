@@ -4,22 +4,31 @@
 
 import { Router } from 'express';
 import * as productController from '../controllers/product.controller';
-import { optionalAuth, validate, productSchemas, createRateLimiter } from '../middleware';
+import { optionalAuth, validate, productSchemas } from '../middleware';
+import { twoLayerLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
 // SECURITY FIX: Add rate limiting for public product endpoints
-const productRateLimiter = createRateLimiter(
-  60 * 1000, // 1 minute
-  60, // 60 requests per minute
-  'Too many product requests, please try again later'
-);
+// Two layers (see twoLayerLimiter): per signed-in session, plus a per-IP
+// ceiling. It used to be 60 a minute PER IP — shared by every customer behind
+// the same mobile-carrier address and by ALL website visitors (their calls
+// arrive from Vercel's proxy addresses). A load test hit it within a second.
+const productRateLimiter = twoLayerLimiter({
+  name: 'products',
+  windowMs: 60 * 1000,
+  perSession: 120,
+  perIp: Math.max(60, Number(process.env.PRODUCT_MAX_PER_IP || 1200)),
+  message: 'Too many product requests, please try again later',
+});
 
-const searchRateLimiter = createRateLimiter(
-  60 * 1000, // 1 minute
-  30, // 30 search requests per minute
-  'Too many search requests, please try again later'
-);
+const searchRateLimiter = twoLayerLimiter({
+  name: 'search',
+  windowMs: 60 * 1000,
+  perSession: 60,
+  perIp: Math.max(30, Number(process.env.SEARCH_MAX_PER_IP || 600)),
+  message: 'Too many search requests, please try again later',
+});
 
 // Public routes with rate limiting
 router.get('/', productRateLimiter, optionalAuth, validate(productSchemas.list, 'query'), productController.getProducts);

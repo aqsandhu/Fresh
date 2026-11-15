@@ -331,8 +331,9 @@ export const trackAttaRequest = asyncHandler(async (req: Request, res: Response)
       ar.pickup_rider_id, ar.delivery_rider_id,
       ar.created_at
     FROM atta_requests ar
-    WHERE ar.id = $1`,
-    [id]
+    WHERE ar.id = $1
+      AND (ar.user_id = $2 OR $3::boolean)`,
+    [id, req.user?.id ?? null, ['admin', 'super_admin'].includes(String(req.user?.role))]
   );
 
   if (result.rows.length === 0) {

@@ -84,11 +84,9 @@ export const loginOcp = asyncHandler(async (req: Request, res: Response) => {
     await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
-  if (ocp.status !== 'active') {
-    return forbiddenResponse(res, 'This OCP account is disabled. Please contact the admin.');
-  }
-
-  const valid = await bcrypt.compare(String(pin), ocp.pin_hash);
+  // PIN first, status after (the "disabled" message used to answer any phone
+  // number without a PIN — telling anyone which numbers are OCPs).
+  const valid = Boolean(ocp.pin_hash) && (await bcrypt.compare(String(pin), ocp.pin_hash));
   if (!valid) {
     const { lockedUntil } = await registerPinFailure(lockKey);
     logger.warn('OCP PIN verify failed', { ocpId: ocp.id, lockedUntil });
@@ -98,6 +96,9 @@ export const loginOcp = asyncHandler(async (req: Request, res: Response) => {
       return errorResponse(res, 'Too many failed PIN attempts. Try again later.', 429);
     }
     return unauthorizedResponse(res, 'Invalid phone or PIN');
+  }
+  if (ocp.status !== 'active') {
+    return forbiddenResponse(res, 'This OCP account is disabled. Please contact the admin.');
   }
 
   // Successful login resets the failure counter.

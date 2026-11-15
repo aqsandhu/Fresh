@@ -153,17 +153,24 @@ export async function deductOcpStockOnDelivery(client: PoolClient, orderId: stri
   if (already.rows.length > 0) return;
 
   const items = await client.query(
-    `SELECT product_id, quantity, unit, COALESCE(quality, 'A') AS quality, final_weight_kg
-       FROM order_items WHERE order_id = $1 AND product_id IS NOT NULL`,
+    `SELECT oi.product_id, oi.quantity, oi.unit, COALESCE(oi.quality, 'A') AS quality, oi.final_weight_kg,
+            COALESCE(p.unit_value, 1) AS unit_value
+       FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id
+      WHERE oi.order_id = $1 AND oi.product_id IS NOT NULL`,
     [orderId]
   );
 
   for (const it of items.rows) {
     // Variable-weight items deduct their ACTUAL packed weight; others use the
     // unit-fraction math (half_kg = 0.5, etc).
+    // Stock is counted in the product's own unit (one unit = unit_value kg),
+    // so a weighed line is converted from kg to units — the same conversion
+    // the system-stock side uses. (It was deducted in raw kg before, which is
+    // only right when one unit happens to be exactly 1 kg.)
+    const unitValue = parseFloat(String(it.unit_value)) > 0 ? parseFloat(String(it.unit_value)) : 1;
     const need =
       it.final_weight_kg != null
-        ? Math.max(0, parseFloat(String(it.final_weight_kg)) || 0)
+        ? Math.max(0, (parseFloat(String(it.final_weight_kg)) || 0) / unitValue)
         : stockUnitsNeeded(it.quantity, it.unit);
     if (need <= 0) continue;
 

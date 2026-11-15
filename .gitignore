@@ -59,3 +59,7 @@ GoogleService-Info.plist
 
 # Vite dep-optimizer cache (build artifact — never commit)
 .vite/
+
+# Database backups (ops/db-backup.sh) hold customer data — never commit them
+backups/
+*.dump

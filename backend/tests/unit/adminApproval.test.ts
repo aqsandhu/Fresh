@@ -68,3 +68,34 @@ describe('verifySecondApprover', () => {
       .rejects.toMatchObject({ http: 401 });
   });
 });
+
+// Owner's decision (Q7): only an approval code from the approver's own device.
+describe('approver password is not accepted (approval code only)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const bcrypt = require('bcryptjs');
+  const approverRow = { id: 'approver-1', password_hash: bcrypt.hashSync('Approver123', 4) };
+  const clientWith = (codes: Array<{ id: string; code_hash: string }>) => ({
+    query: jest.fn<any>(async (sql: string) => {
+      if (/FROM users/.test(sql)) return { rows: [approverRow] };
+      if (/FROM approval_codes/.test(sql)) return { rows: codes };
+      if (/UPDATE approval_codes SET used_at/.test(sql)) return { rowCount: 1, rows: [{ id: 'code-1' }] };
+      return { rows: [], rowCount: 0 };
+    }),
+  }) as any;
+  afterEach(() => { delete process.env.APPROVAL_PASSWORDS; });
+
+  it('the approver\'s correct password is refused', async () => {
+    await expect(verifySecondApprover(clientWith([]), fakeReq(), '03001234567', 'Approver123'))
+      .rejects.toMatchObject({ http: 400, message: expect.stringContaining('approval code') });
+  });
+
+  it('a valid approval code is accepted', async () => {
+    const code = { id: 'code-1', code_hash: bcrypt.hashSync('482913', 4) };
+    await expect(verifySecondApprover(clientWith([code]), fakeReq(), '03001234567', '482913')).resolves.toBe('approver-1');
+  });
+
+  it('APPROVAL_PASSWORDS=on (emergency switch) lets the password through again', async () => {
+    process.env.APPROVAL_PASSWORDS = 'on';
+    await expect(verifySecondApprover(clientWith([]), fakeReq(), '03001234567', 'Approver123')).resolves.toBe('approver-1');
+  });
+});

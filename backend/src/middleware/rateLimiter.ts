@@ -6,6 +6,8 @@ import rateLimit, { ipKeyGenerator, type RateLimitRequestHandler } from 'express
 import RedisStore, { type SendCommandFn } from 'rate-limit-redis';
 import Redis from 'ioredis';
 import { Request, Response } from 'express';
+import crypto from 'crypto';
+import { getRefreshTokenFromRequest } from '../utils/authCookies';
 import logger from '../utils/logger';
 import { captureMessage } from '../config/sentry';
 
@@ -125,27 +127,79 @@ export async function initRateLimiterStore(): Promise<void> {
   }
 }
 
-export const apiRateLimiter: RateLimitRequestHandler = rateLimit({
+/**
+ * The session a request belongs to: a hash of the access token it carries
+ * (Bearer header or the `token` cookie), or null for an anonymous request.
+ * Anyone can send a made-up token, so a limiter keyed by this is ALWAYS paired
+ * with a per-IP ceiling.
+ */
+export function sessionKey(req: Request): string | null {
+  const header = req.headers.authorization;
+  const bearer = typeof header === 'string' && /^Bearer\s+/i.test(header) ? header.replace(/^Bearer\s+/i, '') : undefined;
+  const cookie = (req as Request & { cookies?: Record<string, string> }).cookies?.token;
+  const token = bearer || cookie;
+  return typeof token === 'string' && token.length >= 20
+    ? `tk:${crypto.createHash('sha256').update(token).digest('hex').slice(0, 32)}`
+    : null;
+}
+
+/**
+ * Busy READ traffic is limited in two layers (same idea as the refresh limit):
+ *  • per SESSION for signed-in callers — the normal budget;
+ *  • per IP, a high ceiling only — it stops floods from one address.
+ * A per-IP budget alone counted many customers as one: Pakistani mobile
+ * carriers put thousands of phones behind one address (CGNAT), and every
+ * website call reaches the API through Vercel's proxy, i.e. from a handful of
+ * Vercel addresses. The old 2,000 per 15 min (and 60 product calls a minute)
+ * per IP was therefore a limit for ALL website visitors together.
+ */
+export function twoLayerLimiter(opts: {
+  name: string;
+  windowMs: number;
+  perSession: number;
+  perIp: number;
+  message: string;
+  store?: ReturnType<typeof makeStore>;
+  ipStore?: ReturnType<typeof makeStore>;
+}): RateLimitRequestHandler[] {
+  const reply = (res: Response) =>
+    res.status(429).json({ success: false, message: opts.message, retryAfter: Math.ceil(opts.windowMs / 1000) });
+  const perIp = rateLimit({
+    windowMs: opts.windowMs,
+    max: opts.perIp,
+    skip: skipInDev,
+    store: opts.ipStore,
+    standardHeaders: true,
+    legacyHeaders: false,
+    passOnStoreError: true,
+    handler: (_req: Request, res: Response) => reply(res),
+  });
+  const perSession = rateLimit({
+    windowMs: opts.windowMs,
+    max: opts.perSession,
+    // Anonymous requests are only under the per-IP ceiling.
+    skip: (req: Request) => skipInDev(req) || sessionKey(req) === null,
+    keyGenerator: (req: Request) => sessionKey(req) ?? ipKeyGenerator(req.ip ?? ''),
+    store: opts.store,
+    standardHeaders: true,
+    legacyHeaders: false,
+    passOnStoreError: true,
+    handler: (_req: Request, res: Response) => reply(res),
+  });
+  return [perIp, perSession];
+}
+
+const API_MAX_PER_IP = isDev ? 100000 : Math.max(MAX_REQUESTS, Number(process.env.API_MAX_PER_IP || 20000));
+
+/** Global API limit: per session MAX_REQUESTS / per IP API_MAX_PER_IP (both per RATE_LIMIT_WINDOW_MS). */
+export const apiRateLimiters: RateLimitRequestHandler[] = twoLayerLimiter({
+  name: 'api',
   windowMs: WINDOW_MS,
-  max: MAX_REQUESTS,
-  skip: skipInDev,
+  perSession: MAX_REQUESTS,
+  perIp: API_MAX_PER_IP,
+  message: 'Too many requests, please try again later',
   store: apiRedisStore,
-  message: {
-    success: false,
-    message: 'Too many requests from this IP, please try again later',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Redis down → let the request through (alert already fired) instead of
-  // returning 500 on every rate-limited endpoint.
-  passOnStoreError: true,
-  handler: (req: Request, res: Response) => {
-    res.status(429).json({
-      success: false,
-      message: 'Too many requests from this IP, please try again later',
-      retryAfter: Math.ceil(WINDOW_MS / 1000),
-    });
-  },
+  ipStore: makeStore('api-ip'),
 });
 
 export const authRateLimiter: RateLimitRequestHandler = rateLimit({
@@ -331,11 +385,47 @@ export const otpRateLimiter: RateLimitRequestHandler = rateLimit({
   },
 });
 
-// Refresh tokens are long-lived credentials; hammering /refresh should never
-// be unlimited. 60 per 15 min per IP is far above any legitimate client.
-export const refreshRateLimiter: RateLimitRequestHandler = rateLimit({
+/**
+ * Key for the per-SESSION refresh limit: a hash of the refresh token the
+ * caller presented (body or cookie). Falls back to the IP when there is none.
+ */
+export function refreshSessionKey(req: Request): string {
+  const token = getRefreshTokenFromRequest(req as Parameters<typeof getRefreshTokenFromRequest>[0]);
+  if (typeof token === 'string' && token.length >= 20) {
+    return `rt:${crypto.createHash('sha256').update(token).digest('hex').slice(0, 32)}`;
+  }
+  return ipKeyGenerator(req.ip ?? '');
+}
+
+// Refresh tokens are long-lived credentials; hammering /refresh must never be
+// unlimited. Two layers:
+//  • per SESSION (the token presented): 20 per 15 min. An honest client
+//    refreshes about once per 15 minutes.
+//  • per IP: a high ceiling only. The old limit of 60 per 15 min PER IP
+//    signed real customers out — Pakistani mobile carriers put thousands of
+//    phones behind one address, so the 61st customer on that address got a 429
+//    and both apps clear the session on a failed refresh.
+const refreshPerSessionLimiter: RateLimitRequestHandler = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: isDev ? 1000 : 60,
+  max: isDev ? 1000 : 20,
+  skip: skipInDev,
+  store: makeStore('refresh-session'),
+  keyGenerator: refreshSessionKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: true,
+  handler: (_req: Request, res: Response) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many token refresh attempts, please try again later',
+      retryAfter: 15 * 60,
+    });
+  },
+});
+
+const refreshPerIpLimiter: RateLimitRequestHandler = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isDev ? 10000 : Math.max(60, Number(process.env.REFRESH_MAX_PER_IP || 3000)),
   skip: skipInDev,
   store: refreshRedisStore,
   message: {
@@ -355,6 +445,9 @@ export const refreshRateLimiter: RateLimitRequestHandler = rateLimit({
     });
   },
 });
+
+/** Both layers, in order: the wide per-IP ceiling, then the per-session limit. */
+export const refreshRateLimiter: RateLimitRequestHandler[] = [refreshPerIpLimiter, refreshPerSessionLimiter];
 
 export const createRateLimiter = (
   windowMs: number,

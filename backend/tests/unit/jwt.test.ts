@@ -283,4 +283,24 @@ describe('JWT Token Management', () => {
       }
     });
   });
+
+  // ============================================================================
+  describe('only HS256, and a refresh token is never an access token', () => {
+    const secret = process.env.JWT_SECRET as string;
+
+    it('refuses a token signed with another algorithm even with the right secret', () => {
+      const hs512 = jwt.sign({ userId: mockUserId, phone: mockPhone, role: 'admin' }, secret, { algorithm: 'HS512' });
+      expect(() => verifyAccessToken(hs512)).toThrow();
+    });
+
+    it('refuses an unsigned (alg none) token', () => {
+      const none = jwt.sign({ userId: mockUserId, phone: mockPhone, role: 'super_admin' }, '', { algorithm: 'none' });
+      expect(() => verifyAccessToken(none)).toThrow();
+    });
+
+    it('refuses a refresh-type token signed with the access secret', () => {
+      const t = jwt.sign({ userId: mockUserId, phone: mockPhone, role: 'customer', type: 'refresh' }, secret);
+      expect(() => verifyAccessToken(t)).toThrow(/Portal tokens|not valid/);
+    });
+  });
 });

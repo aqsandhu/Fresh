@@ -10,7 +10,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let cached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
@@ -98,6 +99,7 @@ async function runDdl(connectionString: string): Promise<void> {
 
 /** Add the internal-control columns if missing. Returns true when present. */
 export async function ensureControlColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasControlColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (cached === true) return true;
   if (ensurePromise) return ensurePromise;
 

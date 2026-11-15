@@ -5,7 +5,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let locationAddedByCached: boolean | null = null;
 let addressMigrationsDone = false;
@@ -83,6 +84,7 @@ async function runAddressMigrationsOnConnection(connectionString: string): Promi
 
 /** Run idempotent address table migrations (safe to call on every boot / request). */
 export async function ensureAddressColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasLocationAddedByColumn(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (addressMigrationsDone) {
     return hasLocationAddedByColumn();
   }

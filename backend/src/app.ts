@@ -2,7 +2,7 @@
 // FRESH BAZAR DELIVERY PLATFORM - MAIN APPLICATION
 // ============================================================================
 
-import express, { Application, Request, Response } from 'express';
+import express, { Application, NextFunction, Request, Response } from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -22,13 +22,17 @@ import { initSentry, setupSentryMiddleware, setupSentryErrorHandler } from './co
 import { initializeSocket, getIO } from './config/socket';
 
 // Import Swagger configuration
-import { setupSwagger } from './config/swagger';
+import swaggerSpec, { setupSwagger } from './config/swagger';
 
 // Import database and middleware
-import { testConnection, closePool } from './config/database';
+import pool, { testConnection, closePool } from './config/database';
+import { metricsMiddleware, metricsAuthorized, renderMetrics } from './utils/metrics';
+import { findPendingMigrations } from './utils/pendingMigrations';
+import { addRoutesToSpec, listExpressRoutes } from './config/openapiRoutes';
 import { bootstrapAdmin } from './scripts/bootstrapAdmin';
 import { ensureStorageBucket } from './config/storage';
 import { logOtpBypassWarningIfEnabled } from './config/otpBypass';
+import { logAdmin2faStatus } from './config/admin2fa';
 import { ensurePinColumns } from './config/pinAuth';
 import { ensureAddressColumns } from './config/addressSchema';
 import {
@@ -53,6 +57,7 @@ import { query as dbQuery } from './config/database';
 import { runReconciliation } from './utils/reconciliation';
 import { runAbandonedCartReminders } from './controllers/marketing.controller';
 import { runExclusively } from './utils/leaderLock';
+import { reportJobFailure } from './utils/jobAlerts';
 
 let reconciliationTimer: NodeJS.Timeout | null = null;
 let reconciliationKickoffTimer: NodeJS.Timeout | null = null;
@@ -68,7 +73,7 @@ function startMarketingScheduler(): void {
   // Leader-locked: with 2+ instances only one runs the pass (see leaderLock.ts).
   const tick = () =>
     runExclusively('scheduler:abandoned-cart-reminders', () => runAbandonedCartReminders()).catch((e) =>
-      logger.error('Abandoned-cart reminder tick failed', { error: (e as Error)?.message })
+      reportJobFailure('abandoned-cart-reminders', 'Abandoned-cart reminders', e)
     );
   marketingKickoffTimer = setTimeout(tick, 2 * 60 * 1000); // first pass ~2 min after boot
   marketingTimer = setInterval(tick, HOUR);
@@ -84,7 +89,7 @@ function startReconciliationScheduler(): void {
   // Leader-locked: with 2+ instances only one runs the watchdog (see leaderLock.ts).
   const tick = () =>
     runExclusively('scheduler:reconciliation', () => runReconciliation()).catch((e) =>
-      logger.error('Reconciliation tick failed', { error: (e as Error)?.message })
+      reportJobFailure('reconciliation', 'The daily books check (watchdog)', e)
     );
   reconciliationKickoffTimer = setTimeout(async () => {
     try {
@@ -114,13 +119,17 @@ function stopSchedulers(): void {
   dbRetryTimer = null;
 }
 import { morganStream } from './utils/logger';
+import { redactUrl } from './utils/redact';
+import { requestId } from './middleware/requestId';
+import { enforceEnvironment } from './config/envCheck';
 import {
-  apiRateLimiter,
+  apiRateLimiters,
   initRateLimiterStore,
   errorHandler,
   notFoundHandler,
   handleUnhandledRejection,
   handleUncaughtException,
+  ForbiddenError,
 } from './middleware';
 import { getAllowedOrigins } from './utils/corsOrigins';
 import { ensureDatabaseExtensions } from './config/database';
@@ -238,7 +247,12 @@ const corsOptions = {
       logger.warn(`CORS blocked origin: ${origin}`, {
         hint: 'Add this URL to CORS_ORIGIN (or CORS_EXTRA_ORIGINS) on Render',
       });
-      callback(new Error('Not allowed by CORS'));
+      // A web page on a site that is not ours: refuse the request outright
+      // (this is also what stops a cross-site form/JS call from riding a
+      // logged-in browser's cookies). It is the caller's fault — a 403, not
+      // the 500 it used to produce, which also filled the error log every
+      // time a crawler sent a made-up Origin.
+      callback(new ForbiddenError('This website is not allowed to call the Fresh Bazar API.'));
     }
   },
   credentials: corsCredentials,
@@ -249,8 +263,16 @@ const corsOptions = {
     'X-Requested-With',
     'X-City-Id',
     'X-Client-Platform',
+    'X-Request-Id',
   ],
+  // Let the browser apps read the id so a failed request can be quoted to support.
+  exposedHeaders: ['X-Request-Id'],
 };
+
+// One id per request — first, so even a CORS or parse failure carries it.
+app.use(requestId);
+// Request counts / latency per route for GET /metrics (see utils/metrics.ts).
+app.use(metricsMiddleware);
 
 app.use(cors(corsOptions));
 
@@ -264,7 +286,10 @@ app.use(cors(corsOptions));
 // sender's key order or whitespace differs from ours.
 app.use(
   express.json({
-    limit: '10mb',
+    // JSON bodies here are small (the largest is a cart or a service-area
+    // polygon); files go through multipart uploads. 10 MB per request let a
+    // handful of callers pin the server's memory.
+    limit: process.env.JSON_BODY_LIMIT || '1mb',
     verify: (req, _res, buf) => {
       (req as Request & { rawBody?: Buffer }).rawBody = buf;
     },
@@ -275,7 +300,16 @@ app.use(
 app.use(cookieParser());
 
 // Parse URL-encoded bodies
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || '1mb' }));
+
+// Anything answered to a signed-in caller is personal (orders, addresses,
+// cash figures): browsers and proxies must not keep a copy.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.headers.authorization || req.headers.cookie) {
+    res.setHeader('Cache-Control', 'no-store');
+  }
+  next();
+});
 
 // ============================================================================
 // SENTRY REQUEST HANDLER (MUST BE FIRST MIDDLEWARE)
@@ -288,7 +322,11 @@ setupSentryMiddleware(app);
 // ============================================================================
 
 // HTTP request logging
-app.use(morgan(NODE_ENV === 'development' ? 'dev' : 'combined', {
+morgan.token('request-id', (req) => (req as Request).requestId || '-');
+// The URL with query values judged by name (a token or code sent in the query
+// string must not land in the log in clear).
+morgan.token('safe-url', (req) => redactUrl((req as Request).originalUrl || (req as Request).url || ''));
+app.use(morgan(NODE_ENV === 'development' ? 'dev' : ':request-id :remote-addr ":method :safe-url HTTP/:http-version" :status :res[content-length] :response-time ms ":user-agent"', {
   stream: morganStream,
   // Skip probe endpoints — they'd drown real request logs.
   skip: (req: Request) => req.path === '/health' || req.path === '/live' || req.path === '/ready',
@@ -304,7 +342,7 @@ app.use(compression());
 // RATE LIMITING
 // ============================================================================
 
-app.use(apiRateLimiter);
+app.use(apiRateLimiters);
 
 // ============================================================================
 // STATIC FILES
@@ -353,6 +391,17 @@ app.get('/ready', async (_req: Request, res: Response) => {
   });
 });
 
+// Metrics for a monitoring service (Prometheus text format). Hidden — 404 —
+// unless METRICS_TOKEN is set and sent as "Authorization: Bearer <token>".
+app.get('/metrics', (req: Request, res: Response) => {
+  if (!metricsAuthorized(req.headers.authorization)) {
+    res.status(404).json({ success: false, message: 'Not found' });
+    return;
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('text/plain; version=0.0.4').send(renderMetrics(pool));
+});
+
 // ============================================================================
 // SWAGGER API DOCUMENTATION
 // ============================================================================
@@ -366,6 +415,9 @@ setupSwagger(app);
 const API_PREFIX = '/api';
 
 app.use(API_PREFIX, routes);
+
+// API docs: every mounted route becomes an OpenAPI operation (config/openapiRoutes.ts).
+addRoutesToSpec(swaggerSpec as { paths?: Record<string, Record<string, unknown>> }, listExpressRoutes(app));
 
 // ============================================================================
 // ERROR HANDLING
@@ -385,6 +437,9 @@ app.use(errorHandler);
 // ============================================================================
 
 const startServer = async () => {
+  // Refuse to start in production on a broken configuration (a typo in a
+  // limit used to turn a control off silently — see config/envCheck.ts).
+  enforceEnvironment();
   try {
     // Test database connection (with retries, non-blocking)
     const dbConnected = await testConnection(5, 5000);
@@ -406,6 +461,7 @@ const startServer = async () => {
     // This keeps write routes from accepting traffic against a half-migrated
     // schema while preserving degraded startup when the DB is unavailable.
     logOtpBypassWarningIfEnabled();
+    logAdmin2faStatus();
     // Unsigned webhooks are only ever honoured outside production (see
     // webhook.controller.ts verifyWebhookSignature) — say so loudly at boot so
     // a leftover flag on the dashboard is noticed rather than silently ignored.
@@ -435,10 +491,23 @@ const startServer = async () => {
     const runStartupTasks = async (failFast = false) => {
       try {
         await ensureDatabaseExtensions();
-        // Production schema is owned exclusively by versioned migrations
-        // (Render preDeployCommand). Runtime DDL is kept only as a local-dev
-        // convenience so multiple production replicas never race on ALTERs.
-        if (NODE_ENV !== 'production') {
+        // The schema is owned by the versioned migrations ALONE, in every
+        // environment (Render runs them before each deploy; locally
+        // `migrate:sql`). Checked 15 Nov 2026: schema.sql + migrations gives
+        // exactly the schema the old boot-time DDL below produced, so that DDL
+        // is off by default. It used to run in development/CI only — which
+        // could hide a column that existed in no migration until production
+        // broke. SCHEMA_SELF_HEAL=true turns it back on for an emergency.
+        const pending = await findPendingMigrations((text) => dbQuery(text));
+        if (pending === null) {
+          logger.warn('Could not check for unapplied migrations (no schema_migrations table or no database/migrations folder). Run "pnpm --filter @freshbazar/backend migrate:sql".');
+        } else if (pending.length > 0) {
+          logger.error(
+            `${pending.length} database migration(s) are NOT applied: ${pending.slice(0, 5).join(', ')}${pending.length > 5 ? ', …' : ''}. ` +
+              'Run "pnpm --filter @freshbazar/backend migrate:sql" — screens that use the new tables/columns fail until then.'
+          );
+        }
+        if (process.env.SCHEMA_SELF_HEAL === 'true') {
         await ensurePinColumns();
         await ensureAddressColumns();
         await ensureOrderCouponColumns();

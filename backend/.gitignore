@@ -51,3 +51,5 @@ temp/
 # Misc
 .cache/
 .eslintcache
+coverage-e2e/
+coverage-combined/

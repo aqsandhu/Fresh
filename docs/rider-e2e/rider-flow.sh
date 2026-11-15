@@ -9,7 +9,7 @@ SLOT=$($PSQL -c "select id from time_slots order by start_time limit 1")
 pass=0; fail=0
 check() { if [ "$2" = "$3" ]; then echo "PASS $1"; pass=$((pass+1)); else echo "FAIL $1 — expected [$3] got [$2]"; fail=$((fail+1)); fi; }
 
-ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345"}' | jq -r .data.tokens.accessToken)
+ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345","otp":"123789"}' | jq -r .data.tokens.accessToken)
 AH=(-H "Authorization: Bearer $ATOK" -H "X-City-Id: $CITY")
 
 # ── Admin creates a rider (multipart) ────────────────────────────────────
@@ -128,7 +128,7 @@ curl -s -X PUT $API/rider/tasks/$DTASK/pickup "${RH[@]}" -H 'Content-Type: appli
 curl -s -X PUT $API/rider/tasks/$DTASK/deliver "${RH[@]}" -H 'Content-Type: application/json' -d '{}' >/dev/null
 check "atta delivered + collected" "$($PSQL -c "select status||'/'||payment_status||'/'||paid_amount::int from atta_requests where id='$ATTA'")" "delivered/completed/250"
 check "atta cash due" "$(curl -s $API/rider/stats "${RH[@]}" | jq -r .data.payment.paymentPending)" "250"
-check "admin settles atta cash" "$(curl -s -X POST $API/admin/riders/$RIDER_ID/cash-settlements/receive "${AH[@]}" -H 'Content-Type: application/json' -d '{"password":"Admin12345"}' | jq -r .data.atta)" "1"
+check "admin settles atta cash" "$(curl -s -X POST $API/admin/riders/$RIDER_ID/cash-settlements/receive "${AH[@]}" -H 'Content-Type: application/json' -d '{"password":"Admin12345","otp":"123789"}' | jq -r .data.atta)" "1"
 check "admin atta list shows rider" "$(curl -s $API/admin/atta-requests "${AH[@]}" | jq -r '.data.requests[0].delivery_rider_name')" "Test Rider"
 
 # ── Admin detail endpoints + block ────────────────────────────────────────

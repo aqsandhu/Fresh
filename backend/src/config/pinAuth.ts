@@ -7,7 +7,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let pinColumnsCached: boolean | null = null;
 let ensurePinColumnsPromise: Promise<boolean> | null = null;
@@ -92,6 +93,7 @@ async function runAlterOnConnection(connectionString: string): Promise<boolean> 
 
 /** Try to add pin columns. Returns true when columns are present afterward. */
 export async function ensurePinColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasPinColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (await hasPinColumns()) return true;
   if (ensurePinColumnsPromise) return ensurePinColumnsPromise;
 

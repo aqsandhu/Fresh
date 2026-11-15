@@ -11,6 +11,7 @@ import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasTimeSlotBookings } from '../config/timeSlotSchema';
 import { reserveProductStock } from './systemStock';
+import { unitNotOfferedMessage } from './unitOffer';
 import {
   normalizeProductUnit,
   normalizeQuality,
@@ -28,6 +29,9 @@ const RESTAURANT_V2_COLS =
   ', restaurant_half_kg_price_a, restaurant_quarter_kg_price_a, restaurant_half_dozen_price_a' +
   ', restaurant_half_kg_price_b, restaurant_quarter_kg_price_b, restaurant_half_dozen_price_b' +
   ', restaurant_half_kg_price_c, restaurant_quarter_kg_price_c, restaurant_half_dozen_price_c';
+
+/** An identical order from the same restaurant inside this window is treated as a repeat of the first. */
+const DUPLICATE_ORDER_WINDOW_SEC = Math.max(5, Number(process.env.RESTAURANT_DUPLICATE_WINDOW_SEC || 30));
 
 export interface RestaurantOrderItemInput {
   product_id: string;
@@ -128,6 +132,44 @@ export async function placeRestaurantOrder(
   const catalogV2Ready = await hasCatalogV2Columns();
 
   return withTransaction(async (client) => {
+    // ── Double-submit guard ────────────────────────────────────────────────
+    // The consumer checkout is protected by its cart row; a restaurant order
+    // has no cart on the server, so a double tap (or a retry on a slow
+    // connection) used to place the same order two or three times, each
+    // reserving stock. One restaurant places one order at a time (advisory
+    // lock, released with the transaction), and an order identical to one it
+    // placed moments ago is answered with THAT order instead of a new one.
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`restaurant-order:${restaurantId}`]);
+    const signature = (rows: { product_id: string; unit?: string | null; quality?: string | null; quantity: unknown }[]) =>
+      rows
+        .map((r) => `${r.product_id}:${normalizeProductUnit(r.unit)}:${normalizeQuality(r.quality)}:${Math.max(1, parseInt(String(r.quantity), 10) || 1)}`)
+        .sort()
+        .join('|');
+    const wanted = signature(items);
+    const recent = await client.query(
+      `SELECT o.* FROM orders o
+        WHERE o.restaurant_id = $1 AND o.deleted_at IS NULL AND o.status = 'pending'
+          AND o.created_at > NOW() - ($4 || ' seconds')::interval
+          AND COALESCE(o.time_slot_id::text, '') = COALESCE($2::text, '')
+          AND COALESCE(o.requested_delivery_date::text, '') = COALESCE($3::text, '')
+        ORDER BY o.created_at DESC LIMIT 3`,
+      [
+        restaurantId,
+        opts.isUrgent ? null : (opts.timeSlotId || null),
+        opts.isUrgent ? null : (opts.requestedDeliveryDate || null),
+        String(DUPLICATE_ORDER_WINDOW_SEC),
+      ]
+    );
+    for (const candidate of recent.rows) {
+      const its = await client.query(
+        `SELECT product_id, unit, quality, quantity FROM order_items WHERE order_id = $1`,
+        [candidate.id]
+      );
+      if (signature(its.rows) === wanted) {
+        return { order: candidate, restaurant, duplicate: true };
+      }
+    }
+
     let subtotal = 0;
     const lines: any[] = [];
     for (const item of items) {
@@ -148,6 +190,8 @@ export async function placeRestaurantOrder(
       }
       const p = pr.rows[0];
       const unit = normalizeProductUnit(item.unit);
+      const unitProblem = await unitNotOfferedMessage(client, p.id, unit);
+      if (unitProblem) throw new RestaurantOrderError(unitProblem);
       const quality = normalizeQuality(item.quality);
       const qty = Math.max(1, parseInt(String(item.quantity), 10) || 1);
       // Per-quality restaurant enable gate (Catalog v2): tier must be enabled for
@@ -326,6 +370,6 @@ export async function placeRestaurantOrder(
       await client.query('UPDATE orders SET stock_reserved = TRUE WHERE id = $1', [order.id]);
     }
 
-    return { order, restaurant };
+    return { order, restaurant, duplicate: false };
   });
 }

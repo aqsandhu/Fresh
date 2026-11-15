@@ -65,7 +65,13 @@ export const getRestaurantProducts = asyncHandler(async (req: Request, res: Resp
     SELECT p.id, p.name_ur, p.name_en, p.slug,
            p.price,
            ${priceCols}
-           p.stock_quantity, p.stock_quantity_b, p.stock_quantity_c,
+           -- What a restaurant can actually order = on hand − already reserved by
+           -- other orders (the consumer catalogue has always shown it this way).
+           -- Showing the raw on-hand figure advertised stock that the order then
+           -- failed on at checkout. to_jsonb: works before the reserve columns exist.
+           GREATEST(0, p.stock_quantity   - COALESCE((to_jsonb(p)->>'reserved_quantity')::numeric, 0))   AS stock_quantity,
+           GREATEST(0, p.stock_quantity_b - COALESCE((to_jsonb(p)->>'reserved_quantity_b')::numeric, 0)) AS stock_quantity_b,
+           GREATEST(0, p.stock_quantity_c - COALESCE((to_jsonb(p)->>'reserved_quantity_c')::numeric, 0)) AS stock_quantity_c,
            p.allow_half_kg, p.allow_quarter_kg,
            p.unit_type, p.unit_value, p.primary_image, p.images,
            p.short_description, p.description_en,
@@ -173,8 +179,9 @@ export const createRestaurantOrder = asyncHandler(async (req: Request, res: Resp
 
   let order: any;
   let restaurant: any;
+  let duplicate = false;
   try {
-    ({ order, restaurant } = await placeRestaurantOrder(req.restaurant!.id, items, {
+    ({ order, restaurant, duplicate } = await placeRestaurantOrder(req.restaurant!.id, items, {
       customerNotes: customer_notes,
       timeSlotId: time_slot_id || null,
       requestedDeliveryDate: requested_delivery_date || null,
@@ -187,6 +194,13 @@ export const createRestaurantOrder = asyncHandler(async (req: Request, res: Resp
   } catch (err: any) {
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
+  }
+
+  // A repeat of an order placed moments ago (double tap / retry): answer
+  // with the order that already exists — no second order, no second alert.
+  if (duplicate) {
+    logger.info('Restaurant order repeat ignored', { orderId: order.id, restaurantId: restaurant.id });
+    return successResponse(res, order, 'Order placed');
   }
 
   logger.info('Restaurant order placed', { orderId: order.id, restaurantId: restaurant.id });

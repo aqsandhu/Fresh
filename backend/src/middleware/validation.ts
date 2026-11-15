@@ -37,13 +37,22 @@ export const validate = (
   };
 };
 
-// Format Joi errors
+// Format Joi errors. The rejected value is NOT sent back or logged: a
+// mistyped password / PIN is usually one key away from the real one, and the
+// error went to the server log and back to the client (crash reporters, proxy
+// logs). Joi's own messages can quote the value too ("with value ..."), so it
+// is cut out of the message as well.
 const formatJoiErrors = (error: JoiValidationError): any[] => {
-  return error.details.map((detail) => ({
-    field: detail.path.join('.'),
-    message: detail.message,
-    value: detail.context?.value,
-  }));
+  return error.details.map((detail) => {
+    const raw = detail.context?.value;
+    let message = detail.message;
+    // (Short values / numbers are left: cutting "1" would also cut "10" out
+    // of "must be at least 10".)
+    if (typeof raw === 'string' && raw.length >= 3) {
+      message = message.split(String(raw)).join('…');
+    }
+    return { field: detail.path.join('.'), message };
+  });
 };
 
 // Common validation schemas
@@ -636,6 +645,10 @@ export const adminSchemas = {
       'string.min': 'Password must be at least 6 characters',
       'string.max': 'Password must not exceed 128 characters',
       'any.required': 'Password is required',
+    }),
+    // Second step of the admin login (config/admin2fa.ts); absent on the first call.
+    otp: Joi.string().trim().pattern(/^\d{4,8}$/).allow('').optional().messages({
+      'string.pattern.base': 'Enter the verification code (digits only)',
     }),
   }),
 

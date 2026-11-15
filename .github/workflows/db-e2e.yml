@@ -88,6 +88,15 @@ jobs:
       - name: API checks
         run: bash docs/rider-e2e/run-all.sh
 
+      # The same real database, but with the app booted INSIDE jest so the code
+      # the checks run is measured: regression checks + a pass over every GET
+      # route as owner / customer / anonymous (none may answer 5xx).
+      - name: Real-database jest suite (with coverage)
+        run: pnpm --filter @freshbazar/backend test:e2e
+        env:
+          E2E_DATABASE_URL: postgres://postgres@127.0.0.1:55432/fb
+          E2E_PORT: '3997'
+
       - name: API log (on failure)
         if: failure()
         run: tail -200 "$RUNNER_TEMP/api.log" || true

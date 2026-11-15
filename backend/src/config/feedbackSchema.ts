@@ -8,7 +8,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let feedbackCached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
@@ -135,6 +136,7 @@ async function runDdlOnConnection(connectionString: string): Promise<void> {
 
 /** Apply migration 24 if needed. Returns true when the tables exist. */
 export async function ensureFeedbackTables(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasFeedbackTables(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (feedbackCached === true) return true;
   if (ensurePromise) return ensurePromise;
 
@@ -184,6 +186,7 @@ export async function hasComplaintImagesColumn(): Promise<boolean> {
 
 /** Add complaints.images to existing installs (idempotent). */
 export async function ensureComplaintImagesColumn(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasComplaintImagesColumn(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (complaintImagesCached === true) return true;
   if (complaintImagesPromise) return complaintImagesPromise;
 

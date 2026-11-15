@@ -12,7 +12,6 @@
 // redacted from the audit log by the existing "api_key" rule.
 // ============================================================================
 
-import crypto from 'crypto';
 import { fetchGlobalSettings, upsertGlobalSiteSetting } from '../../utils/siteSettings';
 
 export const AUDIT_AI_KEYS = {
@@ -47,27 +46,10 @@ export interface AuditAiConfig {
   keyUnreadable: boolean;
 }
 
-const secretKey = (): Buffer =>
-  crypto.createHash('sha256').update(String(process.env.AUDIT_AI_SECRET || process.env.JWT_SECRET || 'freshbazar-audit')).digest();
-
-export function encryptSecret(plain: string): string {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', secretKey(), iv);
-  const body = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-  return `v1:${iv.toString('base64')}:${cipher.getAuthTag().toString('base64')}:${body.toString('base64')}`;
-}
-
-export function decryptSecret(stored: string): string | null {
-  const [v, iv, tag, body] = String(stored || '').split(':');
-  if (v !== 'v1' || !iv || !tag || !body) return null;
-  try {
-    const decipher = crypto.createDecipheriv('aes-256-gcm', secretKey(), Buffer.from(iv, 'base64'));
-    decipher.setAuthTag(Buffer.from(tag, 'base64'));
-    return Buffer.concat([decipher.update(Buffer.from(body, 'base64')), decipher.final()]).toString('utf8');
-  } catch {
-    return null;
-  }
-}
+// Encryption lives in utils/secretBox (shared with the AI-chat key); re-exported
+// here for existing callers.
+export { encryptSecret, decryptSecret } from '../../utils/secretBox';
+import { encryptSecret, decryptSecret } from '../../utils/secretBox';
 
 export async function getAuditAiConfig(): Promise<AuditAiConfig> {
   const map = await fetchGlobalSettings(Object.values(AUDIT_AI_KEYS));

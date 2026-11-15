@@ -73,13 +73,14 @@ export class TooManyRequestsError extends ApiError {
 interface ErrorResponse {
   success: false;
   message: string;
+  requestId?: string;
   error?: any;
   stack?: string;
 }
 
 // Main error handler middleware
 export const errorHandler = (
-  err: Error | ApiError,
+  rawErr: Error | ApiError,
   req: Request,
   res: Response,
   next: NextFunction
@@ -88,9 +89,12 @@ export const errorHandler = (
   // again would throw 'Cannot set headers after they are sent' — defer to the
   // Express default handler instead.
   if (res.headersSent) {
-    next(err);
+    next(rawErr);
     return;
   }
+
+  // Same translation as asyncHandler, for errors raised in plain middleware.
+  const err: Error | ApiError = clientInputError(rawErr, req) ?? rawErr;
 
   let statusCode = 500;
   let message = 'Internal server error';
@@ -119,6 +123,29 @@ export const errorHandler = (
     // JSON parse error
     statusCode = 400;
     message = 'Invalid JSON';
+  } else if ((err as { type?: string }).type === 'entity.too.large') {
+    // body-parser: request body over the size limit (was a 500).
+    statusCode = 413;
+    message = 'The request is too large.';
+  } else if (err.name === 'MulterError') {
+    // File upload limits. Only the address routes had their own handler —
+    // everywhere else (products, riders, proofs, waste...) a picture over
+    // the limit or under the wrong field name answered 500.
+    const code = (err as { code?: string }).code;
+    if (code === 'LIMIT_FILE_SIZE') {
+      statusCode = 413;
+      const mb = Math.round(parseInt(process.env.MAX_FILE_SIZE || '5242880', 10) / 1024 / 1024);
+      message = `The picture is too large. The largest allowed is ${mb} MB.`;
+    } else if (code === 'LIMIT_FILE_COUNT') {
+      statusCode = 400;
+      message = 'Too many files in one request.';
+    } else if (code === 'LIMIT_UNEXPECTED_FILE') {
+      statusCode = 400;
+      message = 'The file was sent under an unexpected field name.';
+    } else {
+      statusCode = 400;
+      message = 'The upload could not be read.';
+    }
   }
 
   // Error reporting to Sentry happens once, in setupSentryErrorHandler (5xx only,
@@ -154,6 +181,7 @@ export const errorHandler = (
     });
   } else {
     logger.error('Error occurred', {
+      requestId: req.requestId,
       message: err.message,
       statusCode,
       path: req.path,
@@ -169,6 +197,11 @@ export const errorHandler = (
     success: false,
     message,
   };
+  // A server fault carries the request id, so "it failed" can be traced to
+  // the exact log lines (the id is also on every response as X-Request-Id).
+  if (statusCode >= 500 && req.requestId) {
+    response.requestId = req.requestId;
+  }
 
   if (errorDetails) {
     response.error = errorDetails;
@@ -190,16 +223,53 @@ export const notFoundHandler = (
 ): void => {
   res.status(404).json({
     success: false,
-    message: `Route ${req.originalUrl} not found`,
+    // Path only: the query string is whatever the caller sent (a token or
+    // phone number in the wrong place must not be echoed back).
+    message: `Route ${(req.originalUrl || req.url || '').split('?')[0]} not found`,
   });
 };
+
+/**
+ * A malformed id typed into the URL ("/orders/not-a-uuid") or sent in a body
+ * reaches Postgres as `WHERE id = $1` and comes back as SQLSTATE 22P02 —
+ * which used to surface as a 500 on most by-id endpoints. That is the
+ * caller's mistake, not a server fault: answer 404 for a bad path id and 400
+ * for a bad value elsewhere.
+ *
+ * Only translated when the rejected value really came from THIS request, so a
+ * genuine bug in our own SQL (a bad literal we wrote) still shows up as a 500
+ * and reaches error monitoring.
+ */
+export function clientInputError(err: any, req: Request): ApiError | null {
+  if (!err || err.code !== '22P02' || typeof err.message !== 'string') return null;
+  const m = /invalid input syntax for type (uuid|integer|bigint|numeric|smallint): "([\s\S]*)"$/i.exec(err.message);
+  if (!m) return null;
+  const rejected = m[2];
+  const has = (bag: unknown, depth = 0): boolean => {
+    if (bag === null || bag === undefined) return false;
+    if (typeof bag === 'string' || typeof bag === 'number') return String(bag) === rejected;
+    if (typeof bag !== 'object' || depth > 3) return false;
+    return Object.values(bag as Record<string, unknown>).some((v) => has(v, depth + 1));
+  };
+  if (has(req.params)) return new NotFoundError('Not found');
+  // The matched route's params are not always visible here (router-level
+  // middleware): fall back to the path segments themselves.
+  const decode = (seg: string) => { try { return decodeURIComponent(seg); } catch { return seg; } };
+  if (String(req.path || '').split('/').some((seg) => seg && decode(seg) === rejected)) {
+    return new NotFoundError('Not found');
+  }
+  if (has(req.query) || has(req.body) || has(req.headers['x-city-id'])) {
+    return new BadRequestError('One of the values sent is not valid.');
+  }
+  return null;
+}
 
 // Async handler wrapper
 export const asyncHandler = (
   fn: (req: Request, res: Response, next: NextFunction) => Promise<any>
 ) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
+    Promise.resolve(fn(req, res, next)).catch((err) => next(clientInputError(err, req) ?? err));
   };
 };
 

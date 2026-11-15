@@ -16,7 +16,7 @@ check() { if [ "$2" = "$3" ]; then echo "PASS $1"; pass=$((pass+1)); else echo "
 
 CITY=$($PSQL -c "select id from service_cities where name='Gujrat' limit 1")
 CITY2=$($PSQL -c "insert into service_cities (name, province) values ('Sialkot','Punjab') on conflict do nothing returning id"); [ -n "$CITY2" ] || CITY2=$($PSQL -c "select id from service_cities where name='Sialkot'")
-ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345"}' | jq -r .data.tokens.accessToken)
+ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345","otp":"123789"}' | jq -r .data.tokens.accessToken)
 AH=(-H "Authorization: Bearer $ATOK" -H 'Content-Type: application/json')
 ACH=("${AH[@]}" -H "X-City-Id: $CITY")
 

@@ -183,6 +183,7 @@ describe('POST /api/cart/sync', () => {
             {
               id: VALID_PRODUCT,
               name_en: 'Tomatoes',
+              unit_type: 'kg', // sold per kg, so a half-kg line is a unit it is offered in
               price: '100',
               half_kg_price: null,
               quarter_kg_price: null,

@@ -237,11 +237,17 @@ export const createAdminRestaurantOrder = asyncHandler(async (req: Request, res:
 
   let order: any;
   let restaurant: any;
+  let duplicate = false;
   try {
-    ({ order, restaurant } = await placeRestaurantOrder(restaurant_id, items, { customerNotes: customer_notes }));
+    ({ order, restaurant, duplicate } = await placeRestaurantOrder(restaurant_id, items, { customerNotes: customer_notes }));
   } catch (err: any) {
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
+  }
+
+  if (duplicate) {
+    // Same order submitted twice in a few seconds — return the one that exists.
+    return successResponse(res, order, 'Order placed');
   }
 
   logger.info('Admin placed restaurant order', { orderId: order.id, restaurantId: restaurant.id, by: req.user?.id });

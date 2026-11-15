@@ -56,6 +56,9 @@ RUN pnpm install --frozen-lockfile --prod --filter @freshbazar/backend...
 
 # Copy built application from builder
 COPY --from=builder --chown=nodejs:nodejs /app/backend/dist ./backend/dist
+# The migration runner (backend/dist/scripts/runSqlMigrations.js) reads these
+# from ../../../database/migrations — i.e. /app/database/migrations.
+COPY --chown=nodejs:nodejs database/migrations ./database/migrations
 
 # (SQL migrations live in the repo's /database folder; they're applied in
 #  Supabase + auto-ensured on boot, so they are NOT needed in the runtime image.

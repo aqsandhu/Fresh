@@ -125,6 +125,7 @@ export const listExpenses = asyncHandler(async (req: Request, res: Response) => 
     `SELECT e.id, e.type, e.category, e.amount, e.comment, e.ref_type, e.ref_id,
             e.for_month, e.incurred_at, e.city_id,
             COALESCE(pr.name_en, w.name, ru.full_name) AS ref_label,
+            sp.supplier_name, sp.bill_number, sp.bill_photo_url,
             sc.name AS city_name
        FROM expenses e
        LEFT JOIN stock_purchases sp ON e.ref_type = 'stock_purchase' AND sp.id = e.ref_id
@@ -206,6 +207,15 @@ export const createStockPurchase = asyncHandler(async (req: Request, res: Respon
   if (Math.abs(gradedTotal - rawRounded) > 0.001) {
     return errorResponse(res, `Quality A + B + C + waste (${gradedTotal}) must equal the raw weight (${rawRounded}).`, 400);
   }
+  // Who the stock was bought from (required) and the bill (optional): without
+  // them a purchase price can never be checked with the seller.
+  const text = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const supplierName = text(req.body?.supplier_name, 120);
+  const supplierPhone = text(req.body?.supplier_phone, 20) || null;
+  const billNumber = text(req.body?.bill_number, 60) || null;
+  const billPhotoUrl = (req.file as Express.Multer.File | undefined)?.url || null;
+  if (supplierName.length < 2) return errorResponse(res, 'Enter who the stock was bought from (supplier / mandi seller).', 400);
+
   const ledger = ledgerDateFor(req, req.body?.purchased_at);
   if (ledger.error) return errorResponse(res, ledger.error, 400);
   const purchasedAt = ledger.iso;
@@ -223,9 +233,11 @@ export const createStockPurchase = asyncHandler(async (req: Request, res: Respon
       const cityId = productCity || effectiveCityId(scope, req.body?.city_id);
 
       const sp = await client.query(
-        `INSERT INTO stock_purchases (city_id, product_id, purchased_at, raw_weight, purchase_price, grade_a, grade_b, grade_c, waste, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-        [cityId, product_id, purchasedAt, Number.isFinite(rawWeight) ? rawWeight : 0, price, gA, gB, gC, waste, req.user?.id ?? null]
+        `INSERT INTO stock_purchases (city_id, product_id, purchased_at, raw_weight, purchase_price, grade_a, grade_b, grade_c, waste, created_by,
+                                      supplier_name, supplier_phone, bill_number, bill_photo_url)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,
+        [cityId, product_id, purchasedAt, Number.isFinite(rawWeight) ? rawWeight : 0, price, gA, gB, gC, waste, req.user?.id ?? null,
+          supplierName, supplierPhone, billNumber, billPhotoUrl]
       );
       const purchaseId = sp.rows[0].id;
 

@@ -85,8 +85,8 @@ describe('commitProductSale', () => {
     const { client, calls } = mockClient(1);
     await commitProductSale(client, { productId: 'p1', quality: 'A', need: 2, orderId: 'o1' });
     const upd = calls.find((c) => c.sql.includes('UPDATE products'))!;
-    expect(upd.sql).toContain('reserved_quantity = GREATEST(0, reserved_quantity - $1)');
-    expect(upd.sql).toContain('stock_quantity = GREATEST(0, stock_quantity - $1)');
+    expect(upd.sql).toContain('reserved_quantity = GREATEST(0, p.reserved_quantity - $1)');
+    expect(upd.sql).toContain('stock_quantity = GREATEST(0, p.stock_quantity - $1)');
     expect(upd.sql).toContain('stock_status'); // quality-A flag recomputed
     const mv = calls.find((c) => c.sql.includes('INSERT INTO stock_movements'))!;
     expect(mv.params[3]).toBe(-2); // delta = -need
@@ -97,8 +97,25 @@ describe('commitProductSale', () => {
     const { client, calls } = mockClient(1);
     await commitProductSale(client, { productId: 'p1', quality: 'B', need: 1 });
     const upd = calls.find((c) => c.sql.includes('UPDATE products'))!;
-    expect(upd.sql).toContain('stock_quantity_b = GREATEST(0, stock_quantity_b - $1)');
+    expect(upd.sql).toContain('stock_quantity_b = GREATEST(0, p.stock_quantity_b - $1)');
     expect(upd.sql).not.toContain('stock_status');
+  });
+
+  // The floor at 0 can cut a sale short. The ledger must say what REALLY left,
+  // or the watchdog reports a stock drift that nobody caused.
+  it('records what really left when the books hold less than was sold', async () => {
+    const calls: Array<{ sql: string; params: unknown[] }> = [];
+    const client = {
+      query: jest.fn(async (sql: string, params: unknown[]) => {
+        calls.push({ sql, params });
+        if (sql.includes('INSERT INTO stock_movements')) return { rows: [], rowCount: 1 };
+        return { rows: [{ was: '1.000', now: '0.000' }], rowCount: 1 };
+      }),
+    } as unknown as PoolClient;
+    await commitProductSale(client, { productId: 'p1', quality: 'A', need: 2, orderId: 'o1' });
+    const mv = calls.find((c) => c.sql.includes('INSERT INTO stock_movements'))!;
+    expect(mv.params[3]).toBe(-1); // only 1 was on the books
+    expect(String(mv.params.find((p) => typeof p === 'string' && p.includes('short by')))).toContain('short by 1');
   });
 
   it('is a no-op for non-positive quantities', async () => {

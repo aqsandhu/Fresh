@@ -109,7 +109,7 @@ export const getAdminProducts = asyncHandler(async (req: Request, res: Response)
     ? 'p.price_b, p.price_c, p.stock_quantity_b, p.stock_quantity_c, p.available_for_restaurants, p.restaurant_price_a, p.restaurant_price_b, p.restaurant_price_c,'
     : '';
   const listCatalogV2Cols = (await hasCatalogV2Columns()) ? CATALOG_V2_READ_COLS : '';
-  const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, c.qualifies_for_free_delivery, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.half_kg_price, p.quarter_kg_price, p.half_dozen_price, ${listToggleCols} ${listQualityCols} ${listCatalogV2Cols} p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+  const productsSql = `SELECT p.id, p.name_ur, p.name_en, p.slug, p.sku, p.barcode, p.category_id, c.name_en as category_name, c.slug as category_slug, c.qualifies_for_free_delivery, p.subcategory_id, p.price, p.compare_at_price, p.cost_price, p.half_kg_price, p.quarter_kg_price, p.half_dozen_price, ${listToggleCols} ${listQualityCols} ${listCatalogV2Cols} p.unit_type, p.unit_value, p.stock_quantity, p.stock_status, p.primary_image, p.images, p.short_description, p.description_ur, p.description_en, p.is_active, p.is_featured, p.is_new_arrival, p.view_count, p.order_count, p.created_at, p.updated_at ${sql} ORDER BY p.${sortField} ${order}, p.id LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
   params.push(safeLimit, offset);
 
   const result = await query(productsSql, params);
@@ -376,18 +376,38 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 
   // "Price dip": drop a price to almost nothing, let a friend order, put it
   // back. Orders lock the price at order time, so the sale then looks normal.
-  // A staff admin may not cut any selling price by more than the limit in one
-  // change — a real clearance is the owner's call (super admin is not capped).
+  // A staff admin may not cut any selling price by more than the limit — a
+  // real clearance is the owner's call (super admin is not capped). The limit
+  // is measured against the HIGHEST price of the last 24 hours, so it cannot be
+  // walked down in small steps (1000 → 700 → 490 → 343 …). Earlier prices come
+  // from the audit log, which stores the full product row before every edit.
   if (req.user?.role !== 'super_admin') {
-    for (const [key, value] of Object.entries(updates)) {
-      if (!/price/.test(key) || key === 'compare_at_price' || key === 'cost_price') continue;
-      const before = parseFloat(String(existing.rows[0][key] ?? ''));
-      const after = parseFloat(String(value));
+    const priceKeys = Object.keys(updates).filter(
+      (key) => /price/.test(key) && key !== 'compare_at_price' && key !== 'cost_price' && /^[a-z0-9_]+$/.test(key)
+    );
+    let recentHigh: Record<string, number> = {};
+    if (priceKeys.length) {
+      const hist = await query(
+        `SELECT ${priceKeys.map((k, i) => `MAX(NULLIF(old_data->>'${k}', '')::numeric) AS h${i}`).join(', ')}
+           FROM audit_logs
+          WHERE resource = 'products' AND resource_id = $1 AND status = 'success'
+            AND created_at > NOW() - INTERVAL '24 hours'`,
+        [id]
+      ).catch(() => ({ rows: [] as any[] }));
+      recentHigh = Object.fromEntries(priceKeys.map((k, i) => [k, parseFloat(hist.rows[0]?.[`h${i}`]) || 0]));
+    }
+    for (const key of priceKeys) {
+      const current = parseFloat(String(existing.rows[0][key] ?? ''));
+      const before = Math.max(Number.isFinite(current) ? current : 0, recentHigh[key] || 0);
+      const after = parseFloat(String(updates[key]));
       if (!(before > 0) || !(after > 0)) continue;
       if (after < before * (1 - PRICE_CUT_LIMIT_PCT / 100)) {
+        const stepped = before > current;
         return errorResponse(
           res,
-          `A price cut of more than ${PRICE_CUT_LIMIT_PCT}% (${key}: Rs. ${before} → Rs. ${after}) needs the super admin.`,
+          stepped
+            ? `${key} was Rs. ${before} within the last 24 hours; going to Rs. ${after} is a cut of more than ${PRICE_CUT_LIMIT_PCT}% and needs the super admin.`
+            : `A price cut of more than ${PRICE_CUT_LIMIT_PCT}% (${key}: Rs. ${before} → Rs. ${after}) needs the super admin.`,
           400
         );
       }

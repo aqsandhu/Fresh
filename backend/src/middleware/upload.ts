@@ -14,7 +14,7 @@
 import multer from 'multer';
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { uploadFileToStorage, isStorageConfigured } from '../config/storage';
-import { BadRequestError } from './errorHandler';
+import { ApiError, BadRequestError } from './errorHandler';
 import logger from '../utils/logger';
 
 // Allowed file types
@@ -34,7 +34,8 @@ const fileFilter = (
   if (ALLOWED_FILE_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error(`Invalid file type. Allowed types: ${ALLOWED_FILE_TYPES.join(', ')}`));
+    // BadRequestError (not a plain Error) so every route answers 400, not 500.
+    cb(new BadRequestError(`Invalid file type. Allowed types: ${ALLOWED_FILE_TYPES.join(', ')}`));
   }
 };
 
@@ -86,6 +87,9 @@ function assertRealImage(file: Express.Multer.File): void {
       `File "${file.originalname || file.fieldname}" is not a valid image (content does not match an allowed image format)`
     );
   }
+  // Store under the type the bytes really are, not the one the client
+  // declared — the object's Content-Type and extension come from this.
+  file.mimetype = sniffed;
 }
 
 // ----------------------------------------------------------------------------
@@ -127,15 +131,17 @@ function pushFilesToStorage(folder: string) {
         }
       }
 
-      // Skip silently if Supabase isn't configured (dev / fallback). The
-      // file buffer will simply not be persisted; downstream code that
-      // expects a URL must check for it. We log loudly so this isn't
-      // missed in prod.
+      // A file was sent but there is nowhere to keep it. This used to log
+      // and carry on, so most screens answered "saved" while the picture was
+      // thrown away (a new product with no image, a rider with no photo, a
+      // waste entry with no proof). Refuse the request instead — the admin
+      // sees why, and nothing is saved half-done.
       if (!isStorageConfigured()) {
         logger.error(
           'Upload received but Supabase Storage is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.'
         );
-        return next();
+        const err = new ApiError('Pictures cannot be saved right now: file storage is not set up on the server. Try again without the picture, or ask the owner to set it up.', 503);
+        return next(err);
       }
 
       // Single-file upload (req.file)
@@ -216,36 +222,17 @@ export const uploadDeliveryProof: RequestHandler[] = [upload.single('delivery_pr
 export const uploadPickupProof: RequestHandler[] = [upload.single('pickup_proof'), pushFilesToStorage('orders/pickup-proof')];
 
 // ----------------------------------------------------------------------------
-// Error handler for multer — unchanged shape, only catches multer-specific
-// errors. Storage upload errors propagate as normal Express errors and are
-// caught by the global error handler.
+// Kept for the routes that still list it. The global error handler now maps
+// every upload error (size 413, wrong field/type 400, storage not set up 503).
+// This used to answer 400 with the raw error text for ANY error — so a storage
+// failure showed the customer the Supabase project URL and bucket setup steps.
 // ----------------------------------------------------------------------------
 export const handleUploadError = (
-  err: any,
+  err: unknown,
   _req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction
-) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({
-        success: false,
-        message: `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
-      });
-    }
-    if (err.code === 'LIMIT_FILE_COUNT') {
-      return res.status(400).json({ success: false, message: 'Too many files uploaded' });
-    }
-    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-      return res.status(400).json({ success: false, message: 'Unexpected file field' });
-    }
-    return res.status(400).json({ success: false, message: err.message });
-  }
-  if (err) {
-    return res.status(400).json({ success: false, message: err.message });
-  }
-  next();
-};
+) => next(err);
 
 /**
  * Convenience helper used by a few controllers that previously read

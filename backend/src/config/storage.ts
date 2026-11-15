@@ -100,9 +100,9 @@ export interface UploadedFileInfo {
 }
 
 function extensionForFile(file: Express.Multer.File): string {
-  const fromName = path.extname(file.originalname || '').toLowerCase();
-  if (fromName) return fromName;
-
+  // The type comes from the file's bytes (the upload middleware sets it after
+  // checking them). The client's file name is only a fallback — it used to
+  // win, so "photo.html" or "photo.svg" was stored under that name.
   const mimeMap: Record<string, string> = {
     'image/jpeg': '.jpg',
     'image/jpg': '.jpg',
@@ -110,7 +110,9 @@ function extensionForFile(file: Express.Multer.File): string {
     'image/webp': '.webp',
     'image/gif': '.gif',
   };
-  return mimeMap[file.mimetype] || '.jpg';
+  if (mimeMap[file.mimetype]) return mimeMap[file.mimetype];
+  const fromName = path.extname(file.originalname || '').toLowerCase();
+  return ['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(fromName) ? fromName : '.jpg';
 }
 
 /**
@@ -271,7 +273,11 @@ async function ensureStorageBucketViaDatabase(): Promise<void> {
 
 /**
  * Storage RLS policies for the uploads bucket:
- *   - SELECT is public (images are served via public URLs).
+ *   - NO SELECT policy. The bucket is public, so a file is served by its
+ *     public URL (a random uuid name) without any policy. A SELECT policy
+ *     only adds LISTING: with it, anyone holding the project's anon key could
+ *     list the bucket and download every customer's door photo, complaint
+ *     picture, delivery proof and purchase bill. An old one is dropped here.
  *   - INSERT/UPDATE/DELETE are granted to service_role ONLY. Writes always go
  *     through this backend with the service-role key; `authenticated` must NOT
  *     be able to write (that would let any logged-in Supabase client overwrite
@@ -279,18 +285,11 @@ async function ensureStorageBucketViaDatabase(): Promise<void> {
  * Idempotent: each policy is dropped (IF EXISTS) and recreated, so re-runs
  * also heal policies previously created with the wrong roles.
  */
-async function ensureStoragePoliciesViaDatabase(): Promise<void> {
-  const bucket = STORAGE_BUCKET;
-
-  const policies = [
+export function storagePolicySql(bucket: string): Array<{ name: string; sql: string }> {
+  return [
     {
-      name: 'freshbazar_uploads_public_read',
-      sql: `
-        DROP POLICY IF EXISTS freshbazar_uploads_public_read ON storage.objects;
-        CREATE POLICY freshbazar_uploads_public_read ON storage.objects
-          FOR SELECT TO public
-          USING (bucket_id = '${bucket}');
-      `,
+      name: 'freshbazar_uploads_public_read (removed: allowed listing)',
+      sql: `DROP POLICY IF EXISTS freshbazar_uploads_public_read ON storage.objects;`,
     },
     {
       name: 'freshbazar_uploads_service_insert',
@@ -320,7 +319,10 @@ async function ensureStoragePoliciesViaDatabase(): Promise<void> {
       `,
     },
   ];
+}
 
+async function ensureStoragePoliciesViaDatabase(): Promise<void> {
+  const policies = storagePolicySql(STORAGE_BUCKET);
   for (const policy of policies) {
     try {
       await query(policy.sql);

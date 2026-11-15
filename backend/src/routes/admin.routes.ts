@@ -14,6 +14,7 @@ import * as restaurantsController from '../controllers/admin/restaurants.control
 import * as ocpController from '../controllers/admin/ocp.controller';
 import * as stockController from '../controllers/admin/stock.controller';
 import * as reconciliationController from '../controllers/admin/reconciliation.controller';
+import * as approvalCodesController from '../controllers/admin/approvalCodes.controller';
 import * as corruptionAuditController from '../controllers/admin/corruptionAudit.controller';
 import * as serviceAreasController from '../controllers/admin/serviceAreas.controller';
 import * as basketsController from '../controllers/admin/baskets.controller';
@@ -371,6 +372,9 @@ router.get('/stock/:productId/movements', stockController.getStockMovements);
 router.get('/reconciliation', reconciliationController.getReconciliation);
 router.post('/reconciliation/run', adminRateLimiter, reconciliationController.runReconciliationNow);
 router.get('/audit-logs', reconciliationController.getAuditLogs);
+// Second-admin approval from the approver's own phone (any active admin).
+router.post('/approval-codes', adminRateLimiter, approvalCodesController.createApprovalCode);
+router.get('/approval-codes', approvalCodesController.listMyApprovalCodes);
 
 // AI corruption audit (super-admin only; role-checked in the controller, and
 // the path is unmapped in adminPermissions so every other admin is denied).

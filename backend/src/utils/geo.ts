@@ -28,11 +28,6 @@ export function pointInPolygon(point: LngLat, ring: LngLat[]): boolean {
   return inside;
 }
 
-/** True when at least one polygon ring contains the point. */
-export function pointInAnyPolygon(point: LngLat, rings: LngLat[][]): boolean {
-  return rings.some((ring) => pointInPolygon(point, ring));
-}
-
 /**
  * Validate a polygon ring: an array of 3..maxPoints numeric [lng, lat] pairs
  * within valid coordinate ranges. Returns a typed guard.

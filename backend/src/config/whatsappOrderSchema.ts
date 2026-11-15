@@ -5,7 +5,8 @@
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
+import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let cached: boolean | null = null;
 let ensurePromise: Promise<boolean> | null = null;
@@ -50,6 +51,7 @@ export async function hasWhatsappLinkColumns(): Promise<boolean> {
 
 /** Apply migration 27 if needed. */
 export async function ensureWhatsappLinkColumns(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasWhatsappLinkColumns(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (cached === true) return true;
   if (ensurePromise) return ensurePromise;
 

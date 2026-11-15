@@ -7,6 +7,7 @@
 // ============================================================================
 
 import jwt, { SignOptions } from 'jsonwebtoken';
+import crypto from 'crypto';
 import { JwtPayload, UserRole } from '../types';
 import logger from '../utils/logger';
 
@@ -77,6 +78,11 @@ const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 const ADMIN_JWT_EXPIRES_IN = process.env.ADMIN_JWT_EXPIRES_IN || '15m';
 const ADMIN_JWT_REFRESH_EXPIRES_IN = process.env.ADMIN_JWT_REFRESH_EXPIRES_IN || '8h';
 
+// Every token is signed HS256 (the jsonwebtoken default). Verification accepts
+// ONLY that algorithm, so a token signed some other way ("none", or a public-
+// key algorithm fed our secret) is refused whatever the library defaults are.
+const VERIFY_OPTIONS: jwt.VerifyOptions = { algorithms: ['HS256'] };
+
 // Generate access token
 export const generateAccessToken = (
   userId: string,
@@ -118,7 +124,7 @@ export const generateRefreshToken = (
   return jwt.sign(
     { userId, phone, role, type: 'refresh' },
     jwtRefreshSecret,
-    { expiresIn: JWT_REFRESH_EXPIRES_IN } as SignOptions
+    { expiresIn: JWT_REFRESH_EXPIRES_IN, jwtid: crypto.randomUUID() } as SignOptions
   );
 };
 
@@ -126,12 +132,12 @@ export const generateRefreshToken = (
 // isolated-portal tokens (restaurant/ocp/shareholder) are rejected so they
 // can't be replayed against REST endpoints.
 export const verifyAccessToken = (token: string): JwtPayload => {
-  const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+  const decoded = jwt.verify(token, jwtSecret, VERIFY_OPTIONS) as JwtPayload;
   if (decoded?.type === 'socket') {
     throw new Error('Socket tokens are not valid for REST');
   }
-  if (decoded?.type && ['restaurant', 'ocp', 'shareholder'].includes(decoded.type)) {
-    throw new Error('Portal tokens are not valid for user/admin REST');
+  if (decoded?.type && ['restaurant', 'ocp', 'shareholder', 'refresh'].includes(decoded.type)) {
+    throw new Error('This token type (portal or refresh) is not valid for user/admin REST');
   }
   return decoded;
 };
@@ -139,7 +145,7 @@ export const verifyAccessToken = (token: string): JwtPayload => {
 // Verify a token for a Socket.IO handshake: accepts both dedicated socket
 // tokens (type: 'socket') and legacy plain access tokens (no type claim).
 export const verifySocketToken = (token: string): JwtPayload => {
-  const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+  const decoded = jwt.verify(token, jwtSecret, VERIFY_OPTIONS) as JwtPayload;
   if (decoded?.type && decoded.type !== 'socket') {
     throw new Error('Not a socket token');
   }
@@ -148,7 +154,7 @@ export const verifySocketToken = (token: string): JwtPayload => {
 
 // Verify refresh token
 export const verifyRefreshToken = (token: string): JwtPayload => {
-  return jwt.verify(token, jwtRefreshSecret) as JwtPayload;
+  return jwt.verify(token, jwtRefreshSecret, VERIFY_OPTIONS) as JwtPayload;
 };
 
 // Generate token pair
@@ -182,7 +188,7 @@ export const generateAdminTokenPair = (
   const refreshToken = jwt.sign(
     { userId, phone, role, type: 'refresh' },
     jwtRefreshSecret,
-    { expiresIn: ADMIN_JWT_REFRESH_EXPIRES_IN } as SignOptions
+    { expiresIn: ADMIN_JWT_REFRESH_EXPIRES_IN, jwtid: crypto.randomUUID() } as SignOptions
   );
 
   return {
@@ -217,7 +223,7 @@ export const generateRestaurantToken = (restaurantId: string, phone: string): st
 };
 
 export const verifyRestaurantToken = (token: string): RestaurantTokenPayload => {
-  const decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+  const decoded = jwt.verify(token, jwtSecret, VERIFY_OPTIONS) as Record<string, unknown>;
   if (decoded?.type !== 'restaurant' || typeof decoded?.restaurantId !== 'string') {
     throw new Error('Not a restaurant token');
   }
@@ -247,7 +253,7 @@ export const generateOcpToken = (ocpId: string, phone: string): string => {
 };
 
 export const verifyOcpToken = (token: string): OcpTokenPayload => {
-  const decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+  const decoded = jwt.verify(token, jwtSecret, VERIFY_OPTIONS) as Record<string, unknown>;
   if (decoded?.type !== 'ocp' || typeof decoded?.ocpId !== 'string') {
     throw new Error('Not an OCP token');
   }
@@ -274,7 +280,7 @@ export const generateShareholderToken = (shareholderId: string, email: string): 
 };
 
 export const verifyShareholderToken = (token: string): ShareholderTokenPayload => {
-  const decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
+  const decoded = jwt.verify(token, jwtSecret, VERIFY_OPTIONS) as Record<string, unknown>;
   if (decoded?.type !== 'shareholder' || typeof decoded?.shareholderId !== 'string') {
     throw new Error('Not a shareholder token');
   }

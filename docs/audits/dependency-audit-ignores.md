@@ -20,3 +20,4 @@ js-yaml). Before: 154 advisories (5 critical, 85 high). After: 0 unignored.
 | GHSA-gcqx-w48m-w2h4 | deepmerge 4.3.1 (customer-app tooling) | No fixed version published. Low severity, build tooling. | A fixed release |
 | GHSA-g3hv-75wg-m249 | minimatch < 11 (build/test tooling) | Fix only in 11 (major) used by eslint/jest/glob chains; patterns are ours. | Tooling upgrades |
 | GHSA-3g3m-2fjr-6pw4 | glob < 14.0.2 (build/test tooling) | Fix only in 14 (major); build-time only. | Tooling upgrades |
+| GHSA-474x-hrwr-fgx4 | fast-xml-parser < 5.12 (backend via firebase-admin → @google-cloud/storage) | Low severity (slow parse of a malformed XML document). The fix is only in 5.x, a major jump for a parser used solely by the Google Cloud Storage client — which this backend never calls (files go to Supabase Storage). | firebase-admin ships a storage client on fast-xml-parser 5 |

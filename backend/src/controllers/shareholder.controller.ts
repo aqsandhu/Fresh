@@ -56,7 +56,6 @@ export const loginShareholder = asyncHandler(async (req: Request, res: Response)
     await registerPinFailure(lockKey);
     return unauthorizedResponse(res, 'Invalid email or password');
   }
-  if (s.status !== 'active') return forbiddenResponse(res, 'This account is inactive. Please contact the admin.');
   const ok = await bcrypt.compare(password, s.password_hash);
   if (!ok) {
     const { lockedUntil } = await registerPinFailure(lockKey);
@@ -67,6 +66,9 @@ export const loginShareholder = asyncHandler(async (req: Request, res: Response)
     }
     return unauthorizedResponse(res, 'Invalid email or password');
   }
+  // Status only after the password: it used to answer any email without one,
+  // telling anyone which emails are shareholders.
+  if (s.status !== 'active') return forbiddenResponse(res, 'This account is inactive. Please contact the admin.');
 
   await clearPinFailures(lockKey);
   await query(`UPDATE shareholders SET last_login_at = NOW() WHERE id = $1`, [s.id]);

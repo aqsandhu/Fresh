@@ -7,7 +7,7 @@ CITY=$($PSQL -c "select id from service_cities where name='Gujrat' limit 1")
 SLOT=$($PSQL -c "select id from time_slots order by start_time limit 1")
 pass=0; fail=0
 check() { if [ "$2" = "$3" ]; then echo "PASS $1"; pass=$((pass+1)); else echo "FAIL $1 — expected [$3] got [$2]"; fail=$((fail+1)); fi; }
-ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345"}' | jq -r .data.tokens.accessToken)
+ATOK=$(curl -s -X POST $API/admin/login -H 'Content-Type: application/json' -d '{"phone":"03001112222","password":"Admin12345","otp":"123789"}' | jq -r .data.tokens.accessToken)
 AH=(-H "Authorization: Bearer $ATOK" -H "X-City-Id: $CITY")
 R=$(curl -s -X POST $API/admin/riders "${AH[@]}" -F full_name='Second Rider' -F phone=03451234567 -F password=rider123 -F cnic=3520298765431 -F vehicle_type=rickshaw -F vehicle_number=lhr-9)
 RID=$(echo "$R" | jq -r .data.id)

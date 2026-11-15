@@ -22,7 +22,8 @@ import {
   OTP_MAX_SENDS_PER_IP_HOUR,
 } from '../config/otpProvider';
 import logger from '../utils/logger';
-import { buildSslConfig } from '../config/dbSsl';
+import { buildSslConfig } from '../config/dbSsl';
+import { schemaSelfHealEnabled } from '../config/schemaSelfHeal';
 
 /** A just-verified code may be re-verified within this window (PIN reset flow). */
 const REVERIFY_GRACE_SECONDS = 120;
@@ -65,6 +66,7 @@ async function hasOtpTable(): Promise<boolean> {
 
 /** Create otp_codes on first use (Supabase pooler rejects DDL — use direct URL). */
 export async function ensureOtpTable(): Promise<boolean> {
+  if (!schemaSelfHealEnabled()) return hasOtpTable(); // migrations own the schema (config/schemaSelfHeal.ts)
   if (await hasOtpTable()) return true;
   if (ensureOtpTablePromise) return ensureOtpTablePromise;
 

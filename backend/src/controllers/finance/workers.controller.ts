@@ -152,13 +152,18 @@ export const addIncrement = asyncHandler(async (req: Request, res: Response) => 
   const effFrom = typeof req.body?.effective_from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.body.effective_from)
     ? req.body.effective_from : new Date().toISOString().slice(0, 10);
   if (!Number.isFinite(newSalary) || newSalary < 0) return errorResponse(res, 'Enter a valid new salary.', 400);
-  await query(
-    `INSERT INTO worker_salary_changes (worker_id, effective_from, new_basic_salary, note, created_by)
-     VALUES ($1,$2,$3,$4,$5)`,
-    [req.params.id, effFrom, newSalary, req.body?.note || null, req.user?.id ?? null]
-  );
-  // The worker's current basic salary becomes the latest increment.
-  await query(`UPDATE workers SET basic_salary = $1, updated_at = NOW() WHERE id = $2`, [newSalary, req.params.id]);
+  // One transaction: the history row and the new basic salary must both land
+  // or neither (they were two separate writes — a failure between them left
+  // the history saying one salary and the worker row another).
+  await withTransaction(async (client) => {
+    await client.query(
+      `INSERT INTO worker_salary_changes (worker_id, effective_from, new_basic_salary, note, created_by)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [req.params.id, effFrom, newSalary, req.body?.note || null, req.user?.id ?? null]
+    );
+    // The worker's current basic salary becomes the latest increment.
+    await client.query(`UPDATE workers SET basic_salary = $1, updated_at = NOW() WHERE id = $2`, [newSalary, req.params.id]);
+  });
   logger.info('Worker increment', { worker: req.params.id, newSalary, by: req.user?.id });
   return successResponse(res, { new_basic_salary: newSalary, effective_from: effFrom }, 'Increment applied');
 });
