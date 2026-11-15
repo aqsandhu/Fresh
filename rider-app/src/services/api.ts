@@ -39,12 +39,6 @@ export const getApiErrorStatus = (error: unknown): number | null => {
   return null;
 };
 
-/** 4xx — deterministic, never retried offline. */
-export const isClientError = (error: unknown): boolean => {
-  const status = getApiErrorStatus(error);
-  return typeof status === 'number' && status >= 400 && status < 500;
-};
-
 /** No response at all (offline / DNS / timeout). */
 export const isNetworkError = (error: unknown): boolean => {
   if (error instanceof ApiError) return error.isNetwork;
@@ -154,17 +148,6 @@ class ApiService {
     return response.data;
   }
 }
-
-/** Backend serves /health at the root, not under /api. */
-export const checkNetworkStatus = async (): Promise<boolean> => {
-  try {
-    const rootUrl = API_BASE_URL.replace(/\/api\/?$/, '');
-    const response = await apiService.getClient().get(`${rootUrl}/health`, { timeout: 8000 });
-    return response.status === 200;
-  } catch {
-    return false;
-  }
-};
 
 export const apiService = new ApiService();
 export default apiService;

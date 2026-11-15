@@ -6,8 +6,11 @@ import { refreshAccessToken } from '@/lib/tokenRefresh';
 import { getStoredToken, clearTokens } from '@/lib/secureTokens';
 import { hydrateCachedCityId } from '@/lib/apiHelpers';
 import { clearAppSession } from '@/lib/sessionEvents';
+import { friendlyErrorMessage, isNetworkFailure } from '@/lib/networkErrors';
 
 hydrateCachedCityId();
+
+export const NETWORK_RETRY_DELAY_MS = 1500;
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -35,7 +38,22 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & {
       _retry?: boolean;
       _retried?: boolean;
+      _netRetried?: boolean;
     };
+
+    // A READ that got no answer at all (weak signal, the server waking up) is
+    // tried once more before the customer sees an error. Writes are never
+    // repeated automatically — an order must not be placed twice.
+    if (
+      isNetworkFailure(error) &&
+      originalRequest &&
+      !originalRequest._netRetried &&
+      (originalRequest.method || 'get').toLowerCase() === 'get'
+    ) {
+      originalRequest._netRetried = true;
+      await new Promise((resolve) => setTimeout(resolve, NETWORK_RETRY_DELAY_MS));
+      return apiClient.request(originalRequest);
+    }
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retried) {
       const isRefreshCall = originalRequest.url?.includes('/auth/refresh');
@@ -89,8 +107,7 @@ export const handleApiError = (error: any): ApiError => {
   }
 
   if (axios.isAxiosError(error)) {
-    const message = error.response?.data?.message || error.message || 'Something went wrong';
-    return new ApiError(message, error.response?.status, error.response?.data);
+    return new ApiError(friendlyErrorMessage(error), error.response?.status, error.response?.data);
   }
 
   return new ApiError(error?.message || 'Something went wrong');

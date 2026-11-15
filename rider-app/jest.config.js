@@ -8,4 +8,17 @@ module.exports = {
   moduleNameMapper: {
     '^react$': require.resolve('react'),
   },
+  // Every source file counts — without this only files a test happens to
+  // load were measured, which showed 2–3 times the real coverage.
+  collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts'],
+  // Ratchet (15 Nov 2026): one point under the measured coverage. Raise it
+  // whenever coverage grows; CI fails if a change makes it fall.
+  coverageThreshold: {
+    global: {
+      branches: 42,
+      functions: 51,
+      lines: 59,
+      statements: 59,
+    },
+  },
 };

@@ -21,6 +21,8 @@ import { GuidanceTips } from '@components/common/GuidanceTips';
 import { ORDERS_TIPS } from '@/content/guidanceTips';
 import { MobileHeader } from '@components/layout/MobileHeader';
 import { orderService } from '@services/order.service';
+import { productService } from '@services/product.service';
+import { reorderItems } from '@/lib/reorder';
 import { useAuthStore, useCartStore } from '@store';
 import { useCityContext } from '@/context/CityContext';
 
@@ -110,27 +112,11 @@ export const OrdersListScreen: React.FC = () => {
       Toast.show({ type: 'info', text1: 'No items to reorder' });
       return;
     }
-    let added = 0;
-    for (const item of items) {
-      if (!item.productId) continue;
-      try {
-        await useCartStore.getState().addItem(
-          {
-            id: item.productId,
-            name: item.productName,
-            price: item.unitPrice ?? item.price,
-            unit: item.unit || 'piece',
-            images: item.productImage ? [item.productImage] : [],
-            imageUrl: item.productImage,
-            inStock: true,
-          },
-          item.quantity
-        );
-        added += item.quantity;
-      } catch {
-        // Skip items that can no longer be added
-      }
-    }
+    // Same size, same quality, today's price (see lib/reorder.ts).
+    const added = await reorderItems(items, {
+      fetchProduct: async (id) => (await productService.getProductById(id))?.data,
+      addItem: (product, quantity, unit, quality) => useCartStore.getState().addItem(product, quantity, unit, quality),
+    });
     if (added > 0) {
       Toast.show({ type: 'success', text1: `${added} item${added > 1 ? 's' : ''} added to cart!` });
     } else {

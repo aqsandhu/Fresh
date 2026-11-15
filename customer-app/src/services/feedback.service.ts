@@ -75,6 +75,19 @@ class FeedbackService {
     }
   }
 
+  /** Report someone else's review (offensive, spam, personal information...). */
+  async reportReview(
+    reviewId: string,
+    reason: 'offensive' | 'spam' | 'personal_info' | 'other'
+  ): Promise<ApiResponse<{ reported?: boolean; alreadyReported?: boolean }>> {
+    try {
+      const res = await apiClient.post(`/reviews/${reviewId}/report`, { reason });
+      return { success: true, data: res.data.data || {}, message: res.data.message };
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
   // ── Complaints ──────────────────────────────────────────────────────────────
 
   async fileComplaint(input: FileComplaintInput): Promise<ApiResponse<Complaint>> {

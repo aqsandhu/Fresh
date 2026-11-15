@@ -1,5 +1,5 @@
 import { Linking, Platform } from 'react-native';
-import { format, formatDistanceToNow, parseISO, isValid } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import type { GeoPoint } from '../types';
 
 // ── Money ──────────────────────────────────────────────────────────────────
@@ -65,11 +65,6 @@ export const formatDate = (date: string | Date | null | undefined): string => {
 export const formatDateTime = (date: string | Date | null | undefined): string => {
   const d = toDate(date);
   return d ? format(d, 'd MMM, h:mm a') : '';
-};
-
-export const formatRelativeTime = (date: string | Date | null | undefined): string => {
-  const d = toDate(date);
-  return d ? formatDistanceToNow(d, { addSuffix: true }) : '';
 };
 
 /** "10:00:00" → "10:00 AM" (time_slots.start_time is a SQL TIME). */

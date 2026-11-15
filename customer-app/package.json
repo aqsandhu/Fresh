@@ -7,7 +7,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives",
+    "lint": "eslint . --ext .ts,.tsx --report-unused-disable-directives --max-warnings=0",
     "test": "jest --passWithNoTests --coverage",
     "typecheck": "tsc --noEmit"
   },

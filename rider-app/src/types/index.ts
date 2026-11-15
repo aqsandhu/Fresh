@@ -26,8 +26,6 @@ export type TaskStatus = 'assigned' | 'in_progress' | 'completed' | 'cancelled' 
 
 export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] = ['assigned', 'in_progress'];
 export const TERMINAL_TASK_STATUSES: readonly TaskStatus[] = ['completed', 'cancelled', 'failed'];
-
-export const isActiveTaskStatus = (s: TaskStatus): boolean => ACTIVE_TASK_STATUSES.includes(s);
 export const isTerminalTaskStatus = (s: TaskStatus): boolean => TERMINAL_TASK_STATUSES.includes(s);
 
 /** order_items.unit fraction */

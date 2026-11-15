@@ -160,25 +160,6 @@ export const calculateDeliveryCharge = (
     isFreeDeliverySlot
   );
 
-export const calculateCartTotals = (
-  items: CartLineInput[],
-  freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
-  baseCharge: number = DELIVERY.STANDARD_DELIVERY_CHARGE
-) => {
-  const lines = toDeliveryLines(items);
-  const subtotal = lines.reduce((sum, item) => sum + (item.unitPrice ?? 0) * item.quantity, 0);
-  const deliveryCharge = calculateClientDeliveryCharge(lines, baseCharge, freeThreshold);
-  const total = subtotal + deliveryCharge;
-
-  return {
-    subtotal,
-    deliveryCharge,
-    total,
-    itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
-    vegFruitSubtotal: sharedVegFruitSubtotal(lines),
-  };
-};
-
 export const getDeliveryHint = (
   items: CartLineInput[],
   freeThreshold: number = DELIVERY.FREE_DELIVERY_MIN_ORDER,
@@ -205,17 +186,6 @@ export const truncateText = (text: string, maxLength: number): string => {
   return text.substring(0, maxLength).trim() + '...';
 };
 
-// Generate unique ID
-export const generateId = (): string => {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-};
-
-// Validate Pakistani phone number
-export const validatePhoneNumber = (phone: string): boolean => {
-  const regex = /^03[0-9]{9}$/;
-  return regex.test(phone);
-};
-
 // Format phone number for display
 export const formatPhoneNumber = (phone: string): string => {
   if (phone.length !== 11) return phone;
@@ -234,16 +204,6 @@ export const debounce = <T extends (...args: any[]) => any>(
   };
 };
 
-// Deep clone
-export const deepClone = <T>(obj: T): T => {
-  return JSON.parse(JSON.stringify(obj));
-};
-
-// Check if object is empty
-export const isEmpty = (obj: Record<string, any>): boolean => {
-  return Object.keys(obj).length === 0;
-};
-
 // Get initials from name
 export const getInitials = (name: string): string => {
   return name
@@ -254,26 +214,6 @@ export const getInitials = (name: string): string => {
     .slice(0, 2);
 };
 
-// Calculate distance between two coordinates (Haversine formula)
-export const calculateDistance = (
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number => {
-  const R = 6371; // Earth's radius in km
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
-const toRad = (value: number): number => {
-  return (value * Math.PI) / 180;
-};
 
 // Platform-specific shadow
 export const getShadow = (elevation: number = 4) => {
@@ -315,35 +255,4 @@ export const retry = async <T>(
   }
   
   throw lastError!;
-};
-
-// Parse query params from URL
-export const parseQueryParams = (url: string): Record<string, string> => {
-  const params: Record<string, string> = {};
-  const queryString = url.split('?')[1];
-  if (!queryString) return params;
-  
-  queryString.split('&').forEach((param) => {
-    const [key, value] = param.split('=');
-    if (key && value) {
-      params[decodeURIComponent(key)] = decodeURIComponent(value);
-    }
-  });
-  
-  return params;
-};
-
-// Convert file to base64
-export const fileToBase64 = async (uri: string): Promise<string> => {
-  const response = await fetch(uri);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64 = reader.result as string;
-      resolve(base64.split(',')[1]);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
 };

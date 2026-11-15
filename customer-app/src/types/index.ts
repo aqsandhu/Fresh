@@ -193,7 +193,12 @@ export interface OrderItem {
   price: number;
   unitPrice?: number;
   totalPrice?: number;
+  /** Display text ("0.5kg" / "piece") — NOT the sale unit. */
   unit?: string;
+  /** What was actually bought: full / half kg / quarter kg / half dozen … */
+  saleUnit?: ProductUnit;
+  /** … and in which quality. Reorder must repeat both. */
+  quality?: ProductQuality;
 }
 
 export interface Rider {

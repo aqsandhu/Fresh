@@ -158,9 +158,14 @@ export const CheckoutScreen: React.FC = () => {
   };
 
   // Load the customer's auto-granted coupons so they can pick one at checkout.
+  // Re-run when the customer signs in on this screen (the inline panel): as
+  // a guest these calls return nothing, and they used to run only once — so a
+  // guest who signed in at checkout saw no saved addresses, no coupons and
+  // no server totals.
   useEffect(() => {
+    if (!isAuthenticated) return;
     cartService.getMyCoupons().then((res) => setMyCoupons(res.coupons || []));
-  }, []);
+  }, [isAuthenticated]);
 
   const loadAddresses = useCallback(async () => {
     setLoadingAddresses(true);
@@ -258,10 +263,17 @@ export const CheckoutScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadAddresses();
     loadTimeSlots('today');
     loadDeliverySettings();
-  }, [loadAddresses, loadTimeSlots, loadDeliverySettings]);
+  }, [loadTimeSlots, loadDeliverySettings]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadAddresses();
+    // The cart was "synced" while still a guest (the call failed): push it
+    // again now that it belongs to an account, so server totals appear.
+    setCartSynced(false);
+  }, [isAuthenticated, loadAddresses]);
 
   useFocusEffect(
     useCallback(() => {

@@ -107,3 +107,27 @@ jest.mock('socket.io-client', () => ({
 
 // Reanimated ships its own jest mock.
 jest.mock('react-native-reanimated', () => require('react-native-reanimated/mock'));
+
+// Icons render their name as plain text. The real @expo/vector-icons loads its
+// font asynchronously and then calls setState — outside act(), so every screen
+// test printed "An update to Icon inside a test was not wrapped in act(...)".
+jest.mock('@expo/vector-icons', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+  const families = {};
+  return new Proxy(
+    {},
+    {
+      get: (_target, family) => {
+        if (family === '__esModule') return true;
+        if (typeof family !== 'string') return undefined;
+        if (!families[family]) {
+          const Icon = ({ name, ...props }) => React.createElement(Text, props, name);
+          Icon.displayName = family;
+          families[family] = Icon;
+        }
+        return families[family];
+      },
+    }
+  );
+});

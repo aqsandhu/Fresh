@@ -1,4 +1,5 @@
 import apiService, { ApiError } from './api';
+import { getStoredRefreshToken } from '../lib/secureTokens';
 import { LoginCredentials, LoginResponse, Rider, ApiResponse, RiderStatus } from '../types';
 import { toNumber, toNumberOrNull } from '../utils/helpers';
 
@@ -60,7 +61,10 @@ class AuthService {
 
   /** Best-effort server-side session revocation. */
   async logout(): Promise<void> {
-    await apiService.post<ApiResponse<void>>('/auth/logout');
+    // Send the refresh token so the server revokes THIS session (an empty
+    // body revoked nothing — the token kept working after sign-out).
+    const refreshToken = await getStoredRefreshToken();
+    await apiService.post<ApiResponse<void>>('/auth/logout', refreshToken ? { refreshToken } : undefined);
   }
 
   async updateDutyStatus(onDuty: boolean): Promise<void> {

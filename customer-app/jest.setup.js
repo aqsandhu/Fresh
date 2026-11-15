@@ -34,3 +34,13 @@ jest.mock('react-native-safe-area-context', () => {
 
 // Toast is a no-op in tests.
 jest.mock('react-native-toast-message', () => 'Toast');
+
+// No unit test may reach the network. An un-mocked request used to go out for
+// real (e.g. the login screen's brand logo), hang until the API timeout and
+// keep the jest worker alive after the tests ("worker failed to exit"). Now it
+// fails at once and says which call needs a mock.
+const testNetworkError = (what) =>
+  Object.assign(new Error(`Unit tests must not reach the network (${what}). Mock the service.`), { code: 'ERR_TEST_NETWORK' });
+require('axios').defaults.adapter = (config) =>
+  Promise.reject(testNetworkError(`${(config.method || 'get').toUpperCase()} ${config.url}`));
+global.fetch = jest.fn((url) => Promise.reject(testNetworkError(`fetch ${url}`)));

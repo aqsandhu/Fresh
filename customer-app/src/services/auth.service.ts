@@ -1,4 +1,5 @@
 import apiClient, { handleApiError } from './api';
+import { getStoredRefreshToken } from '@/lib/secureTokens';
 import { ApiResponse, User } from '@app-types';
 
 export interface SendOtpRequest {
@@ -90,7 +91,10 @@ class AuthService {
 
   async logout(): Promise<ApiResponse<{ message: string }>> {
     try {
-      const response = await apiClient.post('/auth/logout');
+      // Send the refresh token so the server revokes THIS session (an empty
+      // body revoked nothing — the token kept working after sign-out).
+      const refreshToken = await getStoredRefreshToken();
+      const response = await apiClient.post('/auth/logout', refreshToken ? { refreshToken } : undefined);
       return response.data;
     } catch (error) {
       throw handleApiError(error);

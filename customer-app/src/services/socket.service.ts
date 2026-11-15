@@ -9,6 +9,13 @@ import { getStoredToken } from '@/lib/secureTokens';
 class SocketService {
   private socket: Socket | null = null;
   private connectPromise: Promise<void> | null = null;
+  /**
+   * Orders this screen is following. Room membership lives on the SERVER per
+   * connection, so every reconnect (lift, basement, app back from background)
+   * starts with no rooms: tracking and chat went silent while the UI still
+   * said "connected". The rooms are re-joined on every connect.
+   */
+  private orderRooms = new Set<string>();
   private static instance: SocketService;
 
   static getInstance(): SocketService {
@@ -47,14 +54,17 @@ class SocketService {
       auth: { token },
       transports: ['websocket'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      // Never give up: after 5 failed tries the socket used to stay dead
+      // until the app was restarted.
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelayMax: 30000,
       randomizationFactor: 0.5,
     });
 
     this.socket.on('connect', () => {
       console.log('[Socket] Connected:', this.socket?.id);
+      this.orderRooms.forEach((orderId) => this.socket?.emit('order:subscribe', orderId));
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -88,6 +98,7 @@ class SocketService {
   }
 
   disconnect() {
+    this.orderRooms.clear();
     this.socket?.disconnect();
     this.socket = null;
     console.log('[Socket] Disconnected manually');
@@ -115,11 +126,13 @@ class SocketService {
 
   // Order tracking subscription
   subscribeToOrder(orderId: string, callback: (data: any) => void) {
+    this.orderRooms.add(orderId);
     this.socket?.emit('order:subscribe', orderId);
     this.socket?.on('order:update', callback);
   }
 
   unsubscribeFromOrder(orderId: string, callback?: (data: any) => void) {
+    this.orderRooms.delete(orderId);
     this.socket?.emit('order:unsubscribe', orderId);
     if (callback) {
       this.socket?.off('order:update', callback);

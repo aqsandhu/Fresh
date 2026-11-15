@@ -36,6 +36,8 @@ function mapOrderItem(raw: any): OrderItem {
     quantity: parseInt(raw.quantity) || 0,
     price: parseFloat(raw.unit_price) || 0,
     unit: raw.weight_kg ? `${raw.weight_kg}kg` : 'piece',
+    saleUnit: ['full', 'half_kg', 'quarter_kg', 'half_dozen'].includes(raw.unit) ? raw.unit : 'full',
+    quality: ['A', 'B', 'C'].includes(raw.quality) ? raw.quality : 'A',
   };
 }
 

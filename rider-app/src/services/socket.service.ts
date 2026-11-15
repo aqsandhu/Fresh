@@ -18,6 +18,8 @@ export const setActiveChatOrder = (orderId: string | null) => {
 class SocketService {
   private socket: Socket | null = null;
   private connectedToken: string | null = null;
+  /** Orders being followed (chat) — re-joined after every reconnect. */
+  private orderRooms = new Set<string>();
   private static instance: SocketService;
 
   static getInstance(): SocketService {
@@ -62,6 +64,8 @@ class SocketService {
     });
     this.socket.on('connect', () => {
       console.log('[Socket] connected');
+      // Rooms live on the server per connection — join them again after a reconnect.
+      this.orderRooms.forEach((orderId) => this.socket?.emit('order:subscribe', orderId));
       // Re-sync in case we missed events while disconnected.
       useTaskStore.getState().fetchActiveTasks().catch(() => {});
     });
@@ -156,10 +160,12 @@ class SocketService {
 
   // ── Order rooms ───────────────────────────────────────────────────────────
   subscribeToOrder(orderId: string) {
+    this.orderRooms.add(orderId);
     this.socket?.emit('order:subscribe', orderId);
   }
 
   unsubscribeFromOrder(orderId: string) {
+    this.orderRooms.delete(orderId);
     this.socket?.emit('order:unsubscribe', orderId);
   }
 

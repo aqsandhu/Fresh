@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { StarRating } from '@components/common/StarRating';
 import { feedbackService } from '@services/feedback.service';
+import { useAuthStore } from '@store';
+
+type ReportReason = 'offensive' | 'spam' | 'personal_info' | 'other';
 
 interface ProductReviewItem {
   id: string;
@@ -22,6 +25,33 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({ productId }) => 
   const [summary, setSummary] = useState<{ average: number; count: number }>({ average: 0, count: 0 });
   const [reviews, setReviews] = useState<ProductReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reported, setReported] = useState<Record<string, boolean>>({});
+  const isAuthenticated = useAuthStore((st) => st.isAuthenticated);
+
+  // Other customers' reviews can be reported (App Store guideline 1.2). Three
+  // different reports hide a review until the shop has looked at it.
+  const send = async (id: string, reason: ReportReason) => {
+    try {
+      const res = await feedbackService.reportReview(id, reason);
+      setReported((prev) => ({ ...prev, [id]: true }));
+      Alert.alert('Thank you', res.data?.alreadyReported ? 'You have already reported this review.' : 'We will look at this review.');
+    } catch (e) {
+      Alert.alert('Could not report', (e as { message?: string })?.message || 'Please try again.');
+    }
+  };
+
+  const askReport = (id: string) => {
+    if (!isAuthenticated) {
+      Alert.alert('Sign in needed', 'Please sign in to report a review.');
+      return;
+    }
+    Alert.alert('Report this review', 'Why should we look at it?', [
+      { text: 'Offensive or abusive', onPress: () => send(id, 'offensive') },
+      { text: 'Spam or fake', onPress: () => send(id, 'spam') },
+      { text: 'Shows personal information', onPress: () => send(id, 'personal_info') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
 
   useEffect(() => {
     let active = true;
@@ -67,6 +97,16 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({ productId }) => 
             <StarRating value={r.rating} size={14} />
           </View>
           {r.comment ? <Text style={styles.comment}>{r.comment}</Text> : null}
+          <Pressable
+            onPress={() => !reported[r.id] && askReport(r.id)}
+            disabled={reported[r.id]}
+            accessibilityRole="button"
+            accessibilityLabel={reported[r.id] ? 'Review reported' : `Report review by ${r.authorName || 'Customer'}`}
+            hitSlop={8}
+            style={styles.reportBtn}
+          >
+            <Text style={styles.reportText}>{reported[r.id] ? 'Reported' : 'Report'}</Text>
+          </Pressable>
           {r.adminReply ? (
             <View style={styles.reply}>
               <Text style={styles.replyLabel}>Seller reply</Text>
@@ -106,6 +146,8 @@ const styles = StyleSheet.create({
   },
   replyLabel: { fontSize: 11, fontWeight: '700', color: COLORS.primary700 },
   replyText: { fontSize: 13, color: COLORS.gray700, marginTop: 2 },
+  reportBtn: { alignSelf: 'flex-end', marginTop: 4, paddingVertical: 2 },
+  reportText: { fontSize: 12, color: COLORS.gray500, textDecorationLine: 'underline' },
 });
 
 export default ProductReviews;

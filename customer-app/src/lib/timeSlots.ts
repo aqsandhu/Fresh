@@ -54,18 +54,3 @@ export function getSlotAvailability(
 
   return { unavailable: false };
 }
-
-export function slotStatusLabel(
-  slot: TimeSlotLike & { available?: boolean; available_slots?: number },
-  day: 'today' | 'tomorrow',
-  cutoffPercent: number = DEFAULT_SLOT_CUTOFF_PERCENT
-): string | null {
-  if (slot.available === false || (slot.available_slots !== undefined && slot.available_slots <= 0)) {
-    return 'FULL';
-  }
-  const avail = getSlotAvailability(slot, day, cutoffPercent);
-  if (avail.unavailable) {
-    return avail.reason === 'mostly_passed' ? 'Passed' : 'Unavailable';
-  }
-  return null;
-}

@@ -218,9 +218,24 @@ export function availableUnits(p: any): { value: Unit; label: string; short: str
   }
   return out;
 }
+/** Admin-set restaurant price for a fraction unit (restaurant_half_kg_price_a …), if any. */
+export function explicitFractionPrice(p: any, q: Quality, u: Unit): number | null {
+  if (u === 'full') return null;
+  const v = n(p?.[`restaurant_${u}_price_${q.toLowerCase()}`]);
+  return v != null && v >= 0 ? v : null;
+}
+
+/**
+ * Same precedence as the backend (resolveRestaurantUnitPrice) and the website:
+ * the admin's explicit fraction price first, derived fraction otherwise. The
+ * app used to always derive — a restaurant saw one half-kg price in the cart
+ * and was billed another whenever the admin had set an override.
+ */
 export function unitPrice(p: any, q: Quality, u: Unit): number | null {
   const base = qualityBasePrice(p, q);
   if (base == null) return null;
+  const explicit = explicitFractionPrice(p, q, u);
+  if (explicit != null) return explicit;
   if (u === 'half_kg') return base * 0.5;
   if (u === 'quarter_kg') return base * 0.25;
   if (u === 'half_dozen') return base * 0.5;

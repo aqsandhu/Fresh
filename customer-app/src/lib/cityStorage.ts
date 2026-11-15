@@ -29,10 +29,6 @@ export async function setSelectedCity(city: StoredCity): Promise<void> {
   await AsyncStorage.setItem(CITY_NAME_STORAGE_KEY, city.name);
 }
 
-export async function clearSelectedCity(): Promise<void> {
-  await AsyncStorage.multiRemove([CITY_STORAGE_KEY, CITY_NAME_STORAGE_KEY]);
-}
-
 export async function hasSelectedCity(): Promise<boolean> {
   const id = await getSelectedCityId();
   return Boolean(id);

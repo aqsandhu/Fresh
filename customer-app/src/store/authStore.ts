@@ -117,6 +117,11 @@ export const useAuthStore = create<AuthStore>()(
           socketService.disconnect();
           await clearTokens();
           await AsyncStorage.removeItem(STORAGE_KEYS.USER);
+          // The cart, wishlist and checkout choices belong to the person who
+          // just signed out. Left in place they became the NEXT account's
+          // cart on a shared phone (and were pushed to that account's server
+          // cart on its first change).
+          clearPersonalStores();
           set({
             user: null,
             token: null,
@@ -220,8 +225,30 @@ export const useAuthStore = create<AuthStore>()(
   )
 );
 
+/**
+ * Wipe what is personal on this device after an explicit sign-out. Required
+ * lazily: the cart store pulls in the API layer, which reports back to this
+ * file, so a top-level import would be circular.
+ */
+function clearPersonalStores(): void {
+  try {
+    const { useCartStore } = require('./cartStore');
+    const { useWishlistStore } = require('./wishlistStore');
+    const { useCheckoutStore } = require('./checkoutStore');
+    useCartStore.setState({ items: [], cartsByCity: {} });
+    useWishlistStore.getState().clear?.();
+    useCheckoutStore.getState().resetCheckout?.();
+  } catch (error) {
+    console.error('Could not clear personal data on sign-out:', error);
+  }
+}
+
 registerSessionHandlers({
   onClear: () => {
+    // A session that EXPIRED keeps the cart (the same person signs back in),
+    // but its socket must go: it was authenticated as the old user and would
+    // keep receiving that user's order events under the next sign-in.
+    socketService.disconnect();
     useAuthStore.setState({
       user: null,
       token: null,
