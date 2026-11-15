@@ -2,7 +2,15 @@ import { mockApi, resetApiMocks } from './testApiMock';
 
 jest.mock('@/services/api', () => require('./testApiMock').apiModuleMock());
 
-import { financeService } from '@/services/finance.service';
+import { financeService } from '@/services/finance.service';
+
+// The error-path tests make the service log its error (console.error) on
+// purpose; keep that out of the test output so real warnings stand out.
+let consoleErrorSpy: jest.SpyInstance;
+beforeEach(() => {
+  consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+});
+afterEach(() => consoleErrorSpy.mockRestore());
 
 describe('financeService', () => {
   beforeEach(() => resetApiMocks());
@@ -21,6 +29,25 @@ describe('financeService', () => {
     mockApi.get.mockResolvedValue({ success: true });
 
     expect(await financeService.listExpenses()).toEqual({ expenses: [], total: 0, byType: {} });
+  });
+
+  it('addStockPurchase sends JSON when there is no bill photo', async () => {
+    mockApi.post.mockResolvedValue({ success: true, data: { id: 'p1' } });
+    await financeService.addStockPurchase({ productId: 'x', purchasePrice: 100, supplierName: 'Mandi A', billPhoto: null });
+    expect(mockApi.post).toHaveBeenCalledWith('/finance/stock-purchase', { productId: 'x', purchasePrice: 100, supplierName: 'Mandi A' });
+  });
+
+  it('addStockPurchase sends multipart with snake_case fields and the bill photo', async () => {
+    mockApi.postForm.mockResolvedValue({ success: true, data: { id: 'p2' } });
+    const bill = new File(['x'], 'bill.png', { type: 'image/png' });
+    await financeService.addStockPurchase({ productId: 'x', purchasePrice: 100, rawWeight: 10, supplierName: 'Mandi A', billNumber: 'B-1', billPhoto: bill });
+    const form = mockApi.postForm.mock.calls[0][1] as FormData;
+    expect(mockApi.postForm.mock.calls[0][0]).toBe('/finance/stock-purchase');
+    expect(form.get('product_id')).toBe('x');
+    expect(form.get('raw_weight')).toBe('10');
+    expect(form.get('supplier_name')).toBe('Mandi A');
+    expect(form.get('bill_number')).toBe('B-1');
+    expect(form.get('bill_photo')).toBeInstanceOf(File);
   });
 
   it('addExpense POSTs and unwraps the created id', async () => {

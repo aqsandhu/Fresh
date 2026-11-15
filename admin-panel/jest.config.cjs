@@ -14,11 +14,13 @@ module.exports = {
   // on a regression rather than on an aspirational 60% target that never
   // passed (it silently failed `npm test`). Raise as component coverage grows.
   coverageThreshold: {
+    // Ratchet (15 Nov 2026): one point under the measured coverage. Raise it
+    // whenever coverage grows; CI fails if a change makes it fall.
     global: {
-      branches: 5,
-      functions: 4,
-      lines: 8,
-      statements: 8,
+      branches: 9,
+      functions: 8,
+      lines: 11,
+      statements: 11,
     },
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],

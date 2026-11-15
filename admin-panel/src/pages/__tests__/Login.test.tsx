@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
-import { Login } from '@/pages/Login';
+import { Login } from '@/pages/Login';
+import { ROUTER_FUTURE } from '@/lib/routerFuture';
 
 const mockLogin = jest.fn();
 jest.mock('@/context/AuthContext', () => ({
@@ -67,7 +68,7 @@ jest.mock('@/components/ui/Button', () => ({
 describe('Login Page', () => {
   const renderLogin = (initialEntry = '/admin/login') => {
     return render(
-      <MemoryRouter initialEntries={[initialEntry]}>
+      <MemoryRouter future={ROUTER_FUTURE} initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/admin/login" element={<Login />} />
           <Route path="/admin/dashboard" element={<div>Dashboard Page</div>} />
@@ -246,5 +247,37 @@ describe('Login Page', () => {
     await waitFor(() => {
       expect(screen.getByText('Dashboard Page')).toBeInTheDocument();
     });
+  });
+  // Two-step login: the password is accepted, then the one-time code is asked
+  // for on the same screen (OTP bypass rule: the fixed code is entered here).
+  it('asks for the verification code after the password and signs in with it', async () => {
+    mockLogin.mockResolvedValueOnce({ requiresOtp: true, otpBypass: true }).mockResolvedValueOnce(undefined);
+    renderLogin();
+
+    fireEvent.change(screen.getByLabelText('Phone Number'), { target: { value: '+923001234567' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'admin123' } });
+    fireEvent.submit(screen.getByLabelText('Password').closest('form')!);
+
+    const code = await screen.findByLabelText('Verification Code');
+    expect(mockLogin).toHaveBeenCalledWith({ phone: '+923001234567', password: 'admin123' });
+    expect(screen.queryByText('Dashboard Page')).not.toBeInTheDocument();
+
+    fireEvent.change(code, { target: { value: '123789' } });
+    fireEvent.submit(code.closest('form')!);
+
+    await waitFor(() => expect(screen.getByText('Dashboard Page')).toBeInTheDocument());
+    expect(mockLogin).toHaveBeenLastCalledWith({ phone: '+923001234567', password: 'admin123', otp: '123789' });
+  });
+
+  it('does not send the second step without a code', async () => {
+    mockLogin.mockResolvedValueOnce({ requiresOtp: true, otpBypass: false, phoneHint: '+9230…67', channel: 'whatsapp' });
+    renderLogin();
+    fireEvent.change(screen.getByLabelText('Phone Number'), { target: { value: '+923001234567' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'admin123' } });
+    fireEvent.submit(screen.getByLabelText('Password').closest('form')!);
+    const code = await screen.findByLabelText('Verification Code');
+    expect(screen.getByText(/by WhatsApp/)).toBeInTheDocument();
+    fireEvent.submit(code.closest('form')!);
+    await waitFor(() => expect(mockLogin).toHaveBeenCalledTimes(1));
   });
 });

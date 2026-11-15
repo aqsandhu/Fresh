@@ -42,10 +42,11 @@ function Stars({ value }: { value: number }) {
 export const Reviews: React.FC = () => {
   const { selectedCityId } = useCityContext();
   const [target, setTarget] = useState<ReviewTargetType | ''>('');
+  const [reportedOnly, setReportedOnly] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin-reviews', selectedCityId, target],
-    queryFn: () => feedbackService.listReviews(target || undefined),
+    queryKey: ['admin-reviews', selectedCityId, target, reportedOnly],
+    queryFn: () => feedbackService.listReviews(target || undefined, reportedOnly),
   });
 
   const reviews = data?.reviews ?? [];
@@ -71,6 +72,17 @@ export const Reviews: React.FC = () => {
               </button>
             );
           })}
+          {/* Customers can report reviews (3 reports hide one until you decide). */}
+          <button
+            type="button"
+            aria-pressed={reportedOnly}
+            onClick={() => setReportedOnly((v) => !v)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              reportedOnly ? 'bg-red-600 text-white' : 'bg-red-50 text-red-700 hover:bg-red-100'
+            }`}
+          >
+            Reported by customers
+          </button>
         </div>
       </Card>
 
@@ -127,6 +139,11 @@ function ReviewCard({ review }: { review: AdminReview }) {
             <h3 className="font-semibold text-gray-900">{targetTitle(review)}</h3>
             <Badge variant="info">{review.targetType}</Badge>
             {!review.isPublished && <Badge variant="error">Hidden</Badge>}
+            {(review.reportCount ?? 0) > 0 && (
+              <Badge variant="warning">
+                Reported ×{review.reportCount} — publish or hide to decide
+              </Badge>
+            )}
           </div>
           <div className="mt-1 flex items-center gap-2">
             <Stars value={review.rating} />

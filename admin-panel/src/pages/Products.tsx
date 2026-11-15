@@ -169,7 +169,7 @@ const QualityPriceBlock: React.FC<{
                 required={quality === 'A'} />
               {fractionInputs(f.base, f.half, f.quarter, f.halfDozen)}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quality {quality} stock</label>
+                <span className="block text-sm font-medium text-gray-700 mb-1">Quality {quality} stock</span>
                 <div className="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-sm text-gray-700">
                   {Number(fd[f.stock]) || 0} {fd.unitType}
                   <span className="ml-1 text-xs text-gray-400">(read-only · managed in Management)</span>
@@ -949,8 +949,8 @@ export const Products: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
+            <label htmlFor="products-f1" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea id="products-f1"
               value={formData.descriptionEn}
               onChange={(e) => setFormData({ ...formData, descriptionEn: e.target.value })}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -987,10 +987,10 @@ export const Products: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="products-f2" className="block text-sm font-medium text-gray-700 mb-1">
                 Unit <span className="text-red-500">*</span>
               </label>
-              <Select
+              <Select id="products-f2"
                 value={formData.unitType}
                 onChange={(e) => setFormData({ ...formData, unitType: e.target.value })}
                 options={UNITS}
@@ -1000,10 +1000,10 @@ export const Products: React.FC = () => {
               )}
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="products-f3" className="block text-sm font-medium text-gray-700 mb-1">
                 Category <span className="text-red-500">*</span>
               </label>
-              <Select
+              <Select id="products-f3"
                 value={formData.categoryId}
                 onChange={(e) => {
                   const categoryId = e.target.value;
@@ -1113,10 +1113,10 @@ export const Products: React.FC = () => {
             </p>
             {formData.isVariableWeight && (
               <div className="mt-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">
+                <label htmlFor="products-f4" className="block text-xs font-medium text-gray-600 mb-1">
                   Customer popup message (Urdu)
                 </label>
-                <textarea
+                <textarea id="products-f4"
                   value={formData.variableWeightNote ?? ''}
                   onChange={(e) =>
                     setFormData({ ...formData, variableWeightNote: e.target.value })
@@ -1133,7 +1133,7 @@ export const Products: React.FC = () => {
 
           {/* Image Upload */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Product Images</label>
+            <label htmlFor="products-images" className="block text-sm font-medium text-gray-700 mb-2">Product Images</label>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
               {(existingImages.length > 0 || imagePreviews.length > 0) && (
                 <div className="grid grid-cols-4 gap-3 mb-4">
@@ -1176,6 +1176,7 @@ export const Products: React.FC = () => {
                 <span className="text-sm text-gray-600">Click to upload images</span>
                 <span className="text-xs text-gray-400 mt-1">JPG, PNG or WebP (max 5MB each)</span>
                 <input
+                  id="products-images"
                   type="file"
                   multiple
                   accept="image/jpeg,image/png,image/webp"

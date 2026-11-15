@@ -125,7 +125,9 @@ export const couponService = {
     return res.data as Coupon;
   },
 
-  remove: async (id: string): Promise<void> => {
-    await api.delete(`/admin/coupons/${id}`);
+  /** A coupon that was already used is switched off instead (history kept); the message says which happened. */
+  remove: async (id: string): Promise<string> => {
+    const res = await api.delete<{ message?: string }>(`/admin/coupons/${id}`);
+    return res?.message || 'Coupon deleted';
   },
 };

@@ -101,6 +101,7 @@ export const Roles: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'roles'] });
       toast.success('Role deleted');
     },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Could not delete the role'),
   });
 
   const createUserMutation = useMutation({
@@ -473,10 +474,10 @@ export const Roles: React.FC = () => {
             onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
           />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="roles-f1" className="block text-sm font-medium text-gray-700 mb-1">
               Permissions Role
             </label>
-            <select
+            <select id="roles-f1"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
               value={userForm.roleId}
               onChange={(e) => setUserForm({ ...userForm, roleId: e.target.value })}
@@ -564,10 +565,10 @@ export const Roles: React.FC = () => {
               placeholder="e.g., Gujrat Manager"
             />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="roles-f2" className="block text-sm font-medium text-gray-700 mb-1">
                 City <span className="text-red-500">*</span>
               </label>
-              <select
+              <select id="roles-f2"
                 required
                 value={form.cityId}
                 onChange={(e) => setForm({ ...form, cityId: e.target.value })}
@@ -593,9 +594,9 @@ export const Roles: React.FC = () => {
           />
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <span className="block text-sm font-medium text-gray-700 mb-2">
               Permissions <span className="text-red-500">*</span>
-            </label>
+            </span>
             {loadingPerms ? (
               <p className="text-sm text-gray-500">Loading permissions...</p>
             ) : (

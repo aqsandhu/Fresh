@@ -165,8 +165,8 @@ function AddTipForm({
       </div>
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Page</label>
-          <select
+          <label htmlFor="usertips-f5" className="block text-sm font-medium text-gray-700 mb-1">Page</label>
+          <select id="usertips-f5"
             value={page}
             onChange={(e) => setPage(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
@@ -179,8 +179,8 @@ function AddTipForm({
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-          <input
+          <label htmlFor="usertips-f1" className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+          <input id="usertips-f1"
             type="number"
             value={priority}
             onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}
@@ -189,8 +189,8 @@ function AddTipForm({
         </div>
         {isSuperAdmin && (
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Applies to</label>
-            <select
+            <label htmlFor="usertips-f2" className="block text-sm font-medium text-gray-700 mb-1">Applies to</label>
+            <select id="usertips-f2"
               value={target}
               onChange={(e) => setTarget(e.target.value as 'global' | 'city')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
@@ -203,8 +203,8 @@ function AddTipForm({
           </div>
         )}
         <div className="md:col-span-4">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Tip text (Urdu)</label>
-          <textarea
+          <label htmlFor="usertips-f3" className="block text-sm font-medium text-gray-700 mb-1">Tip text (Urdu)</label>
+          <textarea id="usertips-f3"
             dir="rtl"
             value={textUr}
             onChange={(e) => setTextUr(e.target.value)}
@@ -263,8 +263,8 @@ function TipRow({ tip }: { tip: UserTip }) {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-right focus:ring-2 focus:ring-primary-500"
           />
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">Priority</label>
-            <input
+            <label htmlFor="usertips-f4" className="text-sm text-gray-600">Priority</label>
+            <input id="usertips-f4"
               type="number"
               value={priority}
               onChange={(e) => setPriority(parseInt(e.target.value, 10) || 0)}

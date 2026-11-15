@@ -180,8 +180,8 @@ export const ServiceAreas: React.FC = () => {
         <Card className="p-6">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-              <select
+              <label htmlFor="serviceareas-f1" className="block text-sm font-medium text-gray-700 mb-1">City</label>
+              <select id="serviceareas-f1"
                 value={cityId}
                 onChange={(e) => {
                   setCityId(e.target.value);
@@ -260,17 +260,17 @@ export const ServiceAreas: React.FC = () => {
           </p>
 
           <div className="mb-4 max-w-sm">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Area name</label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Service Area" />
+            <label htmlFor="serviceareas-f4" className="block text-sm font-medium text-gray-700 mb-1">Area name</label>
+            <Input id="serviceareas-f4" value={name} onChange={(e) => setName(e.target.value)} placeholder="Service Area" />
           </div>
 
           <ServiceAreaMap polygon={polygon} onChange={setPolygon} />
 
           <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="serviceareas-f5" className="block text-sm font-medium text-gray-700 mb-1">
               Coordinates (one “lat, lng” per line)
             </label>
-            <textarea
+            <textarea id="serviceareas-f5"
               value={coordsText}
               onChange={(e) => setCoordsText(e.target.value)}
               rows={4}
@@ -308,12 +308,12 @@ export const ServiceAreas: React.FC = () => {
           </p>
           <div className="space-y-4 max-w-2xl">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-              <Input value={msgTitle} onChange={(e) => setMsgTitle(e.target.value)} />
+              <label htmlFor="serviceareas-f6" className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+              <Input id="serviceareas-f6" value={msgTitle} onChange={(e) => setMsgTitle(e.target.value)} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Message (English)</label>
-              <textarea
+              <label htmlFor="serviceareas-f2" className="block text-sm font-medium text-gray-700 mb-1">Message (English)</label>
+              <textarea id="serviceareas-f2"
                 value={msgEn}
                 onChange={(e) => setMsgEn(e.target.value)}
                 rows={3}
@@ -321,8 +321,8 @@ export const ServiceAreas: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Message (Urdu)</label>
-              <textarea
+              <label htmlFor="serviceareas-f3" className="block text-sm font-medium text-gray-700 mb-1">Message (Urdu)</label>
+              <textarea id="serviceareas-f3"
                 value={msgUr}
                 onChange={(e) => setMsgUr(e.target.value)}
                 rows={3}
@@ -331,10 +331,10 @@ export const ServiceAreas: React.FC = () => {
               />
             </div>
             <div className="max-w-xs">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="serviceareas-f7" className="block text-sm font-medium text-gray-700 mb-1">
                 WhatsApp number / link
               </label>
-              <Input value={msgWhatsapp} onChange={(e) => setMsgWhatsapp(e.target.value)} placeholder="03451111346" />
+              <Input id="serviceareas-f7" value={msgWhatsapp} onChange={(e) => setMsgWhatsapp(e.target.value)} placeholder="03451111346" />
             </div>
             <Button onClick={() => messagesMutation.mutate()} isLoading={messagesMutation.isPending}>
               <Save className="w-4 h-4 mr-2" /> Save message

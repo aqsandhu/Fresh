@@ -260,8 +260,8 @@ export const Baskets: React.FC = () => {
             placeholder="Weekly Veg Basket"
           />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
+            <label htmlFor="baskets-f1" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+            <textarea id="baskets-f1"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               rows={2}
@@ -292,7 +292,7 @@ export const Baskets: React.FC = () => {
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700">Products</label>
+              <span className="block text-sm font-medium text-gray-700">Products</span>
               <Button variant="outline" size="sm" onClick={addItemRow}>
                 <Plus className="w-4 h-4 mr-1" /> Add product
               </Button>

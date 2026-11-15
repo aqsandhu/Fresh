@@ -51,9 +51,10 @@ export const orderService = {
     }
   },
 
-  assignRider: async (orderId: string, riderId: string): Promise<Order> => {
+  /** Resolves with `payWarning` when the rider has no per-order pay set (delivery recorded at Rs 0). */
+  assignRider: async (orderId: string, riderId: string): Promise<{ order: Order; riderPay: number; payWarning: string | null }> => {
     try {
-      const response = await api.put<ApiResponse<Order>>(`/admin/orders/${orderId}/assign-rider`, {
+      const response = await api.put<ApiResponse<{ order: Order; riderPay: number; payWarning: string | null }>>(`/admin/orders/${orderId}/assign-rider`, {
         riderId,
       });
       return unwrap(response);

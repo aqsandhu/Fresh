@@ -9,6 +9,10 @@ export interface ExpenseRow {
   comment: string | null;
   refType: string | null;
   refLabel: string | null;
+  /** Stock purchases: who it was bought from, and the bill. */
+  supplierName?: string | null;
+  billNumber?: string | null;
+  billPhotoUrl?: string | null;
   forMonth: string | null;
   incurredAt: string;
   cityName: string | null;
@@ -45,8 +49,25 @@ export const financeService = {
   addStockPurchase: async (d: {
     productId: string; purchasedAt?: string; rawWeight?: number; purchasePrice: number;
     gradeA?: number; gradeB?: number; gradeC?: number; waste?: number; comment?: string;
+    supplierName: string; supplierPhone?: string; billNumber?: string; billPhoto?: File | null;
   }) => {
-    const res = await api.post<ApiResponse<{ id: string }>>('/finance/stock-purchase', d);
+    const { billPhoto, ...fields } = d;
+    if (!billPhoto) {
+      const res = await api.post<ApiResponse<{ id: string }>>('/finance/stock-purchase', fields);
+      return unwrap(res);
+    }
+    // With the bill photo: multipart (keys are sent as the API names them).
+    const snake: Record<string, string> = {
+      productId: 'product_id', purchasedAt: 'purchased_at', rawWeight: 'raw_weight', purchasePrice: 'purchase_price',
+      gradeA: 'grade_a', gradeB: 'grade_b', gradeC: 'grade_c', waste: 'waste', comment: 'comment',
+      supplierName: 'supplier_name', supplierPhone: 'supplier_phone', billNumber: 'bill_number',
+    };
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined && v !== null && v !== '') form.append(snake[k] || k, String(v));
+    }
+    form.append('bill_photo', billPhoto);
+    const res = await api.postForm<ApiResponse<{ id: string }>>('/finance/stock-purchase', form);
     return unwrap(res);
   },
   addRiderPayment: async (d: { riderId: string; category: 'salary' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string; paidAt?: string; approvalPhone?: string; approvalPassword?: string }) => {

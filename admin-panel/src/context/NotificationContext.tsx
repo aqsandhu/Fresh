@@ -38,7 +38,8 @@ export interface AdminNotification {
     | 'ocp:shortage'
     | 'rider:task_failed'
     | 'rider:arrived'
-    | 'reconciliation:alert';
+    | 'reconciliation:alert'
+    | 'job:failed';
   title: string;
   message: string;
   orderId?: string;
@@ -305,6 +306,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ['owner-watchdog'] });
     };
 
+    // A background job (the daily books check, reminders) failed — the owner
+    // must know the checks are not running (super admins only).
+    const handleJobFailed = (data: Record<string, unknown>) => {
+      const item = buildNotification(
+        'job:failed',
+        { ...data, link: '/admin/owner-checks' },
+        `${String(data.label || 'A background job')} did not run`,
+        String(data.message || 'It will try again on its next run.')
+      );
+      pushNotification(item);
+      playNotificationSound();
+      toast.error(item.title, { duration: 10000 });
+    };
+
     const handleOcpShortage = (data: Record<string, unknown>) => {
       const item = buildNotification(
         'ocp:shortage',
@@ -402,6 +417,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       onSocketEvent('rider:task_failed', handleRiderTaskFailed);
       onSocketEvent('rider:arrived', handleRiderArrived);
       onSocketEvent('reconciliation:alert', handleReconciliationAlert);
+      onSocketEvent('job:failed', handleJobFailed);
 
       connectionInterval = setInterval(() => {
         setIsSocketConnected(socket.connected);
@@ -425,6 +441,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       offSocketEvent('rider:task_failed', handleRiderTaskFailed);
       offSocketEvent('rider:arrived', handleRiderArrived);
       offSocketEvent('reconciliation:alert', handleReconciliationAlert);
+      offSocketEvent('job:failed', handleJobFailed);
       flashTimers.forEach((t) => clearTimeout(t));
       flashTimers.clear();
       disconnectSocket();
@@ -473,9 +490,4 @@ export function useNotifications(): NotificationContextValue {
     throw new Error('useNotifications must be used within NotificationProvider');
   }
   return ctx;
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function useOptionalNotifications(): NotificationContextValue | null {
-  return useContext(NotificationContext) ?? null;
 }

@@ -128,6 +128,26 @@ export function hasPermission(
   return codes.some((c) => perms.includes(c));
 }
 
+/**
+ * A ?redirect= target after login: only a path inside this admin panel.
+ * "//evil.com", "/\evil.com" or "/<tab>/evil.com" are read by browsers as
+ * another site, so backslashes / control characters are refused and the path
+ * is re-parsed to be sure it stays on this origin.
+ */
+export function safeAdminRedirect(target: string | null | undefined): string | null {
+  if (!target || !target.startsWith('/') || target.startsWith('//')) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\\\u0000-\u001f\u007f\s]/.test(target)) return null;
+  try {
+    const base = 'https://same-site.invalid';
+    const u = new URL(target, base);
+    if (u.origin !== base) return null;
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
+    return null;
+  }
+}
+
 export function canAccessRoute(
   path: string,
   permissions: string[] | undefined

@@ -1,4 +1,4 @@
-import React, { useState, KeyboardEvent } from 'react';
+import React, { useId, useState, KeyboardEvent } from 'react';
 import { X } from 'lucide-react';
 
 interface TagInputProps {
@@ -18,6 +18,7 @@ export const TagInput: React.FC<TagInputProps> = ({
   hint = 'Users can find this product when searching these words. Add as many as you like.',
 }) => {
   const [draft, setDraft] = useState('');
+  const inputId = useId();
 
   const addTag = (raw: string) => {
     const tag = raw.trim().replace(/\s+/g, ' ');
@@ -47,7 +48,7 @@ export const TagInput: React.FC<TagInputProps> = ({
   return (
     <div>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
+        <label htmlFor={inputId} className="block text-sm font-medium text-gray-700 mb-1.5">{label}</label>
       )}
       <div className="min-h-[42px] flex flex-wrap items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent">
         {value.map((tag, index) => (
@@ -67,6 +68,7 @@ export const TagInput: React.FC<TagInputProps> = ({
           </span>
         ))}
         <input
+          id={inputId}
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

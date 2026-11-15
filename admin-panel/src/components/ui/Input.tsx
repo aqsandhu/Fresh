@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useId } from 'react';
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -10,10 +10,15 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ label, error, helperText, leftIcon, rightIcon, className = '', ...props }, ref) => {
+    // Label, field and message are tied together for screen readers and so a
+    // click on the label focuses the field (they were unlinked before).
+    const autoId = useId();
+    const id = props.id ?? autoId;
+    const messageId = error || helperText ? `${id}-msg` : undefined;
     return (
       <div className="w-full">
         {label && (
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
             {label}
             {props.required && <span className="text-red-500 ml-1">*</span>}
           </label>
@@ -36,6 +41,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               ${className}
             `}
             {...props}
+            id={id}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={props['aria-describedby'] ?? messageId}
           />
           {rightIcon && (
             <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
@@ -43,8 +51,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             </div>
           )}
         </div>
-        {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
-        {helperText && !error && <p className="mt-1 text-sm text-gray-500">{helperText}</p>}
+        {error && <p id={messageId} role="alert" className="mt-1 text-sm text-red-600">{error}</p>}
+        {helperText && !error && <p id={messageId} className="mt-1 text-sm text-gray-500">{helperText}</p>}
       </div>
     );
   }

@@ -51,7 +51,26 @@ export const productService = {
       if (filters.search) params.search = filters.search;
       if (filters.isActive !== undefined) params.is_active = filters.isActive;
 
-      const response = await api.get<{ success: boolean; data: Product[]; meta: { page: number; limit: number; total: number; totalPages: number } }>('/admin/products', params);
+      type Page = { success: boolean; data: Product[]; meta: { page: number; limit: number; total: number; totalPages: number } };
+      const response = await api.get<Page>('/admin/products', params);
+
+      // The API never returns more than 100 rows a page. Screens that need the
+      // whole catalogue (Price Manager, order pickers) ask for more and used
+      // to silently get only the first 100 — every later product was missing
+      // with no "next page". When more was asked for than one page holds,
+      // fetch the following pages too (up to what was asked).
+      const wanted = filters.limit ?? 0;
+      const meta = response.meta;
+      if (!filters.page && meta && wanted > meta.limit && meta.total > response.data.length) {
+        const products = [...response.data];
+        const lastPage = Math.min(meta.totalPages || Math.ceil(meta.total / meta.limit), Math.ceil(wanted / meta.limit));
+        for (let page = 2; page <= lastPage; page++) {
+          const next = await api.get<Page>('/admin/products', { ...params, page, limit: meta.limit });
+          products.push(...(next.data || []));
+          if (!next.data?.length) break;
+        }
+        return { products: products.slice(0, wanted), pagination: { ...meta, limit: products.length } };
+      }
       return { products: response.data, pagination: response.meta };
     } catch (error: any) {
       console.error('Error fetching products:', error);

@@ -210,8 +210,8 @@ function FormulaCard({ onSaved }: { onSaved: () => void }) {
         {enabled && (
           <div className="space-y-3 pl-6">
             <div className="max-w-xs">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Share mode</label>
-              <Select value={mode} onChange={(e) => setMode(e.target.value)}
+              <label htmlFor="profit-f1" className="block text-sm font-medium text-gray-700 mb-1">Share mode</label>
+              <Select id="profit-f1" value={mode} onChange={(e) => setMode(e.target.value)}
                 options={Object.entries(MODE_LABEL).map(([v, l]) => ({ value: v, label: l }))} />
             </div>
             {mode === 'per_order_fixed' && (

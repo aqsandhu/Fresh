@@ -4,10 +4,11 @@ import { Eye, EyeOff } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { useAuthContext } from '@/context/AuthContext';
 import { authService } from '@/services/auth.service';
-import { canAccessRoute, firstAccessibleRoute } from '@/lib/permissions';
+import { canAccessRoute, firstAccessibleRoute, safeAdminRedirect } from '@/lib/permissions';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import toast from 'react-hot-toast';
+import type { LoginOtpChallenge } from '@/types';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -18,6 +19,10 @@ export const Login: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ phone?: string; password?: string }>({});
+  // Two-step login: set once the password is accepted and the server asks
+  // for the one-time code.
+  const [challenge, setChallenge] = useState<LoginOtpChallenge | null>(null);
+  const [otp, setOtp] = useState('');
 
   const validateForm = (): boolean => {
     const newErrors: { phone?: string; password?: string } = {};
@@ -42,13 +47,22 @@ export const Login: React.FC = () => {
     e.preventDefault();
     
     if (!validateForm()) return;
+    if (challenge && !/^\d{4,8}$/.test(otp.trim())) {
+      toast.error('Enter the verification code');
+      return;
+    }
     
     setIsLoading(true);
     try {
-      await login({ phone, password });
+      const result = await login(challenge ? { phone, password, otp: otp.trim() } : { phone, password });
+      if (result && result.requiresOtp) {
+        setChallenge(result);
+        setOtp('');
+        return;
+      }
       toast.success('Login successful!');
       const user = authService.getCurrentUser();
-      const redirectParam = searchParams.get('redirect');
+      const redirectParam = safeAdminRedirect(searchParams.get('redirect'));
       const dest =
         redirectParam && canAccessRoute(redirectParam, user?.permissions)
           ? redirectParam
@@ -83,7 +97,7 @@ export const Login: React.FC = () => {
               type="tel"
               placeholder="+923001234567"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => { setPhone(e.target.value); setChallenge(null); }}
               error={errors.phone}
               required
             />
@@ -94,7 +108,7 @@ export const Login: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Enter your password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => { setPassword(e.target.value); setChallenge(null); }}
                 error={errors.password}
                 required
               />
@@ -111,13 +125,37 @@ export const Login: React.FC = () => {
                 wired to anything (href="#", uncontrolled checkbox). Re-add when
                 a real password-reset flow exists. */}
 
+            {challenge && (
+              <div className="rounded-lg border border-primary-200 bg-primary-50 p-3 space-y-2">
+                <p className="text-sm text-gray-800">
+                  {challenge.otpBypass
+                    ? 'Password accepted. Enter the verification code to finish signing in.'
+                    : `Password accepted. We sent a code to ${challenge.phoneHint || 'your phone'}${challenge.channel ? ` by ${challenge.channel === 'whatsapp' ? 'WhatsApp' : 'SMS'}` : ''}.`}
+                </p>
+                <Input
+                  label="Verification Code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="6-digit code"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  autoFocus
+                  required
+                />
+                {challenge.resendIn ? (
+                  <p className="text-xs text-gray-500">A code was sent a moment ago and is still valid.</p>
+                ) : null}
+              </div>
+            )}
+
             <Button
               type="submit"
               className="w-full"
               isLoading={isLoading}
               size="lg"
             >
-              Sign In
+              {challenge ? 'Verify & Sign In' : 'Sign In'}
             </Button>
           </form>
         </div>

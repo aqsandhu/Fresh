@@ -530,7 +530,7 @@ export const Categories: React.FC = () => {
 
           {/* Image Upload */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="categories-image" className="block text-sm font-medium text-gray-700 mb-2">
               Category Image
             </label>
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
@@ -555,6 +555,7 @@ export const Categories: React.FC = () => {
                   <span className="text-sm text-gray-600">Click to upload image</span>
                   <span className="text-xs text-gray-400 mt-1">JPG, PNG or WebP (max 5MB)</span>
                   <input
+                    id="categories-image"
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     onChange={handleImageSelect}

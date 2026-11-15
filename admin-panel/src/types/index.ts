@@ -3,13 +3,13 @@
 // API responses are converted to camelCase in services/api.ts
 // ============================================================================
 
-export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider' | 'moderator';
-export type UserStatus = 'active' | 'inactive' | 'suspended' | 'pending';
+export type UserRole = 'customer' | 'admin' | 'super_admin' | 'rider';
+export type UserStatus = 'active' | 'inactive' | 'suspended' | 'deleted';
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready_for_pickup' | 'out_for_delivery' | 'delivered' | 'cancelled' | 'refunded';
-export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
-export type PaymentMethod = 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'online' | 'cash_on_delivery';
+export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded' | 'partially_refunded';
+export type PaymentMethod = 'cash_on_delivery' | 'card' | 'easypaisa' | 'jazzcash' | 'bank_transfer';
 export type RiderStatus = 'available' | 'busy' | 'offline' | 'on_leave';
-export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'pack';
+export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'ml' | 'pack';
 export type AttaRequestStatus = 'pending_pickup' | 'picked_up' | 'at_mill' | 'milling' | 'ready_for_delivery' | 'out_for_delivery' | 'delivered' | 'cancelled';
 
 export interface User {
@@ -320,6 +320,18 @@ export interface PaginatedResponse<T> {
 export interface LoginCredentials {
   phone: string;
   password: string;
+  /** Second step: the one-time code (absent on the first call). */
+  otp?: string;
+}
+
+/** The server accepted the password and now wants the one-time code. */
+export interface LoginOtpChallenge {
+  requiresOtp: true;
+  /** OTP bypass is on: the fixed bypass code is accepted, nothing was sent. */
+  otpBypass: boolean;
+  phoneHint?: string;
+  channel?: 'whatsapp' | 'sms';
+  resendIn?: number;
 }
 
 export interface AuthResponse {

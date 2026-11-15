@@ -298,8 +298,8 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Order notes (optional)</label>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+        <label htmlFor="restaurantwhatsapporder-f1" className="block text-sm font-medium text-gray-700 mb-1">Order notes (optional)</label>
+        <textarea id="restaurantwhatsapporder-f1" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" />
       </div>
 

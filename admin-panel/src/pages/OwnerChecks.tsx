@@ -43,6 +43,16 @@ function findings(summary: Record<string, any> | undefined): { level: 'high' | '
   for (const o of summary.ocp?.overdue || []) {
     out.push({ level: 'medium', text: `Collection point ${o.name} is holding ${rs(o.due)} cash for more than the allowed days.` });
   }
+  for (const r of summary.integrity || []) {
+    const what = r.rule === 'products_stock_nonnegative' ? 'stock can never be negative'
+      : r.rule === 'orders_total_adds_up' ? 'an order total must add up' : 'paid amount can never exceed the order total';
+    out.push({
+      level: 'high',
+      text: r.breakingRows > 0
+        ? `Database rule "${what}" is OFF because ${r.breakingRows} existing row(s) already break it. Have those rows corrected, then run ensure_integrity_constraints() to switch it on.`
+        : `Database rule "${what}" is not switched on yet — run the database migrations (or ensure_integrity_constraints()).`,
+    });
+  }
   if (summary.ocp?.openShortages > 0) out.push({ level: 'medium', text: `${summary.ocp.openShortages} collection-point stock shortage(s) are still open.` });
   return out;
 }
@@ -58,10 +68,25 @@ function WatchdogTab() {
   const latest = data?.latest;
   const s = latest?.summary;
   const list = useMemo(() => findings(s), [s]);
+  // The watchdog runs every day. A last run older than ~30 hours means it is
+  // failing or not scheduled — the books are then NOT being checked.
+  const staleHours = latest?.runAt ? Math.floor((Date.now() - new Date(latest.runAt).getTime()) / 3600000) : null;
+  const stale = staleHours === null || staleHours > 30;
 
   if (isLoading) return <div className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-600 mx-auto" /></div>;
   return (
     <div className="space-y-4">
+      {stale && (
+        <Card className="p-3 bg-red-50 border border-red-200 text-sm text-red-800 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>
+            {staleHours === null
+              ? 'The daily books check has never run on this server.'
+              : `The daily books check has not run for ${staleHours} hours — it runs every day, so it is failing or stopped.`}{' '}
+            Press &quot;Run checks now&quot;; if it fails, the error is shown and sent to your notifications.
+          </span>
+        </Card>
+      )}
       <Card className="p-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm text-gray-500">Last check</p>
@@ -140,8 +165,8 @@ function CountsTab() {
     <div className="space-y-3">
       <Card className="p-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <label htmlFor="ownerchecks-f1" className="block text-sm font-medium text-gray-700 mb-1">Day</label>
+          <input id="ownerchecks-f1" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
         </div>
         <p className="text-sm text-gray-600">Counts are taken on <b>Management → Stock</b> (count icon on each row). Shortage this day: <b className="text-red-600">{rs(shortage)}</b></p>
       </Card>
@@ -196,20 +221,20 @@ function AuditTab() {
     <div className="space-y-3">
       <Card className="p-4 flex flex-wrap gap-3 items-end">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Last</label>
-          <select value={days} onChange={(e) => setDays(Number(e.target.value))} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <label htmlFor="ownerchecks-f2" className="block text-sm font-medium text-gray-700 mb-1">Last</label>
+          <select id="ownerchecks-f2" value={days} onChange={(e) => setDays(Number(e.target.value))} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
             {[1, 7, 30, 90].map((d) => <option key={d} value={d}>{d} day(s)</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">What</label>
-          <select value={resource} onChange={(e) => setResource(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <label htmlFor="ownerchecks-f3" className="block text-sm font-medium text-gray-700 mb-1">What</label>
+          <select id="ownerchecks-f3" value={resource} onChange={(e) => setResource(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
             {RESOURCES.map((r) => <option key={r} value={r}>{r || 'Everything'}</option>)}
           </select>
         </div>
         <div className="flex-1 min-w-[200px]">
-          <label className="block text-sm font-medium text-gray-700 mb-1">Search action or record id</label>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. status, refund, a product id" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <label htmlFor="ownerchecks-f4" className="block text-sm font-medium text-gray-700 mb-1">Search action or record id</label>
+          <input id="ownerchecks-f4" value={q} onChange={(e) => setQ(e.target.value)} placeholder="e.g. status, refund, a product id" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
         </div>
       </Card>
       <Card className="p-0">

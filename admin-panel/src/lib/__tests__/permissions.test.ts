@@ -3,6 +3,7 @@ import {
   canAccessRoute,
   firstAccessibleRoute,
   ROUTE_PERMISSIONS,
+  safeAdminRedirect,
 } from '@/lib/permissions';
 
 describe('hasPermission', () => {
@@ -80,5 +81,16 @@ describe('firstAccessibleRoute', () => {
     // categories.manage doesn't grant the dashboard (nor orders/products/
     // customers), so the first reachable fallback is /admin/categories.
     expect(firstAccessibleRoute(['categories.manage'])).toBe('/admin/categories');
+  });
+});
+
+describe('safeAdminRedirect', () => {
+  it('keeps a path inside the panel', () => {
+    expect(safeAdminRedirect('/admin/orders?status=pending')).toBe('/admin/orders?status=pending');
+  });
+  it('refuses anything a browser would read as another site', () => {
+    for (const bad of ['https://evil.com', '//evil.com', '/' + String.fromCharCode(92) + 'evil.com', '/' + String.fromCharCode(9) + '/evil.com', 'javascript:alert(1)', '', null, undefined]) {
+      expect(safeAdminRedirect(bad)).toBeNull();
+    }
   });
 });

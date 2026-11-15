@@ -94,9 +94,11 @@ export const settingsService = {
     }
   },
 
-  deleteTimeSlot: async (id: string): Promise<void> => {
+  /** Resolves with the server's message (a slot that orders used is switched off, not deleted). */
+  deleteTimeSlot: async (id: string): Promise<string> => {
     try {
-      await api.delete<ApiResponse<void>>(`/admin/settings/time-slots/${id}`);
+      const res = await api.delete<ApiResponse<{ deactivated: boolean }>>(`/admin/settings/time-slots/${id}`);
+      return (res as { message?: string })?.message || 'Time slot deleted';
     } catch (error: any) {
       console.error('Error deleting time slot:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete time slot');

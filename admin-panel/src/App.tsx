@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { ROUTER_FUTURE } from './lib/routerFuture';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
@@ -495,7 +496,7 @@ function App() {
         <NotificationProvider>
         <CityProvider>
         <ErrorBoundary>
-          <BrowserRouter>
+          <BrowserRouter future={ROUTER_FUTURE}>
             <BrandFavicon />
             <React.Suspense fallback={<PageLoader />}>
               <AppRoutes />

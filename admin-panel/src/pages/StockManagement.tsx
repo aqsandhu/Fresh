@@ -232,8 +232,8 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
       <div className="space-y-3">
         {needsOcp && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{action === 'transfer' ? 'From OCP' : 'OCP'}</label>
-            <select value={ocpId} onChange={(e) => setOcpId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <label htmlFor="stockmanagement-f1" className="block text-sm font-medium text-gray-700 mb-1">{action === 'transfer' ? 'From OCP' : 'OCP'}</label>
+            <select id="stockmanagement-f1" value={ocpId} onChange={(e) => setOcpId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
               <option value="">Select OCP</option>
               {ocps.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
@@ -241,8 +241,8 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
         )}
         {needsToOcp && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">To OCP</label>
-            <select value={toOcpId} onChange={(e) => setToOcpId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <label htmlFor="stockmanagement-f2" className="block text-sm font-medium text-gray-700 mb-1">To OCP</label>
+            <select id="stockmanagement-f2" value={toOcpId} onChange={(e) => setToOcpId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
               <option value="">Select OCP</option>
               {ocps.filter((o) => o.id !== ocpId).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
             </select>
@@ -250,29 +250,29 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
         )}
         {action === 'convert' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Convert to quality</label>
-            <select value={toQuality} onChange={(e) => setToQuality(e.target.value as Quality)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <label htmlFor="stockmanagement-f3" className="block text-sm font-medium text-gray-700 mb-1">Convert to quality</label>
+            <select id="stockmanagement-f3" value={toQuality} onChange={(e) => setToQuality(e.target.value as Quality)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
               {(['A', 'B', 'C'] as Quality[]).filter((x) => x !== quality).map((x) => <option key={x} value={x}>Quality {x}</option>)}
             </select>
           </div>
         )}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="stockmanagement-f8" className="block text-sm font-medium text-gray-700 mb-1">
             {action === 'count' ? `Quantity you counted — shelf + packed bags in the store (${product.unitType})` : `Quantity (${product.unitType})`}
           </label>
-          <input type="number" min={0} step="0.001" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus
+          <input id="stockmanagement-f8" type="number" min={0} step="0.001" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
         </div>
         {action === 'waste' && (
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Evidence quantity</label>
-              <input type="number" min={0} step="0.001" value={evidenceQty} onChange={(e) => setEvidenceQty(e.target.value)}
+              <label htmlFor="stockmanagement-f4" className="block text-sm font-medium text-gray-700 mb-1">Evidence quantity</label>
+              <input id="stockmanagement-f4" type="number" min={0} step="0.001" value={evidenceQty} onChange={(e) => setEvidenceQty(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Proof image</label>
-              <input type="file" accept="image/*" onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+              <label htmlFor="stockmanagement-f5" className="block text-sm font-medium text-gray-700 mb-1">Proof image</label>
+              <input id="stockmanagement-f5" type="file" accept="image/*" onChange={(e) => setProofFile(e.target.files?.[0] || null)}
                 className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200" />
             </div>
           </div>
@@ -280,24 +280,24 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
         {action === 'count' && (
           <>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
-              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300}
+              <label htmlFor="stockmanagement-f6" className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+              <textarea id="stockmanagement-f6" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300}
                 placeholder="Who counted with you, which shelf…" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             </div>
             <Input label="Approver phone (if a big shortage)" value={approvalPhone} onChange={(e) => setApprovalPhone(e.target.value)} />
-            <Input label="Approver password (if a big shortage)" type="password" value={approvalPassword} onChange={(e) => setApprovalPassword(e.target.value)} />
+            <Input label="Approval code from the second admin (if a big shortage)" type="text" inputMode="numeric" maxLength={6} value={approvalPassword} onChange={(e) => setApprovalPassword(e.target.value)} />
           </>
         )}
         {(action === 'waste' || action === 'convert') && (
           <>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
-              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300}
+              <label htmlFor="stockmanagement-f7" className="block text-sm font-medium text-gray-700 mb-1">Reason <span className="text-red-500">*</span></label>
+              <textarea id="stockmanagement-f7" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={300}
                 placeholder={action === 'waste' ? 'Spoiled, damaged, expired...' : 'Regrade reason'}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             </div>
             <Input label="Approver phone (high value)" value={approvalPhone} onChange={(e) => setApprovalPhone(e.target.value)} />
-            <Input label="Approver password (high value)" type="password" value={approvalPassword} onChange={(e) => setApprovalPassword(e.target.value)} />
+            <Input label="Approval code from the second admin (high value)" type="text" inputMode="numeric" maxLength={6} value={approvalPassword} onChange={(e) => setApprovalPassword(e.target.value)} />
           </>
         )}
         <p className="text-xs text-gray-400">

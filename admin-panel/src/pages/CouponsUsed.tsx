@@ -100,8 +100,8 @@ export const CouponsUsed: React.FC = () => {
             onChange={(e) => set('dateTo', e.target.value)}
           />
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Coupon type</label>
-            <select
+            <label htmlFor="couponsused-f1" className="block text-sm font-medium text-gray-700 mb-1">Coupon type</label>
+            <select id="couponsused-f1"
               value={filters.discountType || ''}
               onChange={(e) => set('discountType', e.target.value as DiscountType | '')}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -113,8 +113,8 @@ export const CouponsUsed: React.FC = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Coupon</label>
-            <select
+            <label htmlFor="couponsused-f2" className="block text-sm font-medium text-gray-700 mb-1">Coupon</label>
+            <select id="couponsused-f2"
               value={filters.couponId || ''}
               onChange={(e) => set('couponId', e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"

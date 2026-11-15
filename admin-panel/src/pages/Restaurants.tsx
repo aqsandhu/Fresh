@@ -156,30 +156,30 @@ function SettingsSection() {
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Delivery base charge (Rs.)</label>
-            <input type="number" value={base} onChange={(e) => setBase(e.target.value)}
+            <label htmlFor="restaurants-f1" className="block text-sm font-medium text-gray-700 mb-1">Delivery base charge (Rs.)</label>
+            <input id="restaurants-f1" type="number" value={base} onChange={(e) => setBase(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Free-delivery threshold (Rs.)</label>
-            <input type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)}
+            <label htmlFor="restaurants-f2" className="block text-sm font-medium text-gray-700 mb-1">Free-delivery threshold (Rs.)</label>
+            <input id="restaurants-f2" type="number" value={threshold} onChange={(e) => setThreshold(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Urgent delivery fee (Rs.)</label>
-            <input type="number" value={urgent} onChange={(e) => setUrgent(e.target.value)}
+            <label htmlFor="restaurants-f3" className="block text-sm font-medium text-gray-700 mb-1">Urgent delivery fee (Rs.)</label>
+            <input id="restaurants-f3" type="number" value={urgent} onChange={(e) => setUrgent(e.target.value)}
               placeholder="0 = urgent disabled"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Urgent delivery ETA</label>
-            <input type="text" value={urgentEta} onChange={(e) => setUrgentEta(e.target.value)}
+            <label htmlFor="restaurants-f4" className="block text-sm font-medium text-gray-700 mb-1">Urgent delivery ETA</label>
+            <input id="restaurants-f4" type="text" value={urgentEta} onChange={(e) => setUrgentEta(e.target.value)}
               placeholder="e.g. 45–60 min"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Slot cutoff (% elapsed)</label>
-            <input type="number" min={0} max={100} value={slotCutoff} onChange={(e) => setSlotCutoff(e.target.value)}
+            <label htmlFor="restaurants-f5" className="block text-sm font-medium text-gray-700 mb-1">Slot cutoff (% elapsed)</label>
+            <input id="restaurants-f5" type="number" min={0} max={100} value={slotCutoff} onChange={(e) => setSlotCutoff(e.target.value)}
               placeholder="60"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
             <p className="mt-1 text-xs text-gray-400">A today-slot locks once this % of its window has passed.</p>
@@ -240,18 +240,18 @@ function RestaurantTimeSlots() {
 
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Start</label>
-          <input type="time" value={start} onChange={(e) => setStart(e.target.value)}
+          <label htmlFor="restaurants-f6" className="block text-xs font-medium text-gray-600 mb-1">Start</label>
+          <input id="restaurants-f6" type="time" value={start} onChange={(e) => setStart(e.target.value)}
             className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">End</label>
-          <input type="time" value={end} onChange={(e) => setEnd(e.target.value)}
+          <label htmlFor="restaurants-f7" className="block text-xs font-medium text-gray-600 mb-1">End</label>
+          <input id="restaurants-f7" type="time" value={end} onChange={(e) => setEnd(e.target.value)}
             className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Max orders</label>
-          <input type="number" min={1} value={maxOrders} placeholder="No limit" onChange={(e) => setMaxOrders(e.target.value)}
+          <label htmlFor="restaurants-f8" className="block text-xs font-medium text-gray-600 mb-1">Max orders</label>
+          <input id="restaurants-f8" type="number" min={1} value={maxOrders} placeholder="No limit" onChange={(e) => setMaxOrders(e.target.value)}
             className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
         </div>
         <label className="flex items-center gap-1.5 text-sm text-gray-700 pb-1.5 cursor-pointer">
@@ -384,8 +384,8 @@ function RestaurantCard({ r }: { r: Restaurant }) {
           {/* Per-restaurant delivery overrides (optional; blank = global default) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Free-delivery threshold (Rs.) — optional</label>
-              <input
+              <label htmlFor="restaurants-f9" className="block text-xs font-medium text-gray-600 mb-1">Free-delivery threshold (Rs.) — optional</label>
+              <input id="restaurants-f9"
                 type="number"
                 value={freeThreshold}
                 onChange={(e) => setFreeThreshold(e.target.value)}
@@ -394,8 +394,8 @@ function RestaurantCard({ r }: { r: Restaurant }) {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Delivery base charge (Rs.) — optional</label>
-              <input
+              <label htmlFor="restaurants-f10" className="block text-xs font-medium text-gray-600 mb-1">Delivery base charge (Rs.) — optional</label>
+              <input id="restaurants-f10"
                 type="number"
                 value={baseCharge}
                 onChange={(e) => setBaseCharge(e.target.value)}
@@ -405,8 +405,8 @@ function RestaurantCard({ r }: { r: Restaurant }) {
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Admin notes</label>
-            <textarea
+            <label htmlFor="restaurants-f11" className="block text-xs font-medium text-gray-600 mb-1">Admin notes</label>
+            <textarea id="restaurants-f11"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}

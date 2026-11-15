@@ -127,6 +127,13 @@ export function Table<T>({
                   key={rowId}
                   className={`${onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''} ${rowClassName ? rowClassName(item) : ''}`}
                   onClick={() => onRowClick?.(item)}
+                  {...(onRowClick ? {
+                    tabIndex: 0,
+                    role: 'button',
+                    onKeyDown: (e: React.KeyboardEvent) => {
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(item); }
+                    },
+                  } : {})}
                 >
                   {selectable && selectedIds && (
                     <td

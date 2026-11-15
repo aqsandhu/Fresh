@@ -32,6 +32,13 @@ export const Card: React.FC<CardProps> = ({
   return (
     <div
       onClick={onClick}
+      {...(onClick ? {
+        tabIndex: 0,
+        role: 'button',
+        onKeyDown: (e: React.KeyboardEvent) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+        },
+      } : {})}
       className={`
         bg-white rounded-lg border border-gray-200
         ${paddings[padding]}

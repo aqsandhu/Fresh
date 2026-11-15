@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import * as Sentry from '@sentry/react';
+import { scrubBreadcrumb, scrubEvent } from './lib/sentryScrub';
 import App from './App';
 import './index.css';
 
@@ -11,6 +12,9 @@ if (sentryDsn) {
     dsn: sentryDsn,
     environment: import.meta.env.MODE,
     tracesSampleRate: 0, // errors only — keep it light/cheap
+    sendDefaultPii: false,
+    beforeSend: scrubEvent,
+    beforeBreadcrumb: scrubBreadcrumb,
   });
 }
 

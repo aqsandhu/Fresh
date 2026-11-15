@@ -5,13 +5,14 @@ import { normalizeAdminUser } from '@/lib/adminUser';
 import { AUTH_COOKIES_ENABLED } from '@/config/env';
 import type { 
   LoginCredentials, 
+  LoginOtpChallenge,
   AuthResponse, 
   User,
   ApiResponse 
 } from '@/types';
 
 export const authService = {
-  login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
+  login: async (credentials: LoginCredentials): Promise<AuthResponse | LoginOtpChallenge> => {
     try {
       // Validate credentials before sending
       if (!credentials.phone || credentials.phone.trim().length === 0) {
@@ -21,7 +22,18 @@ export const authService = {
         throw new Error('Password is required');
       }
 
-      const response = await api.post<ApiResponse<AuthResponse>>('/admin/login', credentials);
+      const response = await api.post<ApiResponse<AuthResponse & Partial<LoginOtpChallenge>>>('/admin/login', credentials);
+      // Two-step login: the password was right, the server now asks for the
+      // one-time code. Nothing is stored until the second call succeeds.
+      if (response.success && response.data?.requiresOtp) {
+        return {
+          requiresOtp: true,
+          otpBypass: Boolean(response.data.otpBypass),
+          phoneHint: response.data.phoneHint,
+          channel: response.data.channel,
+          resendIn: response.data.resendIn,
+        };
+      }
       if (!response.success || !response.data?.user) {
         throw new Error(response.message || 'Login failed');
       }
@@ -50,7 +62,7 @@ export const authService = {
       
       // Handle specific error cases
       if (error.response?.status === 401) {
-        throw new Error('Invalid phone number or password');
+        throw new Error(credentials.otp ? 'Incorrect verification code' : 'Invalid phone number or password');
       }
       if (error.response?.status === 403) {
         throw new Error('Account is disabled. Please contact admin.');
@@ -67,7 +79,17 @@ export const authService = {
     // cookie mode). Bearer mode also calls this so the server invalidates the
     // refresh token instead of leaving it live. Fire-and-forget: local
     // cleanup must not wait on the network.
-    api.post('/auth/logout').catch(() => {});
+    //
+    // The refresh token is SENT so the server can revoke it — the call used
+    // to go out with an empty body, so in bearer mode nothing was revoked and
+    // the 30-day token kept working after "logout". And nothing is sent when
+    // there is no session at all (it produced a 401 on every visit to the
+    // login page).
+    const refreshToken = localStorage.getItem('admin_refresh_token');
+    const hadSession = Boolean(refreshToken || (AUTH_COOKIES_ENABLED && localStorage.getItem('admin_user')));
+    if (hadSession) {
+      api.post('/auth/logout', refreshToken ? { refreshToken } : undefined).catch(() => {});
+    }
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_refresh_token');
     localStorage.removeItem('admin_user');

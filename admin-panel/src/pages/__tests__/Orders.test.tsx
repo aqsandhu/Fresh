@@ -1,197 +1,85 @@
-// Mock the Orders page component behavior
-jest.mock('@/services/order.service', () => ({
-  orderService: {
-    getOrders: jest.fn(),
-    updateOrderStatus: jest.fn(),
-    assignRider: jest.fn(),
-  },
-}));
+// ============================================================================
+// ORDERS PAGE — tests of the REAL code behind it.
+//
+// The file that used to live here built mock order objects and checked their
+// own fields (12 tests that never touched the Orders page). The page's real
+// logic is the print slip — it puts customer-typed text into an HTML document
+// opened in the admin's browser — and the packed-weight formatting.
+// ============================================================================
+import { buildOrderSlipHtml, formatKgGrams } from '@/lib/orderSlip';
+import type { Order } from '@/types';
 
-jest.mock('@/services/rider.service', () => ({
-  riderService: {
-    getAvailableRiders: jest.fn(),
-  },
-}));
+const order = (over: Partial<Order> = {}): Order =>
+  ({
+    id: 'o1',
+    orderNumber: 'ORD-1001',
+    placedAt: '2026-11-15T09:30:00Z',
+    customerName: 'Ali Khan',
+    customerPhone: '+923001234567',
+    showCustomerPhone: true,
+    status: 'confirmed',
+    paymentMethod: 'cash_on_delivery',
+    subtotal: 1000,
+    discountAmount: 0,
+    couponDiscount: 100,
+    couponCode: 'SAVE10',
+    deliveryCharge: 50,
+    totalAmount: 950,
+    items: [
+      { id: 'i1', productName: 'Onion', quantity: 2, unitPrice: 60, totalPrice: 120, unit: 'half_kg' },
+      { id: 'i2', productName: 'Tomato', quantity: 1, unitPrice: 200, totalPrice: 200, unit: 'full' },
+    ],
+    deliveryAddressSnapshot: { houseNumber: '12-B', writtenAddress: 'Street 4', areaName: 'Model Town', city: 'Gujrat' },
+    slotName: 'Morning 9–11',
+    ...over,
+  }) as unknown as Order;
 
-describe('Orders Page', () => {
-  const mockOrders = [
-    {
-      id: 'order-1',
-      order_number: 'FB-001',
-      customer_name: 'Ali Khan',
-      customer_phone: '+923001234567',
-      total_amount: 1500,
-      delivery_charge: 0,
-      status: 'pending',
-      payment_method: 'cod',
-      delivery_address: 'House 123, Street 4, Gujrat',
-      created_at: new Date().toISOString(),
-      items: [
-        { product_name: 'Apples', quantity: 2, unit_price: 250 },
-        { product_name: 'Bananas', quantity: 1, unit_price: 150 },
-      ],
-    },
-    {
-      id: 'order-2',
-      order_number: 'FB-002',
-      customer_name: 'Sara Ahmed',
-      customer_phone: '+923009876543',
-      total_amount: 2500,
-      delivery_charge: 0,
-      status: 'confirmed',
-      payment_method: 'cod',
-      delivery_address: 'Flat 5, Block B, Gujrat',
-      created_at: new Date().toISOString(),
-      items: [
-        { product_name: 'Chicken', quantity: 2, unit_price: 800 },
-      ],
-    },
-    {
-      id: 'order-3',
-      order_number: 'FB-003',
-      customer_name: 'Usman Ali',
-      customer_phone: '+923005551111',
-      total_amount: 850,
-      delivery_charge: 0,
-      status: 'out_for_delivery',
-      payment_method: 'cod',
-      delivery_address: 'Village Chowk, Gujrat',
-      rider_name: 'Rider One',
-      created_at: new Date().toISOString(),
-      items: [
-        { product_name: 'Vegetables Pack', quantity: 1, unit_price: 750 },
-      ],
-    },
-  ];
-
-  const mockRiders = [
-    { id: 'rider-1', full_name: 'Rider One', phone: '+923001111111', status: 'available' },
-    { id: 'rider-2', full_name: 'Rider Two', phone: '+923002222222', status: 'available' },
-  ];
-
-  beforeEach(() => {
-    jest.clearAllMocks();
+describe('print slip', () => {
+  it('escapes everything a customer typed (no script runs in the print window)', () => {
+    const html = buildOrderSlipHtml(order({
+      customerName: '<img src=x onerror=alert(1)>',
+      customerNotes: '</div><script>steal()</script>',
+      deliveryAddressSnapshot: { writtenAddress: '"><svg onload=x>', city: 'Gujrat' } as never,
+    }));
+    expect(html).not.toMatch(/<img|<script|<svg/i);
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 
-  it('validates order data structure', () => {
-    const order = mockOrders[0];
-    
-    expect(order).toHaveProperty('id');
-    expect(order).toHaveProperty('order_number');
-    expect(order).toHaveProperty('customer_name');
-    expect(order).toHaveProperty('total_amount');
-    expect(order).toHaveProperty('status');
-    expect(order).toHaveProperty('items');
-    expect(Array.isArray(order.items)).toBe(true);
+  it('hides the phone number unless the order allows showing it', () => {
+    expect(buildOrderSlipHtml(order({ showCustomerPhone: false }))).toContain('Phone Number is Hidden');
+    expect(buildOrderSlipHtml(order({ showCustomerPhone: false }))).not.toContain('300');
+    expect(buildOrderSlipHtml(order())).not.toContain('Phone Number is Hidden');
   });
 
-  it('calculates order total correctly', () => {
-    const order = mockOrders[0];
-    const itemsTotal = order.items.reduce(
-      (sum: number, item: any) => sum + item.quantity * item.unit_price,
-      0
-    );
-    const grandTotal = itemsTotal + order.delivery_charge;
-    
-    expect(itemsTotal).toBe(650); // 2*250 + 1*150
-    expect(grandTotal).toBe(650);
+  it('shows money lines, the coupon and the line sizes', () => {
+    const html = buildOrderSlipHtml(order());
+    expect(html).toContain('Coupon (SAVE10)');
+    expect(html).toContain('-Rs.100');
+    expect(html).toMatch(/Total<\/span><span>Rs\.950/);
+    expect(html).toMatch(/Onion \([^)]+\)/); // half-kg line carries its size
+    expect(html).not.toMatch(/Tomato \(/); // a full unit does not
+    expect(html).toContain('Cash on Delivery');
+    expect(html).toContain('House #: 12-B');
+    expect(html).toContain('Morning 9–11');
   });
 
-  it('identifies correct order statuses', () => {
-    const statuses = mockOrders.map(o => o.status);
-    
-    expect(statuses).toContain('pending');
-    expect(statuses).toContain('confirmed');
-    expect(statuses).toContain('out_for_delivery');
+  it('leaves out lines that do not apply', () => {
+    const html = buildOrderSlipHtml(order({ couponDiscount: 0, couponCode: null as never, slotName: undefined as never, deliveryAddressSnapshot: undefined as never }));
+    expect(html).not.toContain('Coupon');
+    expect(html).not.toContain('Delivery Time Slot');
+    expect(html).not.toContain('Delivery Address');
   });
+});
 
-  it('filters orders by status', () => {
-    const statusFilter = 'pending';
-    const filtered = mockOrders.filter(o => o.status === statusFilter);
-    
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0].order_number).toBe('FB-001');
-  });
-
-  it('filters orders by search term', () => {
-    const searchTerm = 'Ali';
-    const filtered = mockOrders.filter(
-      o => o.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           o.order_number.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    
-    expect(filtered.length).toBeGreaterThan(0);
-    expect(filtered[0].customer_name).toContain('Ali');
-  });
-
-  it('validates status transitions', () => {
-    const validTransitions: Record<string, string[]> = {
-      pending: ['confirmed', 'cancelled'],
-      confirmed: ['preparing', 'cancelled'],
-      preparing: ['out_for_delivery'],
-      out_for_delivery: ['delivered', 'failed'],
-      delivered: [],
-      cancelled: [],
-    };
-
-    expect(validTransitions['pending']).toContain('confirmed');
-    expect(validTransitions['pending']).toContain('cancelled');
-    expect(validTransitions['delivered']).toHaveLength(0);
-    expect(validTransitions['out_for_delivery']).toContain('delivered');
-  });
-
-  it('validates rider assignment data', () => {
-    const rider = mockRiders[0];
-    
-    expect(rider).toHaveProperty('id');
-    expect(rider).toHaveProperty('full_name');
-    expect(rider).toHaveProperty('phone');
-    expect(rider).toHaveProperty('status');
-    expect(rider.status).toBe('available');
-  });
-
-  it('checks order has delivery address', () => {
-    for (const order of mockOrders) {
-      expect(order.delivery_address).toBeDefined();
-      expect(order.delivery_address.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('formats order number correctly', () => {
-    const orderNumberPattern = /^FB-\d{3}$/;
-    
-    for (const order of mockOrders) {
-      expect(order.order_number).toMatch(orderNumberPattern);
-    }
-  });
-
-  it('calculates correct delivery charge based on amount', () => {
-    const freeDeliveryThreshold = 500;
-    
-    for (const order of mockOrders) {
-      const itemsSubtotal = order.items.reduce(
-        (sum: number, item: any) => sum + item.quantity * item.unit_price, 0
-      );
-      
-      if (itemsSubtotal >= freeDeliveryThreshold) {
-        expect(order.delivery_charge).toBe(0);
-      }
-    }
-  });
-
-  it('has valid payment method', () => {
-    const validPaymentMethods = ['cod', 'card', 'wallet'];
-    
-    for (const order of mockOrders) {
-      expect(validPaymentMethods).toContain(order.payment_method);
-    }
-  });
-
-  it('sorts orders by date descending', () => {
-    const sorted = [...mockOrders].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-    
-    expect(sorted[0].created_at >= sorted[1].created_at).toBe(true);
+describe('packed weight', () => {
+  it.each([
+    [5.3, '5 kg 300 g'],
+    [2, '2 kg'],
+    [0.75, '750 g'],
+    [0, '0 kg'],
+    [-1, ''],
+    [Number.NaN, ''],
+  ])('%p kg → %p', (kg, text) => {
+    expect(formatKgGrams(kg)).toBe(text);
   });
 });

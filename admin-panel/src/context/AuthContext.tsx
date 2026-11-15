@@ -3,13 +3,14 @@ import { authService } from '@/services/auth.service';
 import { normalizeAdminUser } from '@/lib/adminUser';
 import { refreshAdminAccessToken, tokenNeedsRefresh } from '@/lib/adminTokenRefresh';
 import { AUTH_COOKIES_ENABLED } from '@/config/env';
-import type { User, LoginCredentials } from '@/types';
+import type { User, LoginCredentials, LoginOtpChallenge } from '@/types';
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (credentials: LoginCredentials) => Promise<void>;
+  /** Resolves to a challenge when the server wants the one-time code next. */
+  login: (credentials: LoginCredentials) => Promise<void | LoginOtpChallenge>;
   logout: () => void;
 }
 
@@ -94,8 +95,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, [user]);
 
-  const login = async (credentials: LoginCredentials): Promise<void> => {
+  const login = async (credentials: LoginCredentials): Promise<void | LoginOtpChallenge> => {
     const response = await authService.login(credentials);
+    if ('requiresOtp' in response) return response;
     const normalized = normalizeAdminUser(response.user) ?? response.user;
     setUser(normalized);
   };

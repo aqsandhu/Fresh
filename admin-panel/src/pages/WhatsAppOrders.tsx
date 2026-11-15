@@ -439,9 +439,10 @@ export const WhatsAppOrders: React.FC = () => {
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">WhatsApp Number *</label>
+                  <label htmlFor="whatsapporders-number" className="block text-sm font-medium text-gray-700 mb-1">WhatsApp Number *</label>
                   <div className="flex gap-2">
                     <input
+                      id="whatsapporders-number"
                       value={whatsappNumber}
                       onChange={(e) => {
                         setWhatsappNumber(e.target.value);
@@ -535,8 +536,8 @@ export const WhatsAppOrders: React.FC = () => {
               </h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
-                  <textarea
+                  <label htmlFor="whatsapporders-f1" className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+                  <textarea id="whatsapporders-f1" aria-label="Address *"
                     value={addressText}
                     onChange={(e) => {
                       setAddressText(e.target.value);
@@ -580,7 +581,7 @@ export const WhatsAppOrders: React.FC = () => {
                 )}
                 {doorPreview && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Door picture (from saved address)</label>
+                    <span className="block text-sm font-medium text-gray-700 mb-1">Door picture (from saved address)</span>
                     <a href={resolveImageUrl(doorPreview)} target="_blank" rel="noopener noreferrer">
                       <img
                         src={resolveImageUrl(doorPreview)}
@@ -881,8 +882,8 @@ export const WhatsAppOrders: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Admin Notes (Optional)</label>
-              <textarea
+              <label htmlFor="whatsapporders-f2" className="block text-sm font-medium text-gray-700 mb-1">Admin Notes (Optional)</label>
+              <textarea id="whatsapporders-f2"
                 value={adminNotes}
                 onChange={(e) => setAdminNotes(e.target.value)}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"

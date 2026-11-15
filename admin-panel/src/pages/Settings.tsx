@@ -247,10 +247,11 @@ export const Settings: React.FC = () => {
 
   const deleteTimeSlotMutation = useMutation({
     mutationFn: settingsService.deleteTimeSlot,
-    onSuccess: () => {
+    onSuccess: (message) => {
       queryClient.invalidateQueries({ queryKey: ['timeSlots'] });
-      toast.success('Time slot deleted successfully');
+      toast.success(message || 'Time slot deleted', { duration: 6000 });
     },
+    onError: (e: Error) => toast.error(e.message || 'Could not delete the time slot'),
   });
 
   const updateBusinessHoursMutation = useMutation({

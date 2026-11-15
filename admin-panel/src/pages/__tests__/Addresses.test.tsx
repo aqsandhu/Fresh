@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { Addresses } from '@/pages/Addresses';
+import { ROUTER_FUTURE } from '@/lib/routerFuture';
 
 const mockAssignHouseNumber = jest.fn();
 const mockGetCustomers = jest.fn();
@@ -112,7 +113,7 @@ describe('Addresses Page', () => {
     const queryClient = createTestQueryClient();
     return render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <MemoryRouter future={ROUTER_FUTURE}>
           <Addresses />
         </MemoryRouter>
       </QueryClientProvider>
@@ -186,12 +187,46 @@ describe('Addresses Page', () => {
       expect(screen.getByText('House 12, Street 4')).toBeInTheDocument();
     });
 
+    // The search goes to the SERVER (it used to filter only the first 100
+    // addresses already loaded, so address 101+ could never be found).
+    mockGetAddresses.mockImplementation(async (filters: { search?: string }) => ({
+      addresses: mockAddresses.filter((a) => !filters?.search || a.writtenAddress.includes(filters.search)),
+      pagination: { total: 1 },
+    }));
     fireEvent.change(screen.getByPlaceholderText('Search by area, city, house number...'), {
       target: { value: 'Flat 5' },
     });
 
+    await waitFor(() => {
+      expect(mockGetAddresses).toHaveBeenLastCalledWith(expect.objectContaining({ search: 'Flat 5', page: 1 }));
+    });
+    await waitFor(() => {
+      expect(screen.queryByText('House 12, Street 4')).not.toBeInTheDocument();
+    });
     expect(screen.getByText('Flat 5, Block B')).toBeInTheDocument();
-    expect(screen.queryByText('House 12, Street 4')).not.toBeInTheDocument();
+  });
+
+  it('the customer picker works from the keyboard (real buttons, expanded state announced)', async () => {
+    renderAddresses();
+    const trigger = screen.getByRole('button', { name: /Select Customer/ });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'All Customers' })).toBeInTheDocument();
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('offers "Show more" when the server has more addresses than shown', async () => {
+    mockGetAddresses.mockImplementation(async (filters: { page?: number }) => ({
+      addresses: filters?.page === 2 ? [{ ...mockAddresses[1], id: 'addr-page-2', writtenAddress: 'Page two house' }] : [mockAddresses[0]],
+      pagination: { total: 101 },
+    }));
+    renderAddresses();
+    const more = await screen.findByRole('button', { name: /Show 100 more/ });
+    fireEvent.click(more);
+    expect(await screen.findByText('Page two house')).toBeInTheDocument();
+    expect(mockGetAddresses).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }));
   });
 
   it('opens house number editor and assigns a number', async () => {

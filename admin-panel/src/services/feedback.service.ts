@@ -20,6 +20,8 @@ export interface AdminReview {
   authorName: string | null;
   riderName: string | null;
   createdAt: string;
+  /** Customer reports since an admin last published/hid it. */
+  reportCount?: number;
 }
 
 export interface ReviewListResult {
@@ -61,8 +63,10 @@ export interface ComplaintListResult {
 // The api layer converts camelCase <-> snake_case both ways.
 export const feedbackService = {
   // Reviews
-  listReviews: async (targetType?: ReviewTargetType): Promise<ReviewListResult> => {
-    const params = targetType ? { targetType } : undefined;
+  listReviews: async (targetType?: ReviewTargetType, reportedOnly = false): Promise<ReviewListResult> => {
+    const params = targetType || reportedOnly
+      ? { ...(targetType ? { targetType } : {}), ...(reportedOnly ? { reported: 'true' } : {}) }
+      : undefined;
     const res = await api.get<ApiResponse<ReviewListResult>>('/admin/reviews', params);
     const data = (res.data || {}) as Partial<ReviewListResult>;
     return { reviews: data.reviews || [], counts: data.counts || {} };

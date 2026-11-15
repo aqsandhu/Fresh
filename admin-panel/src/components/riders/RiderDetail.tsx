@@ -483,8 +483,8 @@ export function RiderPaymentModal({ rider, onClose }: { rider: Rider; onClose: (
       }>
       <div className="space-y-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Payment type</label>
-          <select value={category} onChange={(e) => setCategory(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <label htmlFor="riderdetail-f1" className="block text-sm font-medium text-gray-700 mb-1">Payment type</label>
+          <select id="riderdetail-f1" value={category} onChange={(e) => setCategory(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="salary">Salary</option>
             <option value="commission">Per-order delivery pay (hand-over)</option>
             <option value="other">Bonus / other</option>
@@ -534,8 +534,8 @@ function ReceiveRiderCashModal({ rider, pending, lines, onClose, onDone }: {
         </div>
         <Input label="Your admin password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Confirms you received the cash" />
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={300}
+          <label htmlFor="riderdetail-f2" className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
+          <textarea id="riderdetail-f2" value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={300}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500" />
         </div>
       </div>

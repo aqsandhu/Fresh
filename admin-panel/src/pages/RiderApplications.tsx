@@ -116,9 +116,10 @@ function ContentEditor() {
 
   const field = (label: string, key: keyof WorkAsRiderContent, rows = 3, hint?: string) => (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <label htmlFor={`work-as-rider-${String(key)}`} className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       {hint && <p className="text-xs text-gray-400 mb-1">{hint}</p>}
       <textarea
+        id={`work-as-rider-${String(key)}`}
         dir="rtl"
         value={content[key]}
         onChange={(e) => setContent({ ...content, [key]: e.target.value })}
@@ -207,8 +208,8 @@ function ApplicationCard({ app }: { app: RiderApplication }) {
         <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
           {app.message && <p className="text-sm text-gray-700 whitespace-pre-wrap">{app.message}</p>}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select
+            <label htmlFor="riderapplications-f1" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select id="riderapplications-f1"
               value={status}
               onChange={(e) => setStatus(e.target.value as RiderApplication['status'])}
               className="w-full sm:w-56 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
@@ -220,8 +221,8 @@ function ApplicationCard({ app }: { app: RiderApplication }) {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Admin notes</label>
-            <textarea
+            <label htmlFor="riderapplications-f2" className="block text-sm font-medium text-gray-700 mb-1">Admin notes</label>
+            <textarea id="riderapplications-f2"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}

@@ -2,7 +2,8 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Dashboard } from '@/pages/Dashboard';
+import { Dashboard } from '@/pages/Dashboard';
+import { ROUTER_FUTURE } from '@/lib/routerFuture';
 
 // Mock dashboard service
 const mockGetDashboardData = jest.fn();
@@ -141,7 +142,7 @@ describe('Dashboard Page', () => {
 
     return render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <MemoryRouter future={ROUTER_FUTURE}>
           <Dashboard />
         </MemoryRouter>
       </QueryClientProvider>
@@ -175,7 +176,7 @@ describe('Dashboard Page', () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <MemoryRouter future={ROUTER_FUTURE}>
           <Dashboard />
         </MemoryRouter>
       </QueryClientProvider>
@@ -242,7 +243,7 @@ describe('Dashboard Page', () => {
     const queryClient = createTestQueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <MemoryRouter future={ROUTER_FUTURE}>
           <Dashboard />
         </MemoryRouter>
       </QueryClientProvider>
@@ -262,7 +263,7 @@ describe('Dashboard Page', () => {
     const queryClient = createTestQueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <MemoryRouter future={ROUTER_FUTURE}>
           <Dashboard />
         </MemoryRouter>
       </QueryClientProvider>
@@ -279,7 +280,7 @@ describe('Dashboard Page', () => {
     const queryClient = createTestQueryClient();
     render(
       <QueryClientProvider client={queryClient}>
-        <MemoryRouter>
+        <MemoryRouter future={ROUTER_FUTURE}>
           <Dashboard />
         </MemoryRouter>
       </QueryClientProvider>

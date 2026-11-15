@@ -62,11 +62,6 @@ export const disconnectSocket = () => {
 };
 
 /**
- * Get the current socket instance
- */
-export const getSocket = (): Socket | null => socket;
-
-/**
  * Check if socket is connected
  */
 export const isSocketConnected = (): boolean => socket?.connected ?? false;

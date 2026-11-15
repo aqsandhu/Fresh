@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Users, Search, MapPin, X, Home, Briefcase, Building, Navigation, Image, Star, Trash2, Download } from 'lucide-react';
+import { Users, Search, MapPin, Home, Briefcase, Building, Navigation, Image, Star, Trash2, Download } from 'lucide-react';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -357,24 +357,15 @@ export const Customers: React.FC = () => {
       </Modal>
 
       {/* Addresses Modal */}
-      {selectedCustomer && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedCustomer(null)}>
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">
-                  {selectedCustomer.fullName || 'No Name'}'s Addresses
-                </h2>
-                <p className="text-sm text-gray-500">{selectedCustomer.phone}</p>
-              </div>
-              <button onClick={() => setSelectedCustomer(null)} className="p-2 hover:bg-gray-100 rounded-lg">
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="overflow-y-auto p-5 space-y-4 flex-1">
+      {/* Shared Modal: announced as a dialog, focus stays inside, Escape closes. */}
+      <Modal
+        isOpen={!!selectedCustomer}
+        onClose={() => setSelectedCustomer(null)}
+        title={selectedCustomer ? `${selectedCustomer.fullName || 'No Name'}'s Addresses` : ''}
+        size="xl"
+      >
+            <p className="text-sm text-gray-500 -mt-1 mb-3">{selectedCustomer?.phone}</p>
+            <div className="space-y-4">
               {addressesLoading ? (
                 <div className="text-center py-8 text-gray-500">Loading addresses...</div>
               ) : !addresses || addresses.length === 0 ? (
@@ -465,9 +456,7 @@ export const Customers: React.FC = () => {
                 ))
               )}
             </div>
-          </div>
-        </div>
-      )}
+      </Modal>
     </Layout>
   );
 };

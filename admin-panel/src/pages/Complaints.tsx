@@ -185,8 +185,8 @@ function ComplaintCard({
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select
+            <label htmlFor="complaints-f1" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select id="complaints-f1"
               value={status}
               onChange={(e) => setStatus(e.target.value as ComplaintStatus)}
               className="w-full sm:w-56 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500"
@@ -199,8 +199,8 @@ function ComplaintCard({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Response to customer</label>
-            <textarea
+            <label htmlFor="complaints-f2" className="block text-sm font-medium text-gray-700 mb-1">Response to customer</label>
+            <textarea id="complaints-f2"
               value={response}
               onChange={(e) => setResponse(e.target.value)}
               rows={3}
@@ -296,21 +296,21 @@ function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) 
         <div className="space-y-3">
           <p className="text-sm text-gray-600">Refund is paid from the <strong>admin account</strong>. Max {money(order?.refundable ?? 0)}.</p>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
-            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus
+            <label htmlFor="complaints-f3" className="block text-sm font-medium text-gray-700 mb-1">Amount (Rs.)</label>
+            <input id="complaints-f3" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Original payment was collected by</label>
-            <select value={source} onChange={(e) => setSource(e.target.value as 'admin' | 'ocp')} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <label htmlFor="complaints-f4" className="block text-sm font-medium text-gray-700 mb-1">Original payment was collected by</label>
+            <select id="complaints-f4" value={source} onChange={(e) => setSource(e.target.value as 'admin' | 'ocp')} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
               <option value="admin">Admin / direct</option>
               <option value="ocp">An OCP</option>
             </select>
             <p className="text-xs text-gray-400 mt-1">For the record only — the refund always comes from the admin account.</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Reason (required)</label>
-            <input
+            <label htmlFor="complaints-f5" className="block text-sm font-medium text-gray-700 mb-1">Reason (required)</label>
+            <input id="complaints-f5"
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="e.g. damaged items, partial refund agreed on call"

@@ -138,6 +138,13 @@ export const Expenses: React.FC = () => {
                   <td className="px-3 py-2 text-gray-700">
                     {e.refLabel || e.category || '—'}
                     {e.category && e.refLabel ? <span className="text-gray-400"> · {e.category}</span> : null}
+                    {e.type === 'stock_purchase' && (
+                      <span className="block text-xs text-gray-500">
+                        {e.supplierName ? <>from {e.supplierName}</> : <span className="text-amber-700">supplier not recorded</span>}
+                        {e.billNumber ? <> · bill {e.billNumber}</> : null}
+                        {e.billPhotoUrl ? <> · <a href={e.billPhotoUrl} target="_blank" rel="noopener noreferrer" className="text-primary-600 underline">bill photo</a></> : null}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right font-semibold text-gray-900">{money(e.amount)}</td>
                   <td className="px-3 py-2 text-gray-500">{e.comment || ''}</td>
@@ -165,6 +172,10 @@ function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: 
   const [gradeC, setGradeC] = useState('');
   const [waste, setWaste] = useState('');
   const [comment, setComment] = useState('');
+  const [supplierName, setSupplierName] = useState('');
+  const [supplierPhone, setSupplierPhone] = useState('');
+  const [billNumber, setBillNumber] = useState('');
+  const [billPhoto, setBillPhoto] = useState<File | null>(null);
   const product = products.find((p) => p.id === productId);
 
   const mut = useMutation({
@@ -173,13 +184,17 @@ function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: 
       rawWeight: parseFloat(rawWeight) || 0, purchasePrice: parseFloat(price) || 0,
       gradeA: parseFloat(gradeA) || 0, gradeB: parseFloat(gradeB) || 0, gradeC: parseFloat(gradeC) || 0,
       waste: parseFloat(waste) || 0, comment: comment.trim() || undefined,
+      supplierName: supplierName.trim(), supplierPhone: supplierPhone.trim() || undefined,
+      billNumber: billNumber.trim() || undefined, billPhoto,
     }),
     onSuccess: () => { toast.success('Stock purchased & added to stock'); onDone(); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
 
   const { raw, gradedTotal, remaining, balanced } = getStockPurchaseBalance(rawWeight, gradeA, gradeB, gradeC, waste);
-  const valid = !!productId && parseFloat(price) >= 0 && balanced;
+  // The seller must be named — a price nobody can check with a seller is the
+  // easiest one to inflate.
+  const valid = !!productId && parseFloat(price) >= 0 && balanced && supplierName.trim().length >= 2;
   const unit = product?.unitType || 'kg';
 
   return (
@@ -192,20 +207,31 @@ function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: 
       }>
       <div className="space-y-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Product</label>
-          <select value={productId} onChange={(e) => setProductId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <label htmlFor="expenses-f1" className="block text-sm font-medium text-gray-700 mb-1">Product</label>
+          <select id="expenses-f1" value={productId} onChange={(e) => setProductId(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">Select product</option>
             {products.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.categoryName})</option>)}
           </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date &amp; time of purchase</label>
-            <input type="datetime-local" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <label htmlFor="expenses-f2" className="block text-sm font-medium text-gray-700 mb-1">Date &amp; time of purchase</label>
+            <input id="expenses-f2" type="datetime-local" value={purchasedAt} onChange={(e) => setPurchasedAt(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           </div>
           <Input label={`Raw weight (${unit})`} type="number" min={0} step="0.001" value={rawWeight} onChange={(e) => setRawWeight(e.target.value)} required />
         </div>
         <Input label="Purchase price (Rs.)" type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} required />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Bought from (supplier / mandi seller)" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} required maxLength={120} />
+          <Input label="Supplier phone (optional)" type="tel" value={supplierPhone} onChange={(e) => setSupplierPhone(e.target.value)} maxLength={20} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Bill / parchi number (optional)" value={billNumber} onChange={(e) => setBillNumber(e.target.value)} maxLength={60} />
+          <div>
+            <label htmlFor="purchase-bill-photo" className="block text-sm font-medium text-gray-700 mb-1">Bill photo (optional)</label>
+            <input id="purchase-bill-photo" type="file" accept="image/*" onChange={(e) => setBillPhoto(e.target.files?.[0] ?? null)} className="w-full text-sm" />
+          </div>
+        </div>
         <div>
           <p className="text-sm font-medium text-gray-700 mb-1">Grading — adds to system stock</p>
           <div className="grid grid-cols-3 gap-3">
@@ -262,15 +288,15 @@ function AddExpenseModal({ onClose, onDone }: { onClose: () => void; onDone: () 
       }>
       <div className="space-y-3">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Expense type</label>
-          <input list="expense-types" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Rent"
+          <label htmlFor="expenses-f3" className="block text-sm font-medium text-gray-700 mb-1">Expense type</label>
+          <input id="expenses-f3" list="expense-types" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Rent"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           <datalist id="expense-types">{OTHER_TYPES.map((t) => <option key={t} value={t} />)}</datalist>
         </div>
         <Input label="Amount (Rs.)" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Date &amp; time</label>
-          <input type="datetime-local" value={incurredAt} onChange={(e) => setIncurredAt(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+          <label htmlFor="expenses-f4" className="block text-sm font-medium text-gray-700 mb-1">Date &amp; time</label>
+          <input id="expenses-f4" type="datetime-local" value={incurredAt} onChange={(e) => setIncurredAt(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
         </div>
         <Input label="Comment (optional)" value={comment} onChange={(e) => setComment(e.target.value)} />
         {needApproval && <ApproverFields phone={approvalPhone} password={approvalPassword} onPhone={setApprovalPhone} onPassword={setApprovalPassword} />}

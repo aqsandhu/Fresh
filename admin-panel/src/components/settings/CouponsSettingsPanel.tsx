@@ -191,9 +191,9 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => couponService.remove(id),
-    onSuccess: () => {
+    onSuccess: (message) => {
       invalidate();
-      toast.success('Coupon deleted');
+      toast.success(message || 'Coupon deleted', { duration: 6000 });
     },
     onError: (err: any) => toast.error(err?.message || 'Failed to delete coupon'),
   });
@@ -390,8 +390,8 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">How customers get it</label>
-            <select
+            <label htmlFor="couponssettingspanel-f1" className="block text-sm font-medium text-gray-700 mb-1">How customers get it</label>
+            <select id="couponssettingspanel-f1"
               value={form.triggerType}
               onChange={(e) => set('triggerType', e.target.value as TriggerType)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
@@ -462,8 +462,8 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Discount Type</label>
-            <select
+            <label htmlFor="couponssettingspanel-f2" className="block text-sm font-medium text-gray-700 mb-1">Discount Type</label>
+            <select id="couponssettingspanel-f2"
               value={form.discountType}
               onChange={(e) => set('discountType', e.target.value as DiscountType)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"

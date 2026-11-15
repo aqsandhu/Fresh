@@ -152,8 +152,8 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
             <h4 className="font-semibold text-gray-800 flex items-center gap-1.5 mb-2"><TrendingUp className="w-4 h-4 text-primary-600" /> Salary</h4>
             <p className="text-sm text-gray-700 mb-2">Current basic salary: <span className="font-semibold">{money(w.basicSalary)}</span></p>
             <div className="flex flex-wrap items-end gap-2">
-              <div><label className="block text-xs text-gray-500 mb-1">New salary</label><input type="number" min={0} step="0.01" value={incSalary} onChange={(e) => setIncSalary(e.target.value)} className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">Effective from</label><input type="date" value={incFrom} onChange={(e) => setIncFrom(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>
+              <div><label htmlFor="workers-f1" className="block text-xs text-gray-500 mb-1">New salary</label><input id="workers-f1" type="number" min={0} step="0.01" value={incSalary} onChange={(e) => setIncSalary(e.target.value)} className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>
+              <div><label htmlFor="workers-f2" className="block text-xs text-gray-500 mb-1">Effective from</label><input id="workers-f2" type="date" value={incFrom} onChange={(e) => setIncFrom(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>
               <Button size="sm" onClick={() => incMut.mutate()} disabled={!(parseFloat(incSalary) >= 0) || incMut.isPending} isLoading={incMut.isPending}>Add increment</Button>
             </div>
             {w.salaryChanges.length > 0 && (
@@ -167,9 +167,9 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
           <section className="rounded-lg border border-gray-200 p-3">
             <h4 className="font-semibold text-gray-800 flex items-center gap-1.5 mb-2"><CalendarCheck className="w-4 h-4 text-primary-600" /> Attendance</h4>
             <div className="flex flex-wrap items-end gap-2 mb-2">
-              <div><label className="block text-xs text-gray-500 mb-1">Date</label><input type="date" value={attDate} onChange={(e) => setAttDate(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>
-              <div><label className="block text-xs text-gray-500 mb-1">Status</label>
-                <select value={attStatus} onChange={(e) => setAttStatus(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
+              <div><label htmlFor="workers-f3" className="block text-xs text-gray-500 mb-1">Date</label><input id="workers-f3" type="date" value={attDate} onChange={(e) => setAttDate(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>
+              <div><label htmlFor="workers-f5" className="block text-xs text-gray-500 mb-1">Status</label>
+                <select id="workers-f5" value={attStatus} onChange={(e) => setAttStatus(e.target.value)} className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
                   <option value="present">Present</option><option value="absent">Absent</option><option value="half">Half day</option><option value="leave">Leave</option>
                 </select>
               </div>
@@ -194,11 +194,11 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
           <section className="rounded-lg border border-gray-200 p-3">
             <h4 className="font-semibold text-gray-800 flex items-center gap-1.5 mb-2"><Wallet className="w-4 h-4 text-primary-600" /> Pay</h4>
             <div className="flex flex-wrap items-end gap-2">
-              <div><label className="block text-xs text-gray-500 mb-1">Type</label>
-                <Select value={payKind} onChange={(e) => setPayKind(e.target.value as any)}
+              <div><label htmlFor="workers-f6" className="block text-xs text-gray-500 mb-1">Type</label>
+                <Select id="workers-f6" value={payKind} onChange={(e) => setPayKind(e.target.value as any)}
                   options={[{ value: 'salary', label: 'Salary' }, { value: 'bonus', label: 'Bonus' }, { value: 'commission', label: 'Commission' }, { value: 'other', label: 'Other' }]} />
               </div>
-              <div><label className="block text-xs text-gray-500 mb-1">Amount</label><input type="number" min={0} step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>
+              <div><label htmlFor="workers-f4" className="block text-xs text-gray-500 mb-1">Amount</label><input id="workers-f4" type="number" min={0} step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>
               <Input label="Comment" value={payComment} onChange={(e) => setPayComment(e.target.value)} />
               <Button size="sm" onClick={() => payMut.mutate()} disabled={!(parseFloat(payAmount) > 0) || payMut.isPending} isLoading={payMut.isPending}>Pay</Button>
             </div>

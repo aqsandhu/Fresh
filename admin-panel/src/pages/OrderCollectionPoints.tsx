@@ -159,8 +159,8 @@ function PointsSection() {
             <Input label={editing ? 'New PIN (optional)' : 'PIN (4 digits)'} value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} maxLength={4} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-            <select value={form.cityId} onChange={(e) => setForm({ ...form, cityId: e.target.value })}
+            <label htmlFor="ordercollectionpoints-f1" className="block text-sm font-medium text-gray-700 mb-1">City</label>
+            <select id="ordercollectionpoints-f1" value={form.cityId} onChange={(e) => setForm({ ...form, cityId: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500">
               <option value="">Select city</option>
               {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}

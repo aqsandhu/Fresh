@@ -3,6 +3,7 @@ import { Search, Menu, MapPin } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { useCityContext } from '@/context/CityContext';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { ApprovalCodeButton } from '@/components/approval/ApprovalCodeButton';
 
 interface HeaderProps {
   title: string;
@@ -105,6 +106,7 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
 
+            <ApprovalCodeButton />
             <NotificationBell />
           </div>
         </div>

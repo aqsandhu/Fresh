@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { Sidebar } from '@/components/layout/Sidebar';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { ROUTER_FUTURE } from '@/lib/routerFuture';
 
 const mockLogout = jest.fn();
 const mockUseAuthContext = jest.fn();
@@ -10,7 +11,9 @@ jest.mock('@/context/AuthContext', () => ({
   useAuthContext: () => mockUseAuthContext(),
 }));
 
-jest.mock('lucide-react', () => ({
+// Named icons keep their test ids; any other icon (new menu items) gets a stub
+// instead of undefined — a fixed list used to break each new item silently.
+jest.mock('lucide-react', () => new Proxy({
   LayoutDashboard: () => <span data-testid="icon-dashboard">D</span>,
   ShoppingCart: () => <span data-testid="icon-orders">O</span>,
   Package: () => <span data-testid="icon-products">P</span>,
@@ -36,6 +39,11 @@ jest.mock('lucide-react', () => ({
   Settings: () => <span data-testid="icon-settings">S</span>,
   Shield: () => <span data-testid="icon-roles">SH</span>,
   LogOut: () => <span data-testid="icon-logout">L</span>,
+} as Record<string, unknown>, {
+  get: (icons, name) =>
+    typeof name !== 'string' || name in icons || name === '__esModule' || name === 'then'
+      ? icons[name as string]
+      : () => <span data-testid={`icon-${name}`} />,
 }));
 
 describe('Sidebar', () => {
@@ -43,7 +51,7 @@ describe('Sidebar', () => {
 
   const renderSidebar = (isOpen = true) => {
     return render(
-      <MemoryRouter initialEntries={['/admin/dashboard']}>
+      <MemoryRouter future={ROUTER_FUTURE} initialEntries={['/admin/dashboard']}>
         <Sidebar isOpen={isOpen} onToggle={mockOnToggle} />
       </MemoryRouter>
     );
@@ -148,7 +156,7 @@ describe('Sidebar', () => {
 
   it('does not render mobile overlay when sidebar is closed', () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter future={ROUTER_FUTURE}>
         <Sidebar isOpen={false} onToggle={mockOnToggle} />
       </MemoryRouter>
     );

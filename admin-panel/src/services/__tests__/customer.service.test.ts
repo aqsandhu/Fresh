@@ -2,7 +2,15 @@ import { mockApi, resetApiMocks } from './testApiMock';
 
 jest.mock('@/services/api', () => require('./testApiMock').apiModuleMock());
 
-import { customerService } from '@/services/customer.service';
+import { customerService } from '@/services/customer.service';
+
+// The error-path tests make the service log its error (console.error) on
+// purpose; keep that out of the test output so real warnings stand out.
+let consoleErrorSpy: jest.SpyInstance;
+beforeEach(() => {
+  consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+});
+afterEach(() => consoleErrorSpy.mockRestore());
 
 describe('customerService', () => {
   beforeEach(() => resetApiMocks());

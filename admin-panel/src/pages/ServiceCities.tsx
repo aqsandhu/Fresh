@@ -141,8 +141,8 @@ export const ServiceCities: React.FC = () => {
           </p>
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex-1 min-w-[180px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">From city</label>
-              <select
+              <label htmlFor="servicecities-f1" className="block text-sm font-medium text-gray-700 mb-1">From city</label>
+              <select id="servicecities-f1"
                 value={importSourceId}
                 onChange={(e) => setImportSourceId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -154,8 +154,8 @@ export const ServiceCities: React.FC = () => {
               </select>
             </div>
             <div className="flex-1 min-w-[180px]">
-              <label className="block text-sm font-medium text-gray-700 mb-1">To city</label>
-              <select
+              <label htmlFor="servicecities-f2" className="block text-sm font-medium text-gray-700 mb-1">To city</label>
+              <select id="servicecities-f2"
                 value={importTargetId}
                 onChange={(e) => setImportTargetId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
