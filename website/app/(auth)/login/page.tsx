@@ -773,7 +773,7 @@ export default function LoginPage() {
           </p>
 
           {/* Security Note */}
-          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-400">
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-gray-500">
             <Shield className="w-3.5 h-3.5" />
             <span>OTP verification keeps your account secure</span>
           </div>

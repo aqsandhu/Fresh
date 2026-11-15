@@ -46,13 +46,13 @@ export default function OcpLoginPage() {
         </div>
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="03001234567"
+            <label htmlFor="login-field-1" className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <input id="login-field-1" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="03001234567"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">PIN</label>
-            <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+            <label htmlFor="login-field-2" className="block text-sm font-medium text-gray-700 mb-1">PIN</label>
+            <input id="login-field-2" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
               type="password" inputMode="numeric" placeholder="••••"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 tracking-widest" />
           </div>

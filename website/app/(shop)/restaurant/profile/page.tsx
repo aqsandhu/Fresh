@@ -51,8 +51,8 @@ export default function RestaurantProfilePage() {
 
           <div className="space-y-2 text-sm text-gray-700">
             {info?.owner_name && <p>{info.owner_name}</p>}
-            <p className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-400" /> {info?.phone}</p>
-            {info?.city && <p className="flex items-center gap-2"><MapPin className="w-4 h-4 text-gray-400" /> {info.city}</p>}
+            <p className="flex items-center gap-2"><Phone className="w-4 h-4 text-gray-500" /> {info?.phone}</p>
+            {info?.city && <p className="flex items-center gap-2"><MapPin className="w-4 h-4 text-gray-500" /> {info.city}</p>}
           </div>
         </div>
 

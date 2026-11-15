@@ -228,7 +228,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
           {isConnected ? (
             <Wifi className="w-4 h-4 text-green-500" aria-label="Online" />
           ) : (
-            <WifiOff className="w-4 h-4 text-gray-400" aria-label="Offline" />
+            <WifiOff className="w-4 h-4 text-gray-500" aria-label="Offline" />
           )}
         </div>
       </div>
@@ -239,7 +239,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
             <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400">
+          <div className="flex flex-col items-center justify-center h-full text-gray-500">
             <MessageCircle className="w-8 h-8 mb-2" />
             <p className="text-sm">No messages yet. Start the conversation!</p>
           </div>
@@ -259,7 +259,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
                     <p className="text-xs font-semibold text-primary-600 mb-0.5">{msg.sender_name}</p>
                   )}
                   <p className="text-sm">{msg.message}</p>
-                  <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-primary-100' : 'text-gray-400'}`}>
+                  <p className={`text-[10px] mt-1 text-right ${isMe ? 'text-primary-100' : 'text-gray-500'}`}>
                     {formatTime(msg.created_at)}
                   </p>
                 </div>

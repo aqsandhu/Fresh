@@ -272,7 +272,7 @@ export default function TrackOrderPage() {
                       <div
                         key={step.status}
                         className={`relative flex items-center gap-4 ${
-                          isCompleted ? 'text-gray-900' : 'text-gray-400'
+                          isCompleted ? 'text-gray-900' : 'text-gray-500'
                         }`}
                       >
                         <div
@@ -390,7 +390,7 @@ export default function TrackOrderPage() {
                         {item.quantity} × {formatPriceShort(item.price)}
                         {item.unit && item.unit !== 'full' && (
                           <>
-                            <span className="text-xs text-gray-400 ml-1">
+                            <span className="text-xs text-gray-500 ml-1">
                               / {unitLabelShort(item.unit)}
                             </span>
                             <span className="text-xs text-primary-700 font-medium ml-1">

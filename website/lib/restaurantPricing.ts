@@ -103,20 +103,6 @@ export interface UnitOption {
   short: string
 }
 
-/** Units the admin enabled for a product. */
-export function availableUnits(product: RestaurantProduct): UnitOption[] {
-  const unitType = String(product.unit_type || 'kg').toLowerCase()
-  const baseShort = unitType === 'dozen' ? 'dozen' : unitType === 'kg' || unitType === 'gram' ? 'kg' : unitType || 'unit'
-  const units: UnitOption[] = [{ value: 'full', label: `Per ${baseShort}`, short: baseShort }]
-  if (unitType === 'kg' || unitType === 'gram') {
-    if (product.allow_half_kg !== false) units.push({ value: 'half_kg', label: 'Half kg (½)', short: '½ kg' })
-    if (product.allow_quarter_kg !== false) units.push({ value: 'quarter_kg', label: 'Quarter kg (¼)', short: '¼ kg' })
-  } else if (unitType === 'dozen') {
-    units.push({ value: 'half_dozen', label: 'Half dozen', short: '½ dozen' })
-  }
-  return units
-}
-
 /** Per-unit price for a quality + unit (null if tier N/A). */
 export function unitPrice(product: RestaurantProduct, quality: Quality, unit: Unit): number | null {
   const base = qualityBasePrice(product, quality)

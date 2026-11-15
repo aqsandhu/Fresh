@@ -220,7 +220,7 @@ export default function ProductDetailPage() {
         <Link href="/" className="text-primary-600 font-medium hover:underline">
           Home
         </Link>
-        <ChevronRight className="w-4 h-4 text-gray-400" />
+        <ChevronRight className="w-4 h-4 text-gray-500" />
         {categorySlug && (
           <>
             <Link
@@ -229,7 +229,7 @@ export default function ProductDetailPage() {
             >
               {categoryName}
             </Link>
-            <ChevronRight className="w-4 h-4 text-gray-400" />
+            <ChevronRight className="w-4 h-4 text-gray-500" />
           </>
         )}
         <span className="text-gray-500 truncate flex-1 min-w-0">
@@ -318,7 +318,7 @@ export default function ProductDetailPage() {
 
           {qualities.length > 1 && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Quality</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">Quality</p>
               <div className="grid grid-cols-3 gap-2">
                 {qualities.map((q) => {
                   const active = selectedQuality === q

@@ -83,7 +83,7 @@ export default function FloatingCityButton() {
 
             <div className="px-5 pt-4">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                 <input
                   type="search"
                   value={query}
@@ -120,7 +120,7 @@ export default function FloatingCityButton() {
                       <div className="flex items-center gap-2">
                         <MapPin
                           className={`h-4 w-4 shrink-0 ${
-                            active ? 'text-primary-600' : 'text-gray-400'
+                            active ? 'text-primary-600' : 'text-gray-500'
                           }`}
                         />
                         <div>

@@ -71,7 +71,7 @@ export default function RestaurantShopPage() {
           <div className="flex items-center gap-2 min-w-0">
             <UtensilsCrossed className="w-5 h-5 text-primary-600 shrink-0" />
             <span className="font-bold text-gray-900 truncate">{info?.business_name}</span>
-            <span className="text-xs text-gray-400 hidden sm:inline">Restaurant store</span>
+            <span className="text-xs text-gray-500 hidden sm:inline">Restaurant store</span>
           </div>
           <div className="hidden sm:flex items-center gap-4">
             <Link href="/restaurant/orders" className="inline-flex items-center gap-1.5 text-sm text-gray-600 hover:text-primary-600">

@@ -13,6 +13,18 @@ describe('sanitizeRedirect', () => {
     expect(sanitizeRedirect('javascript:alert(1)')).toBe('/');
   });
 
+  it('falls back to / for paths a browser turns into another site', () => {
+    expect(sanitizeRedirect('/\\evil.com')).toBe('/');
+    expect(sanitizeRedirect('/\\/evil.com')).toBe('/');
+    expect(sanitizeRedirect('/\t/evil.com')).toBe('/');
+    expect(sanitizeRedirect('/\n/evil.com')).toBe('/');
+    expect(sanitizeRedirect('/ /evil.com')).toBe('/');
+  });
+
+  it('keeps an encoded path as it was', () => {
+    expect(sanitizeRedirect('/search?q=atta%20chakki#top')).toBe('/search?q=atta%20chakki#top');
+  });
+
   it('falls back to / for empty or missing values', () => {
     expect(sanitizeRedirect(null)).toBe('/');
     expect(sanitizeRedirect(undefined)).toBe('/');

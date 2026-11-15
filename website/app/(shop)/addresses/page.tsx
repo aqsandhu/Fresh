@@ -253,7 +253,7 @@ export default function AddressesPage() {
                       <button
                         onClick={() => handleSetDefault(addr.id)}
                         title="Set as default"
-                        className="p-2 text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 rounded-lg transition-colors"
+                        className="p-2 text-gray-500 hover:text-yellow-500 hover:bg-yellow-50 rounded-lg transition-colors"
                       >
                         <Star className="w-4 h-4" />
                       </button>
@@ -261,14 +261,14 @@ export default function AddressesPage() {
                     <button
                       onClick={() => openEditForm(addr)}
                       title="Edit"
-                      className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDelete(addr.id)}
                       title="Delete"
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

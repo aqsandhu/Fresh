@@ -9,6 +9,7 @@ import {
   getUnitPickerDisplayLabel,
 } from '@/lib/unitPricing'
 import { formatPriceShort } from '@/lib/utils'
+import { useDialog } from '@/lib/useDialog'
 
 interface UnitSelectorProps {
   product: Product
@@ -39,6 +40,7 @@ export default function UnitSelector({
 }: UnitSelectorProps) {
   const unitOptions = useMemo(() => getUnitOptions(product, quality), [product, quality])
   const [open, setOpen] = useState(false)
+  const dialogRef = useDialog(open, () => setOpen(false))
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => setMounted(true), [])
@@ -73,14 +75,15 @@ export default function UnitSelector({
     open && mounted
       ? createPortal(
           <div
-            className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/35"
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-6"
           >
+            <div className="absolute inset-0 bg-black/35" aria-hidden="true" onClick={() => setOpen(false)} />
             <div
-              className="w-full max-w-md bg-white rounded-lg border border-gray-200 overflow-hidden shadow-lg"
-              onClick={(e) => e.stopPropagation()}
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Choose a size"
+              className="relative w-full max-w-md bg-white rounded-lg border border-gray-200 overflow-hidden shadow-lg focus:outline-none"
             >
               {unitOptions.map((opt) => (
                 <button
@@ -117,6 +120,9 @@ export default function UnitSelector({
       : null
 
   return (
+    // Not a control: only keeps clicks inside the selector from reaching the
+    // product card link around it. The button below is the control.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       className={`${fullWidth ? 'w-full' : ''} ${className}`}
       onClick={(e) => {

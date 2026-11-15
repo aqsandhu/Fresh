@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "next lint --max-warnings 0",
-    "test": "jest",
+    "test": "jest --coverage",
     "test:coverage": "jest --coverage",
     "typecheck": "tsc --noEmit"
   },

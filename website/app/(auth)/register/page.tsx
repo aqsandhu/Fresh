@@ -387,7 +387,7 @@ export default function RegisterPage() {
                     ? 'bg-primary-600 text-white'
                     : i === currentStepIndex
                     ? 'bg-primary-100 text-primary-700 ring-2 ring-primary-300'
-                    : 'bg-gray-100 text-gray-400'
+                    : 'bg-gray-100 text-gray-500'
                 }`}>
                   {i < currentStepIndex ? <CheckCircle2 className="w-4 h-4" /> : i + 1}
                 </div>
@@ -592,14 +592,14 @@ export default function RegisterPage() {
             </Link>
           </p>
 
-          <p className="mt-6 text-xs text-center text-gray-400">
+          <p className="mt-6 text-xs text-center text-gray-500">
             By creating an account, you agree to our{' '}
             <Link href="/terms" className="text-primary-600 hover:underline">Terms</Link>
             {' '}and{' '}
             <Link href="/privacy" className="text-primary-600 hover:underline">Privacy Policy</Link>
           </p>
 
-          <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">
+          <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-500">
             <Shield className="w-3.5 h-3.5" />
             <span>Phone verified via OTP for your security</span>
           </div>

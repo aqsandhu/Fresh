@@ -48,7 +48,7 @@ export default function ProductPrice({
         </span>
       )}
       {compareAtPrice != null && compareAtPrice > price && (
-        <span className={cn('text-gray-400 line-through ml-1', unitSizeClasses[size])}>
+        <span className={cn('text-gray-500 line-through ml-1', unitSizeClasses[size])}>
           {formatPriceShort(compareAtPrice)}
         </span>
       )}

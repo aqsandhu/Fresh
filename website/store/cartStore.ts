@@ -307,13 +307,23 @@ export const useAuthStore = create<AuthState>()(
           // cookies. Fire-and-forget: local state must clear even when the
           // request fails or the token is already expired.
           const accessToken = get().accessToken
+          // In bearer mode the refresh token travels in the body so the server
+          // can revoke it (cookie mode sends it as an HttpOnly cookie).
+          const refreshToken = get().refreshToken
           fetch(`${getApiBaseUrl()}/auth/logout`, {
             method: 'POST',
             credentials: 'include',
-            headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+            headers: {
+              'Content-Type': 'application/json',
+              ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+            },
+            body: JSON.stringify(refreshToken ? { refreshToken } : {}),
           }).catch(() => {})
           clearTokens()
         }
+        // The cart belongs to the person who just signed out — on a shared
+        // computer it must not become the next account's cart.
+        useCartStore.setState({ items: [], cartsByCity: {} })
         set({
           user: null,
           isAuthenticated: false,

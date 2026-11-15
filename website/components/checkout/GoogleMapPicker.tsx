@@ -1,5 +1,6 @@
 'use client'
 
+import { useId } from 'react'
 import { Loader2, MapPin } from 'lucide-react'
 import { REQUIRED_LOCATION_ACCURACY_M } from '@/lib/geolocation'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
@@ -33,6 +34,7 @@ export default function GoogleMapPicker({
   onCancel,
   hasLocation,
 }: GoogleMapPickerProps) {
+  const fieldId = useId()
   const accuracyOk =
     typeof accuracy === 'number' && accuracy > 0 && accuracy <= REQUIRED_LOCATION_ACCURACY_M
 
@@ -67,8 +69,9 @@ export default function GoogleMapPicker({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Latitude</label>
+            <label htmlFor={`${fieldId}-lat`} className="mb-1 block text-xs text-gray-500">Latitude</label>
             <input
+              id={`${fieldId}-lat`}
               type="text"
               inputMode="decimal"
               placeholder={String(DEFAULT_MAP_LAT)}
@@ -81,8 +84,9 @@ export default function GoogleMapPicker({
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Longitude</label>
+            <label htmlFor={`${fieldId}-lng`} className="mb-1 block text-xs text-gray-500">Longitude</label>
             <input
+              id={`${fieldId}-lng`}
               type="text"
               inputMode="decimal"
               placeholder={String(DEFAULT_MAP_LNG)}

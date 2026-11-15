@@ -6,6 +6,13 @@ import { authApi } from '@/lib/api';
 let socket: Socket | null = null;
 
 /**
+ * Orders this page is following. Room membership lives on the SERVER per
+ * connection, so every reconnect starts with no rooms: tracking and chat went
+ * silent while the page still looked connected. Re-joined on every connect.
+ */
+const orderRooms = new Set<string>();
+
+/**
  * Resolve the token to authenticate a socket handshake.
  * - Cookie mode: the websocket connects cross-site (HttpOnly cookie can't ride
  *   along), so fetch a short-lived handshake token over the same-origin proxy.
@@ -43,8 +50,10 @@ export const connectSocket = (token?: string | null): Socket => {
     ...(authToken ? { auth: { token: authToken } } : {}),
     transports: ['websocket'],
     reconnection: true,
-    reconnectionAttempts: 5,
+    // Never give up (it used to stop for good after 5 failed tries).
+    reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
+    reconnectionDelayMax: 30000,
   });
 
   // Connection chatter is useful in development only; production consoles
@@ -52,6 +61,7 @@ export const connectSocket = (token?: string | null): Socket => {
   const debug = process.env.NODE_ENV !== 'production';
   socket.on('connect', () => {
     if (debug) console.log('[Socket] Connected:', socket?.id);
+    orderRooms.forEach((orderId) => socket?.emit('order:subscribe', orderId));
   });
 
   socket.on('disconnect', (reason) => {
@@ -79,20 +89,21 @@ export const reconnectSocket = (token?: string | null): Socket => {
 };
 
 export const disconnectSocket = () => {
+  orderRooms.clear();
   socket?.disconnect();
   socket = null;
 };
 
 export const getSocket = (): Socket | null => socket;
 
-export const isSocketConnected = (): boolean => socket?.connected ?? false;
-
 export const subscribeToOrder = (orderId: string, callback: (data: any) => void) => {
+  orderRooms.add(orderId);
   socket?.emit('order:subscribe', orderId);
   socket?.on('order:update', callback);
 };
 
 export const unsubscribeFromOrder = (orderId: string, callback?: (data: any) => void) => {
+  orderRooms.delete(orderId);
   socket?.emit('order:unsubscribe', orderId);
   if (callback) {
     socket?.off('order:update', callback);

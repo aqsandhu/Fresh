@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
+import { useDialog } from '@/lib/useDialog'
 import { Star, MessageSquareWarning, X, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
@@ -236,6 +237,7 @@ function ComplaintModal({
   onClose: () => void
 }) {
   const [category, setCategory] = useState<ComplaintCategory>('delivery')
+  const fieldId = useId()
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
@@ -262,13 +264,14 @@ function ComplaintModal({
           <p className="text-xs text-gray-500">Linked to order #{orderNumber}</p>
         )}
         <div>
-          <label className="text-sm font-medium text-gray-700">Issue type</label>
-          <div className="mt-1 flex flex-wrap gap-2">
+          <p id={`${fieldId}-type`} className="text-sm font-medium text-gray-700">Issue type</p>
+          <div role="group" aria-labelledby={`${fieldId}-type`} className="mt-1 flex flex-wrap gap-2">
             {CATEGORIES.map((c) => (
               <button
                 key={c.value}
                 type="button"
                 onClick={() => setCategory(c.value)}
+                aria-pressed={category === c.value}
                 className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
                   category === c.value
                     ? 'bg-primary-600 text-white border-primary-600'
@@ -281,8 +284,9 @@ function ComplaintModal({
           </div>
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700">Subject</label>
+          <label htmlFor={`${fieldId}-subject`} className="text-sm font-medium text-gray-700">Subject</label>
           <input
+            id={`${fieldId}-subject`}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             maxLength={200}
@@ -291,8 +295,9 @@ function ComplaintModal({
           />
         </div>
         <div>
-          <label className="text-sm font-medium text-gray-700">Details</label>
+          <label htmlFor={`${fieldId}-details`} className="text-sm font-medium text-gray-700">Details</label>
           <textarea
+            id={`${fieldId}-details`}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             maxLength={4000}
@@ -320,18 +325,22 @@ function Overlay({
   onClose: () => void
   children: React.ReactNode
 }) {
+  const titleId = useId()
+  const dialogRef = useDialog(true, onClose)
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop: a mouse shortcut only — keyboard users have Escape and the close button. */}
+      <div className="absolute inset-0 bg-black/50" aria-hidden="true" onClick={onClose} />
       <div
-        className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-xl focus:outline-none"
       >
         <div className="sticky top-0 bg-white flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900">{title}</h3>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600" aria-label="Close">
+          <h3 id={titleId} className="font-bold text-gray-900">{title}</h3>
+          <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-600" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>

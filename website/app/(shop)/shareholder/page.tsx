@@ -70,7 +70,7 @@ export default function ShareholderDashboard() {
             <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center shrink-0"><PieChart className="w-4 h-4 text-primary-600" /></div>
             <div className="min-w-0">
               <p className="font-semibold text-gray-900 truncate leading-tight">{info?.name}</p>
-              <p className="text-xs text-gray-400 leading-tight">{info?.city} · Shareholder ({info?.sharePercent ?? 0}%)</p>
+              <p className="text-xs text-gray-500 leading-tight">{info?.city} · Shareholder ({info?.sharePercent ?? 0}%)</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -125,7 +125,7 @@ export default function ShareholderDashboard() {
                   <div key={p.id} className="flex items-center justify-between px-4 py-3 gap-2">
                     <div>
                       <p className="font-medium text-gray-900">{money(p.amount)}</p>
-                      <p className="text-xs text-gray-400">{new Date(p.created_at).toLocaleString('en-PK')}{p.note ? ` · ${p.note}` : ''}</p>
+                      <p className="text-xs text-gray-500">{new Date(p.created_at).toLocaleString('en-PK')}{p.note ? ` · ${p.note}` : ''}</p>
                     </div>
                     {p.status === 'pending' ? (
                       <Button size="sm" onClick={() => confirmReceive(p.id, p.amount)}><CheckCircle2 className="w-4 h-4 mr-1 inline" /> Confirm received</Button>

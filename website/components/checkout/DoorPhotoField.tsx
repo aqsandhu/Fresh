@@ -52,9 +52,9 @@ export default function DoorPhotoField({ value, onChange, existingUrl }: Props) 
 
   return (
     <div>
-      <label className="mb-2 block text-sm font-semibold text-gray-700">
+      <p className="mb-2 block text-sm font-semibold text-gray-700">
         Door Picture (Optional)
-      </label>
+      </p>
 
       {existingUrl && !value && (
         <div className="mb-2 flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 p-2">
@@ -80,9 +80,9 @@ export default function DoorPhotoField({ value, onChange, existingUrl }: Props) 
           <img src={displayUrl} alt="Door" className="h-[120px] w-full object-cover" />
         ) : (
           <div className="px-4 py-8">
-            <Camera className="mx-auto mb-2 h-7 w-7 text-gray-400" />
+            <Camera className="mx-auto mb-2 h-7 w-7 text-gray-500" />
             <p className="text-sm text-gray-500">Tap to upload a picture of your door</p>
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-gray-500">
               Helps our delivery partner find your location
             </p>
           </div>

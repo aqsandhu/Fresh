@@ -108,7 +108,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
         <div className="py-12 px-5 text-center">
           <ShoppingCart className="w-14 h-14 text-gray-200 mx-auto mb-3" />
           <p className="text-gray-500 font-medium">Your cart is empty</p>
-          <p className="text-sm text-gray-400 mt-1">Add fresh items to get started!</p>
+          <p className="text-sm text-gray-500 mt-1">Add fresh items to get started!</p>
         </div>
       ) : (
         <>
@@ -148,7 +148,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                     </p>
                     <p className="text-xs text-gray-500 inline-flex items-baseline gap-0.5">
                       {formatPriceShort(linePrice)}
-                      <span className="text-[10px] text-gray-400">
+                      <span className="text-[10px] text-gray-500">
                         /
                         {unit === 'full'
                           ? item.product.unit

@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Ticket, X, Gift } from 'lucide-react'
 import { myCouponsApi, type MyCoupon } from '@/lib/api'
-import { useAuthStore } from '@/store/cartStore'
+import { useAuthStore } from '@/store/cartStore'
+import { useDialog } from '@/lib/useDialog'
 
 /**
  * One-time "you earned a coupon" popup. Shows the customer's unseen
@@ -40,21 +41,27 @@ export default function CouponWinPopup() {
     myCouponsApi.markSeen().catch(() => {})
   }
 
+  const dialogRef = useDialog(open && coupons.length > 0, close)
+
   if (!open || coupons.length === 0) return null
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
       <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="coupon-win-title"
         initial={{ opacity: 0, scale: 0.92, y: 12 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.25 }}
-        className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+        className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl focus:outline-none"
       >
         <button
           type="button"
           onClick={close}
           aria-label="Close"
-          className="absolute right-3 top-3 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
         >
           <X className="h-5 w-5" />
         </button>
@@ -62,7 +69,7 @@ export default function CouponWinPopup() {
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary-100">
           <Gift className="h-7 w-7 text-primary-600" />
         </div>
-        <h2 className="text-center text-xl font-bold text-gray-900">
+        <h2 id="coupon-win-title" className="text-center text-xl font-bold text-gray-900">
           {coupons.length > 1 ? "You've earned coupons!" : "You've earned a coupon!"}
         </h2>
         <p className="mt-1 text-center text-sm text-gray-500">

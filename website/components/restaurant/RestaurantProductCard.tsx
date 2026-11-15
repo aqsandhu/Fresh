@@ -24,7 +24,7 @@ function ImageFallback() {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center text-gray-300">
       <ShoppingCart className="w-10 h-10 mb-1" />
-      <span className="text-xs text-gray-400">No Image</span>
+      <span className="text-xs text-gray-500">No Image</span>
     </div>
   )
 }
@@ -116,7 +116,7 @@ export default function RestaurantProductCard({ product }: Props) {
               shows in the price row below (no wrapping). */}
           {qualities.length > 1 && (
             <div className="mt-1.5 flex items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 shrink-0">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-500 shrink-0">
                 Quality
               </span>
               <div className="inline-flex flex-1 rounded-lg bg-gray-100 p-0.5">

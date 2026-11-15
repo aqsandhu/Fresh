@@ -208,7 +208,7 @@ export default function FAQPage() {
           <div className="max-w-2xl mx-auto">
             {/* Search */}
             <div className="relative mb-6">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
               <input
                 type="text"
                 placeholder="Search for answers..."
@@ -278,7 +278,7 @@ export default function FAQPage() {
               <div className="text-center py-12">
                 <HelpCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500">No results found for your search.</p>
-                <p className="text-sm text-gray-400 mt-1">
+                <p className="text-sm text-gray-500 mt-1">
                   Try searching with different keywords
                 </p>
               </div>

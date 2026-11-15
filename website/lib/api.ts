@@ -649,6 +649,14 @@ export const reviewsApi = {
     const response = await api.get(`/reviews/product/${productId}`)
     return response.data?.data || { summary: { average: 0, count: 0 }, reviews: [] }
   },
+  /** Report someone else's review (App Store guideline 1.2). */
+  report: async (
+    reviewId: string,
+    reason: 'offensive' | 'spam' | 'personal_info' | 'other'
+  ): Promise<{ reported?: boolean; alreadyReported?: boolean }> => {
+    const response = await api.post(`/reviews/${reviewId}/report`, { reason })
+    return response.data?.data || {}
+  },
 }
 
 export const complaintsApi = {

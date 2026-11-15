@@ -137,21 +137,6 @@ export function resolveLineUnitPrice(item: {
   return priceForUnit(item.product, unit, item.quality || 'A')
 }
 
-/** Suffix for ProductPrice, e.g. "/kg", "/half kg", "/½ kg". */
-export function unitPriceSuffix(product: Product, unit: ProductUnit = 'full'): string {
-  if (unit === 'full') {
-    const u = (product.unit || 'unit').trim()
-    return u ? `/${u}` : ''
-  }
-  const opt = getUnitOptions(product).find((o) => o.unit === unit)
-  if (opt) {
-    const label = opt.label.replace(/^Per /i, '').split('(')[0].trim()
-    return label ? `/${label}` : ''
-  }
-  const short = unitLabelShort(unit)
-  return short ? `/${short}` : ''
-}
-
 /** Caption beside unit price on cart/order lines. */
 export function unitPriceCaption(unit: ProductUnit | undefined): string {
   switch (unit) {

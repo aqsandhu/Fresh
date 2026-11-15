@@ -93,6 +93,14 @@ const nextConfig = {
         headers: [
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          // The parts of a CSP that cannot break Firebase / Maps / Next's inline
+          // runtime (script-src still waits for staging, see above): no
+          // plugins, no <base> hijack, no framing by other sites, forms only
+          // post to this site.
+          {
+            key: 'Content-Security-Policy',
+            value: "object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'",
+          },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
           {

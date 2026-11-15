@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 import '../mocks/layoutMocks';
 import Header from '@/components/layout/Header';
@@ -98,13 +98,21 @@ jest.mock('@/lib/utils', () => ({
   formatProductUnitSuffix: () => '',
 }));
 
+// Header loads the banner settings in an effect; let that finish inside act()
+// so the state update is part of the test (React warned on every render).
+async function renderHeader() {
+  const view = render(<Header />);
+  await act(async () => {});
+  return view;
+}
+
 describe('Header', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('never renders a placeholder phone number or delivery window', () => {
-    render(<Header />);
+  it('never renders a placeholder phone number or delivery window', async () => {
+    await renderHeader();
     // The top bar shows ONLY admin-configured banner text — with no settings
     // loaded there must be no fake number for a customer to dial.
     expect(screen.queryByText('0300-1234567')).toBeNull();
@@ -112,39 +120,39 @@ describe('Header', () => {
     expect(screen.queryByTestId('phone-icon')).toBeNull();
   });
 
-  it('renders brand logo', () => {
-    render(<Header />);
+  it('renders brand logo', async () => {
+    await renderHeader();
     expect(screen.getByTestId('brand-logo')).toBeInTheDocument();
   });
 
-  it('renders search button', () => {
-    render(<Header />);
+  it('renders search button', async () => {
+    await renderHeader();
     expect(screen.getByTestId('search-icon')).toBeInTheDocument();
   });
 
-  it('renders cart button with item count', () => {
-    render(<Header />);
+  it('renders cart button with item count', async () => {
+    await renderHeader();
     expect(screen.getByTestId('cart-icon')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
   });
 
-  it('renders user profile link', () => {
-    render(<Header />);
+  it('renders user profile link', async () => {
+    await renderHeader();
     expect(screen.getByTestId('user-icon')).toBeInTheDocument();
   });
 
-  it('renders mobile menu button', () => {
-    render(<Header />);
+  it('renders mobile menu button', async () => {
+    await renderHeader();
     expect(screen.getByTestId('menu-icon')).toBeInTheDocument();
   });
 
-  it('renders navigation links', () => {
-    render(<Header />);
+  it('renders navigation links', async () => {
+    await renderHeader();
     expect(screen.getByText('Home')).toBeInTheDocument();
   });
 
-  it('has sticky header styling', () => {
-    const { container } = render(<Header />);
+  it('has sticky header styling', async () => {
+    const { container } = await renderHeader();
     const header = container.querySelector('header');
     expect(header).toHaveClass('sticky');
     expect(header).toHaveClass('top-0');
@@ -158,7 +166,7 @@ describe('Header', () => {
       banner_left_text: '0311-2223344',
       banner_middle_text: 'Free Delivery 10AM-2PM',
     });
-    render(<Header />);
+    await renderHeader();
     // Only when the admin configured them (and a city is selected) do the
     // phone / delivery line appear — in the ticker and the desktop bar.
     if (bannerApi.getSettings.mock.calls.length > 0) {
@@ -169,8 +177,8 @@ describe('Header', () => {
     }
   });
 
-  it('renders banner right text', () => {
-    render(<Header />);
+  it('renders banner right text', async () => {
+    await renderHeader();
     expect(screen.getAllByText('Fresh Sabzi at Your Doorstep').length).toBeGreaterThanOrEqual(1);
   });
 });

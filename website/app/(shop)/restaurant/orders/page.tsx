@@ -72,7 +72,7 @@ export default function RestaurantOrdersPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-bold text-gray-900">#{o.order_number}</p>
-                    <p className="text-xs text-gray-400">{new Date(o.created_at).toLocaleString('en-PK')}</p>
+                    <p className="text-xs text-gray-500">{new Date(o.created_at).toLocaleString('en-PK')}</p>
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[o.status] || 'bg-gray-100 text-gray-700'}`}>
                     {String(o.status || '').replace(/_/g, ' ')}
@@ -83,7 +83,7 @@ export default function RestaurantOrdersPage() {
                     <div key={i} className="flex justify-between">
                       <span>
                         {it.product_name}{' '}
-                        <span className="text-gray-400">· Q{it.quality} · {it.unit?.replace('_', ' ')} × {it.quantity}</span>
+                        <span className="text-gray-500">· Q{it.quality} · {it.unit?.replace('_', ' ')} × {it.quantity}</span>
                       </span>
                       <span>{money(Number(it.total_price) || 0)}</span>
                     </div>

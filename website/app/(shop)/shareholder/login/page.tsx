@@ -42,13 +42,13 @@ export default function ShareholderLoginPage() {
         </div>
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com"
+            <label htmlFor="login-field-1" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input id="login-field-1" value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="you@example.com"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="••••••••"
+            <label htmlFor="login-field-2" className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input id="login-field-2" value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="••••••••"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500" />
           </div>
           <Button type="submit" disabled={loading} fullWidth size="lg">

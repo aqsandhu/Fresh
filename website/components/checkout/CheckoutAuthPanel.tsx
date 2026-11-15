@@ -665,7 +665,7 @@ export default function CheckoutAuthPanel() {
       </AutoHeight>
 
       {/* Reassurance footer */}
-      <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-400">
+      <div className="mt-5 flex items-center justify-center gap-2 text-xs text-gray-500">
         <Phone className="w-3.5 h-3.5" />
         <span>Your number is only used to secure your orders</span>
       </div>

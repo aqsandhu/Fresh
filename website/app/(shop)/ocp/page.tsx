@@ -59,7 +59,7 @@ export default function OcpDashboard() {
             </div>
             <div className="min-w-0">
               <p className="font-semibold text-gray-900 truncate leading-tight">{info?.name}</p>
-              <p className="text-xs text-gray-400 leading-tight">{info?.city} · Collection Point</p>
+              <p className="text-xs text-gray-500 leading-tight">{info?.city} · Collection Point</p>
             </div>
           </div>
           <button onClick={logout} className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-red-600 shrink-0">
@@ -126,7 +126,7 @@ function OrdersTab() {
               <p className="text-sm text-gray-700 mt-0.5">
                 {o.customer_name || 'Customer'}{' '}
                 {o.phone_hidden
-                  ? <span className="inline-flex items-center gap-1 text-gray-400"><PhoneOff className="w-3 h-3" /> phone hidden</span>
+                  ? <span className="inline-flex items-center gap-1 text-gray-500"><PhoneOff className="w-3 h-3" /> phone hidden</span>
                   : o.customer_phone ? <span className="inline-flex items-center gap-1 text-gray-500"><Phone className="w-3 h-3" /> {formatPhoneNumber(o.customer_phone)}</span> : null}
               </p>
               <p className="text-sm text-gray-500 truncate">{o.address}</p>
@@ -195,16 +195,16 @@ function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; ride
             </div>
 
             <section>
-              <h3 className="text-xs font-semibold text-gray-400 uppercase mb-1">Customer</h3>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Customer</h3>
               <p className="font-medium text-gray-900">{o.customer_name || 'Customer'}</p>
               {o.phone_hidden
-                ? <p className="text-sm text-gray-400 inline-flex items-center gap-1"><PhoneOff className="w-3.5 h-3.5" /> Phone hidden by admin</p>
+                ? <p className="text-sm text-gray-500 inline-flex items-center gap-1"><PhoneOff className="w-3.5 h-3.5" /> Phone hidden by admin</p>
                 : o.customer_phone ? <p className="text-sm text-gray-600 inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {formatPhoneNumber(o.customer_phone)}</p> : null}
             </section>
 
             {(o.address || o.house_number) && (
               <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase mb-1">Delivery address</h3>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Delivery address</h3>
                 {o.house_number && <p className="text-sm font-medium text-gray-800">House #: {o.house_number}</p>}
                 <p className="text-sm text-gray-600 flex items-start gap-1"><MapPin className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {[o.address, o.landmark, o.area_name, o.city].filter(Boolean).join(', ')}</p>
               </section>
@@ -212,20 +212,20 @@ function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; ride
 
             {o.slot_name && (
               <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase mb-1">Time slot</h3>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Time slot</h3>
                 <p className="text-sm text-gray-700 inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {o.slot_name}</p>
               </section>
             )}
 
             <section>
-              <h3 className="text-xs font-semibold text-gray-400 uppercase mb-1">Items</h3>
+              <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Items</h3>
               <div className="border rounded-lg divide-y">
                 {(o.items || []).map((it: any) => (
                   <div key={it.id} className="flex items-center justify-between px-3 py-2 text-sm">
                     <span className="text-gray-800">{it.product_name}
-                      {it.unit && it.unit !== 'full' ? <span className="text-gray-400"> ({unitShort(it.unit)})</span> : null}
-                      {it.quality && it.quality !== 'A' ? <span className="text-gray-400"> [Q{it.quality}]</span> : null}
-                      <span className="text-gray-400"> × {Number(it.quantity)}</span>
+                      {it.unit && it.unit !== 'full' ? <span className="text-gray-500"> ({unitShort(it.unit)})</span> : null}
+                      {it.quality && it.quality !== 'A' ? <span className="text-gray-500"> [Q{it.quality}]</span> : null}
+                      <span className="text-gray-500"> × {Number(it.quantity)}</span>
                     </span>
                     <span className="font-medium text-gray-900">{money(it.total_price)}</span>
                   </div>
@@ -244,7 +244,7 @@ function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; ride
 
             {o.customer_notes && (
               <section>
-                <h3 className="text-xs font-semibold text-gray-400 uppercase mb-1">Customer notes</h3>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Customer notes</h3>
                 <p className="text-sm text-gray-700">{o.customer_notes}</p>
               </section>
             )}
@@ -333,7 +333,7 @@ function StockTab() {
           <div className="bg-white rounded-xl shadow-sm divide-y">
             {stock.map((s, i) => (
               <div key={i} className="flex justify-between px-4 py-2 text-sm">
-                <span>{s.product_name} <span className="text-gray-400">Q{s.quality}</span></span>
+                <span>{s.product_name} <span className="text-gray-500">Q{s.quality}</span></span>
                 <span className="font-medium">{Number(s.quantity)}</span>
               </div>
             ))}
@@ -379,7 +379,7 @@ function PaymentsTab() {
         <div className="bg-white rounded-xl p-4 shadow-sm text-center">
           <p className="text-xs text-gray-500">Cash in hand</p>
           <p className="text-lg font-bold text-gray-900">{money(data.due_amount)}</p>
-          <p className="text-[11px] text-gray-400">{data.due_orders} order(s)</p>
+          <p className="text-[11px] text-gray-500">{data.due_orders} order(s)</p>
         </div>
         <div className="bg-white rounded-xl p-4 shadow-sm text-center">
           <p className="text-xs text-gray-500">Awaiting admin</p>
@@ -396,7 +396,7 @@ function PaymentsTab() {
         <Button onClick={send} disabled={busy || data.due_amount <= 0}>
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4 mr-1 inline" /> Send settlement ({money(data.due_amount)})</>}
         </Button>
-        {data.due_amount <= 0 && <p className="text-xs text-gray-400 mt-2">No collected cash to settle right now.</p>}
+        {data.due_amount <= 0 && <p className="text-xs text-gray-500 mt-2">No collected cash to settle right now.</p>}
       </div>
 
       <div>

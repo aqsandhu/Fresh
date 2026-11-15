@@ -3,7 +3,11 @@ module.exports = {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>', '<rootDir>/tests'],
   testMatch: ['**/tests/**/*.test.tsx', '**/tests/**/*.test.ts'],
+  // The whole site, pages (app/) included — they used to be left out, which
+  // showed about 1.5 times the real coverage.
   collectCoverageFrom: [
+    'app/**/*.{ts,tsx}',
+    'context/**/*.{ts,tsx}',
     'components/**/*.{ts,tsx}',
     'store/**/*.{ts,tsx}',
     'lib/**/*.{ts,tsx}',
@@ -13,11 +17,13 @@ module.exports = {
   // `pnpm test` fails on regressions instead of an aspirational target that the
   // existing tests do not exercise yet. Raise as website coverage grows.
   coverageThreshold: {
+    // Ratchet (15 Nov 2026): one point under the measured coverage. Raise it
+    // whenever coverage grows; CI fails if a change makes it fall.
     global: {
       branches: 3,
-      functions: 3,
-      lines: 4,
-      statements: 4,
+      functions: 5,
+      lines: 6,
+      statements: 6,
     },
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setupTests.ts'],

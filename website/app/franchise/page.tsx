@@ -160,8 +160,8 @@ export default function FranchisePage() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Full name *</label>
-                      <input
+                      <label htmlFor="franchise-field-1" className="block text-sm font-medium text-gray-700 mb-1">Full name *</label>
+                      <input id="franchise-field-1"
                         value={form.name}
                         onChange={(e) => setForm({ ...form, name: e.target.value })}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -169,8 +169,8 @@ export default function FranchisePage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
-                      <input
+                      <label htmlFor="franchise-field-2" className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                      <input id="franchise-field-2"
                         value={form.phone}
                         onChange={(e) => setForm({ ...form, phone: e.target.value })}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -178,8 +178,8 @@ export default function FranchisePage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                      <input
+                      <label htmlFor="franchise-field-3" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <input id="franchise-field-3"
                         value={form.email}
                         onChange={(e) => setForm({ ...form, email: e.target.value })}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -187,8 +187,8 @@ export default function FranchisePage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
-                      <input
+                      <label htmlFor="franchise-field-4" className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                      <input id="franchise-field-4"
                         value={form.city}
                         required
                         onChange={(e) => setForm({ ...form, city: e.target.value })}
@@ -198,8 +198,8 @@ export default function FranchisePage() {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
-                    <textarea
+                    <label htmlFor="franchise-field-5" className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                    <textarea id="franchise-field-5"
                       value={form.message}
                       onChange={(e) => setForm({ ...form, message: e.target.value })}
                       rows={3}

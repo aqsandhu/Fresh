@@ -152,7 +152,7 @@ export default function NotificationBell() {
                       )}
                     </div>
                     <p className="text-xs text-gray-600 mt-0.5 line-clamp-2">{n.message}</p>
-                    <p className="text-[10px] text-gray-400 mt-1">{formatWhen(n.createdAt)}</p>
+                    <p className="text-[10px] text-gray-500 mt-1">{formatWhen(n.createdAt)}</p>
                   </div>
                 </div>
               </Link>

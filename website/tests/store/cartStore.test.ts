@@ -1,356 +1,153 @@
 // ============================================================================
-// CART STORE TESTS
-// Tests: Add, remove, update quantity, clear, calculations, delivery charges
+// CART STORE — tests of the REAL store (store/cartStore.ts).
+//
+// The file that used to live here built its own pretend cart inside the test
+// and checked that — 28 tests that would have stayed green with the real store
+// broken. Every behaviour it described is now checked against the real one,
+// with the real price and delivery rules.
 // ============================================================================
+import { useCartStore } from '@/store/cartStore';
+import type { Product } from '@/types';
 
-describe('Cart Store', () => {
-  // Mock cart state and functions
-  const createMockCartState = () => ({
-    items: [] as Array<{ product: any; quantity: number }>,
-    addItem: function(product: any, quantity: number = 1) {
-      const existing = this.items.find((item: any) => item.product.id === product.id);
-      if (existing) {
-        existing.quantity += quantity;
-      } else {
-        this.items.push({ product, quantity });
-      }
-    },
-    removeItem: function(productId: string) {
-      this.items = this.items.filter((item: any) => item.product.id !== productId);
-    },
-    updateQuantity: function(productId: string, quantity: number) {
-      if (quantity <= 0) {
-        this.removeItem(productId);
-        return;
-      }
-      const item = this.items.find((item: any) => item.product.id === productId);
-      if (item) {
-        item.quantity = quantity;
-      }
-    },
-    clearCart: function() {
-      this.items = [];
-    },
-    getTotalItems: function() {
-      return this.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
-    },
-    getTotalPrice: function() {
-      return this.items.reduce((sum: number, item: any) => sum + item.product.price * item.quantity, 0);
-    },
-    getSubtotal: function() {
-      return this.getTotalPrice();
-    },
-    getDeliveryCharge: function(
-      baseCharge: number = 100,
-      freeThreshold: number = 500,
-      isFreeDeliverySlot: boolean = false
-    ) {
-      if (this.items.length === 0) return 0;
-      if (isFreeDeliverySlot) return 0;
-      const vegFruitSlugs = ['vegetables', 'fruits', 'sabzi', 'fruit'];
-      const vegFruitSubtotal = this.items
-        .filter((item: any) => vegFruitSlugs.includes(item.product.category))
-        .reduce((sum: number, item: any) => sum + item.product.price * item.quantity, 0);
-      if (vegFruitSubtotal >= freeThreshold) return 0;
-      return baseCharge;
-    },
-    getFinalTotal: function() {
-      return this.getSubtotal() + this.getDeliveryCharge();
-    },
-    hasOnlyChicken: function() {
-      if (this.items.length === 0) return false;
-      return this.items.every((item: any) => item.product.category === 'chicken');
-    },
+const product = (id: string, price: number, extra: Record<string, unknown> = {}): Product =>
+  ({ id, name: id, nameEn: id, price, unit: 'kg', inStock: true, category: 'vegetables', ...extra } as unknown as Product);
+
+const tomato = product('tomato', 200, { qualifiesForFreeDelivery: true });
+const apple = product('apple', 300, { qualifiesForFreeDelivery: true, category: 'fruits' });
+const chicken = product('chicken', 800, { qualifiesForFreeDelivery: false, category: 'chicken' });
+
+const store = () => useCartStore.getState();
+
+beforeEach(() => {
+  useCartStore.setState({ items: [], cartsByCity: {}, activeCityId: 'city-1', deliveryBaseCharge: 100, deliveryFreeThreshold: 500 });
+});
+
+describe('addItem', () => {
+  it('adds a new line', () => {
+    store().addItem(tomato, 2);
+    expect(store().items).toHaveLength(1);
+    expect(store().items[0]).toMatchObject({ quantity: 2 });
   });
 
-  const mockProduct = {
-    id: 'prod-1',
-    name: 'Fresh Apples',
-    price: 250,
-    unit: 'kg',
-    category: 'fruits',
-    image: 'apples.jpg',
-  };
-
-  const mockProduct2 = {
-    id: 'prod-2',
-    name: 'Bananas',
-    price: 150,
-    unit: 'dozen',
-    category: 'fruits',
-    image: 'bananas.jpg',
-  };
-
-  const mockChickenProduct = {
-    id: 'prod-3',
-    name: 'Chicken Breast',
-    price: 400,
-    unit: 'kg',
-    category: 'chicken',
-    image: 'chicken.jpg',
-  };
-
-  beforeEach(() => {
-    jest.clearAllMocks();
+  it('raises the quantity of the same product, size and quality', () => {
+    store().addItem(tomato, 1);
+    store().addItem(tomato, 2);
+    expect(store().items).toHaveLength(1);
+    expect(store().items[0].quantity).toBe(3);
   });
 
-  // ============================================================================
-  describe('addItem', () => {
-    it('should add a new item to the cart', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-
-      expect(cart.items).toHaveLength(1);
-      expect(cart.items[0].product.id).toBe('prod-1');
-      expect(cart.items[0].quantity).toBe(2);
-    });
-
-    it('should increase quantity if item already exists', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-      cart.addItem(mockProduct, 3);
-
-      expect(cart.items).toHaveLength(1);
-      expect(cart.items[0].quantity).toBe(5);
-    });
-
-    it('should add multiple different items', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-      cart.addItem(mockProduct2, 1);
-
-      expect(cart.items).toHaveLength(2);
-      expect(cart.items[0].product.id).toBe('prod-1');
-      expect(cart.items[1].product.id).toBe('prod-2');
-    });
-
-    it('should default quantity to 1 if not specified', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct);
-
-      expect(cart.items[0].quantity).toBe(1);
-    });
+  it('keeps a different size or quality on its own line', () => {
+    store().addItem(tomato, 1, 'full', 'A');
+    store().addItem(tomato, 1, 'half_kg', 'A');
+    store().addItem(tomato, 1, 'full', 'B');
+    expect(store().items).toHaveLength(3);
   });
 
-  // ============================================================================
-  describe('removeItem', () => {
-    it('should remove an item from the cart', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-      cart.addItem(mockProduct2, 1);
+  it('defaults to one unit', () => {
+    store().addItem(apple);
+    expect(store().items[0].quantity).toBe(1);
+  });
+});
 
-      expect(cart.items).toHaveLength(2);
-
-      cart.removeItem('prod-1');
-
-      expect(cart.items).toHaveLength(1);
-      expect(cart.items[0].product.id).toBe('prod-2');
-    });
-
-    it('should handle removing non-existent item', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-
-      cart.removeItem('non-existent');
-
-      expect(cart.items).toHaveLength(1);
-    });
+describe('removeItem / updateQuantity / clearCart', () => {
+  it('removes only the matching line', () => {
+    store().addItem(tomato, 1);
+    store().addItem(apple, 1);
+    store().removeItem('tomato');
+    expect(store().items.map((i) => i.product.id)).toEqual(['apple']);
   });
 
-  // ============================================================================
-  describe('updateQuantity', () => {
-    it('should update item quantity', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-
-      cart.updateQuantity('prod-1', 5);
-
-      expect(cart.items[0].quantity).toBe(5);
-    });
-
-    it('should remove item when quantity is set to zero', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-
-      cart.updateQuantity('prod-1', 0);
-
-      expect(cart.items).toHaveLength(0);
-    });
-
-    it('should remove item when quantity is negative', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-
-      cart.updateQuantity('prod-1', -1);
-
-      expect(cart.items).toHaveLength(0);
-    });
+  it('removing something that is not there changes nothing', () => {
+    store().addItem(tomato, 1);
+    store().removeItem('nothing');
+    expect(store().items).toHaveLength(1);
   });
 
-  // ============================================================================
-  describe('clearCart', () => {
-    it('should remove all items from cart', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-      cart.addItem(mockProduct2, 3);
-
-      expect(cart.items).toHaveLength(2);
-
-      cart.clearCart();
-
-      expect(cart.items).toHaveLength(0);
-    });
-
-    it('should work on empty cart', () => {
-      const cart = createMockCartState();
-      cart.clearCart();
-      expect(cart.items).toHaveLength(0);
-    });
+  it('sets a new quantity', () => {
+    store().addItem(tomato, 1);
+    store().updateQuantity('tomato', 5);
+    expect(store().items[0].quantity).toBe(5);
   });
 
-  // ============================================================================
-  describe('getTotalItems', () => {
-    it('should return total quantity of all items', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2);
-      cart.addItem(mockProduct2, 3);
-
-      expect(cart.getTotalItems()).toBe(5);
-    });
-
-    it('should return 0 for empty cart', () => {
-      const cart = createMockCartState();
-      expect(cart.getTotalItems()).toBe(0);
-    });
+  it('a quantity of zero or below removes the line', () => {
+    store().addItem(tomato, 1);
+    store().addItem(apple, 1);
+    store().updateQuantity('tomato', 0);
+    store().updateQuantity('apple', -2);
+    expect(store().items).toEqual([]);
   });
 
-  // ============================================================================
-  describe('getTotalPrice', () => {
-    it('should calculate total price correctly', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2); // 2 * 250 = 500
-      cart.addItem(mockProduct2, 3); // 3 * 150 = 450
+  it('clearCart empties the cart of the current city', () => {
+    store().addItem(tomato, 1);
+    store().clearCart();
+    expect(store().items).toEqual([]);
+    expect(store().cartsByCity['city-1']).toEqual([]);
+  });
+});
 
-      expect(cart.getTotalPrice()).toBe(950);
-    });
-
-    it('should return 0 for empty cart', () => {
-      const cart = createMockCartState();
-      expect(cart.getTotalPrice()).toBe(0);
-    });
+describe('totals', () => {
+  it('counts units and prices with the line unit price', () => {
+    store().addItem(tomato, 2); // 2 × 200
+    store().addItem(apple, 1); // 1 × 300
+    expect(store().getTotalItems()).toBe(3);
+    expect(store().getTotalPrice()).toBe(700);
+    expect(store().getSubtotal()).toBe(700);
   });
 
-  // ============================================================================
-  describe('getDeliveryCharge', () => {
-    it('should return 0 for empty cart', () => {
-      const cart = createMockCartState();
-      expect(cart.getDeliveryCharge()).toBe(0);
-    });
-
-    it('should apply free delivery when vegetables/fruits >= threshold', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 2); // 2 * 250 = 500 of fruit
-      expect(cart.getDeliveryCharge()).toBe(0);
-    });
-
-    it('should charge delivery when veg/fruit subtotal is below threshold', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct2, 1); // 150 of fruit
-      expect(cart.getDeliveryCharge()).toBe(100);
-    });
-
-    it('should always charge for chicken-only orders no matter how large', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 5); // 2000 of chicken, zero veg/fruit
-      expect(cart.getDeliveryCharge()).toBe(100);
-    });
-
-    it('should charge mixed orders when veg/fruit subtotal is below threshold even if total is high', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 2); // 800 of chicken
-      cart.addItem(mockProduct, 1); // 250 of fruit
-      expect(cart.getDeliveryCharge()).toBe(100); // veg/fruit < 500
-    });
-
-    it('should free-deliver mixed orders when veg/fruit alone meets threshold', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 1); // 400 chicken
-      cart.addItem(mockProduct, 2); // 500 fruit
-      expect(cart.getDeliveryCharge()).toBe(0);
-    });
-
-    it('should free-deliver when a free-delivery time slot is selected', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 1); // 400 chicken, no veg/fruit
-      expect(cart.getDeliveryCharge(100, 500, true)).toBe(0);
-    });
+  it('a half-kg line is priced at half the kilo price when no half-kg price is set', () => {
+    store().addItem(tomato, 2, 'half_kg');
+    expect(store().getTotalPrice()).toBe(200);
   });
 
-  // ============================================================================
-  describe('getFinalTotal', () => {
-    it('should calculate final total with delivery charge', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct2, 1); // 150 fruit
+  it('an empty cart totals 0 and has no delivery charge', () => {
+    expect(store().getTotalItems()).toBe(0);
+    expect(store().getTotalPrice()).toBe(0);
+    expect(store().getDeliveryCharge()).toBe(0);
+  });
+});
 
-      const subtotal = cart.getSubtotal();
-      const delivery = cart.getDeliveryCharge();
-      expect(subtotal).toBe(150);
-      expect(delivery).toBe(100);
-      expect(cart.getFinalTotal()).toBe(250);
-    });
-
-    it('should calculate final total with free delivery', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockProduct, 3); // 750 fruit — qualifies
-      expect(cart.getFinalTotal()).toBe(750);
-    });
+describe('delivery charge (vegetables / fruits towards the free threshold)', () => {
+  it('free once vegetables and fruits reach the threshold', () => {
+    store().addItem(tomato, 3); // 600
+    expect(store().getDeliveryCharge()).toBe(0);
   });
 
-  // ============================================================================
-  describe('hasOnlyChicken', () => {
-    it('should return true for chicken-only cart', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 2);
-
-      expect(cart.hasOnlyChicken()).toBe(true);
-    });
-
-    it('should return false for mixed cart', () => {
-      const cart = createMockCartState();
-      cart.addItem(mockChickenProduct, 1);
-      cart.addItem(mockProduct, 1);
-
-      expect(cart.hasOnlyChicken()).toBe(false);
-    });
-
-    it('should return false for empty cart', () => {
-      const cart = createMockCartState();
-      expect(cart.hasOnlyChicken()).toBe(false);
-    });
+  it('charged below the threshold', () => {
+    store().addItem(tomato, 1); // 200
+    expect(store().getDeliveryCharge()).toBe(100);
   });
 
-  // ============================================================================
-  describe('Cart Persistence', () => {
-    it('should maintain cart state across operations', () => {
-      const cart = createMockCartState();
+  it('chicken never counts towards the threshold, however much', () => {
+    store().addItem(chicken, 10); // 8000
+    expect(store().getDeliveryCharge()).toBe(100);
+  });
 
-      // Add items
-      cart.addItem(mockProduct, 2);
-      cart.addItem(mockProduct2, 1);
-      expect(cart.getTotalItems()).toBe(3);
+  it('a mixed cart is free only when the vegetables/fruits part alone reaches it', () => {
+    store().addItem(chicken, 5);
+    store().addItem(tomato, 1);
+    expect(store().getDeliveryCharge()).toBe(100);
+    store().addItem(apple, 1); // veg/fruit 500
+    expect(store().getDeliveryCharge()).toBe(0);
+  });
 
-      // Update quantity
-      cart.updateQuantity('prod-1', 5);
-      expect(cart.getTotalItems()).toBe(6);
+  it('a free-delivery slot is always free', () => {
+    store().addItem(chicken, 1);
+    expect(store().getDeliveryCharge(true)).toBe(0);
+  });
 
-      // Remove item
-      cart.removeItem('prod-2');
-      expect(cart.getTotalItems()).toBe(5);
-      expect(cart.items).toHaveLength(1);
+  it('final total = subtotal + delivery', () => {
+    store().addItem(tomato, 1);
+    expect(store().getFinalTotal()).toBe(300);
+    expect(store().getFinalTotal(true)).toBe(200);
+  });
+});
 
-      // Clear
-      cart.clearCart();
-      expect(cart.getTotalItems()).toBe(0);
-    });
+describe('hasOnlyChicken', () => {
+  it('true only for a cart of nothing but chicken', () => {
+    expect(store().hasOnlyChicken()).toBe(false);
+    store().addItem(chicken, 1);
+    expect(store().hasOnlyChicken()).toBe(true);
+    store().addItem(tomato, 1);
+    expect(store().hasOnlyChicken()).toBe(false);
   });
 });

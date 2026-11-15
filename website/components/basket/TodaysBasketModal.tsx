@@ -11,6 +11,7 @@ import { useCityContext } from '@/context/CityContext'
 import { useCartStore } from '@/store/cartStore'
 import { useBasketUi } from '@/store/basketUi'
 import { formatPriceShort } from '@/lib/utils'
+import { useDialog } from '@/lib/useDialog'
 import { ProductUnit, ProductQuality } from '@/types'
 
 const ALLOWED_UNITS: ProductUnit[] = ['full', 'half_kg', 'quarter_kg', 'half_dozen']
@@ -24,6 +25,7 @@ function normalizeQuality(q: string): ProductQuality {
 
 export default function TodaysBasketModal() {
   const { isOpen, close } = useBasketUi()
+  const dialogRef = useDialog(isOpen, close)
   const { selectedCityId } = useCityContext()
   const addItem = useCartStore((s) => s.addItem)
   const [addingId, setAddingId] = useState<string | null>(null)
@@ -66,21 +68,24 @@ export default function TodaysBasketModal() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4"
-          onClick={close}
+          className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center p-0 sm:p-4"
         >
+          <div className="absolute inset-0 bg-black/50" aria-hidden="true" onClick={close} />
           <motion.div
             initial={{ y: 30, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 30, opacity: 0 }}
-            className="relative w-full sm:max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="todays-basket-title"
+            className="relative w-full sm:max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-xl focus:outline-none"
           >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+              <h2 id="todays-basket-title" className="flex items-center gap-2 text-lg font-bold text-gray-900">
                 <ShoppingBasket className="h-5 w-5 text-primary-600" /> Today&apos;s Basket
               </h2>
-              <button onClick={close} aria-label="Close" className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+              <button onClick={close} aria-label="Close" className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -116,9 +121,9 @@ export default function TodaysBasketModal() {
                       {basket.items.map((it) => (
                         <li key={it.product_id + it.quality} className="flex justify-between">
                           <span>
-                            {it.name} <span className="text-gray-400">×{it.quantity}</span>
+                            {it.name} <span className="text-gray-500">×{it.quantity}</span>
                           </span>
-                          <span className="text-xs text-gray-400">Quality {it.quality}</span>
+                          <span className="text-xs text-gray-500">Quality {it.quality}</span>
                         </li>
                       ))}
                     </ul>
@@ -137,7 +142,7 @@ export default function TodaysBasketModal() {
                     </button>
                   </div>
                 ))}
-                <p className="text-center text-xs text-gray-400">
+                <p className="text-center text-xs text-gray-500">
                   Items are added to your cart at live prices.
                 </p>
               </div>

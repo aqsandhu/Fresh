@@ -36,10 +36,6 @@ function formatRupees(amount: number | string | null | undefined): string {
   return `Rs. ${sign}${body}`
 }
 
-export function formatPrice(price: number): string {
-  return formatRupees(price)
-}
-
 export function formatPriceShort(price: number): string {
   return formatRupees(price)
 }
@@ -57,11 +53,6 @@ export function getProductImage(product: any): string {
   const img = product.image || product.image_url || product.primaryImage || ''
   if (!img) return '/placeholder-product.svg'
   return resolveImageUrl(img)
-}
-
-// Product image for Next/Image that guarantees string output.
-export function safeImageSrc(product: any): string {
-  return getProductImage(product)
 }
 
 export function formatDate(date: string | Date): string {
@@ -158,65 +149,6 @@ export function formatDateTime(date: string | Date): string {
   }).format(new Date(date))
 }
 
-/**
- * Same rule everywhere: free delivery only when veg/fruit subtotal meets
- * the threshold (or the selected time slot is a free-delivery slot).
- */
-export function getDeliveryMessage(
-  vegFruitSubtotal: number,
-  freeThreshold: number = 500,
-  isFreeDeliverySlot: boolean = false
-): string {
-  if (isFreeDeliverySlot) {
-    return 'Free delivery — selected time slot qualifies'
-  }
-  if (vegFruitSubtotal >= freeThreshold) {
-    return `Free delivery — Rs. ${vegFruitSubtotal} in vegetables/fruits qualifies`
-  }
-  const remaining = Math.max(0, freeThreshold - vegFruitSubtotal)
-  return `Add Rs. ${remaining} more vegetables/fruits for free delivery`
-}
-
-export function generateOTP(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString()
-}
-
-export function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/--+/g, '-')
-    .trim()
-}
-
-export function truncateText(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text
-  return text.slice(0, maxLength) + '...'
-}
-
-export function getCategoryName(slug: string): string {
-  const categories: Record<string, string> = {
-    'sabzi': 'Fresh Vegetables',
-    'fruit': 'Fresh Fruits',
-    'dry-fruit': 'Dry Fruits',
-    'chicken': 'Fresh Chicken',
-    'atta': 'Atta Chakki',
-  }
-  return categories[slug] || 'Products'
-}
-
-export function getCategoryNameUrdu(slug: string): string {
-  const categories: Record<string, string> = {
-    'sabzi': 'تازہ سبزیاں',
-    'fruit': 'تازہ پھل',
-    'dry-fruit': 'خشک میوے',
-    'chicken': 'تازہ مرغی',
-    'atta': 'آٹا چکی',
-  }
-  return categories[slug] || 'مصنوعات'
-}
-
 export function getOrderStatusColor(status: string): string {
   const colors: Record<string, string> = {
     'received': 'bg-blue-100 text-blue-800',
@@ -259,12 +191,24 @@ export function getTimeSlots(): { value: string; label: string; isFree: boolean 
 
 /**
  * Validate a ?redirect= target before router.push — only same-site absolute
- * paths are allowed (no '//' scheme-relative URLs), anything else falls back
- * to '/'. Prevents open redirects to external sites after login/register.
+ * paths are allowed, anything else falls back to '/'. Prevents open redirects
+ * to external sites after login/register.
+ *
+ * Checking for a leading '//' is not enough: browsers read "/\evil.com" and
+ * "/<tab>/evil.com" as "//evil.com". So backslashes and control/space
+ * characters are refused, and the result is re-parsed: it must stay on the
+ * same origin.
  */
 export function sanitizeRedirect(target: string | null | undefined): string {
-  if (target && target.startsWith('/') && !target.startsWith('//')) {
-    return target
+  if (!target || !target.startsWith('/') || target.startsWith('//')) return '/'
+  // eslint-disable-next-line no-control-regex
+  if (/[\\\u0000-\u001f\u007f\s]/.test(target)) return '/'
+  try {
+    const base = 'https://same-site.invalid'
+    const u = new URL(target, base)
+    if (u.origin !== base) return '/'
+    return `${u.pathname}${u.search}${u.hash}`
+  } catch {
+    return '/'
   }
-  return '/'
 }

@@ -55,8 +55,8 @@ export default function RestaurantLoginPage() {
 
         <form onSubmit={submit} className="bg-white rounded-xl p-6 shadow-sm space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
-            <input
+            <label htmlFor="login-field-1" className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
+            <input id="login-field-1"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="03001234567"
@@ -66,8 +66,8 @@ export default function RestaurantLoginPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">4-digit PIN</label>
-            <input
+            <label htmlFor="login-field-2" className="block text-sm font-medium text-gray-700 mb-1">4-digit PIN</label>
+            <input id="login-field-2"
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
               placeholder="••••"

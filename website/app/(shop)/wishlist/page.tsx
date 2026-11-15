@@ -102,7 +102,7 @@ export default function WishlistPage() {
             <p className="text-gray-600 mb-2 max-w-md mx-auto">
               Save your favorite items to your wishlist and easily find them later.
             </p>
-            <p className="text-gray-400 text-sm mb-8 max-w-md mx-auto">
+            <p className="text-gray-500 text-sm mb-8 max-w-md mx-auto">
               Your wishlist is saved on this device only — it is not synced to your account.
             </p>
             <Link href="/">

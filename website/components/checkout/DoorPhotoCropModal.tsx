@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Crop, ImageIcon, Loader2, X } from 'lucide-react'
 import { processDoorPhoto } from '@/lib/doorPhoto'
+import { useDialog } from '@/lib/useDialog'
 
 type Props = {
   open: boolean
@@ -23,6 +24,8 @@ export default function DoorPhotoCropModal({
   onConfirm,
 }: Props) {
   const [busy, setBusy] = useState(false)
+  // Escape = cancel (not while the photo is being processed).
+  const dialogRef = useDialog(open && !!previewUrl, () => { if (!busy) onCancel() })
 
   useEffect(() => {
     if (!open) setBusy(false)
@@ -45,7 +48,7 @@ export default function DoorPhotoCropModal({
   if (!open || !previewUrl) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex flex-col bg-slate-900">
+    <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="door-photo-title" className="fixed inset-0 z-[100] flex flex-col bg-slate-900 focus:outline-none">
       <header className="flex items-center justify-between px-4 py-3">
         <button
           type="button"
@@ -56,7 +59,7 @@ export default function DoorPhotoCropModal({
         >
           <X className="h-6 w-6" />
         </button>
-        <h2 className="text-base font-semibold text-white">Door photo</h2>
+        <h2 id="door-photo-title" className="text-base font-semibold text-white">Door photo</h2>
         <div className="h-10 w-10" />
       </header>
 

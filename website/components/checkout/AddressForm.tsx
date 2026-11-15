@@ -4,6 +4,7 @@ import {
   forwardRef,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useRef,
   useState,
@@ -101,6 +102,8 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
   },
   ref
 ) {
+  // Unique per form (the form can appear more than once on a page).
+  const fieldId = useId()
   const editingId = initial?.id || ''
   const isEdit = Boolean(editingId)
   const isCityLocked = availableCities.length <= 1
@@ -321,10 +324,11 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
     >
       <div className="grid md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor={`${fieldId}-type`} className="block text-sm font-medium text-gray-700 mb-2">
             Address Type
           </label>
           <select
+            id={`${fieldId}-type`}
             value={addressType}
             onChange={(e) => setAddressType(e.target.value)}
             className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -344,10 +348,11 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
       </div>
 
       <div className="mt-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
+        <label htmlFor={`${fieldId}-city`} className="block text-sm font-medium text-gray-700 mb-2">City</label>
         {isCityLocked ? (
           <div>
             <button
+              id={`${fieldId}-city`}
               type="button"
               onClick={() => setCityChangeHint(true)}
               className="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-gray-50 text-gray-800 text-left hover:bg-gray-100 transition-colors"
@@ -365,6 +370,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
           </div>
         ) : (
           <select
+            id={`${fieldId}-city`}
             value={city}
             onChange={(e) => setCity(e.target.value)}
             className="w-full px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
@@ -380,10 +386,11 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
       </div>
 
       <div className="mt-4">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label htmlFor={`${fieldId}-address`} className="block text-sm font-medium text-gray-700 mb-2">
           Full Address *
         </label>
         <textarea
+          id={`${fieldId}-address`}
           rows={3}
           placeholder="Enter your complete address"
           value={writtenAddress}
@@ -412,9 +419,9 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
 
       {/* Map location */}
       <div className="mt-4">
-        <label className="mb-2 block text-sm font-semibold text-gray-700">
+        <p className="mb-2 block text-sm font-semibold text-gray-700">
           📍 Pin Map Location (Optional)
-        </label>
+        </p>
 
         {!showMapPicker && !mapLocation && (
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -502,7 +509,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
           />
         )}
 
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-gray-500 mt-1">
           {isEdit
             ? 'Update or clear the pinned location.'
             : 'If you skip this, our rider will pin the location on first delivery.'}

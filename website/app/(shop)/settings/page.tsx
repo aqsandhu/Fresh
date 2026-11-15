@@ -118,7 +118,7 @@ function LinkRow({ href, label }: { href: string; label: string }) {
       className="flex items-center justify-between p-4 hover:bg-gray-50"
     >
       <span className="font-medium text-gray-900">{label}</span>
-      <ChevronRight className="w-5 h-5 text-gray-400" />
+      <ChevronRight className="w-5 h-5 text-gray-500" />
     </Link>
   )
 }
@@ -187,7 +187,7 @@ export default function SettingsPage() {
                     <p className="text-sm text-gray-500">Set or change your 4-digit login PIN</p>
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-gray-400" />
+                <ChevronRight className="w-5 h-5 text-gray-500" />
               </Link>
               <LinkRow href="/addresses" label="Saved addresses & map pins" />
               <LinkRow href="/delete-account" label="Delete my account" />
@@ -267,7 +267,7 @@ export default function SettingsPage() {
           className="bg-white rounded-xl p-6 shadow-sm mt-8"
         >
           <div className="flex items-center gap-4 mb-4">
-            <Smartphone className="w-6 h-6 text-gray-400" />
+            <Smartphone className="w-6 h-6 text-gray-500" />
             <div>
               <h3 className="font-semibold text-gray-900">App Information</h3>
               <p className="text-sm text-gray-500">Version 1.0.0</p>

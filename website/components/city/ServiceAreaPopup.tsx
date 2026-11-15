@@ -3,7 +3,8 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { MapPinOff, X, MessageCircle } from 'lucide-react'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
-import type { ServiceAreaMessage } from '@/lib/serviceArea'
+import type { ServiceAreaMessage } from '@/lib/serviceArea'
+import { useDialog } from '@/lib/useDialog'
 
 interface ServiceAreaPopupProps {
   open: boolean
@@ -25,6 +26,7 @@ export default function ServiceAreaPopup({
   detectedPlace,
 }: ServiceAreaPopupProps) {
   const waUrl = message.whatsapp ? buildWhatsAppUrl(message.whatsapp) : null
+  const dialogRef = useDialog(open, onClose)
 
   return (
     <AnimatePresence>
@@ -33,20 +35,23 @@ export default function ServiceAreaPopup({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
-          onClick={onClose}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4"
         >
+          <div className="absolute inset-0 bg-black/50" aria-hidden="true" onClick={onClose} />
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 10 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 10 }}
-            className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="service-area-title"
+            className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-xl focus:outline-none"
           >
             <button
               onClick={onClose}
               aria-label="Close"
-              className="absolute right-3 top-3 rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              className="absolute right-3 top-3 rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-600"
             >
               <X className="h-5 w-5" />
             </button>
@@ -55,7 +60,7 @@ export default function ServiceAreaPopup({
               <MapPinOff className="h-8 w-8" />
             </div>
 
-            <h2 className="text-center text-xl font-bold text-gray-900">
+            <h2 id="service-area-title" className="text-center text-xl font-bold text-gray-900">
               {message.title || "We're not in your area yet"}
             </h2>
 

@@ -281,12 +281,12 @@ export default function AttaChakkiPage() {
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                 {/* Wheat Weight */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="attachakki-field-1" className="block text-sm font-medium text-gray-700 mb-2">
                     Wheat Weight (kg) *
                   </label>
                   <div className="relative">
-                    <Scale className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
+                    <Scale className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                    <input id="attachakki-field-1"
                       type="number"
                       min="5"
                       placeholder="Minimum 5 kg"
@@ -307,17 +307,17 @@ export default function AttaChakkiPage() {
 
                 {/* Pickup Address */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="attachakki-field-2" className="block text-sm font-medium text-gray-700 mb-2">
                     Pickup Address *
                   </label>
                   <div className="relative">
-                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
                     {loadingAddresses ? (
-                      <div className="w-full pl-12 pr-4 py-3 border rounded-lg border-gray-300 text-gray-400">
+                      <div className="w-full pl-12 pr-4 py-3 border rounded-lg border-gray-300 text-gray-500">
                         Loading addresses...
                       </div>
                     ) : addresses.length > 0 ? (
-                      <select
+                      <select id="attachakki-field-2"
                         {...register('addressId')}
                         className={`w-full pl-12 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
                           errors.addressId ? 'border-red-500' : 'border-gray-300'
@@ -343,10 +343,10 @@ export default function AttaChakkiPage() {
 
                 {/* Flour Type */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <p id="atta-flour-type" className="block text-sm font-medium text-gray-700 mb-2">
                     Flour Type
-                  </label>
-                  <div className="grid sm:grid-cols-3 gap-3">
+                  </p>
+                  <div role="radiogroup" aria-labelledby="atta-flour-type" className="grid sm:grid-cols-3 gap-3">
                     {[
                       { value: 'fine', label: 'Fine (باریک)' },
                       { value: 'medium', label: 'Medium (درمیانی)' },
@@ -370,12 +370,12 @@ export default function AttaChakkiPage() {
 
                 {/* Phone */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="attachakki-field-3" className="block text-sm font-medium text-gray-700 mb-2">
                     Contact Number *
                   </label>
                   <div className="relative">
-                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
+                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
+                    <input id="attachakki-field-3"
                       type="tel"
                       placeholder="03XX-XXXXXXX"
                       {...register('phone')}
@@ -391,10 +391,10 @@ export default function AttaChakkiPage() {
 
                 {/* Notes */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="attachakki-field-4" className="block text-sm font-medium text-gray-700 mb-2">
                     Additional Notes (Optional)
                   </label>
-                  <textarea
+                  <textarea id="attachakki-field-4"
                     rows={2}
                     placeholder="Any special instructions..."
                     {...register('notes')}

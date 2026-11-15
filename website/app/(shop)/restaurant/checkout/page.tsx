@@ -372,10 +372,10 @@ export default function RestaurantCheckoutPage() {
                     </button>
                   </div>
                 ) : (
-                  <label className="inline-flex items-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer text-sm text-gray-600 hover:bg-gray-50">
+                  <label className="inline-flex items-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer text-sm text-gray-600 hover:bg-gray-50 focus-within:ring-2 focus-within:ring-primary-500">
                     {uploadingImg ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
                     {uploadingImg ? 'Uploading…' : 'Add photo'}
-                    <input type="file" accept="image/*" onChange={onPickImage} className="hidden" disabled={uploadingImg} />
+                    <input type="file" accept="image/*" onChange={onPickImage} className="sr-only" disabled={uploadingImg} />
                   </label>
                 )}
               </div>
@@ -497,7 +497,7 @@ export default function RestaurantCheckoutPage() {
                   <div key={`${l.product.id}::${l.quality}::${l.unit}`} className="py-2 flex justify-between gap-2 text-sm">
                     <span className="min-w-0">
                       <span className="text-gray-900">{l.product.name_en}</span>
-                      <span className="text-gray-400"> · Q{l.quality} · {unitShort(l.unit)} × {l.quantity}</span>
+                      <span className="text-gray-500"> · Q{l.quality} · {unitShort(l.unit)} × {l.quantity}</span>
                     </span>
                     <span className="font-medium text-gray-900 shrink-0">{formatPriceShort(l.unitPrice * l.quantity)}</span>
                   </div>

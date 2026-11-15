@@ -699,8 +699,9 @@ function CheckoutPage() {
                               : 'border-gray-200 hover:border-gray-300'
                           }`}
                         >
-                          <label className="flex items-start gap-3 cursor-pointer">
+                          <label htmlFor={`checkout-address-${address.id}`} className="flex items-start gap-3 cursor-pointer">
                             <input
+                              id={`checkout-address-${address.id}`}
                               type="radio"
                               name="address"
                               value={address.id}
@@ -831,7 +832,7 @@ function CheckoutPage() {
                     }`}
                   >
                     <span className="flex items-center gap-3 text-left">
-                      <Zap className={`w-5 h-5 ${urgent ? 'text-amber-600' : 'text-gray-400'}`} />
+                      <Zap className={`w-5 h-5 ${urgent ? 'text-amber-600' : 'text-gray-500'}`} />
                       <span>
                         <span className="block font-semibold text-gray-900">Urgent delivery</span>
                         <span className="block text-xs text-gray-500">
@@ -891,7 +892,7 @@ function CheckoutPage() {
                           disabled={slotDisabled}
                           className="sr-only"
                         />
-                        <Clock className={`w-6 h-6 mb-2 ${slotDisabled ? 'text-gray-400' : 'text-primary-600'}`} />
+                        <Clock className={`w-6 h-6 mb-2 ${slotDisabled ? 'text-gray-500' : 'text-primary-600'}`} />
                         <span className="font-medium text-center text-sm">
                           <SlotTimeLabel startTime={slot.start_time} endTime={slot.end_time} />
                         </span>
@@ -1006,7 +1007,7 @@ function CheckoutPage() {
                         <p className="text-xs text-gray-500 inline-flex items-baseline gap-1 flex-wrap">
                           {item.quantity} x {formatPriceShort(linePrice)}
                           {unit === 'full' ? (
-                            <span className="text-[10px] text-gray-400">
+                            <span className="text-[10px] text-gray-500">
                               {formatProductUnitSuffix(item.product.unit)}
                             </span>
                           ) : (
@@ -1052,12 +1053,12 @@ function CheckoutPage() {
                   </div>
                 ) : (
                   <div>
-                    <label className="text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
+                    <label htmlFor="checkout-field-1" className="text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
                       <Ticket className="w-4 h-4 text-primary-600 shrink-0" />
                       Have a coupon?
                     </label>
                     <div className="flex gap-2">
-                      <input
+                      <input id="checkout-field-1"
                         type="text"
                         value={couponInput}
                         onChange={(e) => {
@@ -1147,7 +1148,7 @@ function CheckoutPage() {
                     }`}
                   >
                     {deliveryLoading && (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-400" />
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />
                     )}
                     {effectiveDelivery === 0
                       ? couponFreeDelivery

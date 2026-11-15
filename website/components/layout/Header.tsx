@@ -437,7 +437,7 @@ export default function Header() {
               <div className="pt-2 pb-1 relative">
                 <form onSubmit={handleSearchSubmit}>
                   <div className="relative">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
                     <input
                       ref={searchInputRef}
                       type="text"
@@ -448,7 +448,7 @@ export default function Header() {
                       autoFocus
                     />
                     {isSearching && (
-                      <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 animate-spin" />
+                      <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 animate-spin" />
                     )}
                   </div>
                 </form>
@@ -510,7 +510,7 @@ export default function Header() {
                       ) : (
                         <div className="p-6 text-center">
                           <p className="text-gray-500">No products found</p>
-                          <p className="text-sm text-gray-400 mt-1">Try a different search term</p>
+                          <p className="text-sm text-gray-500 mt-1">Try a different search term</p>
                         </div>
                       )}
                     </motion.div>

@@ -17,6 +17,7 @@ import {
   type ComplaintStatus,
 } from '@/lib/api'
 import { formatDate, resolveImageUrl } from '@/lib/utils'
+import { useDialog } from '@/lib/useDialog'
 import { useAuthStore } from '@/store/cartStore'
 
 const CATEGORIES: { value: ComplaintCategory; label: string }[] = [
@@ -181,7 +182,7 @@ function ComplaintCard({ complaint }: { complaint: Complaint }) {
         </div>
       )}
       {complaint.orderNumber && (
-        <p className="text-xs text-gray-400 mt-2">Order #{complaint.orderNumber}</p>
+        <p className="text-xs text-gray-500 mt-2">Order #{complaint.orderNumber}</p>
       )}
       {complaint.adminResponse && (
         <div className="mt-3 bg-green-50 rounded-lg p-3">
@@ -190,7 +191,7 @@ function ComplaintCard({ complaint }: { complaint: Complaint }) {
         </div>
       )}
       {complaint.createdAt && (
-        <p className="text-xs text-gray-400 mt-2">{formatDate(complaint.createdAt)}</p>
+        <p className="text-xs text-gray-500 mt-2">{formatDate(complaint.createdAt)}</p>
       )}
     </div>
   )
@@ -217,7 +218,7 @@ function ReviewCard({ review }: { review: Review }) {
         <StarRating value={review.rating} size={16} />
       </div>
       {review.comment && <p className="text-sm text-gray-600 mt-2">{review.comment}</p>}
-      {review.orderNumber && <p className="text-xs text-gray-400 mt-2">Order #{review.orderNumber}</p>}
+      {review.orderNumber && <p className="text-xs text-gray-500 mt-2">Order #{review.orderNumber}</p>}
       {review.adminReply && (
         <div className="mt-3 bg-blue-50 rounded-lg p-3">
           <p className="text-xs font-semibold text-blue-700">Reply</p>
@@ -235,6 +236,7 @@ interface DeliveredOrder {
 }
 
 function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const dialogRef = useDialog(true, onClose)
   const [category, setCategory] = useState<ComplaintCategory>('other')
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
@@ -304,26 +306,32 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop: a mouse shortcut only — keyboard users have Escape and the close button. */}
+      <div className="absolute inset-0 bg-black/50" aria-hidden="true" onClick={onClose} />
       <div
-        className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-xl"
-        onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-complaint-title"
+        className="relative bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-xl focus:outline-none"
       >
         <div className="sticky top-0 bg-white flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h3 className="font-bold text-gray-900">New Complaint</h3>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600" aria-label="Close">
+          <h3 id="new-complaint-title" className="font-bold text-gray-900">New Complaint</h3>
+          <button onClick={onClose} className="p-1 text-gray-500 hover:text-gray-600" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
         <div className="p-5 space-y-3">
           <div>
-            <label className="text-sm font-medium text-gray-700">Issue type</label>
-            <div className="mt-1 flex flex-wrap gap-2">
+            <p id="complaint-issue-type" className="text-sm font-medium text-gray-700">Issue type</p>
+            <div role="group" aria-labelledby="complaint-issue-type" className="mt-1 flex flex-wrap gap-2">
               {CATEGORIES.map((c) => (
                 <button
                   key={c.value}
                   type="button"
                   onClick={() => setCategory(c.value)}
+                  aria-pressed={category === c.value}
                   className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
                     category === c.value
                       ? 'bg-primary-600 text-white border-primary-600'
@@ -337,10 +345,10 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
           </div>
           {orders.length > 0 && (
             <div>
-              <label className="text-sm font-medium text-gray-700">
-                Related order <span className="font-normal text-gray-400">(optional)</span>
+              <label htmlFor="support-field-1" className="text-sm font-medium text-gray-700">
+                Related order <span className="font-normal text-gray-500">(optional)</span>
               </label>
-              <select
+              <select id="support-field-1"
                 value={orderId}
                 onChange={(e) => setOrderId(e.target.value)}
                 className="mt-1 w-full border border-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-200"
@@ -356,8 +364,8 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
             </div>
           )}
           <div>
-            <label className="text-sm font-medium text-gray-700">Subject</label>
-            <input
+            <label htmlFor="support-field-2" className="text-sm font-medium text-gray-700">Subject</label>
+            <input id="support-field-2"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               maxLength={200}
@@ -366,8 +374,8 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">Details</label>
-            <textarea
+            <label htmlFor="support-field-3" className="text-sm font-medium text-gray-700">Details</label>
+            <textarea id="support-field-3"
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               maxLength={4000}
@@ -377,9 +385,9 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-gray-700">
-              Photos <span className="font-normal text-gray-400">(optional, up to 5)</span>
-            </label>
+            <p id="complaint-photos" className="text-sm font-medium text-gray-700">
+              Photos <span className="font-normal text-gray-500">(optional, up to 5)</span>
+            </p>
             <div className="mt-1 flex flex-wrap gap-2">
               {images.map((file, i) => (
                 <div key={i} className="relative h-16 w-16 overflow-hidden rounded-lg border border-gray-200">
@@ -396,13 +404,15 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
                 </div>
               ))}
               {images.length < 5 && (
-                <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-400 hover:border-primary-400 hover:text-primary-500">
+                <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-gray-300 text-gray-500 hover:border-primary-400 hover:text-primary-500 focus-within:ring-2 focus-within:ring-primary-500">
                   <Plus className="h-5 w-5" />
                   <input
                     type="file"
                     accept="image/*"
                     multiple
-                    className="hidden"
+                    aria-labelledby="complaint-photos"
+                    // sr-only, not hidden: a display:none input cannot be reached with the keyboard
+                    className="sr-only"
                     onChange={(e) => {
                       addImages(e.target.files)
                       e.target.value = ''

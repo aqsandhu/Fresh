@@ -123,7 +123,7 @@ export default function AttaRequestsPage() {
                       {r.pickup_address ? (
                         <p className="text-sm text-gray-500 mt-0.5 truncate">{r.pickup_address}</p>
                       ) : null}
-                      <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                      <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" />
                         {new Date(r.created_at).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}
                       </p>

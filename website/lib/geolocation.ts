@@ -1,7 +1,5 @@
 /** Delivery pins should only auto-lock when the browser reports this accuracy or better. */
 export const REQUIRED_LOCATION_ACCURACY_M = 20
-/** Kept for existing UI messages; same cap as the required delivery accuracy. */
-export const FALLBACK_LOCATION_ACCURACY_M = REQUIRED_LOCATION_ACCURACY_M
 /** Restart the GPS watch this often so a plateaued fix is re-acquired fresh. */
 const WATCH_RESTART_MS = 20000
 /** Wait this long after a transient GPS error before re-opening the watch. */

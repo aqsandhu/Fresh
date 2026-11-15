@@ -226,14 +226,14 @@ export default function ProfilePage() {
               ) : (
                 <div className="grid md:grid-cols-2 gap-4">
                   <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-                    <Phone className="w-5 h-5 text-gray-400" />
+                    <Phone className="w-5 h-5 text-gray-500" />
                     <div>
                       <p className="text-sm text-gray-500">Phone</p>
                       <p className="font-medium">{user.phone}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-lg">
-                    <Mail className="w-5 h-5 text-gray-400" />
+                    <Mail className="w-5 h-5 text-gray-500" />
                     <div>
                       <p className="text-sm text-gray-500">Email</p>
                       <p className="font-medium">{user.email || 'Not provided'}</p>
@@ -289,14 +289,14 @@ export default function ProfilePage() {
                       <div className="flex items-center gap-1 sm:flex-col sm:items-end flex-shrink-0">
                         <Link
                           href="/addresses"
-                          className="text-gray-400 hover:text-primary-600 p-1"
+                          className="text-gray-500 hover:text-primary-600 p-1"
                           title="Edit"
                         >
                           <Edit2 className="w-4 h-4" />
                         </Link>
                         <button
                           onClick={() => handleDeleteAddress(address.id)}
-                          className="text-gray-400 hover:text-red-600 p-1"
+                          className="text-gray-500 hover:text-red-600 p-1"
                           title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -337,7 +337,7 @@ export default function ProfilePage() {
                     </div>
                     <span className="font-medium">My Orders</span>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <ChevronRight className="w-5 h-5 text-gray-500" />
                 </Link>
 
                 <Link
@@ -350,7 +350,7 @@ export default function ProfilePage() {
                     </div>
                     <span className="font-medium">Reviews &amp; Complaints</span>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <ChevronRight className="w-5 h-5 text-gray-500" />
                 </Link>
 
                 <Link
@@ -363,7 +363,7 @@ export default function ProfilePage() {
                     </div>
                     <span className="font-medium">My Addresses</span>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <ChevronRight className="w-5 h-5 text-gray-500" />
                 </Link>
 
                 <Link
@@ -376,7 +376,7 @@ export default function ProfilePage() {
                     </div>
                     <span className="font-medium">Wishlist</span>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <ChevronRight className="w-5 h-5 text-gray-500" />
                 </Link>
 
                 <Link
@@ -389,7 +389,7 @@ export default function ProfilePage() {
                     </div>
                     <span className="font-medium">Settings</span>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <ChevronRight className="w-5 h-5 text-gray-500" />
                 </Link>
               </div>
 
