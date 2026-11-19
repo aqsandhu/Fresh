@@ -20,7 +20,11 @@ services:
     # typescript / ts-node (devDependencies) even with NODE_ENV=production.
     # If the service is not Blueprint-synced, paste the same line into
     # Render → Settings → Build Command.
-    buildCommand: npx --yes pnpm@10.12.3 install --frozen-lockfile --prod=false --filter @freshbazar/backend && npx --yes pnpm@10.12.3 run build
+    # Migrations run HERE, at the end of the build: Render does not run
+    # preDeployCommand on the Free plan (paid instance types only), so the
+    # schema never moved with the code (N16). A failed migration fails the
+    # build and the running version stays live.
+    buildCommand: npx --yes pnpm@10.12.3 install --frozen-lockfile --prod=false --filter @freshbazar/backend && npx --yes pnpm@10.12.3 run build && npm run migrate:sql
     # Apply versioned SQL migrations before the new API process receives traffic.
     preDeployCommand: npm run migrate:sql
     startCommand: npm start
