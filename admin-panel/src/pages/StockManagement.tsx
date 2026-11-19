@@ -12,13 +12,11 @@ import toast from 'react-hot-toast';
 import { isQueued } from '@/lib/approvalQueue';
 import { useAuthContext } from '@/context/AuthContext';
 import { hasPermission } from '@/lib/permissions';
+import { pktToday } from '@/lib/pktDate';
 
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString('en-PK');
-const todayInput = () => {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-};
+// The Pakistan date, whatever the computer's time zone (G24).
+const todayInput = () => pktToday();
 
 // Stock is only ever ADDED through Expenses → Stock Purchasing (with grading).
 // Here the admin only MANAGES existing stock (move/convert/waste).

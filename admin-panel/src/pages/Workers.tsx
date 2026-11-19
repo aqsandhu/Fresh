@@ -15,15 +15,12 @@ import toast from 'react-hot-toast';
 import { isQueued } from '@/lib/approvalQueue';
 import { ApproverFields } from '@/components/ui/ApproverFields';
 import { needsSecondAdmin } from '@/utils/auditPeriod';
+import { pktToday } from '@/lib/pktDate';
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
-// The admin's own (Pakistan) date — toISOString() alone is the UTC date, which
-// between 00:00 and 05:00 PKT is still YESTERDAY (G24).
-const today = () => {
-  const d = new Date();
-  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-  return d.toISOString().slice(0, 10);
-};
+// The Pakistan date — not the computer's own: toISOString() alone is the UTC
+// date, which between 00:00 and 05:00 PKT is still YESTERDAY (G24).
+const today = () => pktToday();
 const thisMonthStart = () => today().slice(0, 7) + '-01';
 
 export const Workers: React.FC = () => {
