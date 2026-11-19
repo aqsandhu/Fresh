@@ -62,10 +62,16 @@ R=$(curl -s -X POST $API/admin/stock/count "${MH[@]}" -d "{\"product_id\":\"$PRO
 check "K2 shortage of 2 recorded" "$(echo "$R" | jq -r '.data.variance')" "-2"
 check "K2 stock now matches the shelf" "$($PSQL -c "select stock_quantity::int from products where id='$PROD'")" "18"
 check "K2 ledger row written" "$($PSQL -c "select count(*) from stock_movements where product_id='$PROD' and reason='adjust'")" "1"
+# Since J1 / Q7 an entry over the limit without a co-signer waits in the city
+# admin's Approvals queue (202, nothing changes yet), and the co-signer gives a
+# one-time approval CODE from their own device — passwords are not accepted.
 R=$(curl -s -X POST $API/admin/stock/count "${MH[@]}" -d "{\"product_id\":\"$PROD\",\"quality\":\"A\",\"counted_quantity\":15}")
-check "K4 day total 5,000 → second admin required" "$(echo "$R" | jq -r '.success')" "false"
-R=$(curl -s -X POST $API/admin/stock/count "${MH[@]}" -d "{\"product_id\":\"$PROD\",\"quality\":\"A\",\"counted_quantity\":15,\"approval_phone\":\"03001112222\",\"approval_password\":\"Admin12345\"}")
-check "K4 with second admin ok" "$(echo "$R" | jq -r '.success')" "true"
+check "K4 day total 5,000 → waits for a second admin (queued)" "$(echo "$R" | jq -r '.data.queued')" "true"
+check "K4 …and the shelf count is not applied yet" "$($PSQL -c "select stock_quantity::int from products where id='$PROD'")" "18"
+check "K4 the owner's PASSWORD is not accepted as a co-sign" "$(code -X POST $API/admin/stock/count "${MH[@]}" -d "{\"product_id\":\"$PROD\",\"quality\":\"A\",\"counted_quantity\":15,\"approval_phone\":\"03001112222\",\"approval_password\":\"Admin12345\"}")" "400"
+ACODE=$(curl -s -X POST $API/admin/approval-codes "${AH[@]}" -d '{}' | jq -r .data.code)
+R=$(curl -s -X POST $API/admin/stock/count "${MH[@]}" -d "{\"product_id\":\"$PROD\",\"quality\":\"A\",\"counted_quantity\":15,\"approval_phone\":\"03001112222\",\"approval_password\":\"$ACODE\"}")
+check "K4 with the second admin's approval code ok" "$(echo "$R" | jq -r '.success')" "true"
 check "K4 approver recorded" "$($PSQL -c "select count(*) from stock_counts where product_id='$PROD' and approved_by is not null")" "1"
 
 # ── K13: direct OCP shift is super-admin only ────────────────────────────────

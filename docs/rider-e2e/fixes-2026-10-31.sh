@@ -26,10 +26,10 @@ ACH=("${AH[@]}" -H "X-City-Id: $CITY")
 # runs when the test window does not cross Pakistan midnight.
 TOMORROW=$($PSQL -c "select (now() at time zone 'Asia/Karachi')::date + 1")
 HOURPK=$($PSQL -c "select extract(hour from now() at time zone 'Asia/Karachi')::int")
-R=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d '{"start_time":"09:00","end_time":"21:00","max_orders":null,"is_active":true}')
+R=$(curl -s -X POST $API/admin/settings/time-slots "${ACH[@]}" -d '{"start_time":"09:00","end_time":"21:00","max_orders":null,"is_active":true}')
 SLOT=$(echo "$R" | jq -r .data.id)
 check "T0 slot saved with no limit (NULL)" "$($PSQL -c "select coalesce(max_orders::text,'NULL') from time_slots where id='$SLOT'")" "NULL"
-R=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d '{"start_time":"21:00","end_time":"23:00","max_orders":0,"is_active":true}')
+R=$(curl -s -X POST $API/admin/settings/time-slots "${ACH[@]}" -d '{"start_time":"21:00","end_time":"23:00","max_orders":0,"is_active":true}')
 check "T0 max_orders 0 is stored as unlimited, not 'full'" "$($PSQL -c "select coalesce(max_orders::text,'NULL') from time_slots where id='$(echo "$R" | jq -r .data.id)'")" "NULL"
 R=$(curl -s "$API/orders/time-slots?city_id=$CITY")
 check "T0 /orders/time-slots shows 9999 for unlimited" "$(echo "$R" | jq -r --arg s "$SLOT" '[.data[]? // .data.slots[]? | select(.id==$s)][0].available_slots')" "9999"
@@ -62,13 +62,13 @@ add_cart 2
 if [ "$HOURPK" -ge 2 ] && [ "$HOURPK" -le 20 ]; then
   S_LATE=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') - interval '80 minutes', 'HH24:MI')")
   E_LATE=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') + interval '20 minutes', 'HH24:MI')")
-  LATE=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d "{\"start_time\":\"$S_LATE\",\"end_time\":\"$E_LATE\",\"is_active\":true}" | jq -r .data.id)
+  LATE=$(curl -s -X POST $API/admin/settings/time-slots "${ACH[@]}" -d "{\"start_time\":\"$S_LATE\",\"end_time\":\"$E_LATE\",\"is_active\":true}" | jq -r .data.id)
   R=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$LATE\",\"payment_method\":\"cash_on_delivery\"}")
   check "T8 today-slot past 60% cutoff refused" "$(echo "$R" | jq -r .success)" "false"
   echo "   message: $(echo "$R" | jq -r .message)"
   S_OPEN=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') - interval '10 minutes', 'HH24:MI')")
   E_OPEN=$($PSQL -c "select to_char((now() at time zone 'Asia/Karachi') + interval '110 minutes', 'HH24:MI')")
-  OPEN=$(curl -s -X POST $API/admin/settings/time-slots "${AH[@]}" -d "{\"start_time\":\"$S_OPEN\",\"end_time\":\"$E_OPEN\",\"is_active\":true}" | jq -r .data.id)
+  OPEN=$(curl -s -X POST $API/admin/settings/time-slots "${ACH[@]}" -d "{\"start_time\":\"$S_OPEN\",\"end_time\":\"$E_OPEN\",\"is_active\":true}" | jq -r .data.id)
   R=$(curl -s -X POST $API/orders "${CH[@]}" -d "{\"address_id\":\"$ADDR\",\"city_id\":\"$CITY\",\"time_slot_id\":\"$OPEN\",\"payment_method\":\"cash_on_delivery\"}")
   check "T8 today-slot before the cutoff accepted" "$(echo "$R" | jq -r .success)" "true"
   add_cart 2
@@ -97,6 +97,9 @@ curl -s -X POST $API/finance/rider-payment "${ACH[@]}" -d "{\"rider_id\":\"$RID\
 check "T1 salary is deducted" "$(curl -s "$API/finance/profit?period=today" "${ACH[@]}" | jq -r .data.profit)" "$(jq -n "$PROFIT - 25")"
 
 # ── T2: atta charges ─────────────────────────────────────────────────────────
+# A fresh database starts with Atta Chakki switched off, and since A36 the
+# server refuses a request then — switch it on the way the owner does.
+check "T2 super admin switches Atta Chakki on" "$(curl -s -X PUT $API/admin/settings/platform "${AH[@]}" -d '{"atta_chakki_enabled":true}' | jq -r .success)" "true"
 R=$(curl -s -X PUT $API/admin/settings/atta-charges "${AH[@]}" -d '{"service_charge":40,"milling_charge_per_kg":8,"delivery_charge":120,"free_delivery_threshold_kg":25}')
 check "T2 super admin saves atta charges" "$(echo "$R" | jq -r .success)" "true"
 C=$(curl -s $API/atta-requests/charges)

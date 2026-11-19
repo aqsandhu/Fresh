@@ -66,6 +66,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The website and the panel import runtime helpers from these packages,
+      # whose package.json points at dist/ (not in git). The other workflows
+      # build them first; this one did not, so `next build` could not resolve
+      # @freshbazar/shared-types (first run, 20 Nov).
+      - name: Build shared packages
+        run: pnpm --filter @freshbazar/shared-types build && pnpm --filter @freshbazar/core-auth build
+
       - name: Tools (psql)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
 

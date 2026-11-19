@@ -210,7 +210,10 @@ async function run(opts = {}) {
     check('…a delivered task cannot be delivered or reported again', `${(await call('PUT', `/rider/tasks/${task}/deliver`, r1.token, {})).status}/${(await call('POST', `/rider/tasks/${task}/cancel`, r1.token, { reason: 'late' })).status}`, '409/409');
     await Promise.all([1, 2, 3, 4].map(() => call('POST', `/admin/riders/${r1.id}/cash-settlements/receive`, A, { password: 'Admin12345', otp: OTP }, H)));
     check('office "cash received" pressed 4 times at once → one hand-over for the order\'s amount',
-      await one(`select count(*)::text || '/' || coalesce(sum(amount), 0)::int::text from rider_cash_settlements where rider_id = $1`, [r1.id]), '1/4000');
+      await one(`select count(*)::text || '/' || coalesce(sum(amount), 0)::int::text from rider_cash_settlements where rider_id = $1`, [r1.id]),
+      // The order's own total — a fresh database charges Rs 100 delivery on
+      // top of the Rs 4,000 of goods (the long-lived local one had it free).
+      `1/${await one(`select total_amount::int::text from orders where id = $1`, [o])}`);
   }
 
   // ── OCP: receive stock / office receives cash — pressed many times ───────────
