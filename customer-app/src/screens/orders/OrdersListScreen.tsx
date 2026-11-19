@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -25,6 +26,7 @@ import { productService } from '@services/product.service';
 import { reorderItems } from '@/lib/reorder';
 import { useAuthStore, useCartStore } from '@store';
 import { useCityContext } from '@/context/CityContext';
+import { canCustomerCancel } from '@/utils/orderCancel';
 
 type OrderTab = 'all' | 'active' | 'completed';
 
@@ -33,6 +35,9 @@ const tabs: { label: string; value: OrderTab }[] = [
   { label: 'Active', value: 'active' },
   { label: 'Completed', value: 'completed' },
 ];
+
+// A refunded order is finished too — it used to sit under "Active" (I12).
+const FINISHED = new Set<string>(['delivered', 'cancelled', 'refunded']);
 
 export const OrdersListScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<OrdersStackParamList>>();
@@ -51,9 +56,10 @@ export const OrdersListScreen: React.FC = () => {
       setError(null);
       const response = await orderService.getOrders();
       if (response.success) {
-        setOrders(response.data.data);
+        setOrders(response.data?.data ?? []);
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err.message || 'Failed to load orders');
     } finally {
       setLoading(false);
@@ -75,15 +81,9 @@ export const OrdersListScreen: React.FC = () => {
     if (activeTab === 'all') {
       setFilteredOrders(orders);
     } else if (activeTab === 'active') {
-      setFilteredOrders(
-        orders.filter(
-          (o) => o.status !== 'delivered' && o.status !== 'cancelled'
-        )
-      );
+      setFilteredOrders(orders.filter((o) => !FINISHED.has(o.status)));
     } else {
-      setFilteredOrders(
-        orders.filter((o) => o.status === 'delivered' || o.status === 'cancelled')
-      );
+      setFilteredOrders(orders.filter((o) => FINISHED.has(o.status)));
     }
   }, [activeTab, orders]);
 
@@ -98,7 +98,8 @@ export const OrdersListScreen: React.FC = () => {
             await orderService.cancelOrder(orderId);
             Toast.show({ type: 'success', text1: 'Order cancelled successfully' });
             loadOrders();
-          } catch (err: any) {
+          } catch (errCaught: unknown) {
+            const err = asCaughtError(errCaught);
             Toast.show({ type: 'error', text1: err.message || 'Failed to cancel order' });
           }
         },
@@ -151,7 +152,7 @@ export const OrdersListScreen: React.FC = () => {
         </View>
 
         <View style={styles.orderItems}>
-          {item.items.map((orderItem, idx) => (
+          {(item.items ?? []).map((orderItem, idx) => (
             <View key={`${item.id}-${idx}`} style={styles.orderItemRow}>
               <Image source={{ uri: orderItem.productImage }} style={styles.itemImage} />
               <View style={styles.itemInfo}>
@@ -192,7 +193,7 @@ export const OrdersListScreen: React.FC = () => {
               style={styles.actionBtn}
             />
           )}
-          {(item.status === 'pending' || item.status === 'confirmed' || item.status === 'preparing') && (
+          {canCustomerCancel(item.status, item.createdAt) && (
             <Button
               title="Cancel Order"
               variant="outline"

@@ -1,9 +1,11 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Toast from 'react-native-toast-message';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { useAuthStore } from '@store';
+import { isWeakPin, WEAK_PIN_MESSAGE } from '@/lib/pinStrength';
 import { authService } from '@services/auth.service';
 import { isOtpBypassEnabled, otpBypassHint } from '@/utils/otpBypass';
 import { getLastPhone, maskPhone, setLastPhone } from '@/lib/phoneStorage';
@@ -95,16 +97,17 @@ export const CheckoutAuthPanel: React.FC = () => {
       const res = await authService.pinStatus(value);
       const status = res.data;
       setNormalizedPhone(value);
-      setUserName(status.fullName || null);
-      if (status.exists && status.hasPin) {
+      setUserName(status?.fullName || null);
+      if (status?.exists && status.hasPin) {
         setPin('');
         setStep('pin');
-      } else if (status.exists && !status.hasPin) {
+      } else if (status?.exists && !status.hasPin) {
         await startOtp(value, 'login');
       } else {
         await startOtp(value, 'register');
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err?.message || 'Could not start sign-in' });
     } finally {
       setLoading(false);
@@ -120,7 +123,8 @@ export const CheckoutAuthPanel: React.FC = () => {
       await verifyWithPin(normalizedPhone || phone, pinValue);
       await setLastPhone(normalizedPhone || phone);
       Toast.show({ type: 'success', text1: 'Signed in!' });
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err?.message || 'Invalid PIN' });
       setPin('');
     } finally {
@@ -145,7 +149,8 @@ export const CheckoutAuthPanel: React.FC = () => {
         await setLastPhone(normalizedPhone || phone);
         Toast.show({ type: 'success', text1: 'Signed in!' });
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err?.message || 'Invalid OTP' });
       setOtp('');
     } finally {
@@ -162,13 +167,20 @@ export const CheckoutAuthPanel: React.FC = () => {
       Toast.show({ type: 'error', text1: 'Choose a 4-digit PIN' });
       return;
     }
+    // Before the account exists (B33): a refused PIN used to leave the new
+    // account without one.
+    if (isWeakPin(regPin)) {
+      Toast.show({ type: 'error', text1: WEAK_PIN_MESSAGE });
+      return;
+    }
     setLoading(true);
     try {
       await register(normalizedPhone || phone, verifiedCodeRef.current, regName.trim());
       await savePin(regPin);
       await setLastPhone(normalizedPhone || phone);
       Toast.show({ type: 'success', text1: 'Account ready — signed in!' });
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err?.message || 'Could not finish sign-up' });
     } finally {
       setLoading(false);

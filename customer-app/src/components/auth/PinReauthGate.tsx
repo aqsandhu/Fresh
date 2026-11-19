@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -45,7 +46,8 @@ export const PinReauthGate: React.FC<Props> = ({ thresholdMs = PIN_STALE_MS, chi
       setStale(false);
       setPin('');
       Toast.show({ type: 'success', text1: 'Verified' });
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err.message || 'Wrong PIN. Please try again.' });
       setPin('');
     } finally {

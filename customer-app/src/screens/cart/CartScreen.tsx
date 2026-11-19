@@ -117,7 +117,7 @@ export const CartScreen: React.FC = () => {
           })
         }
       >
-        <Image source={{ uri: item.product.images[0] }} style={styles.itemImage} />
+        <Image source={{ uri: item.product.images?.[0] }} style={styles.itemImage} />
         <View style={styles.itemContent}>
           <View style={styles.itemHeader}>
             <View style={styles.itemInfo}>

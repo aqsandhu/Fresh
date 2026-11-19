@@ -27,7 +27,7 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
     try {
       const response = await notificationService.getNotifications();
       if (response.success) {
-        const notifications = response.data;
+        const notifications = response.data ?? [];
         const unreadCount = notifications.filter((n) => !n.isRead).length;
         set({ notifications, unreadCount });
       }

@@ -15,7 +15,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { RootStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { useCityContext } from '@/context/CityContext';
-import { navigationRef } from '@/navigation/navigationUtils';
+import { navigationRef, navigateRoot } from '@/navigation/navigationUtils';
 
 export const SelectCityScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -24,7 +24,7 @@ export const SelectCityScreen: React.FC = () => {
 
   const goHome = () => {
     if (navigationRef.isReady()) {
-      (navigationRef as any).navigate('Main', {
+      navigateRoot('Main', {
         screen: 'Home',
         params: { screen: 'HomeMain' },
       });

@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -38,7 +39,8 @@ export const CheckoutAddressActions: React.FC<CheckoutAddressActionsProps> = ({
             await addressService.deleteAddress(address.id);
             onDeleted(address.id);
             Toast.show({ type: 'success', text1: 'Address deleted' });
-          } catch (err: any) {
+          } catch (errCaught: unknown) {
+            const err = asCaughtError(errCaught);
             Toast.show({ type: 'error', text1: err.message || 'Could not delete address' });
           } finally {
             setDeleting(false);
@@ -51,14 +53,14 @@ export const CheckoutAddressActions: React.FC<CheckoutAddressActionsProps> = ({
   if (editing) {
     const initial: CheckoutAddressFormInitial = {
       id: address.id,
-      label: (address as any).label || address.addressType,
-      fullAddress: (address as any).writtenAddress || address.writtenAddress || address.fullAddress,
-      areaName: address.areaName || (address as any).areaName,
+      label: address.label || address.addressType,
+      fullAddress: address.writtenAddress || address.writtenAddress || address.fullAddress,
+      areaName: address.areaName,
       landmark: address.landmark,
       city: address.city || cityName,
-      latitude: (address as any).latitude || address.location?.lat,
-      longitude: (address as any).longitude || address.location?.lng,
-      doorImage: (address as any).doorImage || address.doorPictureUrl,
+      latitude: address.latitude || address.location?.lat,
+      longitude: address.longitude || address.location?.lng,
+      doorImage: address.doorImage || address.doorPictureUrl,
     };
 
     return (

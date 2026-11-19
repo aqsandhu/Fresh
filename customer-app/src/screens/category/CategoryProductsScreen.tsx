@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -67,7 +68,8 @@ export const CategoryProductsScreen: React.FC = () => {
       if (response.success) {
         setProducts(response.data as StoreProduct[]);
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       if (seq === requestSeq.current) setError(err.message || 'Failed to load products');
     } finally {
       if (seq === requestSeq.current) {

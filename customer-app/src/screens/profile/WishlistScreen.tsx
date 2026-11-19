@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React from 'react';
 import {
   View,
@@ -19,7 +20,7 @@ import { useWishlistStore, useCartStore } from '@store';
 
 export const WishlistScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
-  const { items, remove, clear } = useWishlistStore();
+  const { items, remove, clearAll } = useWishlistStore();
   const { addToCart } = useCartStore();
 
   const handleRemove = (productId: string) => {
@@ -34,7 +35,8 @@ export const WishlistScreen: React.FC = () => {
     try {
       await addToCart(product, 1);
       Alert.alert('Added to Cart', `${product.name} added to cart.`);
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Alert.alert('Error', err?.message || 'Failed to add to cart');
     }
   };
@@ -46,7 +48,7 @@ export const WishlistScreen: React.FC = () => {
       'Are you sure you want to remove all items from your wishlist?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Clear', style: 'destructive', onPress: () => clear() },
+        { text: 'Clear', style: 'destructive', onPress: () => { clearAll().catch(() => Alert.alert('Could not clear your wishlist', 'Check your connection and try again.')); } },
       ]
     );
   };

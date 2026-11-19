@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -80,7 +81,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
         setStep('otp');
         setOtp(['', '', '', '', '', '']);
         setTimer(60);
-      } catch (err: any) {
+      } catch (errCaught: unknown) {
+        const err = asCaughtError(errCaught);
         Toast.show({ type: 'error', text1: err.message || 'Failed to send OTP' });
       }
     },
@@ -207,7 +209,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
       setPinValue('');
       setPinConfirm('');
       setStep('pin');
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg = err.message || 'Registration failed';
       Toast.show({ type: 'error', text1: msg });
       if (msg.includes('expired') || msg.includes('not found')) {
@@ -236,7 +239,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ route, navigatio
       await setLastPhone(phone);
       Toast.show({ type: 'success', text1: 'PIN set! You can use it next time you log in.' });
       finishAuthRedirect(rootNavigation, redirect);
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err.message || 'Failed to save PIN' });
       setPinStage('create');
       setPinValue('');

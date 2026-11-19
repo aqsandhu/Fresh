@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -21,6 +22,7 @@ import { GuidanceTips } from '@components/common/GuidanceTips';
 import { ORDER_DETAIL_TIPS } from '@/content/guidanceTips';
 import { OrderFeedbackSection } from '@components/feedback/OrderFeedbackSection';
 import { orderService } from '@services/order.service';
+import { canCustomerCancel } from '@/utils/orderCancel';
 
 type OrderDetailRouteProp = RouteProp<OrdersStackParamList, 'OrderDetail'>;
 
@@ -38,11 +40,12 @@ export const OrderDetailScreen: React.FC = () => {
       setError(null);
       const response = await orderService.getOrderById(orderId);
       if (response.success) {
-        setOrder(response.data);
+        setOrder(response.data ?? null);
       } else {
         setError('Order not found');
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err.message || 'Failed to load order');
     } finally {
       setLoading(false);
@@ -62,7 +65,8 @@ export const OrderDetailScreen: React.FC = () => {
       await orderService.cancelOrder(orderId);
       Toast.show({ type: 'success', text1: 'Order cancelled successfully' });
       loadOrder();
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error cancelling order:', error);
       Toast.show({ type: 'error', text1: error?.message || 'Failed to cancel order' });
     }
@@ -85,7 +89,8 @@ export const OrderDetailScreen: React.FC = () => {
   }
 
   const statusColor = getStatusColor(order.status);
-  const canCancel = ['pending', 'confirmed'].includes(order.status);
+  // Same rule as the server (I17): pending any time, otherwise 30 minutes.
+  const canCancel = canCustomerCancel(order.status, order.createdAt);
   const canTrack = ['out_for_delivery'].includes(order.status);
 
   return (
@@ -165,12 +170,12 @@ export const OrderDetailScreen: React.FC = () => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Items</Text>
           <View style={styles.itemsCard}>
-            {order.items.map((item, index) => (
+            {(order.items ?? []).map((item, index) => (
               <View
                 key={item.id}
                 style={[
                   styles.itemRow,
-                  index < order.items.length - 1 && styles.itemRowBorder,
+                  index < (order.items?.length ?? 0) - 1 && styles.itemRowBorder,
                 ]}
               >
                 <Image
@@ -197,9 +202,9 @@ export const OrderDetailScreen: React.FC = () => {
           <View style={styles.addressCard}>
             <MaterialIcons name="location-on" size={24} color={COLORS.primary} />
             <View style={styles.addressContent}>
-              <Text style={styles.addressLabel}>{order.address.label}</Text>
+              <Text style={styles.addressLabel}>{order.address?.label ?? ''}</Text>
               <Text style={styles.addressText}>
-                {order.address.fullAddress}
+                {order.address?.fullAddress ?? ''}
               </Text>
             </View>
           </View>
@@ -210,7 +215,7 @@ export const OrderDetailScreen: React.FC = () => {
           <Text style={styles.sectionTitle}>Delivery Time</Text>
           <View style={styles.slotCard}>
             <MaterialIcons name="schedule" size={24} color={COLORS.primary} />
-            <Text style={styles.slotText}>{order.deliverySlot.label}</Text>
+            <Text style={styles.slotText}>{order.deliverySlot?.label ?? ''}</Text>
           </View>
         </View>
 
@@ -255,7 +260,7 @@ export const OrderDetailScreen: React.FC = () => {
                   : formatCurrency(order.deliveryCharge)}
               </Text>
             </View>
-            {order.discount > 0 && (
+            {(order.discount ?? 0) > 0 && (
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Discount</Text>
                 <Text style={[styles.summaryValue, styles.discountValue]}>

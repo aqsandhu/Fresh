@@ -117,3 +117,16 @@ it('a reload keeps a message that is still unsent', async () => {
   await act(async () => { await result.current.refresh(); });
   expect(result.current.messages.map((m) => m.message)).toEqual(['Hello', 'New', 'Kept']);
 });
+
+// I13 (round 10): a rider with several orders is in several order rooms; a
+// message for ANOTHER order must never show in this chat.
+it('a message for another order is ignored; one for this order (or without an id, older server) shows', async () => {
+  const { result } = renderHook(() => useOrderChat({ orderId: 'o1', isActive: true }));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  act(() => {
+    mockHandlers['chat:message']({ ...msg('x9', 'Order 2 customer here'), order_id: 'o2' });
+    mockHandlers['chat:message']({ ...msg('m5', 'Coming down'), order_id: 'o1' });
+    mockHandlers['chat:message'](msg('m6', 'Old server, no id'));
+  });
+  expect(result.current.messages.map((m) => m.id)).toEqual(['m1', 'm5', 'm6']);
+});

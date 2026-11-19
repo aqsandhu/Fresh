@@ -68,7 +68,9 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, orderStatus }) => {
       console.log('[OrderChat] Order update:', data);
     };
 
-    const handleIncomingMessage = (data: Message) => {
+    const handleIncomingMessage = (data: Message & { order_id?: string }) => {
+      // Another order's chat (this socket may be in several order rooms) — I13.
+      if (data.order_id && data.order_id !== orderId) return;
       setMessages((prev) => {
         // Avoid duplicates
         if (prev.some((m) => m.id === data.id)) return prev;
@@ -252,6 +254,8 @@ const OrderChat: React.FC<OrderChatProps> = ({ orderId, orderStatus }) => {
             style={[styles.sendBtn, (!newMessage.trim() || sending) && styles.sendBtnDisabled]}
             onPress={handleSend}
             disabled={!newMessage.trim() || sending}
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
           >
             {sending ? (
               <ActivityIndicator size="small" color={COLORS.white} />

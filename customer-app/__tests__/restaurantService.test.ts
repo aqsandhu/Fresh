@@ -97,3 +97,22 @@ describe('restaurant prices (must match what the server bills)', () => {
     expect(money(1234.5)).toMatch(/Rs\. 1,234\.5/);
   });
 });
+
+describe('deleting the restaurant account (B30, A27 — round 6)', () => {
+  it('sends the PIN typed again, and shows why the server refused', async () => {
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue('rtok');
+    global.fetch = respond(200, { data: null });
+    await restaurantApi.deleteAccount('1357');
+    const [url, init] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(url).toMatch(/\/restaurant\/delete-account$/);
+    expect(JSON.parse(init.body)).toEqual({ pin: '1357' });
+
+    const busy = 'You have 1 order in progress. The account can be deleted once it is delivered or cancelled.';
+    (SecureStore.deleteItemAsync as jest.Mock).mockClear(); // beforeEach cleared the session itself
+    global.fetch = respond(409, { message: busy });
+    await expect(restaurantApi.deleteAccount('1357')).rejects.toMatchObject({ message: busy, status: 409 });
+    // A refusal is not a sign-out: the session stays.
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalledWith('restaurant_token');
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
+  });
+});

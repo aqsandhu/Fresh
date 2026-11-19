@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -42,11 +43,12 @@ export const AttaTrackingScreen: React.FC = () => {
       setError(null);
       const response = await attaService.getRequestById(requestId);
       if (response.success) {
-        setRequest(response.data);
+        setRequest(response.data ?? null);
       } else {
         setError('Request not found');
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err.message || 'Failed to load request');
     } finally {
       setLoading(false);
@@ -183,7 +185,7 @@ export const AttaTrackingScreen: React.FC = () => {
               <View style={styles.detailContent}>
                 <Text style={styles.detailLabel}>Address</Text>
                 <Text style={styles.detailValue}>
-                  {request.pickupAddress.fullAddress}
+                  {request.pickupAddress?.fullAddress ?? ''}
                 </Text>
               </View>
             </View>
@@ -192,7 +194,7 @@ export const AttaTrackingScreen: React.FC = () => {
               <View style={styles.detailContent}>
                 <Text style={styles.detailLabel}>Preferred Time</Text>
                 <Text style={styles.detailValue}>
-                  {request.preferredSlot.label}
+                  {request.preferredSlot?.label ?? ''}
                 </Text>
               </View>
             </View>

@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import apiClient from './api';
 import { ApiResponse } from '@app-types';
 
@@ -14,7 +15,8 @@ export const franchiseService = {
     try {
       const res = await apiClient.post('/franchise/inquiries', data);
       return { success: true, data: res.data?.data || res.data };
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       return {
         success: false,
         message: e?.response?.data?.message || 'Could not submit. Please try again.',

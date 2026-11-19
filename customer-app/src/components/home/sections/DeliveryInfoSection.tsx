@@ -1,3 +1,4 @@
+import type { MaterialIconName } from '../../../types/icons';
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,7 +32,7 @@ export const DeliveryInfoSection: React.FC = () => {
     orderService
       .getDeliverySettings()
       .then((res) => {
-        if (res.success && res.data.free_delivery_threshold > 0) {
+        if (res.success && res.data && res.data.free_delivery_threshold > 0) {
           setThreshold(res.data.free_delivery_threshold);
         }
       })
@@ -39,7 +40,7 @@ export const DeliveryInfoSection: React.FC = () => {
     orderService
       .getDeliverySlots()
       .then((res) => {
-        if (res.success) setSlots(res.data);
+        if (res.success) setSlots(res.data ?? []);
       })
       .catch(() => {});
   }, [selectedCityId]);
@@ -76,7 +77,7 @@ export const DeliveryInfoSection: React.FC = () => {
         {tiles.map((item) => (
           <View key={item.title} style={styles.card}>
             <View style={styles.iconCircle}>
-              <MaterialIcons name={item.icon as any} size={20} color={COLORS.white} />
+              <MaterialIcons name={item.icon as MaterialIconName} size={20} color={COLORS.white} />
             </View>
             <Text style={styles.cardTitle}>{item.title}</Text>
             <Text style={styles.cardDesc}>{item.desc}</Text>

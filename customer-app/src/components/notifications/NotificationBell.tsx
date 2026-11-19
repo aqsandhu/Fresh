@@ -12,7 +12,7 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { useNotificationStore, useCartUiStore } from '@store';
-import { navigationRef } from '@/navigation/navigationUtils';
+import { navigationRef, navigateRoot } from '@/navigation/navigationUtils';
 
 function formatWhen(iso: string): string {
   try {
@@ -51,12 +51,12 @@ export const NotificationBell: React.FC = () => {
     const orderId = (n.data?.orderId || n.data?.order_id) as string | undefined;
     if (!navigationRef.isReady()) return;
     if (orderId) {
-      (navigationRef as any).navigate('Main', {
+      navigateRoot('Main', {
         screen: 'Orders',
         params: { screen: 'TrackOrder', params: { orderId } },
       });
     } else {
-      (navigationRef as any).navigate('Main', {
+      navigateRoot('Main', {
         screen: 'Orders',
         params: { screen: 'OrdersList' },
       });
@@ -66,7 +66,7 @@ export const NotificationBell: React.FC = () => {
   const viewAllOrders = () => {
     setOpen(false);
     if (navigationRef.isReady()) {
-      (navigationRef as any).navigate('Main', { screen: 'Orders', params: { screen: 'OrdersList' } });
+      navigateRoot('Main', { screen: 'Orders', params: { screen: 'OrdersList' } });
     }
   };
 

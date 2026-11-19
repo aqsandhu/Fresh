@@ -56,20 +56,29 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow }) => {
 
   useEffect(() => {
     if (!selectedCityId) return;
+    // Every figure belongs to THIS city: start clean so a city without a phone
+    // or WhatsApp never keeps the previous city's (I23), and ignore answers
+    // that arrive after the customer has already switched again.
+    let current = true;
+    setPhoneText('');
+    setWhatsappOrderUrl('');
+    setFreeThreshold(500);
+    setFreeSlotLabel('');
     productService.getBannerSettings().then((res) => {
-      if (!res.success || !res.data) return;
+      if (!current || !res.success || !res.data) return;
       if (res.data.leftText) setPhoneText(res.data.leftText);
       if (res.data.whatsappOrderUrl) setWhatsappOrderUrl(res.data.whatsappOrderUrl);
     });
     productService.getWhatsAppOrderUrl().then((res) => {
-      if (res.success && res.data.url) setWhatsappOrderUrl(res.data.url);
+      if (current && res.success && res.data?.url) setWhatsappOrderUrl(res.data.url);
     });
     // Per-city hero image — falls back to the default when none is set.
     productService.getHeroImage().then((res) => {
-      setHeroImageUrl(res.success && res.data.url ? res.data.url : DEFAULT_HERO_IMAGE);
+      if (!current) return;
+      setHeroImageUrl(res.success && res.data?.url ? res.data.url : DEFAULT_HERO_IMAGE);
     });
     orderService.getDeliverySettings().then((res) => {
-      if (res.success && res.data?.free_delivery_threshold) {
+      if (current && res.success && res.data?.free_delivery_threshold) {
         setFreeThreshold(res.data.free_delivery_threshold);
       }
     });
@@ -78,10 +87,16 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onShopNow }) => {
     orderService
       .getDeliverySlots()
       .then((res) => {
+        if (!current) return;
         const free = res.success ? (res.data || []).find((s) => s.isFreeDelivery) : undefined;
         setFreeSlotLabel(free?.label || '');
       })
-      .catch(() => setFreeSlotLabel(''));
+      .catch(() => {
+        if (current) setFreeSlotLabel('');
+      });
+    return () => {
+      current = false;
+    };
   }, [selectedCityId]);
 
   const features = useMemo<HeroFeature[]>(

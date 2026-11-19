@@ -193,12 +193,12 @@ export const formatPhoneNumber = (phone: string): string => {
 };
 
 // Debounce function
-export const debounce = <T extends (...args: any[]) => any>(
-  func: T,
+export const debounce = <A extends unknown[]>(
+  func: (...args: A) => unknown,
   wait: number
-): ((...args: Parameters<T>) => void) => {
+): ((...args: A) => void) => {
   let timeout: ReturnType<typeof setTimeout>;
-  return (...args: Parameters<T>) => {
+  return (...args: A) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };

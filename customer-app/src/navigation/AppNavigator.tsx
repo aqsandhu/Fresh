@@ -15,13 +15,16 @@ import { AuthNavigator } from './AuthNavigator';
 import { TabNavigator } from './TabNavigator';
 import { CartNavigator } from './CartNavigator';
 import { SelectCityScreen } from '@screens/city';
-import { navigationRef, getPendingRedirect, clearPendingRedirect } from './navigationUtils';
+import { navigationRef, getPendingRedirect, clearPendingRedirect, navigateRoot } from './navigationUtils';
+import { useSavedCartSync } from '@/hooks/useSavedCartSync';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const RootNavigator: React.FC = () => {
   const { isReady, selectedCityId } = useCityContext();
   const { isAuthenticated, setToken, setUser } = useAuthStore();
+  // The cart belongs to the account: keep this device in line with it.
+  useSavedCartSync();
   const prevAuth = useRef(isAuthenticated);
   const [bootstrapped, setBootstrapped] = React.useState(false);
 
@@ -51,9 +54,9 @@ const RootNavigator: React.FC = () => {
         setTimeout(() => {
           if (navigationRef.isReady()) {
             if (pending === 'CartFlow') {
-              (navigationRef as any).navigate('CartFlow');
+              navigateRoot('CartFlow');
             } else {
-              (navigationRef as any).navigate('Main', { screen: pending });
+              navigateRoot('Main', { screen: pending });
             }
           }
         }, 100);

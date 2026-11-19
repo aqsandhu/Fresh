@@ -8,7 +8,7 @@ import { useRightDrawer, useAiChatUi, useInstructionsPopup } from '@store/drawer
 import { useCityContext, useOptionalCityName } from '@/context/CityContext';
 import { productService } from '@services/product.service';
 import { aiChatService } from '@services/aiChat.service';
-import { navigationRef } from '@/navigation/navigationUtils';
+import { navigationRef, navigateRoot } from '@/navigation/navigationUtils';
 import { buildWhatsAppUrl, openWhatsAppOrder } from '@/lib/whatsapp';
 import { useActiveRouteName } from '@/lib/activeRoute';
 import { EdgeDrawer } from './EdgeDrawer';
@@ -46,10 +46,10 @@ export const UtilityDrawer: React.FC = () => {
     queryFn: async () => {
       const [wa, banner] = await Promise.all([
         productService.getWhatsAppOrderUrl().catch(() => ({ success: false, data: { url: '' } })),
-        productService.getBannerSettings().catch(() => ({ success: false, data: null as any })),
+        productService.getBannerSettings().catch(() => ({ success: false, data: null })),
       ]);
-      const url = (wa as any)?.data?.url?.trim?.() || '';
-      const phone = (banner as any)?.data?.leftText?.trim?.() || '';
+      const url = wa?.data?.url?.trim?.() || '';
+      const phone = banner?.data?.leftText?.trim?.() || '';
       return url || phone;
     },
     enabled: !!selectedCityId,
@@ -61,13 +61,13 @@ export const UtilityDrawer: React.FC = () => {
   const goProfile = (screen: string) => {
     setOpen(false);
     if (navigationRef.isReady()) {
-      (navigationRef as any).navigate('Main', { screen: 'Profile', params: { screen } });
+      navigateRoot('Main', { screen: 'Profile', params: { screen } });
     }
   };
   const goShop = () => {
     setOpen(false);
     if (navigationRef.isReady()) {
-      (navigationRef as any).navigate('Main', { screen: 'Shop', params: { screen: 'ProductsMain' } });
+      navigateRoot('Main', { screen: 'Shop', params: { screen: 'ProductsMain' } });
     }
   };
 

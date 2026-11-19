@@ -6,7 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AppNavigator } from '@navigation';
 import { useNetworkStatus } from '@hooks';
-import { useAuthStore } from '@store';
+import { useAuthStore, useWishlistStore } from '@store';
 import { notificationService } from '@services/notification.service';
 import { navigationRef } from '@navigation/navigationUtils';
 import { COLORS, SPACING } from '@utils/constants';
@@ -97,6 +97,15 @@ export default function App() {
     });
     return unsubscribe;
   }, []);
+
+  // The wishlist follows the account (W22): after sign-in, and on app start
+  // with a session, join this phone's unsent changes or read the account's list.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    useWishlistStore.getState().syncWithAccount().catch(() => {
+      /* offline: keep this phone's list; it is joined next time */
+    });
+  }, [isAuthenticated]);
 
   // Register for push notifications after login and on app start when
   // already authenticated (persisted session).

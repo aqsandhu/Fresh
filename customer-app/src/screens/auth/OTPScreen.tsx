@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
@@ -135,7 +136,8 @@ export const OTPScreen: React.FC<OTPScreenProps> = ({ route, navigation }) => {
       await verifyOTP(phone, code);
       await setLastPhone(phone);
       finishLogin();
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err.message || 'Invalid OTP. Please try again.');
       setOtp(['', '', '', '', '', '']);
       inputRefs.current[0]?.focus();

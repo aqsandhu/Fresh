@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -38,8 +38,12 @@ export const SearchScreen: React.FC = () => {
 
   // useMemo (not useCallback) so the debounced function is created once; the
   // effect below re-runs the search whenever the city changes.
+  // Only the newest search may fill the list — a slower answer for an older
+  // query (or the previous city) must not replace it (I25).
+  const searchSeq = useRef(0);
   const searchProducts = useMemo(
-    () => debounce(async (query: string) => {
+    () => debounce(async (query: string, seq: number) => {
+      if (seq !== searchSeq.current) return;
       if (!query.trim()) {
         setRawProducts([]);
         return;
@@ -47,20 +51,21 @@ export const SearchScreen: React.FC = () => {
       setLoading(true);
       try {
         const response = await productService.searchProducts(query);
-        if (response.success) {
-          setRawProducts(response.data);
+        if (seq === searchSeq.current && response.success) {
+          setRawProducts(response.data ?? []);
         }
       } finally {
-        setLoading(false);
+        if (seq === searchSeq.current) setLoading(false);
       }
     }, 500),
     []
   );
 
   useEffect(() => {
+    const seq = ++searchSeq.current;
     if (searchQuery) {
       setRawProducts([]);
-      searchProducts(searchQuery);
+      searchProducts(searchQuery, seq);
     } else {
       setRawProducts([]);
     }
@@ -110,7 +115,7 @@ export const SearchScreen: React.FC = () => {
           <SearchBar
             value={searchQuery}
             onChangeText={setSearchQuery}
-            onSubmit={() => searchProducts(searchQuery)}
+            onSubmit={() => searchProducts(searchQuery, ++searchSeq.current)}
             onClear={() => setSearchQuery('')}
             placeholder="Search products..."
             autoFocus

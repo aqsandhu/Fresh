@@ -1,5 +1,6 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
-import { Alert, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { Alert, Modal, View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -15,6 +16,8 @@ export const RestaurantProfileScreen: React.FC = () => {
   const [info, setInfo] = useState<RestaurantInfo | null>(null);
   const [ready, setReady] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [pinPromptOpen, setPinPromptOpen] = useState(false);
+  const [deletePin, setDeletePin] = useState('');
 
   useEffect(() => {
     getRestaurantInfo().then((i) => {
@@ -32,6 +35,26 @@ export const RestaurantProfileScreen: React.FC = () => {
     navigation.replace('RestaurantLogin');
   };
 
+  /** Last step: the server asks for the PIN again (a session alone may not delete). */
+  const confirmDeleteWithPin = async () => {
+    if (deleting || deletePin.length !== 4) return;
+    setDeleting(true);
+    try {
+      await restaurantApi.deleteAccount(deletePin);
+      setPinPromptOpen(false);
+      await clearRestaurantSession();
+      Toast.show({ type: 'success', text1: 'Restaurant account deleted' });
+      navigation.replace('RestaurantLogin');
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
+      setDeletePin('');
+      // The server says why: wrong PIN, or an order still on its way.
+      Toast.show({ type: 'error', text1: e?.message || 'Could not delete restaurant account' });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleDeleteAccount = () => {
     if (deleting) return;
     Alert.alert(
@@ -42,17 +65,9 @@ export const RestaurantProfileScreen: React.FC = () => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            setDeleting(true);
-            try {
-              await restaurantApi.deleteAccount();
-              await clearRestaurantSession();
-              Toast.show({ type: 'success', text1: 'Restaurant account deleted' });
-              navigation.replace('RestaurantLogin');
-            } catch (e: any) {
-              Toast.show({ type: 'error', text1: e?.message || 'Could not delete restaurant account' });
-              setDeleting(false);
-            }
+          onPress: () => {
+            setDeletePin('');
+            setPinPromptOpen(true);
           },
         },
       ]
@@ -100,6 +115,38 @@ export const RestaurantProfileScreen: React.FC = () => {
       </ScrollView>
 
       <RestaurantTabBar active="profile" />
+
+      <Modal visible={pinPromptOpen} transparent animationType="fade" onRequestClose={() => setPinPromptOpen(false)}>
+        <View style={styles.pinBackdrop}>
+          <View style={styles.pinCard}>
+            <Text style={styles.pinTitle}>Enter your PIN</Text>
+            <Text style={styles.pinHelp}>Type the restaurant&apos;s 4-digit PIN again to delete this account.</Text>
+            <TextInput
+              style={styles.pinInput}
+              value={deletePin}
+              onChangeText={(t) => setDeletePin(t.replace(/[^0-9]/g, '').slice(0, 4))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={4}
+              autoFocus
+              accessibilityLabel="4-digit PIN"
+              testID="restaurant-delete-pin-input"
+            />
+            <TouchableOpacity
+              style={[styles.pinDelete, (deletePin.length !== 4 || deleting) && styles.menuItemDisabled]}
+              disabled={deletePin.length !== 4 || deleting}
+              onPress={confirmDeleteWithPin}
+              accessibilityRole="button"
+              testID="restaurant-delete-pin-confirm"
+            >
+              <Text style={styles.pinDeleteText}>{deleting ? 'Deleting…' : 'Delete account'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setPinPromptOpen(false)} disabled={deleting} accessibilityRole="button">
+              <Text style={styles.pinCancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -143,6 +190,17 @@ const styles = StyleSheet.create({
   },
   menuLabel: { fontSize: 15, fontWeight: '600', color: COLORS.gray800 },
   menuItemDisabled: { opacity: 0.6 },
+  pinBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: SPACING.lg },
+  pinCard: { backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg, padding: SPACING.lg },
+  pinTitle: { fontSize: 18, fontWeight: '700', color: COLORS.gray900 },
+  pinHelp: { fontSize: 14, color: COLORS.gray600, marginTop: SPACING.xs },
+  pinInput: {
+    marginTop: SPACING.md, borderWidth: 1, borderColor: COLORS.gray300, borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm, fontSize: 24, letterSpacing: 12, textAlign: 'center', color: COLORS.gray900,
+  },
+  pinDelete: { marginTop: SPACING.md, backgroundColor: COLORS.error, borderRadius: BORDER_RADIUS.md, paddingVertical: SPACING.md, alignItems: 'center' },
+  pinDeleteText: { color: COLORS.white, fontWeight: '700', fontSize: 15 },
+  pinCancel: { marginTop: SPACING.md, textAlign: 'center', color: COLORS.gray700, fontWeight: '600' },
 });
 
 export default RestaurantProfileScreen;

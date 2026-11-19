@@ -37,7 +37,7 @@ export const OrderFeedbackSection: React.FC<OrderFeedbackSectionProps> = ({
     setLoading(true);
     try {
       const res = await feedbackService.getOrderReviewables(orderId);
-      if (res.success) setData(res.data);
+      if (res.success) setData(res.data ?? null);
     } catch {
       /* feedback is non-critical */
     } finally {

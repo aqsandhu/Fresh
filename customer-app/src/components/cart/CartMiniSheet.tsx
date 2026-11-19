@@ -139,10 +139,13 @@ export const CartMiniSheet: React.FC = () => {
                 >
                   {items.map((item) => {
                     const unit = item.unit || 'full';
+                    // Lines are per product + unit + QUALITY: without it the
+                    // buttons changed / removed the quality-A line (I14).
+                    const quality = item.quality || 'A';
                     const suffix = unitLabelShort(unit);
                     return (
                       <View key={`${item.product.id}::${unit}`} style={styles.line}>
-                        <Image source={{ uri: item.product.images[0] }} style={styles.thumb} />
+                        <Image source={{ uri: item.product.images?.[0] }} style={styles.thumb} />
                         <View style={styles.lineInfo}>
                           <Text style={styles.lineName} numberOfLines={1}>
                             {item.product.name}
@@ -156,10 +159,12 @@ export const CartMiniSheet: React.FC = () => {
                           <TouchableOpacity
                             onPress={() =>
                               item.quantity <= 1
-                                ? removeFromCart(item.product.id, unit)
-                                : updateQuantity(item.product.id, item.quantity - 1, unit)
+                                ? removeFromCart(item.product.id, unit, quality)
+                                : updateQuantity(item.product.id, item.quantity - 1, unit, quality)
                             }
                             style={styles.qtyBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={item.quantity <= 1 ? 'Remove item' : 'Decrease quantity'}
                           >
                             <MaterialIcons
                               name={item.quantity <= 1 ? 'delete-outline' : 'remove'}
@@ -169,8 +174,10 @@ export const CartMiniSheet: React.FC = () => {
                           </TouchableOpacity>
                           <Text style={styles.qty}>{item.quantity}</Text>
                           <TouchableOpacity
-                            onPress={() => updateQuantity(item.product.id, item.quantity + 1, unit)}
+                            onPress={() => updateQuantity(item.product.id, item.quantity + 1, unit, quality)}
                             style={styles.qtyBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel="Increase quantity"
                           >
                             <MaterialIcons name="add" size={16} color={COLORS.gray600} />
                           </TouchableOpacity>

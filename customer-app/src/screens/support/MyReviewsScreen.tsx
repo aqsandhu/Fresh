@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,8 +31,9 @@ export const MyReviewsScreen: React.FC = () => {
     try {
       setError(null);
       const res = await feedbackService.getMyReviews();
-      if (res.success) setReviews(res.data);
-    } catch (err: any) {
+      if (res.success) setReviews(res.data ?? []);
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err?.message || 'ریویو لوڈ نہیں ہو سکے');
     } finally {
       setLoading(false);

@@ -42,6 +42,14 @@ export interface AuthResponse {
   user: User;
   tokens: AuthTokens;
 }
+
+/** Profile fields the server takes in its own (snake_case) names. */
+interface ProfileUpdate {
+  full_name?: string;
+  email?: string;
+  notification_enabled?: boolean;
+  preferred_language?: string;
+}
 
 class AuthService {
   async sendOtp(data: SendOtpRequest): Promise<ApiResponse<SendOtpResponse>> {
@@ -80,7 +88,7 @@ class AuthService {
     }
   }
 
-  async updateProfile(data: Partial<User>): Promise<ApiResponse<User>> {
+  async updateProfile(data: Partial<User> & ProfileUpdate): Promise<ApiResponse<User>> {
     try {
       const response = await apiClient.put('/auth/profile', data);
       return response.data;
@@ -102,9 +110,10 @@ class AuthService {
   }
 
   /** Permanently delete the signed-in customer's account (store requirement). */
-  async deleteAccount(): Promise<ApiResponse<{ message: string }>> {
+  async deleteAccount(pin?: string): Promise<ApiResponse<{ message: string }>> {
     try {
-      const response = await apiClient.post('/auth/delete-account');
+      // The server asks for the PIN again before it erases an account.
+      const response = await apiClient.post('/auth/delete-account', pin ? { pin } : {});
       return response.data;
     } catch (error) {
       throw handleApiError(error);

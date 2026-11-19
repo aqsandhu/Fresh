@@ -32,7 +32,7 @@ export const CategoriesSection: React.FC<CategoriesSectionProps> = ({ onCategory
       const list = res.success ? res.data : [];
       // De-dupe by id — the catalog can return the same category twice.
       const seen = new Set<string>();
-      return list.filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
+      return (list ?? []).filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
     },
     enabled: !!selectedCityId,
     staleTime: 5 * 60 * 1000,

@@ -1,3 +1,5 @@
+import type { MaterialIconName } from '../../types/icons';
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
@@ -54,10 +56,10 @@ export const ProfileScreen: React.FC = () => {
       const res = await addressService.getAddresses();
       if (res.success) {
         const list = selectedCity?.name
-          ? res.data.filter((a) =>
-              addressMatchesSelectedCity((a as any).city || a.city, selectedCity.name)
+          ? (res.data ?? []).filter((a) =>
+              addressMatchesSelectedCity(a.city, selectedCity.name)
             )
-          : res.data;
+          : res.data ?? [];
         setAddresses(list);
       }
     } catch {
@@ -86,13 +88,14 @@ export const ProfileScreen: React.FC = () => {
     setSaving(true);
     try {
       // Backend updateProfile expects snake_case full_name
-      const res = await authService.updateProfile({ full_name: editName, email: editEmail || undefined } as any);
+      const res = await authService.updateProfile({ full_name: editName, email: editEmail || undefined });
       if (res.success) {
         updateUser({ fullName: editName, email: editEmail || undefined });
         setIsEditing(false);
         Toast.show({ type: 'success', text1: 'Profile updated successfully!' });
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err.message || 'Failed to update profile' });
     } finally {
       setSaving(false);
@@ -148,7 +151,8 @@ export const ProfileScreen: React.FC = () => {
             await addressService.deleteAddress(id);
             setAddresses((prev) => prev.filter((a) => a.id !== id));
             Toast.show({ type: 'success', text1: 'Address deleted' });
-          } catch (err: any) {
+          } catch (errCaught: unknown) {
+            const err = asCaughtError(errCaught);
             Toast.show({ type: 'error', text1: err.message || 'Failed to delete address' });
           }
         },
@@ -369,7 +373,11 @@ export const ProfileScreen: React.FC = () => {
                   </View>
                   <Text style={styles.addressText} numberOfLines={2}>{address.fullAddress}</Text>
                 </View>
-                <TouchableOpacity onPress={() => handleDeleteAddress(address.id)}>
+                <TouchableOpacity
+                  onPress={() => handleDeleteAddress(address.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete address"
+                >
                   <MaterialIcons name="delete-outline" size={20} color={COLORS.error} />
                 </TouchableOpacity>
               </View>
@@ -425,7 +433,7 @@ export const ProfileScreen: React.FC = () => {
             >
               <View style={styles.menuIcon}>
                 <MaterialIcons
-                  name={item.icon as any}
+                  name={item.icon as MaterialIconName}
                   size={22}
                   color={COLORS.primary}
                 />

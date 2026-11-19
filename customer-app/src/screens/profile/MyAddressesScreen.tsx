@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -34,13 +35,14 @@ export const MyAddressesScreen: React.FC = () => {
       if (response.success) {
         const cityName = selectedCity?.name;
         const list = cityName
-          ? response.data.filter((a) =>
-              addressMatchesSelectedCity((a as any).city || a.city, cityName)
+          ? (response.data ?? []).filter((a) =>
+              addressMatchesSelectedCity(a.city, cityName)
             )
-          : response.data;
+          : response.data ?? [];
         setAddresses(list);
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err.message || 'Failed to load addresses');
     } finally {
       setLoading(false);

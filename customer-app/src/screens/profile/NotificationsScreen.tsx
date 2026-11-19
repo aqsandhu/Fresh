@@ -1,3 +1,4 @@
+import type { MaterialIconName } from '../../types/icons';
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -144,7 +145,7 @@ export const NotificationsScreen: React.FC = () => {
         disabled={isDeleting}
       >
         <View style={[styles.iconContainer, { backgroundColor: color + '15' }]}>
-          <MaterialIcons name={icon as any} size={24} color={color} />
+          <MaterialIcons name={icon as MaterialIconName} size={24} color={color} />
         </View>
         
         <View style={styles.content}>

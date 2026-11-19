@@ -17,15 +17,17 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { aiChatService, type ChatMessage } from '@services/aiChat.service';
-import { navigationRef } from '@/navigation/navigationUtils';
+import { navigationRef, navigateRoot } from '@/navigation/navigationUtils';
 import { useAuthStore } from '@store';
 import { useAiChatUi } from '@store/drawerUi';
 
 /** Best-effort current screen name for page-aware answers. */
 function currentPage(): string | undefined {
   try {
-    const ref = navigationRef as any;
-    return ref.isReady() ? ref.getCurrentRoute()?.name : undefined;
+    if (!navigationRef.isReady()) return undefined;
+    // The root ref has no typed param list, so its route type is empty.
+    const route = navigationRef.getCurrentRoute() as { name?: string } | undefined;
+    return route?.name;
   } catch {
     return undefined;
   }
@@ -97,11 +99,11 @@ function navigateToPagePath(url: string): boolean {
   const target = PAGE_ROUTES[path];
   if (!target || !navigationRef.isReady()) return false;
   if (target.root === 'CartFlow') {
-    (navigationRef as any).navigate('CartFlow', { screen: target.screen });
+    navigateRoot('CartFlow', { screen: target.screen });
   } else if (target.screen) {
-    (navigationRef as any).navigate('Main', { screen: target.tab, params: { screen: target.screen } });
+    navigateRoot('Main', { screen: target.tab, params: { screen: target.screen } });
   } else {
-    (navigationRef as any).navigate('Main', { screen: target.tab });
+    navigateRoot('Main', { screen: target.tab });
   }
   return true;
 }
@@ -188,7 +190,7 @@ export const AiChatWidget: React.FC = () => {
       setOpen(false);
       setTimeout(() => {
         if (!navigationRef.isReady()) return;
-        (navigationRef as any).navigate('Main', {
+        navigateRoot('Main', {
           screen: 'Shop',
           params: { screen: 'ProductDetail', params: { productId } },
         });

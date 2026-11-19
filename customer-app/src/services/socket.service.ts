@@ -125,13 +125,13 @@ class SocketService {
   }
 
   // Order tracking subscription
-  subscribeToOrder(orderId: string, callback: (data: any) => void) {
+  subscribeToOrder<T = unknown>(orderId: string, callback: (data: T) => void) {
     this.orderRooms.add(orderId);
     this.socket?.emit('order:subscribe', orderId);
     this.socket?.on('order:update', callback);
   }
 
-  unsubscribeFromOrder(orderId: string, callback?: (data: any) => void) {
+  unsubscribeFromOrder<T = unknown>(orderId: string, callback?: (data: T) => void) {
     this.orderRooms.delete(orderId);
     this.socket?.emit('order:unsubscribe', orderId);
     if (callback) {
@@ -146,11 +146,11 @@ class SocketService {
     this.socket?.emit('chat:send', { orderId, message });
   }
 
-  onChatMessage(callback: (data: any) => void) {
+  onChatMessage<T = unknown>(callback: (data: T) => void) {
     this.socket?.on('chat:message', callback);
   }
 
-  offChatMessage(callback?: (data: any) => void) {
+  offChatMessage<T = unknown>(callback?: (data: T) => void) {
     if (callback) {
       this.socket?.off('chat:message', callback);
     } else {
@@ -168,32 +168,32 @@ class SocketService {
   }
 
   // Notifications
-  onOrderCreated(callback: (data: any) => void) {
+  onOrderCreated<T = unknown>(callback: (data: T) => void) {
     this.socket?.on('order:created', callback);
   }
 
-  onOrderStatusChanged(callback: (data: any) => void) {
+  onOrderStatusChanged<T = unknown>(callback: (data: T) => void) {
     this.socket?.on('order:status_changed', callback);
   }
 
-  onOrderDelivered(callback: (data: any) => void) {
+  onOrderDelivered<T = unknown>(callback: (data: T) => void) {
     this.socket?.on('order:delivered', callback);
   }
 
-  onRiderAssigned(callback: (data: any) => void) {
+  onRiderAssigned<T = unknown>(callback: (data: T) => void) {
     this.socket?.on('order:rider_assigned', callback);
   }
 
-  onChatNotification(callback: (data: any) => void) {
+  onChatNotification<T = unknown>(callback: (data: T) => void) {
     this.socket?.on('chat:notification', callback);
   }
 
   // Generic event handler
-  on(event: string, callback: (data: any) => void) {
+  on<T = unknown>(event: string, callback: (data: T) => void) {
     this.socket?.on(event, callback);
   }
 
-  off(event: string, callback?: (data: any) => void) {
+  off<T = unknown>(event: string, callback?: (data: T) => void) {
     if (callback) {
       this.socket?.off(event, callback);
     } else {

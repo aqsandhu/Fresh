@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
@@ -24,6 +25,7 @@ import { authService } from '@services/auth.service';
 import { clearLastPhone, getLastPhone, maskPhone, setLastPhone } from '@/lib/phoneStorage';
 import { getDevicePhoneNumber } from '@/lib/phoneAutoFill';
 import Toast from 'react-native-toast-message';
+import { isWeakPin, WEAK_PIN_MESSAGE } from '@/lib/pinStrength';
 
 type Step = 'phone' | 'pin' | 'newPin';
 
@@ -153,7 +155,8 @@ export const LoginScreen: React.FC = () => {
           redirect,
         });
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err.message || 'Failed to start sign-in');
     }
   };
@@ -165,7 +168,8 @@ export const LoginScreen: React.FC = () => {
       await setLastPhone(phone);
       Toast.show({ type: 'success', text1: 'Login successful!' });
       finishLogin();
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err.message || 'Invalid PIN' });
       setPin('');
     }
@@ -190,7 +194,8 @@ export const LoginScreen: React.FC = () => {
         channel: result.channel,
         redirect,
       });
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err.message || 'Failed to send OTP' });
     }
   };
@@ -202,6 +207,12 @@ export const LoginScreen: React.FC = () => {
     }
     if (newPin !== newPinConfirm) {
       Toast.show({ type: 'error', text1: 'PINs do not match. Please try again.' });
+      setNewPin('');
+      setNewPinConfirm('');
+      return;
+    }
+    if (isWeakPin(newPin)) {
+      Toast.show({ type: 'error', text1: WEAK_PIN_MESSAGE }); // B33 — before the code is used
       setNewPin('');
       setNewPinConfirm('');
       return;
@@ -220,7 +231,8 @@ export const LoginScreen: React.FC = () => {
       setNewPinConfirm('');
       setResetCode('');
       finishLogin();
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err.message || 'Failed to reset PIN. Please try again.' });
       setNewPin('');
       setNewPinConfirm('');

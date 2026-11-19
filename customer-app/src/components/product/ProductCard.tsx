@@ -200,7 +200,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         activeOpacity={0.9}
       >
         <SmartImage
-          uri={product.images[0]}
+          uri={product.images?.[0]}
           style={styles.horizontalImage}
           fallback={
             <View style={[styles.horizontalImage, styles.imageFallback]}>
@@ -234,7 +234,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       <View style={styles.imageWrap}>
         {/* Missing OR broken image → cart-icon placeholder (never a blank box). */}
         <SmartImage
-          uri={product.images[0]}
+          uri={product.images?.[0]}
           style={styles.image}
           fallback={
             <View style={[styles.image, styles.imageFallback]}>

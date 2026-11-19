@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -50,8 +51,8 @@ export const AttaRequestScreen: React.FC = () => {
     try {
       const addressesRes = await addressService.getAddresses();
       if (addressesRes.success) {
-        setAddresses(addressesRes.data);
-        const defaultAddr = addressesRes.data.find((a) => a.isDefault);
+        setAddresses(addressesRes.data ?? []);
+        const defaultAddr = (addressesRes.data ?? []).find((a) => a.isDefault);
         if (defaultAddr) setSelectedAddress(defaultAddr);
       }
     } catch (error) {
@@ -132,9 +133,10 @@ export const AttaRequestScreen: React.FC = () => {
       });
 
       if (response.success) {
-        navigation.navigate('AttaTracking', { requestId: response.data.id });
+        if (response.data?.id) navigation.navigate('AttaTracking', { requestId: response.data.id });
       }
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error creating request:', error);
       Toast.show({
         type: 'error',

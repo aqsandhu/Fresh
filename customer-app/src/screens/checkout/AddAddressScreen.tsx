@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -27,6 +28,7 @@ import { addressService } from '@services/address.service';
 import { productService } from '@services/product.service';
 import { getAccuratePosition } from '@/lib/geolocation';
 import { isWithinServiceArea, type ServiceAreaData } from '@/lib/serviceArea';
+import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '@utils/constants';
 
@@ -53,9 +55,13 @@ export const AddAddressScreen: React.FC = () => {
   const [cropUri, setCropUri] = useState<string | null>(null);
   const [cropSize, setCropSize] = useState({ width: 0, height: 0 });
   const [address, setAddress] = useState('');
+  // Start where the app's other maps start (Gujrat), not Lahore — and only
+  // send coordinates the customer actually set (I11): an untouched pin used
+  // to be saved as the delivery spot, sending riders to the map's start point.
+  const [pinned, setPinned] = useState(false);
   const [region, setRegion] = useState({
-    latitude: 31.5204,
-    longitude: 74.3587,
+    latitude: DEFAULT_MAP_LAT,
+    longitude: DEFAULT_MAP_LNG,
     latitudeDelta: DEFAULT_MAP_DELTA,
     longitudeDelta: DEFAULT_MAP_DELTA,
   });
@@ -86,12 +92,13 @@ export const AddAddressScreen: React.FC = () => {
       if (res.success && res.data) {
         const addr = res.data;
         setAddressType(normalizeAddressType(addr.label));
-        setAddress(addr.fullAddress);
+        setAddress(addr.fullAddress ?? '');
         setRegion((prev) => ({
           ...prev,
           latitude: addr.latitude || prev.latitude,
           longitude: addr.longitude || prev.longitude,
         }));
+        if (addr.latitude && addr.longitude) setPinned(true);
         if (addr.doorImage) setDoorImage(addr.doorImage);
       }
     }).catch(console.error);
@@ -100,6 +107,7 @@ export const AddAddressScreen: React.FC = () => {
   const handleLocationSelect = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setLocationAccuracy(null);
+    setPinned(true);
     setRegion((prev) => ({
       ...prev,
       latitude,
@@ -116,6 +124,7 @@ export const AddAddressScreen: React.FC = () => {
       longitudeDelta: delta,
     };
     setRegion(next);
+    setPinned(true);
     mapRef.current?.animateToRegion(next, 400);
     if (accuracy != null) setLocationAccuracy(Math.round(accuracy));
   };
@@ -225,6 +234,7 @@ export const AddAddressScreen: React.FC = () => {
 
     // Block saving a delivery pin outside the city's active service boundary.
     if (
+      pinned &&
       serviceArea?.enabled &&
       !isWithinServiceArea(region.latitude, region.longitude, serviceArea)
     ) {
@@ -237,9 +247,9 @@ export const AddAddressScreen: React.FC = () => {
       const addressData = {
         label: addressType,
         fullAddress: address,
-        latitude: region.latitude,
-        longitude: region.longitude,
-        locationAccuracy: locationAccuracy ?? undefined,
+        latitude: pinned ? region.latitude : undefined,
+        longitude: pinned ? region.longitude : undefined,
+        locationAccuracy: pinned ? locationAccuracy ?? undefined : undefined,
         doorImage: doorImage || undefined,
         isDefault: false,
       };
@@ -257,7 +267,8 @@ export const AddAddressScreen: React.FC = () => {
           savedAddress = response.data;
           apiSuccess = true;
         }
-      } catch (err: any) {
+      } catch (errCaught: unknown) {
+        const err = asCaughtError(errCaught);
         apiError = err;
       }
 
@@ -312,7 +323,8 @@ export const AddAddressScreen: React.FC = () => {
           },
         ]
       );
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       let errorMessage = ERROR_MESSAGES.SOMETHING_WRONG;
 
       if (error?.message?.includes('Network Error')) {
@@ -407,6 +419,7 @@ export const AddAddressScreen: React.FC = () => {
               onDragEnd={(e) => {
                 const { latitude, longitude } = e.nativeEvent.coordinate;
                 setLocationAccuracy(null);
+                setPinned(true);
                 setRegion((prev) => ({ ...prev, latitude, longitude }));
               }}
             />

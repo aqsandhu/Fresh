@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TextInput, StyleSheet, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,12 +10,13 @@ import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS, REQUIRED_LOCATION_ACCURACY_M } from '@utils/constants';
 import { Button } from '@components';
 import { CheckoutMapPicker } from '@components/checkout/CheckoutMapPicker';
-import { getRestaurantInfo, restaurantApi, money, round2, type RestaurantInfo } from '@services/restaurant.service';
+import { getRestaurantInfo, restaurantApi, money, round2, type RestaurantInfo, type RestaurantSlot } from '@services/restaurant.service';
 import { useRestaurantCart } from '@store/restaurantCartStore';
 import { getAccuratePosition } from '@/lib/geolocation';
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps';
 import { pickDoorPhotoFromLibrary } from '@/lib/pickDoorPhoto';
 import { getSlotAvailability } from '@/lib/timeSlots';
+import { pktDateString, pktWallClock } from '@/lib/businessDate';
 
 function fmtTime(t?: string): string {
   if (!t) return '';
@@ -25,12 +27,9 @@ function fmtTime(t?: string): string {
   return `${hh}:${m || '00'} ${ampm}`;
 }
 
-function localDateStr(day: 'today' | 'tomorrow'): string {
-  const d = new Date();
-  if (day === 'tomorrow') d.setDate(d.getDate() + 1);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
+// Pakistan date, not the phone's own time zone (I10) — same as the customer
+// checkout (C7): a phone on UTC sent "yesterday" between midnight and 5 am.
+const localDateStr = (day: 'today' | 'tomorrow'): string => pktDateString(day);
 
 export const RestaurantCheckoutScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
@@ -40,7 +39,7 @@ export const RestaurantCheckoutScreen: React.FC = () => {
   const [placing, setPlacing] = useState(false);
 
   const [delivery, setDelivery] = useState({ base_charge: 100, free_delivery_threshold: 2000, urgent_charge: 0, urgent_eta: '', slot_cutoff_percent: 60 });
-  const [slots, setSlots] = useState<any[]>([]);
+  const [slots, setSlots] = useState<RestaurantSlot[]>([]);
   const [timeSlotId, setTimeSlotId] = useState('');
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today');
   const [ready, setReady] = useState(false);
@@ -138,7 +137,8 @@ export const RestaurantCheckoutScreen: React.FC = () => {
       const { front_image_url } = await restaurantApi.uploadFrontImage(picked.uri);
       setFrontImageUrl(front_image_url);
       Toast.show({ type: 'success', text1: 'Storefront photo updated' });
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       Toast.show({ type: 'error', text1: e?.message || 'Could not upload photo' });
     } finally {
       setUploadingImg(false);
@@ -166,7 +166,8 @@ export const RestaurantCheckoutScreen: React.FC = () => {
       clear();
       Toast.show({ type: 'success', text1: 'Order placed!' });
       navigation.navigate('RestaurantOrders');
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       Toast.show({ type: 'error', text1: e?.message || 'Could not place the order' });
     } finally {
       setPlacing(false);
@@ -295,7 +296,7 @@ export const RestaurantCheckoutScreen: React.FC = () => {
                 <View style={styles.slotWrap}>
                   {slots.map((s) => {
                     const active = timeSlotId === s.id;
-                    const avail = getSlotAvailability(s, selectedDay, delivery.slot_cutoff_percent);
+                    const avail = getSlotAvailability(s, selectedDay, delivery.slot_cutoff_percent, pktWallClock());
                     const disabled = (s.available_slots ?? 1) <= 0 || avail.unavailable;
                     return (
                       <TouchableOpacity key={s.id} disabled={disabled}

@@ -53,7 +53,7 @@ export const useAuthStore = create<AuthStore>()(
         set({ isLoading: true });
         try {
           const response = await authService.sendOtp({ phone, channel });
-          if (response.success) {
+          if (response.success && response.data) {
             return {
               userExists: response.data.userExists,
               userName: response.data.userName,
@@ -235,7 +235,7 @@ function clearPersonalStores(): void {
     const { useCartStore } = require('./cartStore');
     const { useWishlistStore } = require('./wishlistStore');
     const { useCheckoutStore } = require('./checkoutStore');
-    useCartStore.setState({ items: [], cartsByCity: {} });
+    useCartStore.setState({ items: [], cartsByCity: {}, unsaved: null, savedCityId: null });
     useWishlistStore.getState().clear?.();
     useCheckoutStore.getState().resetCheckout?.();
   } catch (error) {

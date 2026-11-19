@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -60,7 +61,8 @@ export const ChangePinScreen: React.FC = () => {
       markPinVerified();
       Toast.show({ type: 'success', text1: 'PIN updated' });
       navigation.goBack();
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err.message || 'Could not update PIN' });
       setStage('current');
       setCurrentPin('');

@@ -1,3 +1,5 @@
+import type { MaterialIconName } from '../../types/icons';
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -7,6 +9,8 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +21,7 @@ import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { useAuthStore } from '@store';
 import { authService } from '@services/auth.service';
+import { clearLastPhone } from '@/lib/phoneStorage';
 
 interface SettingItem {
   icon: string;
@@ -41,6 +46,9 @@ export const SettingsScreen: React.FC = () => {
   // the same setting as the website's "Language for messages".
   const [language, setLanguage] = useState<'en' | 'ur'>('en');
   const [deleting, setDeleting] = useState(false);
+  // The server asks for the PIN again before it erases an account.
+  const [pinPromptOpen, setPinPromptOpen] = useState(false);
+  const [deletePin, setDeletePin] = useState('');
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -69,9 +77,10 @@ export const SettingsScreen: React.FC = () => {
     setNotifications(next);
     setSavingNotifications(true);
     try {
-      await authService.updateProfile({ notification_enabled: next } as any);
+      await authService.updateProfile({ notification_enabled: next });
       Toast.show({ type: 'success', text1: next ? 'Order notifications on' : 'Order notifications off' });
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setNotifications(previous);
       Toast.show({ type: 'error', text1: err?.message || 'Could not save — please try again' });
     } finally {
@@ -100,20 +109,9 @@ export const SettingsScreen: React.FC = () => {
                 {
                   text: 'Haan, delete karein',
                   style: 'destructive',
-                  onPress: async () => {
-                    setDeleting(true);
-                    try {
-                      await authService.deleteAccount();
-                      Toast.show({ type: 'success', text1: 'Account deleted' });
-                      await logout();
-                    } catch (err: any) {
-                      Toast.show({
-                        type: 'error',
-                        text1: err?.message || 'Account delete nahi ho saka — dobara koshish karein',
-                      });
-                    } finally {
-                      setDeleting(false);
-                    }
+                  onPress: () => {
+                    setDeletePin('');
+                    setPinPromptOpen(true);
                   },
                 },
               ]
@@ -124,14 +122,38 @@ export const SettingsScreen: React.FC = () => {
     );
   };
 
+  /** Last step: the PIN typed again (or none, for an account that never set one). */
+  const confirmDeleteWithPin = async (pin?: string) => {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await authService.deleteAccount(pin);
+      setPinPromptOpen(false);
+      Toast.show({ type: 'success', text1: 'Account deleted' });
+      // The account is gone — so is its number on this phone (N1).
+      await clearLastPhone().catch(() => {});
+      await logout();
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
+      setDeletePin('');
+      Toast.show({
+        type: 'error',
+        text1: err?.message || 'Account delete nahi ho saka — dobara koshish karein',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const saveLanguage = async (next: 'en' | 'ur') => {
     if (next === language) return;
     const previous = language;
     setLanguage(next);
     try {
-      await authService.updateProfile({ preferred_language: next } as any);
+      await authService.updateProfile({ preferred_language: next });
       Toast.show({ type: 'success', text1: next === 'ur' ? 'پیغامات اب اردو میں' : 'Messages will be in English' });
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setLanguage(previous);
       Toast.show({ type: 'error', text1: err?.message || 'Could not save — please try again' });
     }
@@ -213,7 +235,7 @@ export const SettingsScreen: React.FC = () => {
       activeOpacity={item.type === 'toggle' ? 1 : 0.7}
     >
       <View style={styles.settingIcon}>
-        <MaterialIcons name={item.icon as any} size={22} color={COLORS.primary600} />
+        <MaterialIcons name={item.icon as MaterialIconName} size={22} color={COLORS.primary600} />
       </View>
       <View style={styles.settingContent}>
         <Text style={styles.settingTitle}>{item.title}</Text>
@@ -292,12 +314,67 @@ export const SettingsScreen: React.FC = () => {
         )}
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      <Modal visible={pinPromptOpen} transparent animationType="fade" onRequestClose={() => setPinPromptOpen(false)}>
+        <View style={styles.pinBackdrop}>
+          <View style={styles.pinCard}>
+            <Text style={styles.pinTitle}>Apna PIN likhein</Text>
+            <Text style={styles.pinHelp}>Account delete karne ke liye apna 4 hindson ka PIN dobara likhein.</Text>
+            <TextInput
+              style={styles.pinInput}
+              value={deletePin}
+              onChangeText={(t) => setDeletePin(t.replace(/[^0-9]/g, '').slice(0, 4))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={4}
+              autoFocus
+              accessibilityLabel="4-digit PIN"
+              testID="delete-pin-input"
+            />
+            <TouchableOpacity
+              style={[styles.pinDelete, (deletePin.length !== 4 || deleting) && styles.pinDisabled]}
+              disabled={deletePin.length !== 4 || deleting}
+              onPress={() => confirmDeleteWithPin(deletePin)}
+              accessibilityRole="button"
+              testID="delete-pin-confirm"
+            >
+              <Text style={styles.pinDeleteText}>{deleting ? 'Deleting…' : 'Account delete karein'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => confirmDeleteWithPin(undefined)} disabled={deleting} accessibilityRole="button" testID="delete-no-pin">
+              <Text style={styles.pinLink}>Main ne kabhi PIN nahi banaya</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setPinPromptOpen(false)} disabled={deleting} accessibilityRole="button">
+              <Text style={styles.pinCancel}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.gray50 },
+  pinBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: SPACING.lg },
+  pinCard: { backgroundColor: COLORS.white, borderRadius: BORDER_RADIUS.lg, padding: SPACING.lg },
+  pinTitle: { fontSize: 18, fontWeight: '700', color: COLORS.gray900 },
+  pinHelp: { fontSize: 14, color: COLORS.gray600, marginTop: SPACING.xs },
+  pinInput: {
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.gray300,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm,
+    fontSize: 24,
+    letterSpacing: 12,
+    textAlign: 'center',
+    color: COLORS.gray900,
+  },
+  pinDelete: { marginTop: SPACING.md, backgroundColor: COLORS.error, borderRadius: BORDER_RADIUS.md, paddingVertical: SPACING.md, alignItems: 'center' },
+  pinDisabled: { opacity: 0.5 },
+  pinDeleteText: { color: COLORS.white, fontWeight: '700', fontSize: 15 },
+  pinLink: { marginTop: SPACING.md, textAlign: 'center', color: COLORS.gray600, textDecorationLine: 'underline', fontSize: 13 },
+  pinCancel: { marginTop: SPACING.md, textAlign: 'center', color: COLORS.gray700, fontWeight: '600' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

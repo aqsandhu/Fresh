@@ -91,7 +91,7 @@ export const ProductsScreen: React.FC = () => {
         ...(inStockOnly ? { inStock: 'true' } : {}),
       });
       if (seq === requestSeq.current && res.success) {
-        setProducts(res.data);
+        setProducts(res.data ?? []);
       }
     } finally {
       if (seq === requestSeq.current) setLoading(false);

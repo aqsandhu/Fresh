@@ -1,3 +1,4 @@
+import type { MaterialIconName } from '../../types/icons';
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -72,7 +73,7 @@ export const AboutScreen: React.FC = () => {
 
         {VALUES.map((item) => (
           <View key={item.title} style={styles.valueCard}>
-            <MaterialIcons name={item.icon as any} size={24} color={COLORS.primary600} />
+            <MaterialIcons name={item.icon as MaterialIconName} size={24} color={COLORS.primary600} />
             <View style={styles.valueText}>
               <Text style={styles.valueTitle}>{item.title}</Text>
               <Text style={styles.valueDesc}>{item.description}</Text>

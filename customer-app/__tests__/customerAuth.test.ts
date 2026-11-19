@@ -51,8 +51,11 @@ describe('auth service requests', () => {
     mockTokens.refresh = null;
     await authService.logout();
     expect(mockApi.post).toHaveBeenLastCalledWith('/auth/logout', undefined);
+    // Deleting asks for the PIN again; an account that never set one sends none.
+    await authService.deleteAccount('4826');
+    expect(mockApi.post).toHaveBeenLastCalledWith('/auth/delete-account', { pin: '4826' });
     await authService.deleteAccount();
-    expect(mockApi.post).toHaveBeenLastCalledWith('/auth/delete-account');
+    expect(mockApi.post).toHaveBeenLastCalledWith('/auth/delete-account', {});
   });
 
   it('PIN: status, set, verify, reset', async () => {

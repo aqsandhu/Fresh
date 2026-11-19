@@ -14,14 +14,15 @@ module.exports = {
   // Every source file counts — without this only files a test happens to
   // load were measured, which showed 2–3 times the real coverage.
   collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts'],
-  // Ratchet (15 Nov 2026): one point under the measured coverage. Raise it
+  // Ratchet (18 Nov 2026, W15): about one point under the measured coverage
+  // (lines 50.3 %). Raise it
   // whenever coverage grows; CI fails if a change makes it fall.
   coverageThreshold: {
     global: {
-      branches: 17,
-      functions: 16,
-      lines: 21,
-      statements: 20,
+      branches: 42,
+      functions: 38,
+      lines: 49,
+      statements: 48,
     },
   },
 };

@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,8 +32,9 @@ export const MyComplaintsScreen: React.FC = () => {
     try {
       setError(null);
       const res = await feedbackService.getMyComplaints();
-      if (res.success) setComplaints(res.data);
-    } catch (err: any) {
+      if (res.success) setComplaints(res.data ?? []);
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err?.message || 'شکایات لوڈ نہیں ہو سکیں');
     } finally {
       setLoading(false);

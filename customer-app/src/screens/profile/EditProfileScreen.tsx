@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import {
   View,
@@ -62,7 +63,8 @@ export const EditProfileScreen: React.FC = () => {
         updateUser({ full_name: name.trim(), email: email.trim() || undefined });
       }
       navigation.goBack();
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       // Only fall back to a local save on genuine network errors (no server
       // response). Surface server errors (e.g. 409 email conflict) instead.
       if (error?.statusCode) {

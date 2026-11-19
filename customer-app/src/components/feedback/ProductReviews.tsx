@@ -59,8 +59,8 @@ export const ProductReviews: React.FC<ProductReviewsProps> = ({ productId }) => 
       try {
         const res = await feedbackService.getProductReviews(productId);
         if (active && res.success) {
-          setSummary(res.data.summary);
-          setReviews(res.data.reviews as ProductReviewItem[]);
+          setSummary(res.data?.summary ?? { average: 0, count: 0 });
+          setReviews((res.data?.reviews ?? []) as ProductReviewItem[]);
         }
       } catch {
         /* non-critical */

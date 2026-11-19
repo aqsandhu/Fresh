@@ -6,11 +6,18 @@ import { priceForUnit, resolveLineUnitPrice } from '@/lib/unitPricing';
 import { getSelectedCityId } from '@/lib/cityStorage';
 import { withCityParams } from '@/lib/apiHelpers';
 import { cartService } from '@services/cart.service';
+import { productService } from '@services/product.service';
+import { buildItemsFromSaved, cartLineKey, groupLinesByCity, mergeCartLines, UnsavedKind } from '@/lib/savedCart';
 import { calculateDeliveryCharge as calcDeliveryCharge } from '@utils/helpers';
 import { API_BASE_URL } from '@utils/constants';
 
-const lineKey = (productId: string, unit: ProductUnit = 'full', quality: ProductQuality = 'A') =>
-  `${productId}::${unit}::${quality}`;
+const lineKey = cartLineKey;
+
+// A change made on this device while the saved cart is being read must win:
+// each change bumps this, and a read that finds it moved is thrown away.
+let localChangeSeq = 0;
+let savedCartBusy = false;
+let savedCartRerun = false;
 
 const persistActiveCityItems = (
   state: Pick<CartStore, 'items' | 'cartsByCity' | 'activeCityId'>,
@@ -34,6 +41,12 @@ const persistActiveCityItems = (
 const DEFAULT_BASE_CHARGE = 100;
 const DEFAULT_FREE_THRESHOLD = 500;
 
+/** A real figure from the office, 0 included (0 = free delivery / no limit) — I22. */
+const settingOr = (value: unknown, fallback: number): number => {
+  const n = parseFloat(String(value ?? ''));
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
+
 async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThreshold: number; slotCutoffPercent: number }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -47,8 +60,8 @@ async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThresh
     const data = json?.data || json;
     const cutoff = parseFloat(data?.slot_cutoff_percent);
     return {
-      baseCharge: parseFloat(data?.base_charge) || DEFAULT_BASE_CHARGE,
-      freeThreshold: parseFloat(data?.free_delivery_threshold) || DEFAULT_FREE_THRESHOLD,
+      baseCharge: settingOr(data?.base_charge, DEFAULT_BASE_CHARGE),
+      freeThreshold: settingOr(data?.free_delivery_threshold, DEFAULT_FREE_THRESHOLD),
       slotCutoffPercent: Number.isFinite(cutoff) ? cutoff : 60,
     };
   } catch {
@@ -66,6 +79,11 @@ interface CartStore {
   isLoading: boolean;
   syncError: string | null;
   lastSyncedAt: number | null;
+  /** null = the account holds this cart; see lib/savedCart for guest / pending. */
+  unsaved: UnsavedKind;
+  /** The city whose cart the account holds, as far as this device knows. */
+  savedCityId: string | null;
+  lastPulledAt: number | null;
   deliveryBaseCharge: number;
   deliveryFreeThreshold: number;
   deliverySlotCutoffPercent: number;
@@ -86,6 +104,8 @@ interface CartStore {
   removeFromCart: (productId: string, unit?: ProductUnit, quality?: ProductQuality) => Promise<void>;
 
   syncWithBackend: () => Promise<boolean>;
+  /** Bring this device and the cart saved with the account into line (see lib/savedCart). */
+  syncSavedCart: () => Promise<void>;
   mergeWithServerCart: () => Promise<void>;
   isInCart: (productId: string, unit?: ProductUnit, quality?: ProductQuality) => boolean;
   getItemQuantity: (productId: string, unit?: ProductUnit, quality?: ProductQuality) => number;
@@ -109,6 +129,9 @@ export const useCartStore = create<CartStore>()(
       isLoading: false,
       syncError: null,
       lastSyncedAt: null,
+      unsaved: null,
+      savedCityId: null,
+      lastPulledAt: null,
       deliveryBaseCharge: DEFAULT_BASE_CHARGE,
       deliveryFreeThreshold: DEFAULT_FREE_THRESHOLD,
       deliverySlotCutoffPercent: 60,
@@ -134,7 +157,7 @@ export const useCartStore = create<CartStore>()(
             set({ items: cityItems, activeCityId: cityId });
           }
           await get().loadDeliverySettings();
-        } catch (error: any) {
+        } catch {
           set({ syncError: 'Failed to load cart. Please try again.' });
         } finally {
           set({ isLoading: false });
@@ -173,14 +196,10 @@ export const useCartStore = create<CartStore>()(
             return persistActiveCityItems(state, nextItems);
           });
 
-          const items = get().items;
-          cartService
-            .syncCartWithBackend(items, get().activeCityId)
-            .then((ok) => {
-              if (ok) set({ lastSyncedAt: Date.now(), syncError: null });
-              else set({ syncError: 'Failed to sync cart with server.' });
-            })
-            .catch(() => set({ syncError: 'Failed to sync cart with server.' }));
+          localChangeSeq++;
+          // Not on the server yet (a guest cart stays a guest cart until it is joined).
+          set((state) => ({ unsaved: state.unsaved === 'guest' ? 'guest' : 'pending' }));
+          get().syncWithBackend().catch(() => undefined);
         } finally {
           set({ isLoading: false });
         }
@@ -195,13 +214,10 @@ export const useCartStore = create<CartStore>()(
             );
             return persistActiveCityItems(state, nextItems);
           });
-          // Empty cart → DELETE /cart/clear (backend rejects sync with items:[])
-          const items = get().items;
-          if (items.length === 0) {
-            await cartService.clearBackendCart();
-          } else {
-            await cartService.syncCartWithBackend(items, get().activeCityId);
-          }
+          localChangeSeq++;
+          // Not on the server yet (a guest cart stays a guest cart until it is joined).
+          set((state) => ({ unsaved: state.unsaved === 'guest' ? 'guest' : 'pending' }));
+          await get().syncWithBackend();
         } finally {
           set({ isLoading: false });
         }
@@ -223,13 +239,10 @@ export const useCartStore = create<CartStore>()(
             );
             return persistActiveCityItems(state, nextItems);
           });
-          // Empty cart → DELETE /cart/clear (backend rejects sync with items:[])
-          const items = get().items;
-          if (items.length === 0) {
-            await cartService.clearBackendCart();
-          } else {
-            await cartService.syncCartWithBackend(items, get().activeCityId);
-          }
+          localChangeSeq++;
+          // Not on the server yet (a guest cart stays a guest cart until it is joined).
+          set((state) => ({ unsaved: state.unsaved === 'guest' ? 'guest' : 'pending' }));
+          await get().syncWithBackend();
         } finally {
           set({ isLoading: false });
         }
@@ -239,7 +252,10 @@ export const useCartStore = create<CartStore>()(
         set({ isLoading: true });
         try {
           set((state) => persistActiveCityItems(state, []));
-          await cartService.clearBackendCart();
+          localChangeSeq++;
+          // Not on the server yet (a guest cart stays a guest cart until it is joined).
+          set((state) => ({ unsaved: state.unsaved === 'guest' ? 'guest' : 'pending' }));
+          await get().syncWithBackend();
         } finally {
           set({ isLoading: false });
         }
@@ -264,29 +280,110 @@ export const useCartStore = create<CartStore>()(
       addToCart: async (product, quantity, unit, quality) => get().addItem(product, quantity, unit, quality),
       removeFromCart: async (productId, unit, quality) => get().removeItem(productId, unit, quality),
 
+      // Send this device's cart (the active city's) to the account. A guest's
+      // cart goes nowhere and is remembered as "guest"; a failed send is
+      // remembered as "pending" and retried by syncSavedCart.
       syncWithBackend: async () => {
         try {
-          const items = get().items;
+          if (!(await cartService.isSignedIn())) {
+            const anyItems = get().items.length > 0 || Object.values(get().cartsByCity).some((c) => c.length > 0);
+            set({ unsaved: anyItems ? 'guest' : null });
+            return true;
+          }
+          // A guest cart is JOINED to the account's cart (syncSavedCart), never
+          // sent over it — sending it would wipe what the account had saved.
+          if (get().unsaved === 'guest') {
+            get().syncSavedCart().catch(() => undefined);
+            return true;
+          }
+          const { items, activeCityId } = get();
           const success =
             items.length === 0
               ? await cartService.clearBackendCart()
-              : await cartService.syncCartWithBackend(items, get().activeCityId);
-          if (success) set({ lastSyncedAt: Date.now(), syncError: null });
+              : await cartService.syncCartWithBackend(items, activeCityId);
+          if (success) set({ lastSyncedAt: Date.now(), syncError: null, unsaved: null, savedCityId: activeCityId });
+          else set({ syncError: 'Failed to sync cart with server.', unsaved: 'pending' });
           return success;
         } catch {
-          set({ syncError: 'Failed to sync with server.' });
+          set({ syncError: 'Failed to sync with server.', unsaved: 'pending' });
           return false;
         }
       },
 
-      mergeWithServerCart: async () => {
-        set({ isLoading: true });
+      syncSavedCart: async () => {
+        if (!get().hasHydrated) return;
+        if (savedCartBusy) {
+          savedCartRerun = true;
+          return;
+        }
+        savedCartBusy = true;
         try {
-          await get().syncWithBackend();
+          if (!(await cartService.isSignedIn())) return;
+          const started = get();
+
+          // A change the server never got: this device wins, send it.
+          if (started.unsaved === 'pending') {
+            await get().syncWithBackend();
+            return;
+          }
+
+          const seq = localChangeSeq;
+          const lines = await cartService.fetchServerCart();
+          if (!lines) return;
+          if (seq !== localChangeSeq) {
+            savedCartRerun = true;
+            return;
+          }
+
+          const merge = started.unsaved === 'guest';
+          const nextByCity: Record<string, StoreCartItem[]> = { ...started.cartsByCity };
+          if (started.activeCityId) nextByCity[started.activeCityId] = started.items;
+
+          const groups = groupLinesByCity(lines, started.activeCityId);
+          // The account's cart is empty (an order was placed, or it was emptied,
+          // on another device): the copy this device holds goes too.
+          if (!merge && lines.length === 0 && started.savedCityId) nextByCity[started.savedCityId] = [];
+
+          let savedCityId = started.savedCityId;
+          for (const [cityId, cityLines] of groups) {
+            let products: StoreProduct[];
+            try {
+              products = await productService.getProductsByIds(cityLines.map((l) => l.productId), cityId);
+            } catch {
+              return; // offline — leave this device's cart as it is
+            }
+            const savedItems = buildItemsFromSaved(cityLines, products);
+            nextByCity[cityId] = merge ? mergeCartLines(nextByCity[cityId] || [], savedItems) : savedItems;
+            savedCityId = cityId;
+          }
+          if (seq !== localChangeSeq) {
+            savedCartRerun = true;
+            return;
+          }
+
+          const activeCityId = get().activeCityId;
+          set({
+            cartsByCity: nextByCity,
+            items: activeCityId ? nextByCity[activeCityId] || [] : get().items,
+            lastPulledAt: Date.now(),
+            savedCityId,
+            // The joined cart still has to reach the account: pending until sent.
+            unsaved: merge ? 'pending' : null,
+          });
+          // After joining a guest cart, the account must hold the result.
+          if (merge) await get().syncWithBackend();
         } finally {
-          set({ isLoading: false });
+          savedCartBusy = false;
+          // Something changed while this ran. Only a guest cart still waiting
+          // to be joined needs another go — any other change sent itself.
+          if (savedCartRerun) {
+            savedCartRerun = false;
+            if (get().unsaved === 'guest') get().syncSavedCart().catch(() => undefined);
+          }
         }
       },
+
+      mergeWithServerCart: async () => get().syncSavedCart(),
 
       isInCart: (productId, unit = 'full', quality = 'A') =>
         get().items.some(
@@ -338,12 +435,19 @@ export const useCartStore = create<CartStore>()(
       partialize: (state) => ({
         cartsByCity: state.cartsByCity,
         activeCityId: state.activeCityId,
+        unsaved: state.unsaved,
+        savedCityId: state.savedCityId,
       }),
       onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
         if (state?.activeCityId && state.cartsByCity[state.activeCityId]) {
           state.items = state.cartsByCity[state.activeCityId];
         }
+        // A cart saved by an older app version has no "unsaved" mark: treat it
+        // as a guest cart, so it is JOINED to the account's cart, never lost.
+        if (state && state.unsaved === undefined) {
+          state.unsaved = Object.values(state.cartsByCity || {}).some((c) => c.length > 0) ? 'guest' : null;
+        }
+        state?.setHasHydrated(true);
       },
     }
   )

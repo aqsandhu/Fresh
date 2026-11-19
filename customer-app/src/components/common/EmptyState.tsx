@@ -1,3 +1,4 @@
+import type { MaterialIconName } from '../../types/icons';
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -26,7 +27,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
-        <MaterialIcons name={icon as any} size={40} color={COLORS.primary500} />
+        <MaterialIcons name={icon as MaterialIconName} size={40} color={COLORS.primary500} />
       </View>
       <Text style={styles.title}>{title}</Text>
       {message && <Text style={styles.message}>{message}</Text>}

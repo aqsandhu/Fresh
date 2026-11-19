@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -55,15 +56,16 @@ export const WriteReviewScreen: React.FC = () => {
       setError(null);
       const res = await feedbackService.getOrderReviewables(orderId);
       if (res.success) {
-        setData(res.data);
+        setData(res.data ?? null);
         const initial: Record<string, Draft> = {};
-        for (const r of res.data.reviews) {
+        for (const r of res.data?.reviews ?? []) {
           const key = r.targetType === 'product' ? `product:${r.productId}` : r.targetType;
           initial[key] = { rating: r.rating, comment: r.comment || '' };
         }
         setDrafts(initial);
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err?.message || 'لوڈ نہیں ہو سکا');
     } finally {
       setLoading(false);
@@ -120,7 +122,8 @@ export const WriteReviewScreen: React.FC = () => {
       }
       Toast.show({ type: 'success', text1: 'شکریہ! آپ کی رائے موصول ہو گئی' });
       navigation.goBack();
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err?.message || 'رائے جمع نہیں ہو سکی' });
     } finally {
       setSubmitting(false);

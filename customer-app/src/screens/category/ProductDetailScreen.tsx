@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
@@ -81,21 +82,22 @@ export const ProductDetailScreen: React.FC = () => {
         ? await productService.getProductById(productId)
         : await productService.getProductBySlug(productId);
       if (response.success) {
-        setProduct(response.data);
-        if (response.data.categoryId) {
+        setProduct(response.data ?? null);
+        if (response.data?.categoryId) {
           const relatedRes = await productService.getProductsByCategory(response.data.categoryId, {
             limit: 5,
           });
           if (relatedRes.success) {
             setRelatedProducts(
-              relatedRes.data.filter((p) => p.id !== productId).slice(0, 4)
+              (relatedRes.data ?? []).filter((p) => p.id !== productId).slice(0, 4)
             );
           }
         }
       } else {
         setError('Product not found');
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err.message || 'Failed to load product');
     } finally {
       setLoading(false);
@@ -183,12 +185,12 @@ export const ProductDetailScreen: React.FC = () => {
             <Text style={styles.breadcrumbLink}>Home</Text>
           </TouchableOpacity>
           <MaterialIcons name="chevron-right" size={16} color={COLORS.gray400} />
-          {product.categoryName ? (
+          {product.categoryName && product.categoryId ? (
             <>
               <TouchableOpacity
                 onPress={() =>
                   navigation.navigate('CategoryProducts', {
-                    categoryId: product.categoryId,
+                    categoryId: product.categoryId || '', // shown only when it has one
                     categoryName: product.categoryName || 'Category',
                   })
                 }
@@ -206,7 +208,7 @@ export const ProductDetailScreen: React.FC = () => {
         <View style={styles.productSection}>
           <View style={styles.imageSection}>
             <SmartImage
-              uri={product.images[currentImageIndex]}
+              uri={product.images?.[currentImageIndex]}
               style={styles.image}
               fallback={
                 <View style={[styles.image, styles.imageFallback]}>
@@ -230,9 +232,9 @@ export const ProductDetailScreen: React.FC = () => {
                 color={wishlisted ? COLORS.error : COLORS.gray600}
               />
             </TouchableOpacity>
-            {product.images.length > 1 && (
+            {(product.images?.length ?? 0) > 1 && (
               <View style={styles.imageDots}>
-                {product.images.map((_, index) => (
+                {(product.images ?? []).map((_, index) => (
                   <TouchableOpacity
                     key={index}
                     style={[styles.imageDot, index === currentImageIndex && styles.imageDotActive]}

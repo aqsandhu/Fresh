@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet,
@@ -40,7 +41,8 @@ export const RestaurantLoginScreen: React.FC = () => {
       await setRestaurantSession(token, restaurant);
       Toast.show({ type: 'success', text1: `Welcome, ${restaurant?.business_name || 'Restaurant'}` });
       navigation.replace('RestaurantShop');
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       Toast.show({ type: 'error', text1: e?.message || 'Invalid phone or PIN' });
     } finally {
       setLoading(false);
@@ -64,7 +66,8 @@ export const RestaurantLoginScreen: React.FC = () => {
               Toast.show({ type: 'success', text1: 'Restaurant account/request deleted' });
               setPhone('');
               setPin('');
-            } catch (e: any) {
+            } catch (eCaught: unknown) {
+              const e = asCaughtError(eCaught);
               Toast.show({ type: 'error', text1: e?.message || 'Could not delete restaurant account' });
             } finally {
               setDeleting(false);

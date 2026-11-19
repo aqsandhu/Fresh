@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TextInput, TouchableOpacity, StyleSheet,
@@ -47,7 +48,8 @@ export const RestaurantRegisterScreen: React.FC = () => {
         address: form.address.trim() || undefined,
       });
       setDone(true);
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       Toast.show({ type: 'error', text1: e?.message || 'Could not submit your request' });
     } finally {
       setSaving(false);
@@ -70,7 +72,8 @@ export const RestaurantRegisterScreen: React.FC = () => {
               await restaurantApi.deleteAccountByPin(form.phone.trim(), form.pin);
               Toast.show({ type: 'success', text1: 'Restaurant request deleted' });
               navigation.replace('RestaurantLogin');
-            } catch (e: any) {
+            } catch (eCaught: unknown) {
+              const e = asCaughtError(eCaught);
               Toast.show({ type: 'error', text1: e?.message || 'Could not delete restaurant request' });
               setDeleting(false);
             }

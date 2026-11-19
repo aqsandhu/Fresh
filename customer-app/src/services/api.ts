@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_BASE_URL, API_TIMEOUT, STORAGE_KEYS } from '@utils/constants';
 import { getCurrentTabName, setPendingRedirect } from '@navigation/navigationUtils';
-import { refreshAccessToken } from '@/lib/tokenRefresh';
+import { refreshAccessTokenWithReason } from '@/lib/tokenRefresh';
 import { getStoredToken, clearTokens } from '@/lib/secureTokens';
 import { hydrateCachedCityId } from '@/lib/apiHelpers';
 import { clearAppSession } from '@/lib/sessionEvents';
@@ -63,7 +63,7 @@ apiClient.interceptors.response.use(
       }
 
       originalRequest._retried = true;
-      const newToken = await refreshAccessToken();
+      const { token: newToken, refused } = await refreshAccessTokenWithReason();
       if (newToken) {
         originalRequest.headers = {
           ...(originalRequest.headers as Record<string, string> | undefined),
@@ -72,7 +72,9 @@ apiClient.interceptors.response.use(
         return apiClient.request(originalRequest);
       }
 
-      await forceLogout();
+      // Only a refused session signs out. A weak signal / server restart
+      // keeps the customer signed in; this request just fails (I8).
+      if (refused) await forceLogout();
     }
 
     return Promise.reject(error);

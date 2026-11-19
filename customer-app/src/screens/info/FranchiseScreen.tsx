@@ -1,3 +1,4 @@
+import type { MaterialIconName } from '../../types/icons';
 import React, { useState } from 'react';
 import {
   View,
@@ -76,7 +77,7 @@ export const FranchiseScreen: React.FC = () => {
         <View style={styles.benefits}>
           {BENEFITS.map((b) => (
             <View key={b.text} style={styles.benefitRow}>
-              <MaterialIcons name={b.icon as any} size={20} color={COLORS.primary600} />
+              <MaterialIcons name={b.icon as MaterialIconName} size={20} color={COLORS.primary600} />
               <Text style={styles.benefitText}>{b.text}</Text>
             </View>
           ))}

@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator,
@@ -13,8 +14,8 @@ import { COLORS, SPACING, BORDER_RADIUS, API_BASE_URL } from '@utils/constants';
 import { Button } from '@components';
 import {
   restaurantApi, getRestaurantInfo, clearRestaurantSession,
-  availableQualities, availableUnits, unitPrice, qualityBasePrice, qualityStock, money,
-  type Quality, type Unit,
+  availableQualities, availableUnits, unitPrice, qualityBasePrice, qualityStock, money, deliveryFigure,
+  type Quality, type Unit, type RestaurantCategory, type RestaurantProduct,
 } from '@services/restaurant.service';
 import { RestaurantTabBar } from './RestaurantTabBar';
 import { useRestaurantCart } from '@store/restaurantCartStore';
@@ -33,8 +34,8 @@ interface CartLine {
 export const RestaurantShopScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const [loading, setLoading] = useState(true);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
+  const [categories, setCategories] = useState<RestaurantCategory[]>([]);
+  const [products, setProducts] = useState<RestaurantProduct[]>([]);
   const [activeCat, setActiveCat] = useState('');
   const [bizName, setBizName] = useState('');
   const add = useRestaurantCart((s) => s.add);
@@ -58,8 +59,9 @@ export const RestaurantShopScreen: React.FC = () => {
         ]);
         setCategories(cats || []);
         setProducts(prods || []);
-        if (del) setStoreDelivery(Number(del.base_charge) || 100, Number(del.free_delivery_threshold) || 2000);
-      } catch (e: any) {
+        if (del) setStoreDelivery(deliveryFigure(del.base_charge, 100), deliveryFigure(del.free_delivery_threshold, 2000));
+      } catch (eCaught: unknown) {
+        const e = asCaughtError(eCaught);
         if (e?.status === 401) navigation.replace('RestaurantLogin');
         else Toast.show({ type: 'error', text1: e?.message || 'Could not load catalog' });
       } finally {
@@ -152,7 +154,7 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
   );
 }
 
-function ProductCard({ product, onAdd }: { product: any; onAdd: (l: CartLine) => void }) {
+function ProductCard({ product, onAdd }: { product: RestaurantProduct; onAdd: (l: CartLine) => void }) {
   const qualities = availableQualities(product);
   const units = availableUnits(product);
   const [quality, setQuality] = useState<Quality>(qualities[0]);

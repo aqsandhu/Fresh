@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import {
   View,
@@ -50,7 +51,8 @@ export const SetPinScreen: React.FC<SetPinScreenProps> = ({ route }) => {
       if (phone) await setLastPhone(phone);
       Toast.show({ type: 'success', text1: 'PIN set! You can use it next time you log in.' });
       finishAuthRedirect(rootNavigation, redirect);
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err.message || 'Failed to save PIN' });
       setStage('create');
       setPinValue('');

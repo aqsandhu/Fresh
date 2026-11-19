@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,8 +7,9 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
-import { restaurantApi, getRestaurantInfo, money } from '@services/restaurant.service';
+import { restaurantApi, getRestaurantInfo, money, type RestaurantOrder } from '@services/restaurant.service';
 import { RestaurantTabBar } from './RestaurantTabBar';
+import { restaurantDeliveryLabel } from '@freshbazar/shared-types';
 
 const STATUS_COLOR: Record<string, string> = {
   pending: COLORS.warning,
@@ -21,7 +23,7 @@ const STATUS_COLOR: Record<string, string> = {
 export const RestaurantOrdersScreen: React.FC = () => {
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList>>();
   const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<RestaurantOrder[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -31,7 +33,8 @@ export const RestaurantOrdersScreen: React.FC = () => {
       }
       try {
         setOrders(await restaurantApi.getOrders());
-      } catch (e: any) {
+      } catch (eCaught: unknown) {
+        const e = asCaughtError(eCaught);
         if (e?.status === 401) navigation.replace('RestaurantLogin');
       } finally {
         setLoading(false);
@@ -68,7 +71,10 @@ export const RestaurantOrdersScreen: React.FC = () => {
                   </Text>
                 </View>
               </View>
-              {(o.items || []).map((it: any, i: number) => (
+              {restaurantDeliveryLabel(o) ? (
+                <Text style={styles.itemLine}>Delivery: {restaurantDeliveryLabel(o)}</Text>
+              ) : null}
+              {(o.items || []).map((it, i) => (
                 <Text key={i} style={styles.itemLine}>
                   {it.product_name} <Text style={{ color: COLORS.gray400 }}>· Q{it.quality} · {String(it.unit).replace('_', ' ')} × {it.quantity}</Text>
                 </Text>

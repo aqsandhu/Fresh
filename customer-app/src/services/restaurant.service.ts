@@ -1,6 +1,7 @@
 // Restaurant (B2B) service for the customer app — a session + API that are fully
 // separate from the consumer auth (a restaurant-scoped Bearer token).
 
+import type { ApiNumber, RestaurantCategory, RestaurantOrder, RestaurantSlot } from '@freshbazar/shared-types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { API_BASE_URL } from '@utils/constants';
@@ -84,7 +85,7 @@ export async function clearRestaurantSession(): Promise<void> {
   await SecureStore.deleteItemAsync(INFO_KEY).catch(() => {});
 }
 
-async function rfetch(path: string, options: RequestInit = {}): Promise<any> {
+async function rfetch<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const token = await getRestaurantToken();
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
@@ -94,20 +95,45 @@ async function rfetch(path: string, options: RequestInit = {}): Promise<any> {
       ...(options.headers || {}),
     },
   });
-  let body: any = {};
+  let body: { message?: string; data?: unknown } = {};
   try {
     body = await res.json();
   } catch {
     /* empty */
   }
   if (!res.ok) {
-    const err: any = new Error(body?.message || 'Request failed');
-    err.status = res.status;
+    const err = Object.assign(new Error(body?.message || 'Request failed'), { status: res.status });
     if (res.status === 401) await clearRestaurantSession();
     throw err;
   }
-  return body?.data ?? body;
+  return (body?.data ?? body) as T;
 }
+
+/** A product of the restaurant storefront (the fields the screens and the pricing read). */
+export interface RestaurantProduct {
+  id: string;
+  name_en: string;
+  name_ur?: string | null;
+  primary_image?: string | null;
+  category_id?: string | null;
+  unit_type?: string | null;
+  price?: ApiNumber;
+  price_b?: ApiNumber;
+  price_c?: ApiNumber;
+  restaurant_price_a?: ApiNumber;
+  restaurant_price_b?: ApiNumber;
+  restaurant_price_c?: ApiNumber;
+  stock_quantity?: ApiNumber;
+  stock_quantity_b?: ApiNumber;
+  stock_quantity_c?: ApiNumber;
+  allow_half_kg?: boolean | null;
+  allow_quarter_kg?: boolean | null;
+  /** Fraction prices are read by name: restaurant_half_kg_price_a … */
+  [column: string]: unknown;
+}
+
+// Category / slot / order shapes are shared with the website (packages/shared-types — F4).
+export type { RestaurantCategory, RestaurantOrder, RestaurantOrderLine, RestaurantSlot } from '@freshbazar/shared-types';
 
 export interface RestaurantOrderItemInput {
   product_id: string;
@@ -138,14 +164,15 @@ export const restaurantApi = {
     }),
 
   getMe: (): Promise<RestaurantInfo> => rfetch('/restaurant/me'),
-  deleteAccount: (): Promise<void> =>
-    rfetch('/restaurant/delete-account', { method: 'POST' }),
-  getCategories: (): Promise<any[]> => rfetch('/restaurant/categories'),
-  getProducts: (categoryId?: string): Promise<any[]> =>
+  /** The server asks for the PIN again before it deletes (a session alone is not enough). */
+  deleteAccount: (pin: string): Promise<void> =>
+    rfetch('/restaurant/delete-account', { method: 'POST', body: JSON.stringify({ pin }) }),
+  getCategories: (): Promise<RestaurantCategory[]> => rfetch('/restaurant/categories'),
+  getProducts: (categoryId?: string): Promise<RestaurantProduct[]> =>
     rfetch(`/restaurant/products${categoryId ? `?category=${encodeURIComponent(categoryId)}` : ''}`),
   getDelivery: (): Promise<{ base_charge: number; free_delivery_threshold: number; urgent_charge: number; urgent_eta: string; slot_cutoff_percent: number }> =>
     rfetch('/restaurant/delivery'),
-  getTimeSlots: (date?: string): Promise<any[]> =>
+  getTimeSlots: (date?: string): Promise<RestaurantSlot[]> =>
     rfetch(`/restaurant/time-slots${date ? `?date=${encodeURIComponent(date)}` : ''}`),
   uploadFrontImage: async (uri: string): Promise<{ front_image_url: string }> => {
     const token = await getRestaurantToken();
@@ -163,12 +190,12 @@ export const restaurantApi = {
     if (!res.ok) throw new Error(body?.message || 'Upload failed');
     return body?.data ?? body;
   },
-  placeOrder: (items: RestaurantOrderItemInput[], extras: RestaurantCheckoutExtras = {}): Promise<any> =>
+  placeOrder: (items: RestaurantOrderItemInput[], extras: RestaurantCheckoutExtras = {}): Promise<RestaurantOrder> =>
     rfetch('/restaurant/orders', {
       method: 'POST',
       body: JSON.stringify({ items, ...extras }),
     }),
-  getOrders: (): Promise<any[]> => rfetch('/restaurant/orders'),
+  getOrders: (): Promise<RestaurantOrder[]> => rfetch('/restaurant/orders'),
 };
 
 // ── Client pricing (mirrors backend resolveQualityUnitPrice) ────────────────
@@ -181,7 +208,7 @@ const n = (v: unknown): number | null => {
   return Number.isFinite(x) ? x : null;
 };
 
-export function qualityBasePrice(p: any, q: Quality): number | null {
+export function qualityBasePrice(p: RestaurantProduct, q: Quality): number | null {
   // Restaurant pays restaurant_price_* (falling back to the consumer price for
   // that tier). A tier is offered only when its consumer price exists.
   if (q === 'B') {
@@ -194,19 +221,19 @@ export function qualityBasePrice(p: any, q: Quality): number | null {
   }
   return n(p?.restaurant_price_a) ?? n(p?.price) ?? 0;
 }
-export function availableQualities(p: any): Quality[] {
+export function availableQualities(p: RestaurantProduct): Quality[] {
   const out: Quality[] = ['A'];
   if (qualityBasePrice(p, 'B') != null) out.push('B');
   if (qualityBasePrice(p, 'C') != null) out.push('C');
   return out;
 }
 /** Shared stock for a quality tier (consumer + restaurant draw from the same bucket). */
-export function qualityStock(p: any, q: Quality): number {
+export function qualityStock(p: RestaurantProduct, q: Quality): number {
   if (q === 'B') return Number(p?.stock_quantity_b ?? 0) || 0;
   if (q === 'C') return Number(p?.stock_quantity_c ?? 0) || 0;
   return Number(p?.stock_quantity ?? 0) || 0;
 }
-export function availableUnits(p: any): { value: Unit; label: string; short: string }[] {
+export function availableUnits(p: RestaurantProduct): { value: Unit; label: string; short: string }[] {
   const t = String(p?.unit_type || 'kg').toLowerCase();
   const baseShort = t === 'dozen' ? 'dozen' : t === 'kg' || t === 'gram' ? 'kg' : t || 'unit';
   const out: { value: Unit; label: string; short: string }[] = [{ value: 'full', label: `Per ${baseShort}`, short: baseShort }];
@@ -219,7 +246,7 @@ export function availableUnits(p: any): { value: Unit; label: string; short: str
   return out;
 }
 /** Admin-set restaurant price for a fraction unit (restaurant_half_kg_price_a …), if any. */
-export function explicitFractionPrice(p: any, q: Quality, u: Unit): number | null {
+export function explicitFractionPrice(p: RestaurantProduct, q: Quality, u: Unit): number | null {
   if (u === 'full') return null;
   const v = n(p?.[`restaurant_${u}_price_${q.toLowerCase()}`]);
   return v != null && v >= 0 ? v : null;
@@ -231,7 +258,7 @@ export function explicitFractionPrice(p: any, q: Quality, u: Unit): number | nul
  * app used to always derive — a restaurant saw one half-kg price in the cart
  * and was billed another whenever the admin had set an override.
  */
-export function unitPrice(p: any, q: Quality, u: Unit): number | null {
+export function unitPrice(p: RestaurantProduct, q: Quality, u: Unit): number | null {
   const base = qualityBasePrice(p, q);
   if (base == null) return null;
   const explicit = explicitFractionPrice(p, q, u);
@@ -242,4 +269,10 @@ export function unitPrice(p: any, q: Quality, u: Unit): number | null {
   return base;
 }
 export const round2 = (x: number) => Math.round((x + Number.EPSILON) * 100) / 100;
+
+/** A delivery figure from the server, 0 included (0 = free delivery) — I22. */
+export const deliveryFigure = (value: unknown, fallback: number): number => {
+  const n = parseFloat(String(value ?? ''));
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+};
 export const money = (x: number) => `Rs. ${round2(x).toLocaleString('en-PK')}`;

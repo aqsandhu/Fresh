@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
@@ -91,7 +92,8 @@ export const TrackOrderScreen: React.FC = () => {
       } else {
         setError('Order not found');
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setError(err.message || 'Failed to load order');
     } finally {
       setLoading(false);

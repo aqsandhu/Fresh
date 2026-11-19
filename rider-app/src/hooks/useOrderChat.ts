@@ -58,7 +58,10 @@ export function useOrderChat({ orderId, isActive }: UseOrderChatOptions) {
     socketService.subscribeToOrder(orderId);
     fetchMessages();
 
-    const onIncoming = (data: ChatMessage) => {
+    const onIncoming = (data: ChatMessage & { order_id?: string }) => {
+      // A rider often carries several orders: never show another order's
+      // message in this chat (I13).
+      if (data.order_id && data.order_id !== orderId) return;
       setMessages((prev) => {
         if (prev.some((m) => m.id === data.id)) return prev;
         // Our own send echoed via REST fallback path — already present.

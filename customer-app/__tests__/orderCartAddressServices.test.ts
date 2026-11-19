@@ -57,6 +57,16 @@ describe('orders', () => {
     const slots = (await orderService.getDeliverySlots('2026-11-16')).data!;
     expect(slots[0]).toMatchObject({ available: true, available_slots: 3, isFreeDelivery: true, date: '2026-11-16' });
     expect(slots[1]).toMatchObject({ label: 'Evening', available: false, isExpress: true });
+    // Every city has its own slots (A30): the selected city goes with the request.
+    expect(mockApi.get).toHaveBeenCalledWith('/orders/time-slots', { params: { date: '2026-11-16', city_id: 'city-1' } });
+  });
+
+  it('time slots without a date ask for TODAY IN PAKISTAN (the UTC date is yesterday before 5 am)', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-16T21:30:00Z')); // 02:30 on 17 Nov in Pakistan
+    mockApi.get.mockResolvedValue({ data: { data: [] } });
+    await orderService.getDeliverySlots();
+    expect(mockApi.get).toHaveBeenCalledWith('/orders/time-slots', { params: { date: '2026-11-17', city_id: 'city-1' } });
+    jest.useRealTimers();
   });
 
   it('delivery settings: server values, safe defaults on failure', async () => {

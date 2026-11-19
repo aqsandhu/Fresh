@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, {
   forwardRef,
   useCallback,
@@ -211,7 +212,8 @@ export const CheckoutAddressForm = forwardRef<CheckoutAddressFormHandle, Checkou
         });
         onSaved?.(response.data);
         return response.data;
-      } catch (err: any) {
+      } catch (errCaught: unknown) {
+        const err = asCaughtError(errCaught);
         Toast.show({
           type: 'error',
           text1: err?.message || (isEdit ? 'Could not update address' : 'Could not save address'),

@@ -1,3 +1,4 @@
+import type { MaterialIconName } from '../../types/icons';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
@@ -83,13 +84,13 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       if (res.success && res.data) setBanner({ ...DEFAULT_BANNER, ...res.data });
     });
     productService.getCategories().then((res) => {
-      if (res.success) setCategories(res.data.slice(0, 8));
+      if (res.success) setCategories((res.data ?? []).slice(0, 8));
     });
   }, [selectedCityId]);
 
   useEffect(() => {
     productService.getPublicConfig().then((res) => {
-      if (res.success) setAttaEnabled(res.data.atta_chakki_enabled);
+      if (res.success) setAttaEnabled(Boolean(res.data?.atta_chakki_enabled));
     });
   }, []);
 
@@ -137,18 +138,22 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
       return;
     }
     setIsSearching(true);
+    // Only this query's answer may fill the list (I25 — an older, slower one
+    // used to replace the newer results).
+    let current = true;
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(async () => {
       try {
         const res = await productService.searchProducts(searchQuery.trim());
-        if (res.success) setSearchResults(res.data.slice(0, 5));
+        if (current && res.success) setSearchResults((res.data ?? []).slice(0, 5));
       } catch {
-        setSearchResults([]);
+        if (current) setSearchResults([]);
       } finally {
-        setIsSearching(false);
+        if (current) setIsSearching(false);
       }
     }, 300);
     return () => {
+      current = false;
       if (searchTimer.current) clearTimeout(searchTimer.current);
     };
   }, [searchQuery]);
@@ -345,8 +350,8 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     });
                   }}
                 >
-                  {product.images[0] ? (
-                    <Image source={{ uri: product.images[0] }} style={styles.searchThumb} />
+                  {product.images?.[0] ? (
+                    <Image source={{ uri: product.images?.[0] }} style={styles.searchThumb} />
                   ) : (
                     <View style={[styles.searchThumb, styles.searchThumbFallback]}>
                       <MaterialIcons name="shopping-cart" size={16} color={COLORS.gray300} />
@@ -397,7 +402,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
                     }
                   }}
                 >
-                  <MaterialIcons name={link.icon as any} size={22} color={COLORS.primary600} />
+                  <MaterialIcons name={link.icon as MaterialIconName} size={22} color={COLORS.primary600} />
                   <Text style={styles.menuItemText}>{link.label}</Text>
                 </TouchableOpacity>
               ))}

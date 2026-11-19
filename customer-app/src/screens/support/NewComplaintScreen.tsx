@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import {
   View,
@@ -63,10 +64,11 @@ export const NewComplaintScreen: React.FC = () => {
       Toast.show({
         type: 'success',
         text1: 'شکایت درج ہو گئی',
-        text2: `ٹکٹ: ${res.data.ticketNumber}`,
+        text2: `ٹکٹ: ${res.data?.ticketNumber ?? ''}`,
       });
       navigation.navigate('MyComplaints');
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err?.message || 'شکایت درج نہیں ہو سکی' });
     } finally {
       setSubmitting(false);

@@ -1,3 +1,4 @@
+import type { ApiCategoryRow, ApiProductRow } from '@freshbazar/shared-types';
 import apiClient, { handleApiError } from './api';
 import { ApiResponse, Category, StoreProduct, Banner, PaginatedResponse } from '@app-types';
 import { API_BASE_URL } from '@utils/constants';
@@ -61,7 +62,7 @@ const CATEGORY_ICONS: Record<string, string> = {
   grocery: 'cart', spices: 'shaker-outline',
 };
 
-function getCategoryIcon(raw: any): string {
+function getCategoryIcon(raw: ApiCategoryRow): string {
   const slug = (raw.slug || '').toLowerCase();
   const name = (raw.name_en || '').toLowerCase();
   for (const [key, icon] of Object.entries(CATEGORY_ICONS)) {
@@ -70,7 +71,7 @@ function getCategoryIcon(raw: any): string {
   return 'tag-outline';
 }
 
-function mapBackendCategory(raw: any, index: number): Category {
+function mapBackendCategory(raw: ApiCategoryRow, index: number): Category {
   return {
     id: raw.id,
     name: raw.name_en || raw.name || '',
@@ -78,13 +79,13 @@ function mapBackendCategory(raw: any, index: number): Category {
     icon: getCategoryIcon(raw),
     image: resolveImageUrl(raw.image_url || raw.icon_url),
     color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
-    productCount: parseInt(raw.product_count) || 0,
+    productCount: parseInt(String(raw.product_count)) || 0,
   };
 }
 
-function mapBackendProduct(raw: any): StoreProduct {
-  const price = parseFloat(raw.price) || 0;
-  const compareAt = parseFloat(raw.compare_at_price) || 0;
+function mapBackendProduct(raw: ApiProductRow): StoreProduct {
+  const price = parseFloat(String(raw.price)) || 0;
+  const compareAt = parseFloat(String(raw.compare_at_price)) || 0;
   const toOptionalPrice = (v: unknown): number | null | undefined => {
     if (v === null || v === undefined || v === '') return null;
     const n = parseFloat(String(v));
@@ -94,11 +95,11 @@ function mapBackendProduct(raw: any): StoreProduct {
   const images = raw.images && Array.isArray(raw.images) && raw.images.length > 0
     ? raw.images.map(resolveImageUrl)
     : (primaryImage ? [primaryImage] : []);
-  const stockA = parseFloat(raw.stock_quantity ?? raw.stockQuantity) || 0;
+  const stockA = parseFloat(String(raw.stock_quantity ?? raw.stockQuantity)) || 0;
   const priceB = toOptionalPrice(raw.price_b ?? raw.priceB);
   const priceC = toOptionalPrice(raw.price_c ?? raw.priceC);
-  const stockB = parseFloat(raw.stock_quantity_b ?? raw.stockQuantityB) || 0;
-  const stockC = parseFloat(raw.stock_quantity_c ?? raw.stockQuantityC) || 0;
+  const stockB = parseFloat(String(raw.stock_quantity_b ?? raw.stockQuantityB)) || 0;
+  const stockC = parseFloat(String(raw.stock_quantity_c ?? raw.stockQuantityC)) || 0;
   const consumerEnabledA = (raw.consumer_enabled_a ?? raw.consumerEnabledA) !== false;
   const consumerEnabledB = (raw.consumer_enabled_b ?? raw.consumerEnabledB) !== false;
   const consumerEnabledC = (raw.consumer_enabled_c ?? raw.consumerEnabledC) !== false;
@@ -122,11 +123,11 @@ function mapBackendProduct(raw: any): StoreProduct {
     stock: stockA,
     inStock: hasStock,
     isFresh: raw.is_fresh !== false && hasStock,
-    rating: parseFloat(raw.rating_average) || 0,
+    rating: parseFloat(String(raw.rating_average)) || 0,
     reviewCount:
       raw.review_count != null
-        ? parseInt(raw.review_count) || 0
-        : parseInt(raw.order_count) || 0,
+        ? parseInt(String(raw.review_count)) || 0
+        : parseInt(String(raw.order_count)) || 0,
     isFeatured: raw.is_featured || false,
     tags: raw.tags || [],
     halfKgPrice: toOptionalPrice(raw.half_kg_price ?? raw.halfKgPrice),
@@ -236,6 +237,23 @@ class ProductService {
     }
   }
 
+  /**
+   * Products by id as sold in one city right now (restoring a saved cart).
+   * One that is no longer sold there is simply not in the answer.
+   */
+  async getProductsByIds(ids: string[], cityId: string): Promise<StoreProduct[]> {
+    const unique = Array.from(new Set(ids)).slice(0, 100);
+    if (unique.length === 0) return [];
+    try {
+      const response = await apiClient.get('/products', {
+        params: { ids: unique.join(','), city_id: cityId, limit: 100 },
+      });
+      return (response.data?.data || []).map(mapBackendProduct);
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  }
+
   async getProductById(id: string): Promise<ApiResponse<StoreProduct>> {
     try {
       const response = await apiClient.get(`/products/${id}`, { params: withCityParams() });
@@ -296,14 +314,14 @@ class ProductService {
     const seen = new Set<string>();
     for (let page = 1; page <= MAX_PRODUCT_PAGES; page++) {
       const res = await this.getProducts({ ...params, page, limit: PRODUCTS_PAGE_LIMIT });
-      if (!res.success) break;
-      for (const p of res.data.data) {
+      if (!res.success || !res.data) break;
+      for (const p of res.data.data ?? []) {
         if (!seen.has(p.id)) {
           seen.add(p.id);
           all.push(p);
         }
       }
-      if (page >= (res.data.totalPages || 1) || res.data.data.length < PRODUCTS_PAGE_LIMIT) break;
+      if (page >= (res.data.totalPages || 1) || (res.data.data ?? []).length < PRODUCTS_PAGE_LIMIT) break;
     }
     return { success: true, data: all };
   }

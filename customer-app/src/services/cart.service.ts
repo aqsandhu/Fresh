@@ -4,6 +4,7 @@ import { getSelectedCityId } from '@/lib/cityStorage';
 import { getStoredToken } from '@/lib/secureTokens';
 import apiClient, { handleApiError } from './api';
 import { ApiResponse } from '@app-types';
+import { parseSavedCart, SavedCartLine } from '@/lib/savedCart';
 
 export interface MyCoupon {
   code: string;
@@ -77,6 +78,26 @@ class CartService {
         this.pendingCityId = null;
         this.syncCartWithBackend(next, nextCityId).catch(() => {});
       }
+    }
+  }
+
+  /** Is someone signed in on this device? (A guest's cart is not sent anywhere.) */
+  async isSignedIn(): Promise<boolean> {
+    return this.hasAuthToken();
+  }
+
+  /**
+   * The cart saved with the account. null = nobody is signed in, or it could
+   * not be read (offline) — the caller then leaves this device's cart alone.
+   */
+  async fetchServerCart(): Promise<SavedCartLine[] | null> {
+    if (!(await this.hasAuthToken())) return null;
+    try {
+      const response = await apiClient.get('/cart');
+      const items = response.data?.data?.items;
+      return Array.isArray(items) ? parseSavedCart(items) : null;
+    } catch {
+      return null;
     }
   }
 

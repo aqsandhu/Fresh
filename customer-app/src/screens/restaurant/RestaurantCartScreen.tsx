@@ -7,7 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { ProfileStackParamList } from '@app-types';
 import { COLORS, SPACING, BORDER_RADIUS } from '@utils/constants';
 import { Button } from '@components';
-import { getRestaurantInfo, restaurantApi, money } from '@services/restaurant.service';
+import { getRestaurantInfo, restaurantApi, money, deliveryFigure } from '@services/restaurant.service';
 import { useRestaurantCart } from '@store/restaurantCartStore';
 import { RestaurantTabBar } from './RestaurantTabBar';
 
@@ -17,7 +17,7 @@ export const RestaurantCartScreen: React.FC = () => {
 
   useEffect(() => {
     getRestaurantInfo().then((i) => { if (!i) navigation.replace('RestaurantLogin'); });
-    restaurantApi.getDelivery().then((d) => setDelivery(Number(d?.base_charge) || 100, Number(d?.free_delivery_threshold) || 2000)).catch(() => {});
+    restaurantApi.getDelivery().then((d) => setDelivery(deliveryFigure(d?.base_charge, 100), deliveryFigure(d?.free_delivery_threshold, 2000))).catch(() => {});
   }, [navigation, setDelivery]);
 
   const sub = subtotal();

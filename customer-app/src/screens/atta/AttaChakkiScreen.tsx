@@ -1,3 +1,4 @@
+import type { MaterialIconName } from '../../types/icons';
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -28,7 +29,7 @@ export const AttaChakkiScreen: React.FC = () => {
   useEffect(() => {
     let active = true;
     productService.getPublicConfig().then((res) => {
-      if (active) setAttaEnabled(res.data.atta_chakki_enabled);
+      if (active) setAttaEnabled(Boolean(res.data?.atta_chakki_enabled));
     });
     attaService
       .getCharges()
@@ -119,7 +120,7 @@ export const AttaChakkiScreen: React.FC = () => {
               <View key={index} style={styles.featureCard}>
                 <View style={styles.featureIcon}>
                   <MaterialIcons
-                    name={feature.icon as any}
+                    name={feature.icon as MaterialIconName}
                     size={24}
                     color={COLORS.primary}
                   />

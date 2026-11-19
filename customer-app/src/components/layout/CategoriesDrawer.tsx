@@ -7,7 +7,7 @@ import { COLORS } from '@utils/constants';
 import { useLeftDrawer } from '@store/drawerUi';
 import { useCityContext } from '@/context/CityContext';
 import { productService } from '@services/product.service';
-import { navigationRef } from '@/navigation/navigationUtils';
+import { navigationRef, navigateRoot } from '@/navigation/navigationUtils';
 import { TodaysBasketModal } from '@components/home/TodaysBasketModal';
 import { useActiveRouteName } from '@/lib/activeRoute';
 import { EdgeDrawer } from './EdgeDrawer';
@@ -41,7 +41,7 @@ export const CategoriesDrawer: React.FC = () => {
   const goToCategory = (c: Category) => {
     setOpen(false);
     if (navigationRef.isReady()) {
-      (navigationRef as any).navigate('Main', {
+      navigateRoot('Main', {
         screen: 'Shop',
         params: { screen: 'CategoryProducts', params: { categoryId: c.id, categoryName: c.name } },
       });

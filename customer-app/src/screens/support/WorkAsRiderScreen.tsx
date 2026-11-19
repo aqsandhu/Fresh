@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -64,7 +65,8 @@ export const WorkAsRiderScreen: React.FC = () => {
       });
       setDone(true);
       Toast.show({ type: 'success', text1: 'درخواست موصول ہو گئی' });
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       Toast.show({ type: 'error', text1: err?.message || 'درخواست جمع نہیں ہو سکی' });
     } finally {
       setSubmitting(false);

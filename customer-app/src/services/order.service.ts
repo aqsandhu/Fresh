@@ -1,8 +1,10 @@
+import type { ApiAddressSnapshot, ApiOrderItemRow, ApiOrderRow } from '@freshbazar/shared-types';
 import apiClient, { handleApiError } from './api';
 import { API_BASE_URL } from '@utils/constants';
 import { ApiResponse, Order, OrderItem, OrderStatus, DeliverySlot, PaginatedResponse, Address, Rider } from '@app-types';
 import { withCityParams, getCachedCityId } from '@/lib/apiHelpers';
 import { getSelectedCityId } from '@/lib/cityStorage';
+import { pktDateString } from '@/lib/businessDate';
 
 const BACKEND_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 
@@ -27,31 +29,37 @@ function resolveImageUrl(path: string | null | undefined): string {
 }
 
 // Map backend order item to customer app OrderItem
-function mapOrderItem(raw: any): OrderItem {
+const SALE_UNITS = ['full', 'half_kg', 'quarter_kg', 'half_dozen'] as const;
+const QUALITIES = ['A', 'B', 'C'] as const;
+const isSaleUnit = (u: unknown): u is (typeof SALE_UNITS)[number] => (SALE_UNITS as readonly unknown[]).includes(u);
+const isQuality = (q: unknown): q is (typeof QUALITIES)[number] => (QUALITIES as readonly unknown[]).includes(q);
+
+function mapOrderItem(raw: ApiOrderItemRow): OrderItem {
   return {
     id: raw.id,
-    productId: raw.product_id,
+    productId: raw.product_id ?? undefined, // null when the product was deleted later
     productName: raw.product_name || '',
     productImage: resolveImageUrl(raw.product_image),
-    quantity: parseInt(raw.quantity) || 0,
-    price: parseFloat(raw.unit_price) || 0,
+    quantity: parseInt(String(raw.quantity)) || 0,
+    price: parseFloat(String(raw.unit_price)) || 0,
     unit: raw.weight_kg ? `${raw.weight_kg}kg` : 'piece',
-    saleUnit: ['full', 'half_kg', 'quarter_kg', 'half_dozen'].includes(raw.unit) ? raw.unit : 'full',
-    quality: ['A', 'B', 'C'].includes(raw.quality) ? raw.quality : 'A',
+    saleUnit: isSaleUnit(raw.unit) ? raw.unit : 'full',
+    quality: isQuality(raw.quality) ? raw.quality : 'A',
   };
 }
 
 // Map backend order to customer app Order type
-function mapBackendOrder(raw: any): Order {
-  const addressSnapshot = raw.delivery_address_snapshot
+function mapBackendOrder(raw: ApiOrderRow): Order {
+  const addressSnapshot: ApiAddressSnapshot | null = raw.delivery_address_snapshot
     ? (typeof raw.delivery_address_snapshot === 'string'
       ? JSON.parse(raw.delivery_address_snapshot)
       : raw.delivery_address_snapshot)
     : null;
 
   const address: Address = {
-    id: raw.address_id || '',
-    userId: raw.user_id || '',
+    // The order answer does not carry the address / user ids (shared contract).
+    id: '',
+    userId: '',
     label: 'Delivery',
     fullAddress: addressSnapshot
       ? [addressSnapshot.written_address, addressSnapshot.area_name, addressSnapshot.city].filter(Boolean).join(', ')
@@ -63,7 +71,7 @@ function mapBackendOrder(raw: any): Order {
   };
 
   const deliverySlot: DeliverySlot = {
-    id: raw.time_slot_id || '',
+    id: '', // the slot id is not sent to customers
     date: raw.requested_delivery_date || '',
     startTime: raw.slot_start || '',
     endTime: raw.slot_end || '',
@@ -77,10 +85,8 @@ function mapBackendOrder(raw: any): Order {
     phone: raw.rider_phone || '',
     vehicleType: raw.rider_vehicle_type || null,
     vehicleNumber: raw.rider_vehicle_number || null,
-    currentLocation: raw.rider_latitude ? {
-      latitude: parseFloat(raw.rider_latitude),
-      longitude: parseFloat(raw.rider_longitude),
-    } : undefined,
+    // The rider's position comes over the socket (TrackOrderScreen), not in the order.
+    currentLocation: undefined,
   } : undefined;
 
   // Map payment method back to simple names for display
@@ -94,24 +100,24 @@ function mapBackendOrder(raw: any): Order {
   return {
     id: raw.id || '',
     orderNumber: raw.order_number || '',
-    userId: raw.user_id || '',
+    userId: '',
     cityId: raw.city_id || undefined,
     cityName: addressSnapshot?.city || undefined,
     items: (raw.items || []).map(mapOrderItem),
     status: raw.status as OrderStatus,
-    subtotal: parseFloat(raw.subtotal) || 0,
-    deliveryCharge: parseFloat(raw.delivery_charge) || 0,
-    discount: parseFloat(raw.discount_amount) || 0,
-    couponDiscount: parseFloat(raw.coupon_discount) || 0,
+    subtotal: parseFloat(String(raw.subtotal)) || 0,
+    deliveryCharge: parseFloat(String(raw.delivery_charge)) || 0,
+    discount: parseFloat(String(raw.discount_amount)) || 0,
+    couponDiscount: parseFloat(String(raw.coupon_discount)) || 0,
     couponCode: raw.coupon_code || null,
-    total: parseFloat(raw.total_amount) || 0,
+    total: parseFloat(String(raw.total_amount)) || 0,
     address,
     deliverySlot,
-    paymentMethod: (paymentMethodMap[raw.payment_method] || raw.payment_method || 'cash') as any,
+    paymentMethod: (paymentMethodMap[raw.payment_method ?? ''] || raw.payment_method || 'cash') as Order['paymentMethod'],
     paymentStatus: raw.payment_status || 'pending',
     rider,
     deliveryProofImage: raw.delivery_proof_image ? resolveImageUrl(raw.delivery_proof_image) : null,
-    createdAt: raw.placed_at || raw.created_at || '',
+    createdAt: raw.placed_at || '',
     estimatedDelivery: raw.requested_delivery_date || raw.out_for_delivery_at || '',
     deliveredAt: raw.delivered_at || undefined,
   };
@@ -241,8 +247,11 @@ class OrderService {
 
   async getDeliverySlots(date?: string): Promise<ApiResponse<DeliverySlotWithCapacity[]>> {
     try {
-      const dateStr = date || new Date().toISOString().split('T')[0];
-      const response = await apiClient.get('/orders/time-slots', { params: { date: dateStr } });
+      // Today in Pakistan (the UTC date is yesterday from midnight to 5 am).
+      const dateStr = date || pktDateString();
+      // Every city has its own slots (A30): ask for the selected city's.
+      const cityId = await getSelectedCityId();
+      const response = await apiClient.get('/orders/time-slots', { params: { date: dateStr, ...(cityId ? { city_id: cityId } : {}) } });
       const raw = response.data;
       const slots = (raw.data || []).map((s: any) => mapTimeSlot(s, dateStr));
       return { success: true, data: slots };
