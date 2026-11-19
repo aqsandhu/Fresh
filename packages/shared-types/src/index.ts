@@ -2,9 +2,7 @@
 // @freshbazar/shared-types — Single source of truth for all FreshBazar types
 // ============================================================================
 
-// ---------------------------------------------------------------------------
-// ENUMERATION TYPES
-// ---------------------------------------------------------------------------
+// ── ENUMERATION TYPES ──────────────────────────────────────────────────────
 
 /** User roles across the platform */
 export type UserRole = 'customer' | 'rider' | 'admin' | 'super_admin';
@@ -825,3 +823,5 @@ export interface QueuedAction {
 
 export * from './deliveryRules';
 export * from './apiFields';
+export * from './portalApi';
+export * from './apiRows';
