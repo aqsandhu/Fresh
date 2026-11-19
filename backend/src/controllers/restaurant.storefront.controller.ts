@@ -4,6 +4,7 @@
 // the unified orders pipeline (so riders + accounting stay combined).
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import { slotAvailabilitySql } from '../utils/timeSlots';
 import { query } from '../config/database';
@@ -44,7 +45,7 @@ export const getRestaurantProducts = asyncHandler(async (req: Request, res: Resp
   const v2 = await hasCatalogV2Columns();
   // City-bound: only the restaurant's own city catalog (NULL city → empty).
   const cityId = req.restaurant!.city_id;
-  const params: any[] = [cityId];
+  const params: unknown[] = [cityId];
   // Catalog v2: a B/C tier is shown to restaurants only when its restaurant
   // enable flag is on (NULL price => "not offered" on the client). Explicit
   // restaurant fraction prices are surfaced; restaurant_enabled_a lets the client
@@ -148,6 +149,8 @@ export const getRestaurantTimeSlots = asyncHandler(async (req: Request, res: Res
     ? `LEFT JOIN time_slot_bookings tsb ON tsb.time_slot_id = ts.id AND tsb.delivery_date = COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date)`
     : '';
   const params: unknown[] = perDate ? [dayOfWeek, validDate ? dateStr : null] : [dayOfWeek];
+  // The restaurant's own city's slots only (A30).
+  params.push(req.restaurant!.city_id ?? null);
   const result = await query(
     `SELECT ts.id, ts.slot_name, ts.start_time, ts.end_time,
             ts.is_free_delivery_slot, ts.is_express_slot,
@@ -155,6 +158,7 @@ export const getRestaurantTimeSlots = asyncHandler(async (req: Request, res: Res
        FROM time_slots ts
        ${join}
       WHERE ts.status = 'available' AND ts.audience = 'restaurant'
+        AND (ts.city_id = $${params.length}::uuid OR ts.city_id IS NULL)
         AND (ts.applicable_days IS NULL OR $1 = ANY(ts.applicable_days))
       ORDER BY ts.start_time ASC`,
     params
@@ -177,8 +181,8 @@ export const createRestaurantOrder = asyncHandler(async (req: Request, res: Resp
 
   const { items, customer_notes, time_slot_id, requested_delivery_date, urgent_delivery, address, latitude, longitude, front_image_url } = req.body;
 
-  let order: any;
-  let restaurant: any;
+  let order;
+  let restaurant;
   let duplicate = false;
   try {
     ({ order, restaurant, duplicate } = await placeRestaurantOrder(req.restaurant!.id, items, {
@@ -191,7 +195,8 @@ export const createRestaurantOrder = asyncHandler(async (req: Request, res: Resp
       lng: longitude != null && longitude !== '' ? Number(longitude) : undefined,
       frontImageUrl: front_image_url ?? undefined,
     }));
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
   }
@@ -222,14 +227,18 @@ export const getRestaurantOrders = asyncHandler(async (req: Request, res: Respon
   const result = await query(
     `SELECT o.id, o.order_number, o.status, o.subtotal, o.delivery_charge, o.total_amount,
             o.created_at, o.placed_at,
+            -- When it will come (the list only showed when it was placed).
+            o.requested_delivery_date::text AS requested_delivery_date,
+            to_char(ts.start_time, 'HH24:MI') AS slot_start, to_char(ts.end_time, 'HH24:MI') AS slot_end,
             COALESCE(json_agg(json_build_object(
               'product_name', oi.product_name, 'quantity', oi.quantity, 'unit', oi.unit,
               'quality', oi.quality, 'unit_price', oi.unit_price, 'total_price', oi.total_price
             )) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
        FROM orders o
        LEFT JOIN order_items oi ON oi.order_id = o.id
+       LEFT JOIN time_slots ts ON ts.id = o.time_slot_id
       WHERE o.restaurant_id = $1
-      GROUP BY o.id
+      GROUP BY o.id, ts.id
       ORDER BY o.created_at DESC
       LIMIT 100`,
     [req.restaurant!.id]

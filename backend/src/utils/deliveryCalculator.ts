@@ -91,7 +91,7 @@ export const calculateDeliveryCharge = async (
       };
     }
 
-    const runner = client ?? { query: (sql: string, params?: unknown[]) => query(sql, params as any[]) };
+    const runner = client ?? { query: (sql: string, params?: unknown[]) => query(sql, params) };
     const effectiveCity = cityId ?? (await getCartCityId(cartId, runner));
     const { baseCharge, freeThreshold } = await getDeliverySettings(effectiveCity, runner);
 

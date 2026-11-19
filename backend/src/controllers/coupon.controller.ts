@@ -4,6 +4,7 @@
 // city (or a global coupon when no city is selected).
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
@@ -54,9 +55,20 @@ function toNumberOrNull(v: unknown): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-function toDateOrNull(v: unknown): string | null {
+/**
+ * A date the admin picked (YYYY-MM-DD) is a PAKISTAN day: "from" = that day's
+ * 00:00, "until" = its last moment (23:59:59.999). It used to be read as UTC
+ * midnight = 05:00 in Pakistan, so a coupon "valid until 31 Dec" died at 5 am
+ * on 31 Dec (round 7). A full date-time is kept as given.
+ */
+function toDateOrNull(v: unknown, edge: 'start' | 'end' = 'start'): string | null {
   if (v === undefined || v === null || v === '') return null;
-  const d = new Date(String(v));
+  const s = String(v).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const d = new Date(`${s}T${edge === 'end' ? '23:59:59.999' : '00:00:00.000'}+05:00`);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const d = new Date(s);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
@@ -114,7 +126,7 @@ function parseCouponBody(body: Record<string, unknown>): ParsedCoupon | string {
   const minOrder = toNumberOrNull(body.min_order_amount) ?? 0;
 
   const validFrom = toDateOrNull(body.valid_from);
-  const validUntil = toDateOrNull(body.valid_until);
+  const validUntil = toDateOrNull(body.valid_until, 'end');
   if (validFrom && validUntil && new Date(validFrom) > new Date(validUntil)) {
     return 'Valid-from date must be before valid-until date.';
   }
@@ -360,7 +372,8 @@ export const createCoupon = asyncHandler(async (req: Request, res: Response) => 
       createdBy: req.user?.id,
     });
     return createdResponse(res, withSummary(result.rows[0] as CouponRow), 'Coupon created');
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.code === '23505') {
       return errorResponse(res, 'A coupon with this code already exists for this city.', 409);
     }
@@ -433,7 +446,8 @@ export const updateCoupon = asyncHandler(async (req: Request, res: Response) => 
         );
     logger.info('Coupon updated', { couponId: id, updatedBy: req.user?.id });
     return successResponse(res, withSummary(result.rows[0] as CouponRow), 'Coupon updated');
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.code === '23505') {
       return errorResponse(res, 'A coupon with this code already exists for this city.', 409);
     }
@@ -446,10 +460,28 @@ export const toggleCoupon = asyncHandler(async (req: Request, res: Response) => 
   const { id } = req.params;
   const scope = await resolveCityScope(req);
 
-  const existing = await query('SELECT city_id FROM coupons WHERE id = $1', [id]);
+  const existing = await query('SELECT * FROM coupons WHERE id = $1', [id]);
   if (existing.rows.length === 0) return notFoundResponse(res, 'Coupon not found');
   if (!scope.unrestricted && existing.rows[0].city_id !== scope.cityId) {
     return errorResponse(res, 'You can only manage coupons for your assigned city.', 403);
+  }
+  // Switching ON is the same as creating it: the city admin's limits apply
+  // (a switched-off 100 % coupon of the owner's could be switched on — J10).
+  // Switching OFF is always allowed.
+  if (!existing.rows[0].is_active) {
+    const row = existing.rows[0];
+    const limitErr = couponLimitError({
+      code: row.code, description: row.description, discount_type: row.discount_type,
+      discount_value: Number(row.discount_value) || 0,
+      max_discount_amount: row.max_discount_amount == null ? null : Number(row.max_discount_amount),
+      min_order_amount: Number(row.min_order_amount) || 0,
+      usage_limit: row.usage_limit == null ? null : Number(row.usage_limit),
+      usage_limit_per_user: row.usage_limit_per_user == null ? null : Number(row.usage_limit_per_user),
+      first_order_only: row.first_order_only === true, valid_from: row.valid_from, valid_until: row.valid_until,
+      is_active: true, trigger_type: (row.trigger_type || 'manual') as TriggerType,
+      inactivity_days: row.inactivity_days ?? null, milestone_orders: row.milestone_orders ?? null, auto_reusable: row.auto_reusable === true,
+    }, req.user?.role);
+    if (limitErr) return errorResponse(res, limitErr, 400);
   }
 
   const result = await query(

@@ -2,9 +2,10 @@
 // RESTAURANT CONTROLLER (public) — B2B registration + PIN login.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query, withTransaction } from '../config/database';
+import { query, withTransaction, type DbRow } from '../config/database';
 import { asyncHandler } from '../middleware';
 import {
   successResponse,
@@ -18,11 +19,13 @@ import { emitToCityAdmins } from '../config/socket';
 import { normalizePhoneNumber } from '../utils/validators';
 import { hasRestaurantsTable } from '../config/restaurantSchema';
 import {
-  getPinLockoutState,
-  registerPinFailure,
+  pinAttemptFailed,
   clearPinFailures,
+  reservePinAttempt,
 } from '../config/pinLockout';
 import logger from '../utils/logger';
+import { OPEN_ORDER_STATUSES, openOrdersForRestaurant, openWorkMessage } from '../utils/openWork';
+import { isWeakPin, WEAK_PIN_MESSAGE } from '../utils/pinStrength';
 
 // Per-account PIN brute-force lockout scope (complements the per-IP route
 // limiter — a 4-digit PIN is only 10k combinations).
@@ -102,11 +105,13 @@ async function anonymizeRestaurantAccount(restaurantId: string): Promise<boolean
     if ((result.rowCount ?? 0) === 0) return false;
 
     if ((restaurantOrderCol.rowCount ?? 0) > 0) {
+      // Only finished orders: an order still on its way keeps its delivery
+      // address (callers also refuse while one is open — A27).
       await client.query(
         `UPDATE orders
             SET delivery_address_snapshot = $2::jsonb
-          WHERE restaurant_id = $1`,
-        [restaurantId, JSON.stringify(DELETED_RESTAURANT_SNAPSHOT)]
+          WHERE restaurant_id = $1 AND NOT (status::text = ANY($3::text[]))`,
+        [restaurantId, JSON.stringify(DELETED_RESTAURANT_SNAPSHOT), OPEN_ORDER_STATUSES]
       );
     }
 
@@ -114,7 +119,7 @@ async function anonymizeRestaurantAccount(restaurantId: string): Promise<boolean
   });
 }
 
-function publicRestaurant(r: any) {
+function publicRestaurant(r: DbRow) {
   return {
     id: r.id,
     business_name: r.business_name,
@@ -200,6 +205,7 @@ export const registerRestaurant = asyncHandler(async (req: Request, res: Respons
     return errorResponse(res, 'Please select your city (use the city button) before registering.', 400);
   }
 
+  if (isWeakPin(pin)) return errorResponse(res, WEAK_PIN_MESSAGE, 400); // B33
   const pinHash = await bcrypt.hash(String(pin), PIN_BCRYPT_ROUNDS);
 
   let result;
@@ -219,7 +225,8 @@ export const registerRestaurant = asyncHandler(async (req: Request, res: Respons
         cityId,
       ]
     );
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     // Unique violation (a live account with this phone already exists) — turn the
     // raw 23505 into a clean message instead of a 500.
     if (err?.code === '23505') {
@@ -269,8 +276,10 @@ export const loginRestaurant = asyncHandler(async (req: Request, res: Response) 
 
   // Per-account lockout takes priority over any per-IP limit.
   const lockKey = pinLockKey(normPhone);
-  const lockState = await getPinLockoutState(lockKey);
-  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+  // B39: the attempt is reserved (counted) before the check — guesses sent
+  // at the same moment cannot get past the lock.
+  const lockState = await reservePinAttempt(lockKey);
+  if (!lockState.allowed) {
     return pinLockedResponse(res, lockState.lockedUntil);
   }
 
@@ -281,7 +290,7 @@ export const loginRestaurant = asyncHandler(async (req: Request, res: Response) 
   const restaurant = result.rows[0];
   if (!restaurant) {
     // Count the failure so attackers can't probe phone numbers for free.
-    await registerPinFailure(lockKey);
+    await pinAttemptFailed(lockKey);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
 
@@ -290,7 +299,7 @@ export const loginRestaurant = asyncHandler(async (req: Request, res: Response) 
   // told anyone whether a number is a restaurant here and in what state.
   const valid = Boolean(restaurant.pin_hash) && (await bcrypt.compare(String(pin), restaurant.pin_hash));
   if (!valid) {
-    const { lockedUntil } = await registerPinFailure(lockKey);
+    const { lockedUntil } = await pinAttemptFailed(lockKey);
     logger.warn('Restaurant PIN verify failed', { restaurantId: restaurant.id, lockedUntil });
     if (lockedUntil) return pinLockedResponse(res, lockedUntil);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
@@ -340,7 +349,33 @@ export const getRestaurantMe = asyncHandler(async (req: Request, res: Response) 
  * financial records remain for bookkeeping.
  */
 export const deleteRestaurantAccount = asyncHandler(async (req: Request, res: Response) => {
-  const deleted = await anonymizeRestaurantAccount(req.restaurant!.id);
+  // Deleting is forever: the restaurant types its PIN again — a 12-hour
+  // session alone (a borrowed or stolen phone) is not enough (B30). Wrong
+  // tries count towards the login lockout. 400, not 401: the app treats 401
+  // as "signed out".
+  const own = await query(`SELECT id, phone, pin_hash FROM restaurants WHERE id = $1 AND deleted_at IS NULL`, [req.restaurant!.id]);
+  const row = own.rows[0];
+  if (!row) return unauthorizedResponse(res, 'Restaurant account not found');
+  const lockKey = pinLockKey(row.phone);
+  // B39: the attempt is reserved (counted) before the check — guesses sent
+  // at the same moment cannot get past the lock.
+  const lockState = await reservePinAttempt(lockKey);
+  if (!lockState.allowed) return pinLockedResponse(res, lockState.lockedUntil);
+  const pin = typeof req.body?.pin === 'string' ? req.body.pin.trim() : '';
+  if (!/^\d{4}$/.test(pin)) return errorResponse(res, 'Enter your 4-digit PIN to delete this restaurant account.', 400);
+  if (!row.pin_hash || !(await bcrypt.compare(pin, row.pin_hash))) {
+    const { lockedUntil } = await pinAttemptFailed(lockKey);
+    if (lockedUntil) return pinLockedResponse(res, lockedUntil);
+    return errorResponse(res, 'Incorrect PIN. The account was not deleted.', 400);
+  }
+  await clearPinFailures(lockKey);
+
+  const busy = await openOrdersForRestaurant(row.id);
+  if (busy > 0) {
+    return errorResponse(res, openWorkMessage({ orders: busy, atta: 0 })!, 409);
+  }
+
+  const deleted = await anonymizeRestaurantAccount(row.id);
   if (!deleted) return unauthorizedResponse(res, 'Restaurant account not found');
 
   logger.info('Restaurant account deleted (self-service)', { restaurantId: req.restaurant!.id });
@@ -367,8 +402,10 @@ export const deleteRestaurantAccountByPin = asyncHandler(async (req: Request, re
 
   // Same per-account lockout as login — this endpoint also checks the PIN.
   const lockKey = pinLockKey(normPhone);
-  const lockState = await getPinLockoutState(lockKey);
-  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+  // B39: the attempt is reserved (counted) before the check — guesses sent
+  // at the same moment cannot get past the lock.
+  const lockState = await reservePinAttempt(lockKey);
+  if (!lockState.allowed) {
     return pinLockedResponse(res, lockState.lockedUntil);
   }
 
@@ -378,18 +415,23 @@ export const deleteRestaurantAccountByPin = asyncHandler(async (req: Request, re
   );
   const restaurant = result.rows[0];
   if (!restaurant) {
-    await registerPinFailure(lockKey);
+    await pinAttemptFailed(lockKey);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
 
-  const valid = await bcrypt.compare(String(pin), restaurant.pin_hash);
+  const valid = Boolean(restaurant.pin_hash) && (await bcrypt.compare(String(pin), restaurant.pin_hash));
   if (!valid) {
-    const { lockedUntil } = await registerPinFailure(lockKey);
+    const { lockedUntil } = await pinAttemptFailed(lockKey);
     if (lockedUntil) return pinLockedResponse(res, lockedUntil);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
 
   await clearPinFailures(lockKey);
+
+  const busy = await openOrdersForRestaurant(restaurant.id);
+  if (busy > 0) {
+    return errorResponse(res, openWorkMessage({ orders: busy, atta: 0 })!, 409);
+  }
 
   const deleted = await anonymizeRestaurantAccount(restaurant.id);
   if (!deleted) return unauthorizedResponse(res, 'Restaurant account not found');

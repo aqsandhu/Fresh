@@ -57,24 +57,26 @@ export const getDashboardStats = asyncHandler(async (req: Request, res: Response
     orderParams
   );
 
-  // Weekly stats
+  // Last 7 days, today included. It used to start at midnight 7 days ago —
+  // 8 days — while the card said "this week" (A37).
   const weeklyStats = await query(
     `SELECT 
       COUNT(*) as total_orders,
       COALESCE(SUM(total_amount) FILTER (WHERE status NOT IN ('cancelled', 'refunded')), 0) as total_sales
     FROM orders
-    WHERE placed_at >= ${localMidnight(`${TODAY_SQL} - 7`)}
+    WHERE placed_at >= ${localMidnight(`${TODAY_SQL} - 6`)}
     AND deleted_at IS NULL${orderFilter}`,
     orderParams
   );
 
-  // Monthly stats
+  // This calendar month (Pakistan date), like the Profit and Expenses pages.
+  // It used to be the last 31 days while the card said "this month" (A37).
   const monthlyStats = await query(
     `SELECT 
       COUNT(*) as total_orders,
       COALESCE(SUM(total_amount) FILTER (WHERE status NOT IN ('cancelled', 'refunded')), 0) as total_sales
     FROM orders
-    WHERE placed_at >= ${localMidnight(`${TODAY_SQL} - 30`)}
+    WHERE placed_at >= ${localMidnight(`date_trunc('month', ${TODAY_SQL})::date`)}
     AND deleted_at IS NULL${orderFilter}`,
     orderParams
   );
@@ -194,6 +196,7 @@ export const getBadgeCounts = asyncHandler(async (req: Request, res: Response) =
       restaurantOrders: 0,
       riderApplications: 0,
       restaurantRequests: 0,
+      approvals: 0,
     }, 'Badge counts');
   }
   const scoped = !scope.unrestricted && !!scope.cityId;
@@ -232,12 +235,21 @@ export const getBadgeCounts = asyncHandler(async (req: Request, res: Response) =
   ]);
   const orders = consumerOrders + restaurantOrders;
 
+  // Entries waiting for this admin's approval (J1) — only for those who decide.
+  const perms = req.adminPermissions ?? [];
+  const decides = req.user?.role === 'super_admin' || perms.includes('*') || perms.includes('approvals.decide');
+  const approvals = decides
+    ? (await safeCount(`SELECT COUNT(*)::int AS n FROM approval_requests WHERE status = 'pending' AND requested_by <> $${cityParam.length + 1}${cityAnd('city_id')}`, [...cityParam, req.user?.id]))
+      + (await safeCount(`SELECT COUNT(*)::int AS n FROM purchase_requests WHERE status = 'pending' AND requested_by <> $${cityParam.length + 1}${cityAnd('city_id')}`, [...cityParam, req.user?.id]))
+    : 0;
+
   successResponse(res, {
     orders,
     consumerOrders,
     restaurantOrders,
     riderApplications,
     restaurantRequests,
+    approvals,
   }, 'Badge counts');
 });
 

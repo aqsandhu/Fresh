@@ -10,9 +10,10 @@
 // is throttled here per-phone and per-IP on top of the route-level limiter.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import crypto from 'crypto';
 import { Pool } from 'pg';
-import { query } from '../config/database';
+import { query, withTransaction } from '../config/database';
 import { getMigrationConnectionString } from '../config/pinAuth';
 import {
   OTP_TTL_SECONDS,
@@ -22,7 +23,7 @@ import {
   OTP_MAX_SENDS_PER_IP_HOUR,
 } from '../config/otpProvider';
 import logger from '../utils/logger';
-import { buildSslConfig } from '../config/dbSsl';
+import { buildSslConfig } from '../config/dbSsl';
 import { schemaSelfHealEnabled } from '../config/schemaSelfHeal';
 
 /** A just-verified code may be re-verified within this window (PIN reset flow). */
@@ -57,7 +58,8 @@ async function hasOtpTable(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'otp_codes' LIMIT 1`
     );
     otpTableCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe otp_codes table', { error: error?.message });
     otpTableCached = false;
   }
@@ -94,7 +96,8 @@ export async function ensureOtpTable(): Promise<boolean> {
         );
       }
       return ready;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not create otp_codes table automatically', { error: error?.message });
       otpTableCached = false;
       return false;
@@ -164,6 +167,92 @@ export async function checkSendAllowed(phone: string, ip: string | null): Promis
   }
 
   return { allowed: true };
+}
+
+/**
+ * Check the limits AND hold the slot in one step (A40, round 9).
+ * `checkSendAllowed` → send SMS → `persistOtp` left a gap of seconds (the SMS
+ * call): ten requests for one number at the same moment all passed the
+ * "1 per cooldown / 5 per hour" gate and each sent a real SMS. Now a per-phone
+ * lock covers check + a placeholder row; the SMS is sent outside the lock.
+ * Call `completeOtpSend` after a good delivery, `cancelOtpSend` after a failed
+ * one (a failed send still does not use up the quota).
+ */
+export async function reserveOtpSend(
+  phone: string,
+  ip: string | null,
+  channel: string = 'sms'
+): Promise<OtpSendGate & { reservationId?: string }> {
+  return withTransaction(async (client) => {
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('otp-send:' || $1))`, [phone]);
+    const recent = await client.query(
+      `SELECT COUNT(*) AS phone_count, MAX(created_at) AS last_sent
+         FROM otp_codes
+        WHERE phone = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+      [phone]
+    );
+    const phoneCount = parseInt(recent.rows[0]?.phone_count || '0', 10);
+    const lastSent = recent.rows[0]?.last_sent ? new Date(recent.rows[0].last_sent).getTime() : 0;
+    const sinceLastSec = (Date.now() - lastSent) / 1000;
+    if (lastSent && sinceLastSec < OTP_RESEND_COOLDOWN_SECONDS) {
+      return {
+        allowed: false as const,
+        reason: 'Please wait a moment before requesting another code.',
+        retryAfterSec: Math.ceil(OTP_RESEND_COOLDOWN_SECONDS - sinceLastSec),
+      };
+    }
+    if (phoneCount >= OTP_MAX_SENDS_PER_PHONE_HOUR) {
+      return {
+        allowed: false as const,
+        reason: 'Too many codes requested for this number. Please try again later.',
+        retryAfterSec: 3600,
+      };
+    }
+    if (ip) {
+      const ipResult = await client.query(
+        `SELECT COUNT(*) AS ip_count FROM otp_codes
+          WHERE request_ip = $1 AND created_at > NOW() - INTERVAL '1 hour'`,
+        [ip]
+      );
+      if (parseInt(ipResult.rows[0]?.ip_count || '0', 10) >= OTP_MAX_SENDS_PER_IP_HOUR) {
+        return {
+          allowed: false as const,
+          reason: 'Too many verification requests. Please try again later.',
+          retryAfterSec: 3600,
+        };
+      }
+    }
+    // Placeholder: counts for the gate at once, can never be verified
+    // (already expired, no real hash) until completeOtpSend fills it in.
+    const ins = await client.query(
+      `INSERT INTO otp_codes (phone, code_hash, channel, request_ip, expires_at)
+       VALUES ($1, 'pending', $2, $3, NOW()) RETURNING id`,
+      [phone, channel, ip]
+    );
+    return { allowed: true as const, reservationId: String(ins.rows[0].id) };
+  });
+}
+
+/** The SMS went out: store the real code in the reserved row. */
+export async function completeOtpSend(
+  reservationId: string,
+  phone: string,
+  code: string,
+  channel: string
+): Promise<{ expiresInSec: number }> {
+  await query(
+    `UPDATE otp_codes
+        SET code_hash = $2, channel = $3, expires_at = NOW() + ($4 || ' seconds')::interval
+      WHERE id = $1`,
+    [reservationId, hashCode(phone, code), channel, String(OTP_TTL_SECONDS)]
+  );
+  query(`DELETE FROM otp_codes WHERE created_at < NOW() - INTERVAL '1 day'`).catch(() => undefined);
+  return { expiresInSec: OTP_TTL_SECONDS };
+}
+
+/** The SMS failed: give the slot back. */
+export async function cancelOtpSend(reservationId: string): Promise<void> {
+  await query(`DELETE FROM otp_codes WHERE id = $1`, [reservationId]).catch(() => undefined);
 }
 
 /** A fresh random 6-digit code — not yet persisted (see persistOtp). */

@@ -147,7 +147,7 @@ export interface Order {
   total_amount: number;
   paid_amount: number;
   delivery_address_id: string;
-  delivery_address_snapshot: any;
+  delivery_address_snapshot: Record<string, unknown> | null;
   rider_id?: string;
   notes?: string;
   cancelled_reason?: string;
@@ -303,7 +303,7 @@ export interface Notification {
   type: NotificationType;
   title: string;
   body: string;
-  data?: any;
+  data?: Record<string, unknown>;
   is_read: boolean;
   created_at: string;
 }
@@ -339,12 +339,12 @@ export interface DeliveryChargeResult {
 // API Response Types
 // ---------------------------------------------------------------------------
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   message: string;
   data?: T;
   meta?: PaginationMeta;
-  error?: any;
+  error?: unknown;
 }
 
 export interface PaginatedResponse<T> {
@@ -372,7 +372,6 @@ declare global {
         status?: string;
       };
       userRecord?: User;
-      txClient?: any;
     }
   }
 }
@@ -382,29 +381,4 @@ export interface PaginationQuery {
   limit?: number;
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
-}
-
-export interface UploadedFile {
-  fieldname: string;
-  originalname: string;
-  encoding: string;
-  mimetype: string;
-  buffer: Buffer;
-  size: number;
-}
-
-export type ErrorHandler = (
-  err: any,
-  req: any,
-  res: any,
-  next: any
-) => void;
-
-export interface AuthenticatedRequest {
-  user: JwtPayload;
-  body: any;
-  params: any;
-  query: any;
-  file?: UploadedFile;
-  files?: UploadedFile[];
 }

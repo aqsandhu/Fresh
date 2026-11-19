@@ -37,6 +37,7 @@ CREATE INDEX idx_webhook_logs_created_at ON webhook_logs(created_at DESC);
 */
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { query, withTransaction } from '../config/database';
@@ -66,13 +67,16 @@ import logger from '../utils/logger';
  *     ON webhook_logs (source, idempotency_key)
  *     WHERE idempotency_key IS NOT NULL;
  */
+/** A webhook body as sent (only order_id is read before the signature check passes). */
+type WebhookPayload = Record<string, unknown> & { order_id?: string | null };
+
 const claimWebhook = async (
   webhookType: string,
-  payload: any,
+  payload: WebhookPayload,
   source: string | string[] | undefined,
   idempotencyKey: string,
   orderId?: string | null
-): Promise<{ claimed: boolean; logId: string; existingResponse?: any }> => {
+): Promise<{ claimed: boolean; logId: string; existingResponse?: unknown }> => {
   const sourceStr = source ? String(source) : 'unknown';
   const effectiveOrderId = orderId || payload?.order_id || null;
 
@@ -123,7 +127,7 @@ const claimWebhook = async (
  */
 const logWebhookAttempt = async (
   webhookType: string,
-  payload: any,
+  payload: WebhookPayload,
   source: string | string[] | undefined,
   status: string = 'received',
   idempotencyKey?: string,
@@ -154,7 +158,7 @@ const logWebhookAttempt = async (
 const deriveIdempotencyKey = (
   explicit: string | undefined,
   webhookType: string,
-  payload: any
+  payload: unknown
 ): string => {
   if (explicit) return explicit.slice(0, 255);
   const hash = crypto.createHash('sha256').update(JSON.stringify(payload || {})).digest('hex');
@@ -195,7 +199,7 @@ const duplicateOrUnavailable = (res: Response, claim: { logId: string }) => {
 const updateWebhookLog = async (
   logId: string,
   status: string,
-  responseBody: any
+  responseBody: unknown
 ): Promise<void> => {
   if (logId === 'unknown') return;
 
@@ -270,6 +274,13 @@ export const orderStatusWebhook = asyncHandler(async (req: Request, res: Respons
 
       const order = orderResult.rows[0];
 
+      // Already in that status: a retried / repeated webhook must not stamp a
+      // new delivered_at (it moved the delivery to another day in rider
+      // earnings and period reports) — answer "no change" (A38).
+      if (order.status === status) {
+        return { order_id: order.id, order_number: order.order_number, status: order.status, unchanged: true };
+      }
+
       if (!isValidOrderTransition(order.status, status)) {
         throw Object.assign(
           new Error(`Invalid transition: ${order.status} → ${status}`),
@@ -313,8 +324,15 @@ export const orderStatusWebhook = asyncHandler(async (req: Request, res: Respons
 
     await updateWebhookLog(logId, 'processed', responseBody);
     logger.info('Order status updated via webhook', { orderId: order_id, status, source: source || 'unknown' });
-    return successResponse(res, responseBody, 'Order status updated successfully');
-  } catch (err: any) {
+    return successResponse(
+      res,
+      responseBody,
+      (responseBody as { unchanged?: boolean }).unchanged
+        ? 'Order is already in that status — no change'
+        : 'Order status updated successfully'
+    );
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) {
       // Deterministic rejection (bad payload / illegal transition): record the
       // failure and keep the claim so an identical retry stays a no-op.
@@ -498,7 +516,8 @@ export const paymentWebhook = asyncHandler(async (req: Request, res: Response) =
       status,
     });
     return successResponse(res, responseBody, 'Payment status updated successfully');
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) {
       // Deterministic rejection (bad payload / amount mismatch): record the
       // failure and keep the claim so an identical retry stays a no-op.

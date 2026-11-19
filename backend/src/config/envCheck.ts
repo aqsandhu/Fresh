@@ -121,6 +121,14 @@ export function checkEnvironment(env: NodeJS.ProcessEnv = process.env): EnvRepor
       errors.push('WEBHOOK_ALLOW_UNSIGNED=true turns off payment-webhook signature checks; it is for local testing only.');
     }
     // Worth knowing, not worth refusing to start.
+    if (set('ADMIN_PANEL_ORIGIN')) {
+      // A wrong address only blocks the admin panel's own calls — warn, so the
+      // log says why, instead of refusing to start the whole shop.
+      const bad = env.ADMIN_PANEL_ORIGIN!.split(',').map((o) => o.trim()).filter((o) => o && !/^https?:\/\/[^/\s]+\/?$/i.test(o));
+      if (bad.length) warnings.push(`ADMIN_PANEL_ORIGIN has ${bad.map((b) => `"${b}"`).join(', ')} — each entry must be just an address like https://admin.freshbazar.pk (no path). The admin panel is refused until it matches.`);
+    } else if (env.ADMIN_AUTH_COOKIES !== 'false') {
+      warnings.push('ADMIN_PANEL_ORIGIN is not set — admin cookie sessions are accepted from any same-site page (set it to https://admin.<your-site>).');
+    }
     if (env.OTP_BYPASS_ENABLED === 'true') warnings.push('OTP_BYPASS_ENABLED=true — the fixed code signs anyone in (customers AND the admin second step).');
     if (!set('REDIS_URL')) warnings.push('REDIS_URL is not set — rate limits and lockouts reset on every restart and are not shared between instances.');
     if (!set('SENTRY_DSN')) warnings.push('SENTRY_DSN is not set — server errors are only in the logs, nobody is alerted.');

@@ -13,16 +13,19 @@ export const isValidPakistaniPhone = (phone: string): boolean => {
   return pakistaniPhoneRegex.test(cleaned);
 };
 
+// A bad number is the caller's mistake → 400, not a server error (G37).
+import { BadRequestError } from '../middleware/errorHandler';
+
 // Normalize Pakistani phone number
 export const normalizePhoneNumber = (phone: string): string => {
   if (!phone || typeof phone !== 'string') {
-    throw new Error('Phone number is required');
+    throw new BadRequestError('Phone number is required');
   }
 
   let cleaned = phone.replace(/\D/g, '');
 
   if (cleaned.length < 10) {
-    throw new Error('Invalid phone number');
+    throw new BadRequestError('Invalid phone number');
   }
 
   if (cleaned.startsWith('0')) {

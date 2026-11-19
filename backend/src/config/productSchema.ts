@@ -5,6 +5,7 @@
 // gracefully until the columns exist.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -53,7 +54,8 @@ export async function hasVariableWeightColumns(): Promise<boolean> {
           AND column_name = 'is_variable_weight' LIMIT 1`
     );
     varWeightCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe products.is_variable_weight', { error: error?.message });
     varWeightCached = false;
   }
@@ -90,7 +92,8 @@ export async function hasUnitToggleColumns(): Promise<boolean> {
           AND column_name = 'allow_half_kg' LIMIT 1`
     );
     unitToggleCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe products.allow_half_kg', { error: error?.message });
     unitToggleCached = false;
   }
@@ -135,7 +138,8 @@ export async function ensureUnitToggleColumns(): Promise<boolean> {
       unitToggleCached = true;
       logger.info('unit-toggle columns ensured (migration 25 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply unit-toggle migration — run database/migrations/25-unit-fraction-toggles.sql manually', {
         error: error?.message,
       });
@@ -168,7 +172,8 @@ export async function ensureVariableWeightColumns(): Promise<boolean> {
       varWeightCached = true;
       logger.info('variable-weight columns ensured (migration 23 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply variable-weight migration — run database/migrations/23-variable-weight.sql manually', {
         error: error?.message,
       });
@@ -199,7 +204,8 @@ export async function hasQualityCatalogColumns(): Promise<boolean> {
           AND column_name = 'available_for_restaurants' LIMIT 1`
     );
     qualityCatalogCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe products.available_for_restaurants', { error: error?.message });
     qualityCatalogCached = false;
   }
@@ -278,7 +284,8 @@ export async function ensureQualityCatalogColumns(): Promise<boolean> {
       qualityCatalogCached = true;
       logger.info('quality-catalog columns ensured (migration 34 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply quality-catalog migration — run database/migrations/34 manually', {
         error: error?.message,
       });

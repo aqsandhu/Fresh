@@ -87,3 +87,35 @@ describe('default-deny model stays intact', () => {
     expect(run('GET', '/marketing/abandoned-carts', [])).toBeInstanceOf(ForbiddenError);
   });
 });
+
+// G12 (round 7, permission sweep): a role that may CHANGE something must be
+// able to READ it — otherwise its screen cannot load and the right is useless.
+describe('edit rights include reading the same data (G12)', () => {
+  const reads: Array<[string, string]> = [
+    ['/products', 'products.update'],            // Price Manager lists products
+    ['/stock', 'stock.adjust'],                  // a stock keeper sees the stock it adjusts
+    ['/categories', 'products.update'],          // ...and filters by category
+    ['/categories', 'products.view'],
+    ['/riders', 'riders.manage'],
+    ['/delivery-zones', 'settings.delivery_zones.manage'],
+    ['/settings', 'settings.delivery.update'],
+    ['/settings/delivery', 'settings.delivery.update'],
+    ['/settings/atta-charges', 'settings.delivery.view'],  // shown on the Delivery tab
+    ['/settings/time-slots', 'settings.timeslots.manage'],
+    ['/settings/business-hours', 'settings.business_hours.update'],
+    ['/site-settings/banner', 'settings.banner.update'],
+    ['/site-settings/brand', 'settings.brand.update'],
+    ['/site-settings/favicon', 'settings.favicon.update'],
+    ['/site-settings/hero', 'settings.hero.update'],
+  ];
+  it.each(reads)('GET %s is open to %s', (path, code) => {
+    expect(run('GET', path, [code])).toBeUndefined();
+  });
+
+  it('reading never grants writing', () => {
+    expect(run('PUT', '/products/abc', ['products.view'])).toBeInstanceOf(ForbiddenError);
+    expect(run('POST', '/categories', ['products.update'])).toBeInstanceOf(ForbiddenError);
+    expect(run('PUT', '/riders/abc', ['riders.view'])).toBeInstanceOf(ForbiddenError);
+    expect(run('PUT', '/settings/delivery', ['settings.delivery.view'])).toBeInstanceOf(ForbiddenError);
+  });
+});

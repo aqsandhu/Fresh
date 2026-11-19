@@ -4,6 +4,7 @@
 // call can take a minute or two; the page polls the run row).
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { query } from '../../config/database';
 import logger from '../../utils/logger';
 import { buildEvidence, renderPack, AuditPeriod } from './evidence';
@@ -59,7 +60,8 @@ export async function executeAudit(id: string, opts: StartAuditOptions): Promise
         }
         if (ai) aiUsed = true;
         else aiNote = 'The AI answered, but not in the format asked for, twice. Figures below come from the fixed rules only.';
-      } catch (err: any) {
+      } catch (errCaught: unknown) {
+        const err = asCaughtError(errCaught);
         logger.warn('corruption audit: AI call failed', { id, provider: cfg.provider, error: err?.message });
         aiNote = `The AI could not be reached (${String(err?.message || 'error').slice(0, 200)}). Figures below come from the fixed rules only.`;
       }
@@ -75,7 +77,8 @@ export async function executeAudit(id: string, opts: StartAuditOptions): Promise
       [id, aiUsed, aiUsed ? cfg.provider : null, aiUsed ? cfg.model : null, JSON.stringify(evidence), JSON.stringify(result)]
     );
     logger.info('corruption audit done', { id, signals: evidence.signals.length, aiUsed });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     logger.error('corruption audit failed', { id, error: err?.message });
     await query(
       `UPDATE corruption_audit_runs SET status = 'failed', error = $2, finished_at = NOW() WHERE id = $1`,

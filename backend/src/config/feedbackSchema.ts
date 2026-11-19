@@ -5,6 +5,7 @@
 // fall back gracefully until the tables exist.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -49,7 +50,8 @@ export async function hasFeedbackTables(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'reviews' LIMIT 1`
     );
     feedbackCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe reviews table', { error: error?.message });
     feedbackCached = false;
   }
@@ -126,7 +128,8 @@ async function runDdlOnConnection(connectionString: string): Promise<void> {
           ('complaints.view',  'View customer complaints',               'Support'),
           ('complaints.manage','Respond to / resolve complaints',        'Support')
         ON CONFLICT (code) DO NOTHING`);
-    } catch (permErr: any) {
+    } catch (permErrCaught: unknown) {
+      const permErr = asCaughtError(permErrCaught);
       logger.warn('Could not seed reviews/complaints permissions', { error: permErr?.message });
     }
   } finally {
@@ -153,7 +156,8 @@ export async function ensureFeedbackTables(): Promise<boolean> {
       feedbackCached = true;
       logger.info('reviews/complaints tables ensured (migration 24 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply reviews/complaints migration — run database/migrations/24-reviews-complaints.sql manually', {
         error: error?.message,
       });
@@ -177,7 +181,8 @@ export async function hasComplaintImagesColumn(): Promise<boolean> {
           AND column_name = 'images' LIMIT 1`
     );
     complaintImagesCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe complaints.images', { error: error?.message });
     complaintImagesCached = false;
   }
@@ -205,7 +210,8 @@ export async function ensureComplaintImagesColumn(): Promise<boolean> {
       complaintImagesCached = true;
       logger.info('complaints.images column ensured');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not add complaints.images column', { error: error?.message });
       complaintImagesCached = false;
       return false;

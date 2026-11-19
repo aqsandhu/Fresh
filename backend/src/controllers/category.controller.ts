@@ -26,7 +26,7 @@ export const getCategories = asyncHandler(async (req: Request, res: Response) =>
     WHERE c.is_active = TRUE
   `;
 
-  const params: any[] = [];
+  const params: unknown[] = [];
   let paramIndex = 1;
 
   const publicCityId = await resolvePublicCityId(req);
@@ -68,7 +68,7 @@ export const getCategoryBySlug = asyncHandler(async (req: Request, res: Response
       c.meta_title, c.meta_description
     FROM categories c
     WHERE c.slug = $1 AND c.is_active = TRUE`;
-  const categoryParams: any[] = [slug];
+  const categoryParams: unknown[] = [slug];
   if (publicCityId) {
     categorySql += ` AND c.city_id = $2`;
     categoryParams.push(publicCityId);
@@ -90,7 +90,7 @@ export const getCategoryBySlug = asyncHandler(async (req: Request, res: Response
     FROM categories c
     LEFT JOIN products p ON c.id = p.category_id AND p.is_active = TRUE
     WHERE c.parent_id = $1 AND c.is_active = TRUE`;
-  const subParams: any[] = [category.id];
+  const subParams: unknown[] = [category.id];
   if (publicCityId) {
     subSql += ` AND c.city_id = $2`;
     subParams.push(publicCityId);
@@ -118,7 +118,7 @@ export const getCategoryTree = asyncHandler(async (req: Request, res: Response) 
       c.parent_id, c.display_order
     FROM categories c
     WHERE c.is_active = TRUE`;
-  const params: any[] = [];
+  const params: unknown[] = [];
   if (publicCityId) {
     sql += ` AND c.city_id = $1`;
     params.push(publicCityId);
@@ -130,7 +130,7 @@ export const getCategoryTree = asyncHandler(async (req: Request, res: Response) 
   // Build tree structure
   const categories = result.rows;
   const categoryMap = new Map();
-  const rootCategories: any[] = [];
+  const rootCategories: unknown[] = [];
 
   // First pass: create map
   categories.forEach((cat) => {

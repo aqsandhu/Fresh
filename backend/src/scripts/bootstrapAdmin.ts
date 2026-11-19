@@ -19,6 +19,7 @@
 // constraint with a new INSERT.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import bcrypt from 'bcryptjs';
 import { withTransaction } from '../config/database';
 import logger from '../utils/logger';
@@ -144,7 +145,8 @@ export async function bootstrapAdmin(): Promise<BootstrapResult> {
         message: `Admin ${status} for phone ${phone}`,
       };
     });
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.error('Admin bootstrap failed:', error);
     return {
       status: 'error',

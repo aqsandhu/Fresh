@@ -2,6 +2,7 @@
 // WHATSAPP ORDER SCHEMA — idempotent customer/address link columns (migration 27).
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -42,7 +43,8 @@ export async function hasWhatsappLinkColumns(): Promise<boolean> {
           AND column_name = 'address_id' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe whatsapp_orders.address_id', { error: error?.message });
     cached = false;
   }
@@ -73,7 +75,8 @@ export async function ensureWhatsappLinkColumns(): Promise<boolean> {
       cached = true;
       logger.info('whatsapp_orders customer-link columns ensured (migration 27 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply whatsapp_orders link migration — run database/migrations/27 manually', {
         error: error?.message,
       });

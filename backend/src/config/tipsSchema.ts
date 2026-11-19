@@ -4,6 +4,7 @@
 // rows once, so they show in the admin list and can be paused / prioritised.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -75,7 +76,8 @@ export async function hasTipsTable(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'user_tips' LIMIT 1`
     );
     tipsCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe user_tips table', { error: error?.message });
     tipsCached = false;
   }
@@ -128,7 +130,8 @@ async function runDdlAndSeed(connectionString: string): Promise<void> {
           ('tips.view',   'View user guidance tips', 'Settings'),
           ('tips.manage', 'Add / edit / pause user guidance tips', 'Settings')
         ON CONFLICT (code) DO NOTHING`);
-    } catch (permErr: any) {
+    } catch (permErrCaught: unknown) {
+      const permErr = asCaughtError(permErrCaught);
       logger.warn('Could not seed tips permissions', { error: permErr?.message });
     }
   } finally {
@@ -154,7 +157,8 @@ export async function ensureTipsTable(): Promise<boolean> {
       tipsCached = true;
       logger.info('user_tips table ensured (migration 26 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply user_tips migration — run database/migrations/26-user-tips.sql manually', {
         error: error?.message,
       });

@@ -9,13 +9,13 @@
 // the migration after boot is picked up without a restart.
 // ============================================================================
 
-import { query } from './database';
+import { query, type DbRow } from './database';
 
 const RETRY_MS = 5 * 60 * 1000;
 
 type Probe = { value: boolean | null; checkedAt: number };
 
-function makeProbe(sql: string, params: unknown[], expect: (rows: any[]) => boolean) {
+function makeProbe(sql: string, params: unknown[], expect: (rows: DbRow[]) => boolean) {
   const state: Probe = { value: null, checkedAt: 0 };
   return async (): Promise<boolean> => {
     if (state.value === true) return true;

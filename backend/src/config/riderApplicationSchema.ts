@@ -2,6 +2,7 @@
 // RIDER APPLICATION SCHEMA — idempotent rider_applications table (migration 29).
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -40,7 +41,8 @@ export async function hasRiderApplicationsTable(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'rider_applications' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe rider_applications table', { error: error?.message });
     cached = false;
   }
@@ -88,13 +90,15 @@ export async function ensureRiderApplicationsTable(): Promise<boolean> {
             ('rider_applications.view',   'View rider applications', 'Riders'),
             ('rider_applications.manage', 'Manage rider applications + page content', 'Riders')
           ON CONFLICT (code) DO NOTHING`);
-      } catch (permErr: any) {
+      } catch (permErrCaught: unknown) {
+        const permErr = asCaughtError(permErrCaught);
         logger.warn('Could not seed rider_applications permissions', { error: permErr?.message });
       }
       cached = true;
       logger.info('rider_applications table ensured (migration 29 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply rider_applications migration — run database/migrations/29 manually', {
         error: error?.message,
       });

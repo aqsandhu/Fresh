@@ -11,8 +11,9 @@
 //   POST /api/admin/corruption-audit/cash-handovers  record cash an admin handed to the owner
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { Request, Response } from 'express';
-import { query } from '../../config/database';
+import { query, type DbRow } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../../utils/response';
 import { pktDateString } from '../../utils/businessTime';
@@ -69,7 +70,8 @@ export const testAuditSettings = asyncHandler(async (req: Request, res: Response
   try {
     const text = await callAuditAi(cfg, 'You are a connection test. Reply with the single word OK.', 'Reply with the single word OK.', 200);
     return successResponse(res, { ok: true, reply: text.trim().slice(0, 80) }, `${cfg.model} answered — the key works.`);
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     return errorResponse(res, `The AI did not accept the request: ${String(err?.message || 'unknown error').slice(0, 300)}`, 400);
   }
 });
@@ -104,7 +106,7 @@ export const listAuditRuns = asyncHandler(async (req: Request, res: Response) =>
   if (!ownerOnly(req, res)) return;
   if (!(await auditTablesReady())) return successResponse(res, [], 'Audit runs');
   await closeStaleAudits();
-  const r = await query(
+  const r = await query<DbRow>(
     `SELECT a.id, a.period_from::text AS period_from, a.period_to::text AS period_to, a.status, a.ai_used, a.ai_provider, a.ai_model,
             a.error, a.created_at, a.finished_at, c.name AS city_name,
             jsonb_array_length(COALESCE(a.evidence->'signals', '[]'::jsonb)) AS signal_count,
@@ -112,7 +114,7 @@ export const listAuditRuns = asyncHandler(async (req: Request, res: Response) =>
        FROM corruption_audit_runs a LEFT JOIN service_cities c ON c.id = a.city_id
       ORDER BY a.created_at DESC LIMIT 40`
   );
-  return successResponse(res, r.rows.map((x: any) => ({ ...x, top_risk: Number(x.top_risk) || 0 })), 'Audit runs');
+  return successResponse(res, r.rows.map((x) => ({ ...x, top_risk: Number(x.top_risk) || 0 })), 'Audit runs');
 });
 
 export const getAuditRun = asyncHandler(async (req: Request, res: Response) => {
@@ -133,7 +135,7 @@ export const getAuditRun = asyncHandler(async (req: Request, res: Response) => {
 export const getCashPosition = asyncHandler(async (req: Request, res: Response) => {
   if (!ownerOnly(req, res)) return;
   if (!(await auditTablesReady())) return successResponse(res, { admins: [], handovers: [] }, 'Cash position');
-  const admins = await query(
+  const admins = await query<DbRow>(
     `SELECT u.id, u.full_name, u.role,
             COALESCE(c.rider_cash, 0) AS rider_cash, COALESCE(c.ocp_cash, 0) AS ocp_cash, COALESCE(c.office_cash, 0) AS office_cash,
             COALESCE(c.total, 0) AS collected, COALESCE(h.handed, 0) AS handed, h.last_at
@@ -159,7 +161,7 @@ export const getCashPosition = asyncHandler(async (req: Request, res: Response) 
         AND (c.total IS NOT NULL OR h.handed IS NOT NULL OR u.role = 'admin')
       ORDER BY (COALESCE(c.total, 0) - COALESCE(h.handed, 0)) DESC, u.full_name`
   );
-  const handovers = await query(
+  const handovers = await query<DbRow>(
     `SELECT h.id, h.admin_id, u.full_name AS admin_name, h.amount, h.note, h.handed_at, r.full_name AS received_by_name
        FROM admin_cash_handovers h
        LEFT JOIN users u ON u.id = h.admin_id
@@ -168,12 +170,12 @@ export const getCashPosition = asyncHandler(async (req: Request, res: Response) 
   );
   const n = (v: unknown) => Math.round((parseFloat(String(v)) || 0) * 100) / 100;
   return successResponse(res, {
-    admins: admins.rows.map((a: any) => ({
+    admins: admins.rows.map((a) => ({
       id: a.id, name: a.full_name, is_owner: a.role === 'super_admin',
       rider_cash: n(a.rider_cash), ocp_cash: n(a.ocp_cash), office_cash: n(a.office_cash),
       collected: n(a.collected), handed: n(a.handed), balance: n(n(a.collected) - n(a.handed)), last_handover_at: a.last_at,
     })),
-    handovers: handovers.rows.map((h: any) => ({ ...h, amount: n(h.amount) })),
+    handovers: handovers.rows.map((h) => ({ ...h, amount: n(h.amount) })),
   }, 'Cash position');
 });
 

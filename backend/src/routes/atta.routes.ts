@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import * as attaController from '../controllers/atta.controller';
+import { duplicateSubmitGuard } from '../middleware/duplicateSubmitGuard';
 import {
   authenticate,
   validate,
@@ -28,6 +29,7 @@ router.get('/:id', attaController.getAttaRequestById);
 router.post(
   '/',
   validate(attaSchemas.create),
+  duplicateSubmitGuard, // after validation: three taps = one wheat pickup (A34)
   attaController.createAttaRequest
 );
 router.put('/:id/cancel', attaController.cancelAttaRequest);

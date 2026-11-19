@@ -12,6 +12,7 @@
 // Retriever API auto-reads the code on Android (zero-tap) — no SMS permission.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import logger from '../utils/logger';
 
 export type OtpChannel = 'whatsapp' | 'sms';
@@ -87,7 +88,8 @@ export async function sendWhatsAppOtp(phoneE164: string, code: string): Promise<
     }
 
     return { ok: true, channel: 'whatsapp' };
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('WhatsApp OTP send error', { error: error?.message });
     return { ok: false, error: error?.message || 'WhatsApp request failed' };
   }
@@ -170,7 +172,8 @@ export async function sendSmsOtp(phoneE164: string, code: string): Promise<Deliv
     }
 
     return { ok: true, channel: 'sms' };
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('SMS OTP send error', { provider, error: error?.message });
     return { ok: false, error: error?.message || 'SMS request failed' };
   }

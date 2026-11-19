@@ -93,7 +93,7 @@ export const updateServiceArea = asyncHandler(async (req: Request, res: Response
 
   const { id } = req.params;
   const sets: string[] = [];
-  const params: any[] = [];
+  const params: unknown[] = [];
   let idx = 1;
 
   if (req.body.name !== undefined) {

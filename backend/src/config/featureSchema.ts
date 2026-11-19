@@ -5,6 +5,7 @@
 // repeatedly (CREATE TABLE IF NOT EXISTS).
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -44,7 +45,8 @@ export async function hasFeatureTables(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'abandoned_carts' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe feature tables', { error: error?.message });
     cached = false;
   }
@@ -157,7 +159,8 @@ export async function ensureFeatureTables(): Promise<boolean> {
       cached = true;
       logger.info('feature tables ensured (service_areas, baskets, franchise_inquiries, abandoned_carts)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not create feature tables', { error: error?.message });
       cached = false;
       return false;

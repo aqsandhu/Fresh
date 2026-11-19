@@ -2,6 +2,7 @@
 // ADMIN CONTROLLER — restaurant accounts (review requests + manage approved).
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { Request, Response } from 'express';
 import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
@@ -15,7 +16,7 @@ import { resolveCityScope, cityIdClause, cityRowInScope, orderInScope } from '..
 import { emitOrderUpdate, emitOrderEventToAdmins, emitToCityAdmins } from '../../config/socket';
 import { isValidOrderTransition, ORDER_STATUS_TIMESTAMPS, restoreOrderInventory } from '../../utils/orderStatus';
 import { upsertGlobalSiteSetting } from '../../utils/siteSettings';
-import { placeRestaurantOrder } from '../../utils/restaurantOrders';
+import { deliveryFigure, placeRestaurantOrder } from '../../utils/restaurantOrders';
 import { commitOrderSaleOnDelivery } from '../../utils/systemStock';
 import { assignRiderToOrder } from '../../utils/assignRiderToOrder';
 import logger from '../../utils/logger';
@@ -37,7 +38,7 @@ export const getRestaurants = asyncHandler(async (req: Request, res: Response) =
   if (scope.forbidden) return successResponse(res, { restaurants: [], counts: {} }, 'Restaurants');
 
   const status = String(req.query.status || 'all');
-  const params: any[] = [];
+  const params: unknown[] = [];
   let where = 'WHERE r.deleted_at IS NULL';
 
   if (['pending', 'approved', 'disabled', 'banned'].includes(status)) {
@@ -59,7 +60,7 @@ export const getRestaurants = asyncHandler(async (req: Request, res: Response) =
   );
 
   // Tab counts (pending vs approved) within the same city scope.
-  const countParams: any[] = [];
+  const countParams: unknown[] = [];
   const countCity = cityIdClause(scope, 'r', countParams, 1);
   const counts = await query(
     `SELECT r.status, COUNT(*)::int AS n
@@ -172,7 +173,7 @@ export const getRestaurantOrders = asyncHandler(async (req: Request, res: Respon
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, { orders: [], counts: {} }, 'Orders');
 
-  const params: any[] = [];
+  const params: unknown[] = [];
   let where = 'WHERE o.restaurant_id IS NOT NULL AND o.deleted_at IS NULL';
   if (typeof req.query.status === 'string' && req.query.status) {
     params.push(req.query.status);
@@ -205,7 +206,7 @@ export const getRestaurantOrders = asyncHandler(async (req: Request, res: Respon
   );
 
   // Status counts (same scope).
-  const cParams: any[] = [];
+  const cParams: unknown[] = [];
   const cCity = cityIdClause(scope, 'o', cParams, 1);
   const counts = await query(
     `SELECT o.status, COUNT(*)::int AS n FROM orders o
@@ -235,12 +236,13 @@ export const createAdminRestaurantOrder = asyncHandler(async (req: Request, res:
   if (!cityRowInScope(scope, r.rows[0].city_id)) return notFoundResponse(res, 'Restaurant not found');
   if (r.rows[0].status !== 'approved') return errorResponse(res, 'Restaurant is not approved.', 400);
 
-  let order: any;
-  let restaurant: any;
+  let order;
+  let restaurant;
   let duplicate = false;
   try {
     ({ order, restaurant, duplicate } = await placeRestaurantOrder(restaurant_id, items, { customerNotes: customer_notes }));
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
   }
@@ -294,7 +296,8 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
         { id: order.id, order_number: order.order_number, status: order.status, rider_id: order.rider_id },
         'Order updated'
       );
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       if (err?.http === 404) return notFoundResponse(res, err.message);
       if (err?.http === 400) return errorResponse(res, err.message, 400);
       throw err;
@@ -303,7 +306,7 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
 
   if (!status) return errorResponse(res, 'Nothing to update', 400);
 
-  let updated: any;
+  let updated;
   try {
     updated = await withTransaction(async (client) => {
       const cur = await client.query(
@@ -325,9 +328,9 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
         );
       }
       const sets: string[] = ['updated_at = NOW()', 'status = $1'];
-      const params: any[] = [status];
+      const params: unknown[] = [status];
       const tsCol = ORDER_STATUS_TIMESTAMPS[status as keyof typeof ORDER_STATUS_TIMESTAMPS];
-      if (tsCol) sets.push(`${tsCol} = NOW()`);
+      if (tsCol && current.status !== status) sets.push(`${tsCol} = NOW()`); // A38
 
       params.push(id);
       const result = await client.query(
@@ -345,7 +348,8 @@ export const updateRestaurantOrderStatus = asyncHandler(async (req: Request, res
 
       return result.rows[0];
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 404) return notFoundResponse(res, err.message);
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
@@ -380,7 +384,7 @@ export const getRestaurantDashboard = asyncHandler(async (req: Request, res: Res
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, {}, 'Dashboard');
 
-  const params: any[] = [];
+  const params: unknown[] = [];
   const cCity = cityIdClause(scope, 'o', params, 1);
   const stats = await query(
     `SELECT
@@ -395,7 +399,7 @@ export const getRestaurantDashboard = asyncHandler(async (req: Request, res: Res
     params
   );
 
-  const rParams: any[] = [];
+  const rParams: unknown[] = [];
   const rCity = cityIdClause(scope, 'r', rParams, 1);
   const restCount = await query(
     `SELECT
@@ -425,9 +429,10 @@ export const getRestaurantSettings = asyncHandler(async (_req: Request, res: Res
   let urgentEta = '';
   let slotCutoff = 60;
   for (const r of s.rows) {
-    if (r.key === 'restaurant_delivery_base_charge') base = parseFloat(r.value) || base;
-    if (r.key === 'restaurant_free_delivery_threshold') threshold = parseFloat(r.value) || threshold;
-    if (r.key === 'restaurant_delivery_urgent_charge') urgentCharge = parseFloat(r.value) || 0;
+    // A saved 0 is a real figure (free delivery / no minimum) — I22.
+    if (r.key === 'restaurant_delivery_base_charge') base = deliveryFigure(r.value, base);
+    if (r.key === 'restaurant_free_delivery_threshold') threshold = deliveryFigure(r.value, threshold);
+    if (r.key === 'restaurant_delivery_urgent_charge') urgentCharge = deliveryFigure(r.value, 0);
     if (r.key === 'restaurant_delivery_urgent_eta') urgentEta = String(r.value || '').trim();
     if (r.key === 'restaurant_slot_cutoff_percent') { const n = parseFloat(r.value); if (Number.isFinite(n)) slotCutoff = n; }
   }
@@ -440,6 +445,10 @@ export const getRestaurantSettings = asyncHandler(async (_req: Request, res: Res
 
 /** PUT /api/admin/restaurants/settings — update global restaurant delivery config. */
 export const updateRestaurantSettings = asyncHandler(async (req: Request, res: Response) => {
+  // These charges apply to every city's restaurants → super admin only (B28).
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only the super admin can change restaurant delivery settings (they apply to every city).', 403);
+  }
   const { base_charge, free_delivery_threshold, urgent_charge, urgent_eta, slot_cutoff_percent } = req.body;
   const num = (v: unknown, fb: number) => {
     const n = parseFloat(String(v));

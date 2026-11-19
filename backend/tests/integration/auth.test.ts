@@ -9,6 +9,7 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { query, withTransaction } from '@/config/database';
 import authRoutes from '@/routes/auth.routes';
 import { buildApp, signAccessToken, signRefreshToken } from './helpers';
@@ -156,6 +157,45 @@ describe('POST /api/auth/delete-account', () => {
     expect(scrub).toMatch(/delivery_instructions = NULL/);
     // The user row is anonymised in the same transaction.
     expect(sqls.some((s) => /UPDATE users SET/i.test(s) && /status = 'deleted'/i.test(s))).toBe(true);
+  });
+
+  // A session alone must not be enough to erase an account (a borrowed phone,
+  // a stolen token): the PIN is asked again.
+  describe('an account with a PIN', () => {
+    const pinHash = bcrypt.hashSync('4826', 4);
+    const withPin = () =>
+      routeBySql({
+        'information_schema': () => ok([{ column_name: 'pin_hash' }, { column_name: 'pin_set_at' }]),
+        'FROM users': () =>
+          ok([{ id: 'user-1', phone: '+923001234567', role: 'customer', status: 'active', full_name: 'Aisha', pin_hash: pinHash }]),
+        'UPDATE refresh_tokens': () => ok([], 'UPDATE'),
+      });
+    const del = (body: Record<string, unknown>) =>
+      request(app).post('/api/auth/delete-account').set('Authorization', `Bearer ${signAccessToken()}`).send(body);
+
+    it('is not deleted without the PIN', async () => {
+      withPin();
+      const res = await del({});
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/4-digit PIN/);
+      expect(mockWithTransaction).not.toHaveBeenCalled();
+    });
+
+    it('is not deleted with a wrong PIN (400, not 401 — the apps log out on 401)', async () => {
+      withPin();
+      const res = await del({ pin: '0000' });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/Incorrect PIN/);
+      expect(mockWithTransaction).not.toHaveBeenCalled();
+    });
+
+    it('is deleted with the right PIN', async () => {
+      withPin();
+      mockWithTransaction.mockImplementationOnce((async (cb: any) => cb({ query: jest.fn(async () => ok([], 'UPDATE')) })) as never);
+      const res = await del({ pin: '4826' });
+      expect(res.status).toBe(200);
+      expect(mockWithTransaction).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('refuses to delete workforce (non-customer) accounts', async () => {

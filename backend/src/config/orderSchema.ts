@@ -6,6 +6,7 @@
 // createOrder can fall back gracefully until migration 18 has been applied.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -62,7 +63,8 @@ export async function hasOrderCouponColumns(): Promise<boolean> {
         LIMIT 1`
     );
     couponColumnsCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe orders.coupon_discount column', { error: error?.message });
     couponColumnsCached = false;
   }
@@ -112,7 +114,8 @@ export async function ensureOrderCouponColumns(): Promise<boolean> {
       couponColumnsCached = true;
       logger.info('orders coupon columns ensured (migration 18 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply orders coupon column migration — run database/migrations/18-orders-coupon-discount.sql manually', {
         error: error?.message,
       });
@@ -136,7 +139,8 @@ export async function hasUrgentDeliveryColumns(): Promise<boolean> {
           AND column_name = 'is_urgent_delivery' LIMIT 1`
     );
     urgentColumnsCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe orders.is_urgent_delivery column', { error: error?.message });
     urgentColumnsCached = false;
   }
@@ -165,7 +169,8 @@ export async function ensureUrgentDeliveryColumns(): Promise<boolean> {
       urgentColumnsCached = true;
       logger.info('orders urgent-delivery columns ensured (migration 28 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply orders urgent-delivery migration — run database/migrations/28 manually', {
         error: error?.message,
       });
@@ -194,7 +199,8 @@ export async function hasRestaurantOrderColumns(): Promise<boolean> {
           AND column_name = 'restaurant_id' LIMIT 1`
     );
     restaurantOrderCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe orders.restaurant_id column', { error: error?.message });
     restaurantOrderCached = false;
   }
@@ -224,7 +230,8 @@ export async function ensureRestaurantOrderColumns(): Promise<boolean> {
       restaurantOrderCached = true;
       logger.info('orders restaurant columns ensured (migration 32 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply orders restaurant migration — run database/migrations/32 manually', {
         error: error?.message,
       });
@@ -307,7 +314,8 @@ export async function ensureOrderStatusNotificationTrigger(): Promise<boolean> {
       orderStatusNotificationTriggerEnsured = true;
       logger.info('order status notification trigger ensured (migration 39 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply order status notification trigger migration - run database/migrations/39 manually', {
         error: error?.message,
       });

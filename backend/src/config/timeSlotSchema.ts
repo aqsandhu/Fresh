@@ -9,6 +9,7 @@
 // date). This adds a per-(slot, date) counter that the checkout claims against.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -48,7 +49,8 @@ export async function hasTimeSlotBookings(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'time_slot_bookings' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe time_slot_bookings', { error: error?.message });
     cached = false;
   }
@@ -97,7 +99,8 @@ export async function ensureTimeSlotBookings(): Promise<boolean> {
       cached = true;
       logger.info('time_slot_bookings table ensured');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not create time_slot_bookings', { error: error?.message });
       cached = false;
       return false;

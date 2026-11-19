@@ -2,6 +2,7 @@
 // SOCKET.IO SERVER CONFIGURATION - Real-time chat, order tracking, notifications
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Server } from 'socket.io';
 import { createServer } from 'http';
 import { verifySocketToken } from './jwt';
@@ -37,14 +38,34 @@ function mapChatSenderType(role?: string): ChatSenderType | null {
 
 /**
  * Verifies that the authenticated socket user is allowed to access an order.
+ * The super admin: any order. A city admin: only their city's orders (B29 —
+ * every admin could join every city's order room, hear its updates and write
+ * in its chat). Same city match as the REST order screens (orderInScope).
  */
-const canAccessOrder = async (
+export const canAccessOrder = async (
   orderId: string,
   userId: string,
-  role?: string
+  role?: string,
+  adminCityId?: string | null
 ): Promise<boolean> => {
-  if (role === 'admin' || role === 'super_admin') return true;
-  if (!orderId || !userId) return false;
+  if (role === 'super_admin') return true;
+  if (!orderId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId))) return false;
+  if (role === 'admin') {
+    if (!adminCityId) return false;
+    const r = await query(
+      `SELECT 1 FROM orders o
+         LEFT JOIN addresses a ON a.id = o.address_id
+         JOIN service_cities sc ON sc.id = $2
+        WHERE o.id = $1 AND o.deleted_at IS NULL
+          AND (o.city_id = sc.id
+               OR LOWER(COALESCE(a.city, '')) = LOWER(sc.name)
+               OR LOWER(COALESCE(o.delivery_address_snapshot->>'city', '')) = LOWER(sc.name))
+        LIMIT 1`,
+      [orderId, adminCityId]
+    );
+    return r.rows.length > 0;
+  }
+  if (!userId) return false;
   const result = await query(
     `SELECT o.id FROM orders o
      LEFT JOIN riders r ON o.rider_id = r.id
@@ -160,7 +181,8 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
         adminCityId,
       };
       next();
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       logger.warn(`Socket auth failed: ${err.message}`);
       next(new Error('Invalid token'));
     }
@@ -188,7 +210,7 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
           return;
         }
 
-        const allowed = await canAccessOrder(data.orderId, userId, role);
+        const allowed = await canAccessOrder(data.orderId, userId, role, socket.data.user?.adminCityId);
         if (!allowed) {
           logger.warn(
             `Unauthorized chat:send by user ${userId} on order ${data.orderId}`
@@ -228,7 +250,7 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
 
         const result = await query(
           `INSERT INTO order_messages (order_id, sender_type, sender_id, message)
-           VALUES ($1, $2, $3, $4) RETURNING id, message, sender_type, created_at`,
+           VALUES ($1, $2, $3, $4) RETURNING id, order_id, message, sender_type, created_at`, // order_id: clients drop other orders' messages (I13)
           [data.orderId, senderType, userId, message]
         );
         const newMessage = result.rows[0];
@@ -244,7 +266,8 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
         // optimistic copy it rendered locally (io.to would echo it back and
         // duplicate the bubble).
         socket.to(`order:${data.orderId}`).emit('chat:message', newMessage);
-      } catch (err: any) {
+      } catch (errCaught: unknown) {
+        const err = asCaughtError(errCaught);
         logger.error('Error handling chat:send:', err);
         socket.emit('chat:error', { message: 'Failed to send message' });
       }
@@ -255,14 +278,15 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
       async (data: { orderId: string; isTyping: boolean }) => {
         try {
           if (!typingRateLimiter.allow(socket.id, 'chat:typing')) return;
-          const allowed = await canAccessOrder(data.orderId, userId, role);
+          const allowed = await canAccessOrder(data.orderId, userId, role, socket.data.user?.adminCityId);
           if (!allowed) return;
           socket.to(`order:${data.orderId}`).emit('chat:typing', {
             orderId: data.orderId,
             isTyping: data.isTyping,
             userId,
           });
-        } catch (err: any) {
+        } catch (errCaught: unknown) {
+          const err = asCaughtError(errCaught);
           logger.error('Error handling chat:typing:', err);
         }
       }
@@ -270,7 +294,7 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
 
     socket.on('order:subscribe', async (orderId: string) => {
       try {
-        const allowed = await canAccessOrder(orderId, userId, role);
+        const allowed = await canAccessOrder(orderId, userId, role, socket.data.user?.adminCityId);
         if (!allowed) {
           logger.warn(
             `Unauthorized order:subscribe by user ${userId} on order ${orderId}`
@@ -280,7 +304,8 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
         }
         socket.join(`order:${orderId}`);
         logger.debug(`Socket ${socket.id} subscribed to order:${orderId}`);
-      } catch (err: any) {
+      } catch (errCaught: unknown) {
+        const err = asCaughtError(errCaught);
         logger.error('Error handling order:subscribe:', err);
         socket.emit('order:error', { message: 'Failed to subscribe to order' });
       }
@@ -347,7 +372,8 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
             updatedAt: new Date().toISOString(),
           };
           await emitRiderLocationUpdate(payload);
-        } catch (err: any) {
+        } catch (errCaught: unknown) {
+          const err = asCaughtError(errCaught);
           logger.error('Error updating rider location:', err);
         }
       }
@@ -361,15 +387,105 @@ export const initializeSocket = (httpServer: ReturnType<typeof createServer>) =>
     });
   });
 
+  // Second line of defence (B29): the account is checked only at the
+  // handshake, so a socket opened before a block / removal / role change made
+  // straight in the database kept receiving events. Every few minutes each
+  // open socket's account is checked again.
+  const recheckMs = Math.max(30_000, Number(process.env.SOCKET_RECHECK_MS) || 5 * 60_000);
+  setInterval(() => {
+    recheckAllSockets().catch((err) => logger.warn('Socket recheck failed', { error: err?.message }));
+  }, recheckMs).unref();
+
   return io;
 };
+
+type LiveAccount = { ok: boolean; adminCityId: string | null };
+
+/** Is this account still allowed a live connection, and (admins) which city room? */
+async function liveAccounts(userIds: string[]): Promise<Map<string, LiveAccount>> {
+  const out = new Map<string, LiveAccount>();
+  if (userIds.length === 0) return out;
+  const r = await query(
+    `SELECT u.id, u.role, u.status, u.deleted_at IS NULL AS live,
+            (SELECT verification_status::text FROM riders rd WHERE rd.user_id = u.id AND rd.deleted_at IS NULL LIMIT 1) AS rider_verification
+       FROM users u WHERE u.id = ANY($1::uuid[])`,
+    [userIds]
+  );
+  for (const row of r.rows) {
+    const ok = row.live && row.status === 'active' && (row.role !== 'rider' || row.rider_verification === 'verified');
+    const adminCityId = ok && row.role === 'admin' ? await resolveAdminCityId(row.id).catch(() => null) : null;
+    out.set(row.id, { ok, adminCityId });
+  }
+  for (const id of userIds) if (!out.has(id)) out.set(id, { ok: false, adminCityId: null });
+  return out;
+}
+
+/** Apply an account's current state to its open sockets: close them, or move an admin to their city room. */
+function applyAccount(sockets: any[], account: LiveAccount): void {
+  for (const s of sockets) {
+    if (!account.ok) {
+      s.disconnect(true);
+      continue;
+    }
+    if (s.data?.user?.role === 'admin' && s.data.user.adminCityId !== account.adminCityId) {
+      for (const room of Array.from(s.rooms as Set<string>)) {
+        if (room.startsWith('admins:city:') || room.startsWith('order:')) s.leave(room);
+      }
+      if (account.adminCityId) s.join(adminCityRoom(account.adminCityId));
+      s.data.user.adminCityId = account.adminCityId;
+    }
+  }
+}
+
+/**
+ * Call after an account is blocked, removed, deleted, logged out everywhere
+ * or given another role: its open sockets are closed (or, for an admin who
+ * keeps access, moved to their current city) at once instead of staying live.
+ */
+export async function syncUserSockets(userId: string | null | undefined): Promise<void> {
+  if (!io || !userId) return;
+  try {
+    const sockets = await io.in(`user:${userId}`).fetchSockets();
+    if (sockets.length === 0) return;
+    const account = (await liveAccounts([userId])).get(userId)!;
+    applyAccount(sockets, account);
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
+    logger.warn('syncUserSockets failed', { userId, error: err?.message });
+  }
+}
+
+/** Close every open socket of a user (their sessions were all ended). */
+export function disconnectUserSockets(userId: string | null | undefined): void {
+  if (!io || !userId) return;
+  try {
+    io.in(`user:${userId}`).disconnectSockets(true);
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
+    logger.warn('disconnectUserSockets failed', { userId, error: err?.message });
+  }
+}
+
+async function recheckAllSockets(): Promise<void> {
+  if (!io) return;
+  const sockets = await io.fetchSockets();
+  const byUser = new Map<string, any[]>();
+  for (const s of sockets) {
+    const id = s.data?.user?.userId;
+    if (!id) continue;
+    if (!byUser.has(id)) byUser.set(id, []);
+    byUser.get(id)!.push(s);
+  }
+  const accounts = await liveAccounts(Array.from(byUser.keys()));
+  for (const [id, list] of byUser) applyAccount(list, accounts.get(id)!);
+}
 
 export const getIO = () => {
   if (!io) throw new Error('Socket.IO not initialized');
   return io;
 };
 
-export const emitOrderUpdate = (orderId: string, data: any) => {
+export const emitOrderUpdate = (orderId: string, data: unknown) => {
   try {
     getIO().to(`order:${orderId}`).emit('order:update', data);
   } catch (err) {
@@ -377,15 +493,17 @@ export const emitOrderUpdate = (orderId: string, data: any) => {
   }
 };
 
-export const emitChatMessage = (orderId: string, message: any) => {
+export const emitChatMessage = (orderId: string, message: Record<string, unknown> & { order_id?: string | null }) => {
   try {
-    getIO().to(`order:${orderId}`).emit('chat:message', message);
+    // Always say which order the message is for (I13): a socket in several
+    // order rooms (a rider with many orders, an admin) could not tell.
+    getIO().to(`order:${orderId}`).emit('chat:message', { ...message, order_id: message?.order_id ?? orderId });
   } catch (err) {
     logger.error('emitChatMessage error:', err);
   }
 };
 
-export const emitToUser = (userId: string | null | undefined, event: string, data: any) => {
+export const emitToUser = (userId: string | null | undefined, event: string, data: unknown) => {
   if (!userId) return;
   try {
     getIO().to(`user:${userId}`).emit(event, data);
@@ -398,7 +516,7 @@ export const emitToUser = (userId: string | null | undefined, event: string, dat
  * Super admins only — the owner's watchdog findings must not be broadcast to
  * the city admins whose own actions they may be about.
  */
-export const emitToSuperAdmins = (event: string, data: any) => {
+export const emitToSuperAdmins = (event: string, data: unknown) => {
   try {
     getIO().to(ADMIN_ROOM_SUPER).emit(event, data);
   } catch (err) {
@@ -407,7 +525,7 @@ export const emitToSuperAdmins = (event: string, data: any) => {
 };
 
 /** Every admin (any city). Use only for events that belong to no city. */
-export const emitToAdmins = (event: string, data: any) => {
+export const emitToAdmins = (event: string, data: unknown) => {
   try {
     getIO().to(ADMIN_ROOM_ALL).emit(event, data);
   } catch (err) {
@@ -420,7 +538,7 @@ export const emitToAdmins = (event: string, data: any) => {
  * city got every new-order sound, cancel toast and rider GPS ping (audit F4).
  * Unknown city (legacy rows) → all admins, the old behaviour.
  */
-export const emitToCityAdmins = (cityId: string | null | undefined, event: string, data: any) => {
+export const emitToCityAdmins = (cityId: string | null | undefined, event: string, data: unknown) => {
   try {
     if (!cityId) {
       getIO().to(ADMIN_ROOM_ALL).emit(event, data);
@@ -433,7 +551,7 @@ export const emitToCityAdmins = (cityId: string | null | undefined, event: strin
 };
 
 /** Admin event about an order → that order's city admins + super admins. */
-export const emitOrderEventToAdmins = (orderId: string | null | undefined, event: string, data: any): void => {
+export const emitOrderEventToAdmins = (orderId: string | null | undefined, event: string, data: unknown): void => {
   if (!orderId) {
     emitToAdmins(event, data);
     return;
@@ -444,7 +562,7 @@ export const emitOrderEventToAdmins = (orderId: string | null | undefined, event
 };
 
 /** Admin event about a rider → the rider's city admins + super admins. */
-export const emitRiderEventToAdmins = (riderId: string | null | undefined, event: string, data: any): void => {
+export const emitRiderEventToAdmins = (riderId: string | null | undefined, event: string, data: unknown): void => {
   if (!riderId) {
     emitToAdmins(event, data);
     return;
@@ -475,7 +593,7 @@ export const emitRiderLocationUpdate = async (payload: RiderLocationPayload) => 
   }
 };
 
-export const emitToRiders = (event: string, data: any) => {
+export const emitToRiders = (event: string, data: unknown) => {
   try {
     getIO().to('riders').emit(event, data);
   } catch (err) {

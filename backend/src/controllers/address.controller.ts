@@ -9,6 +9,7 @@ import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../utils/response';
 import logger from '../utils/logger';
 import { resolvePublicCityId } from '../utils/cityScope';
+import { cityIdForAddress, isOutsideServiceArea, OUT_OF_AREA_MESSAGE } from '../utils/serviceAreaCheck';
 
 /**
  * City name for a new address when the client did not send one: the selected
@@ -139,6 +140,14 @@ export const createAddress = asyncHandler(async (req: Request, res: Response) =>
     parsedLng != null &&
     Number.isFinite(parsedLat) &&
     Number.isFinite(parsedLng);
+
+  // Same rule the website / app apply to a map pin, now also on the server (A39).
+  if (hasLocation) {
+    const areaCity = await cityIdForAddress(await resolvePublicCityId(req), city);
+    if (await isOutsideServiceArea(areaCity, parsedLat, parsedLng)) {
+      return errorResponse(res, OUT_OF_AREA_MESSAGE, 422);
+    }
+  }
 
   if (hasLocation) {
     // Find delivery zone based on location
@@ -289,7 +298,7 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
 
   // Build update query
   const updates: string[] = [];
-  const values: any[] = [];
+  const values: unknown[] = [];
   let paramIndex = 1;
 
   if (address_type !== undefined) {
@@ -371,6 +380,16 @@ export const updateAddress = asyncHandler(async (req: Request, res: Response) =>
         'Location accuracy must be within 8 meters. Please drag the marker or try again in an open area.',
         400
       );
+    }
+
+    // A moved pin must still be inside the city's delivery area (A39).
+    const cityRow = await query('SELECT city FROM addresses WHERE id = $1', [id]);
+    const areaCity = await cityIdForAddress(
+      await resolvePublicCityId(req),
+      (city !== undefined ? String(city) : cityRow.rows[0]?.city) || null
+    );
+    if (await isOutsideServiceArea(areaCity, parseFloat(String(latitude)), parseFloat(String(longitude)))) {
+      return errorResponse(res, OUT_OF_AREA_MESSAGE, 422);
     }
 
     updates.push(`location = ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex + 1}), 4326)::geography`);

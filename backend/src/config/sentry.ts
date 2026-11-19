@@ -157,7 +157,7 @@ export const setupSentryErrorHandler = (app: Application): void => {
 /**
  * Manually capture an exception in Sentry.
  */
-export const captureException = (error: Error, context?: Record<string, any>): void => {
+export const captureException = (error: Error, context?: Record<string, unknown>): void => {
   if (!process.env.SENTRY_DSN) return;
 
   Sentry.withScope((scope) => {

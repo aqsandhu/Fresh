@@ -7,6 +7,7 @@ import { query, withTransaction } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse } from '../../utils/response';
 import logger from '../../utils/logger';
+import { disconnectUserSockets } from '../../config/socket';
 import {
   resolveCityScope,
   customerCityExistsClause,
@@ -15,6 +16,7 @@ import {
   addressCityWhereClause,
 } from '../../utils/cityScope';
 import { normalizePhoneNumber, parsePagination } from '../../utils/validators';
+import { csvCell } from '../../utils/csv';
 
 // Marketing migration (46) may lag behind code — guard references so the
 // Customers tab never breaks if abandoned_carts hasn't been created yet.
@@ -251,7 +253,7 @@ export const getCustomers = asyncHandler(async (req: Request, res: Response) => 
   const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit);
 
   let whereSql = `WHERE u.role = 'customer' AND u.deleted_at IS NULL`;
-  const params: any[] = [];
+  const params: unknown[] = [];
   let paramIndex = 1;
 
   if (search) {
@@ -336,7 +338,7 @@ export const exportCustomersCsv = asyncHandler(async (req: Request, res: Respons
   const { search } = req.query;
 
   let whereSql = `WHERE u.role = 'customer' AND u.deleted_at IS NULL`;
-  const params: any[] = [];
+  const params: unknown[] = [];
   let paramIndex = 1;
 
   if (search) {
@@ -380,17 +382,20 @@ export const exportCustomersCsv = asyncHandler(async (req: Request, res: Respons
     params
   );
 
-  const esc = (v: unknown) => {
-    const s = v == null ? '' : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
   const header = ['name', 'phone', 'email', 'total_orders', 'last_order_at', 'joined_at'];
   const lines = [header.join(',')];
   for (const r of result.rows) {
     lines.push(
-      [r.full_name, r.phone, r.email, r.total_orders, r.last_order_at, r.created_at]
-        .map(esc)
-        .join(',')
+      [
+        // Name and email are typed by the customer: never let them run as a
+        // spreadsheet formula when the file is opened (B32).
+        csvCell(r.full_name, { text: true }),
+        csvCell(r.phone),
+        csvCell(r.email, { text: true }),
+        csvCell(r.total_orders),
+        csvCell(r.last_order_at),
+        csvCell(r.created_at),
+      ].join(',')
     );
   }
 
@@ -464,6 +469,8 @@ export const deleteCustomer = asyncHandler(async (req: Request, res: Response) =
     deletedOrders,
     deletedAddresses,
   });
+  // The removed customer's open app stops receiving live events at once (B29).
+  disconnectUserSockets(id);
 
   successResponse(res, {
     id,
@@ -536,6 +543,23 @@ export const lookupCustomerByPhone = asyncHandler(async (req: Request, res: Resp
   );
   const user = userRes.rows[0];
   if (!user) return successResponse(res, empty, 'No customer found for this number');
+
+  // A city admin finds only customers of their own city — with an address or
+  // an order there (B31: any city's customer name came back for a phone
+  // number). The WhatsApp order still links to the existing account by phone
+  // on the server, so nothing is duplicated.
+  if (scope.forbidden) return successResponse(res, empty, 'No customer found for this number');
+  if (!scope.unrestricted && scope.cityId && scope.cityName && scope.dbReady) {
+    const local = await query(
+      `SELECT 1 WHERE EXISTS (SELECT 1 FROM addresses a WHERE a.user_id = $1 AND a.deleted_at IS NULL AND LOWER(a.city) = LOWER($3))
+                  OR EXISTS (SELECT 1 FROM orders o LEFT JOIN addresses oa ON oa.id = o.address_id
+                              WHERE o.user_id = $1 AND o.deleted_at IS NULL
+                                AND (o.city_id = $2 OR LOWER(COALESCE(oa.city, '')) = LOWER($3)
+                                     OR LOWER(COALESCE(o.delivery_address_snapshot->>'city', '')) = LOWER($3)))`,
+      [user.id, scope.cityId, scope.cityName]
+    );
+    if (local.rows.length === 0) return successResponse(res, empty, 'No customer found in your city for this number');
+  }
 
   // Saved addresses, scoped to the admin's city (super admin sees all).
   const params: unknown[] = [user.id];

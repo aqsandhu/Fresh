@@ -84,3 +84,51 @@ describe('PIN lockout (in-memory fallback)', () => {
     });
   });
 });
+
+// ============================================================================
+// B39 (W24 confirmation round): guesses sent AT THE SAME MOMENT got past the
+// lock — the lock was checked before the slow PIN comparison and the failure
+// count was read-then-written, so 8 parallel wrong PINs were all checked
+// (only 1 of 8 was refused). An attempt is now reserved (counted) atomically
+// BEFORE the comparison: at most PIN_FAIL_THRESHOLD guesses per round.
+// ============================================================================
+import { reservePinAttempt, pinAttemptFailed, releasePinAttempt } from '@/config/pinLockout';
+
+describe('PIN attempts reserved before the check (B39)', () => {
+  it('8 attempts at once: exactly PIN_FAIL_THRESHOLD go through, the rest are refused', async () => {
+    const phone = uniquePhone();
+    const results = await Promise.all(Array.from({ length: 8 }, () => reservePinAttempt(phone)));
+    expect(results.filter((r) => r.allowed)).toHaveLength(PIN_FAIL_THRESHOLD);
+    expect(results.filter((r) => !r.allowed).every((r) => r.lockedUntil > Date.now())).toBe(true);
+  });
+
+  it('one after another: the 5th wrong try locks (as before); a right try clears everything', async () => {
+    const phone = uniquePhone();
+    for (let i = 1; i < PIN_FAIL_THRESHOLD; i++) {
+      expect((await reservePinAttempt(phone)).allowed).toBe(true);
+      expect((await pinAttemptFailed(phone)).lockedUntil).toBe(0);
+    }
+    expect((await reservePinAttempt(phone)).allowed).toBe(true); // the 5th try is still checked
+    expect((await pinAttemptFailed(phone)).lockedUntil).toBeGreaterThan(Date.now()); // …and wrong → locked
+    expect((await reservePinAttempt(phone)).allowed).toBe(false);
+
+    const other = uniquePhone();
+    await reservePinAttempt(other);
+    await reservePinAttempt(other);
+    await clearPinFailures(other); // a right PIN
+    expect(await getPinLockoutState(other)).toEqual({ fails: 0, firstFailAt: 0, lockedUntil: 0, totalRounds: 0 });
+  });
+
+  it('a step that was not a wrong answer gives its attempt back (even the 5th)', async () => {
+    const phone = uniquePhone();
+    for (let i = 1; i < PIN_FAIL_THRESHOLD; i++) { await reservePinAttempt(phone); await pinAttemptFailed(phone); }
+    const fifth = await reservePinAttempt(phone); // locks…
+    expect(fifth.lockedUntil).toBeGreaterThan(Date.now());
+    await releasePinAttempt(phone, fifth); // …but it was the right password (code still to come)
+    expect((await getPinLockoutState(phone)).lockedUntil).toBe(0);
+    expect((await getPinLockoutState(phone)).fails).toBe(PIN_FAIL_THRESHOLD - 1);
+    const next = await reservePinAttempt(phone);
+    expect(next.allowed).toBe(true);
+    expect(next.lockedUntil).toBeGreaterThan(Date.now()); // one more wrong try locks again
+  });
+});

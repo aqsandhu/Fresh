@@ -9,6 +9,7 @@
 //   * stock_movements (system ledger) + refunds (complaint refunds)
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -50,7 +51,8 @@ export async function hasCatalogV2Columns(): Promise<boolean> {
           AND column_name = 'reserved_quantity' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe products.reserved_quantity', { error: error?.message });
     cached = false;
   }
@@ -173,7 +175,8 @@ export async function ensureCatalogV2Columns(): Promise<boolean> {
       ddlEnsured = true;
       logger.info('catalog-v2 schema ensured (current additive schema applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply catalog-v2 migration — run database/migrations/37-catalog-v2-stock.sql manually', {
         error: error?.message,
       });

@@ -4,11 +4,11 @@
 // until it has (re-checked every 5 minutes while missing).
 // ============================================================================
 
-import { query } from './database';
+import { query, type DbRow } from './database';
 
 const RETRY_MS = 5 * 60 * 1000;
 
-function makeProbe(sql: string, expect: (rows: any[]) => boolean) {
+function makeProbe(sql: string, expect: (rows: DbRow[]) => boolean) {
   const state: { value: boolean | null; checkedAt: number } = { value: null, checkedAt: 0 };
   return async (): Promise<boolean> => {
     if (state.value === true) return true;

@@ -55,9 +55,9 @@ export class ConflictError extends ApiError {
 }
 
 export class ValidationError extends ApiError {
-  errors: any[];
+  errors: unknown[];
   
-  constructor(message: string = 'Validation failed', errors: any[] = []) {
+  constructor(message: string = 'Validation failed', errors: unknown[] = []) {
     super(message, 422);
     this.errors = errors;
   }
@@ -74,7 +74,7 @@ interface ErrorResponse {
   success: false;
   message: string;
   requestId?: string;
-  error?: any;
+  error?: unknown;
   stack?: string;
 }
 
@@ -92,13 +92,20 @@ export const errorHandler = (
     next(rawErr);
     return;
   }
+  // Not an error: the entry waits for the city admin's approval (J1).
+  // Nothing was applied (the action's transaction was rolled back).
+  const queued = rawErr as unknown as { queued?: boolean; requestId?: string; message?: string };
+  if (queued?.queued === true) {
+    res.status(202).json({ success: true, message: queued.message, data: { queued: true, request_id: queued.requestId } });
+    return;
+  }
 
   // Same translation as asyncHandler, for errors raised in plain middleware.
   const err: Error | ApiError = clientInputError(rawErr, req) ?? rawErr;
 
   let statusCode = 500;
   let message = 'Internal server error';
-  let errorDetails: any = null;
+  let errorDetails: unknown = null;
 
   // Handle known error types
   if (err instanceof ApiError) {
@@ -241,8 +248,59 @@ export const notFoundHandler = (
  * and reaches error monitoring.
  */
 export function clientInputError(err: any, req: Request): ApiError | null {
+  // G36: a number too big for its column (SQLSTATE 22003) — a typo like
+  // 1,000,000,000,000 in a money box. Only when the request itself carries a
+  // huge number; an overflow of our own making stays a 500. A phone number
+  // ("03…", "+92…") is not a number here.
+  if (err && err.code === '22003') {
+    const huge = (v: unknown, depth = 0): boolean => {
+      if (typeof v === 'number') return Number.isFinite(v) ? Math.abs(v) >= 1e6 : true;
+      if (typeof v === 'string') return /^-?[1-9]\d*(\.\d+)?(e\+?\d+)?$/i.test(v.trim()) && Math.abs(Number(v)) >= 1e6;
+      if (v && typeof v === 'object' && depth < 4) return Object.values(v as Record<string, unknown>).some((x) => huge(x, depth + 1));
+      return false;
+    };
+    if (huge(req.body) || huge(req.query)) {
+      return new BadRequestError('One of the numbers sent is too large — please check it.');
+    }
+    return null;
+  }
+  // G37: other refusals the request itself caused. Each is translated only when
+  // the problem is really in the request — otherwise it is our bug (500).
+  const sentStrings = (v: unknown, depth = 0, out: string[] = []): string[] => {
+    if (typeof v === 'string') out.push(v);
+    else if (v && typeof v === 'object' && depth < 4) Object.values(v as Record<string, unknown>).forEach((x) => sentStrings(x, depth + 1, out));
+    return out;
+  };
+  if (err && err.code === '22001') {
+    // value too long for type character varying(N)
+    const max = Number(/character varying\((\d+)\)/.exec(String(err.message))?.[1] || 0);
+    if (max && [...sentStrings(req.body), ...sentStrings(req.query)].some((s) => s.length > max)) {
+      return new BadRequestError(`One of the texts is too long (at most ${max} characters).`);
+    }
+    return null;
+  }
+  if (err && err.code === '22021') {
+    // invalid byte sequence — a NUL character, which Postgres text cannot hold
+    if ([...sentStrings(req.body), ...sentStrings(req.query)].some((s) => s.includes('\u0000'))) {
+      return new BadRequestError('One of the texts contains a character that cannot be saved.');
+    }
+    return null;
+  }
+  if (err && err.code === '23502') {
+    // a required column left empty: the caller's mistake only if they did not send it
+    const col = String(err.column || /column "([^"]+)"/.exec(String(err.message))?.[1] || '');
+    if (col) {
+      const body = (req.body && typeof req.body === 'object' ? req.body : {}) as Record<string, unknown>;
+      const camel = col.replace(/_([a-z])/g, (_m: string, ch: string) => ch.toUpperCase());
+      const sent = [col, camel].some((k) => body[k] !== undefined && body[k] !== null && body[k] !== '');
+      if (!sent) return new BadRequestError(`${col} is required.`);
+    }
+    return null;
+  }
   if (!err || err.code !== '22P02' || typeof err.message !== 'string') return null;
-  const m = /invalid input syntax for type (uuid|integer|bigint|numeric|smallint): "([\s\S]*)"$/i.exec(err.message);
+  const m = /invalid input syntax for type (uuid|integer|bigint|numeric|smallint): "([\s\S]*)"$/i.exec(err.message)
+    // a status (enum) the list does not know — ?status=% (G37, query fuzz)
+    ?? /invalid input value for enum (\w+): "([\s\S]*)"$/i.exec(err.message);
   if (!m) return null;
   const rejected = m[2];
   const has = (bag: unknown, depth = 0): boolean => {
@@ -266,7 +324,7 @@ export function clientInputError(err: any, req: Request): ApiError | null {
 
 // Async handler wrapper
 export const asyncHandler = (
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<any>
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
 ) => {
   return (req: Request, res: Response, next: NextFunction) => {
     Promise.resolve(fn(req, res, next)).catch((err) => next(clientInputError(err, req) ?? err));
@@ -275,7 +333,7 @@ export const asyncHandler = (
 
 // Unhandled rejection handler (for process-level errors)
 export const handleUnhandledRejection = (): void => {
-  process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  process.on('unhandledRejection', (reason: unknown, promise: Promise<unknown>) => {
     logger.error('Unhandled Rejection', { reason, promise });
     // Report, DON'T exit: exiting here dropped every in-flight request
     // (orders included) for one stray fire-and-forget rejection — under load

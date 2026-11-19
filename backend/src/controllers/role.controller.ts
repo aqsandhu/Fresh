@@ -8,8 +8,9 @@
 // endpoints — enforced by the routes file.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
-import { query, withTransaction } from '../config/database';
+import { query, withTransaction, type DbRow } from '../config/database';
 import { asyncHandler, BadRequestError } from '../middleware';
 import {
   successResponse,
@@ -19,6 +20,13 @@ import {
 } from '../utils/response';
 import { PERMISSION_CATALOGUE } from '../config/permissions';
 import logger from '../utils/logger';
+import { syncUserSockets } from '../config/socket';
+
+/** A role's city may have changed: every admin holding it gets their live sockets moved or closed (B29). */
+async function syncRoleSockets(roleId: string): Promise<void> {
+  const holders = await query(`SELECT id FROM users WHERE admin_role_id = $1 AND deleted_at IS NULL`, [roleId]);
+  for (const row of holders.rows) await syncUserSockets(row.id);
+}
 
 async function ensureCompiledPermissionsSeeded(): Promise<void> {
   const codes = PERMISSION_CATALOGUE.map((p) => p.code);
@@ -44,7 +52,8 @@ export const listPermissions = asyncHandler(async (_req: Request, res: Response)
     if (dbRows.rows.length > 0) {
       return successResponse(res, dbRows.rows, 'Permissions retrieved');
     }
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     logger.warn('permissions table missing; serving compiled catalogue', {
       err: err?.message,
     });
@@ -115,14 +124,14 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
     const role = roleResult.rows[0];
 
     // Attach permissions by code lookup (atomically, fail if any code is bad).
-    const permResult = await client.query(
+    const permResult = await client.query<DbRow<{ id: string; code: string }>>(
       `SELECT id, code FROM permissions WHERE code = ANY($1::text[])`,
       [permissions]
     );
     if (permResult.rows.length !== permissions.length) {
       throw new BadRequestError('One or more permission codes are invalid');
     }
-    const insertPromises = permResult.rows.map((p: any) =>
+    const insertPromises = permResult.rows.map((p) =>
       client.query(
         `INSERT INTO admin_role_permissions (role_id, permission_id) VALUES ($1, $2)
          ON CONFLICT DO NOTHING`,
@@ -131,7 +140,7 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
     );
     await Promise.all(insertPromises);
 
-    return { ...role, permissions: permResult.rows.map((p: any) => p.code) };
+    return { ...role, permissions: permResult.rows.map((p) => p.code) };
   });
 
   logger.info('Admin role created', {
@@ -167,7 +176,7 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
 
   const updated = await withTransaction(async (client) => {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let pi = 1;
     if (name !== undefined) {
       fields.push(`name = $${pi++}`);
@@ -208,7 +217,7 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
         [id]
       );
       if (permissions.length > 0) {
-        const permResult = await client.query(
+        const permResult = await client.query<DbRow<{ id: string; code: string }>>(
           `SELECT id, code FROM permissions WHERE code = ANY($1::text[])`,
           [permissions]
         );
@@ -216,7 +225,7 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
           throw new BadRequestError('One or more permission codes are invalid');
         }
         await Promise.all(
-          permResult.rows.map((p: any) =>
+          permResult.rows.map((p) =>
             client.query(
               `INSERT INTO admin_role_permissions (role_id, permission_id) VALUES ($1, $2)`,
               [id, p.id]
@@ -244,6 +253,8 @@ export const updateRole = asyncHandler(async (req: Request, res: Response) => {
     return final.rows[0];
   });
 
+  // Admins of this role may now belong to another city (or none): move or close their live sockets (B29).
+  await syncRoleSockets(id);
   successResponse(res, updated, 'Role updated');
 });
 
@@ -314,6 +325,7 @@ export const assignRoleToUser = asyncHandler(async (req: Request, res: Response)
     roleId: role_id,
     assignedBy: req.user?.id,
   });
+  await syncUserSockets(id);
   successResponse(res, { user_id: id, role_id }, 'Role assigned');
 });
 
@@ -497,6 +509,7 @@ export const updateAdminUser = asyncHandler(async (req: Request, res: Response) 
 
   logger.info('Admin user updated', { userId: id, updatedBy: req.user?.id });
 
+  await syncUserSockets(id);
   successResponse(res, result.rows[0], 'Admin user updated successfully');
 });
 
@@ -536,5 +549,6 @@ export const deleteAdminUser = asyncHandler(async (req: Request, res: Response) 
 
   logger.info('Admin user deleted', { userId: id, deletedBy: req.user?.id });
 
+  await syncUserSockets(id);
   successResponse(res, { id }, 'Admin user deleted successfully');
 });

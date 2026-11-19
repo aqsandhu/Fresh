@@ -4,9 +4,10 @@
 // city-scoped, respond, and move them through an open → resolved workflow.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import { randomBytes } from 'crypto';
-import { query, withTransaction } from '../config/database';
+import { query, withTransaction, type DbRow } from '../config/database';
 import { asyncHandler } from '../middleware';
 import {
   successResponse,
@@ -296,18 +297,18 @@ export const getComplaint = asyncHandler(async (req: Request, res: Response) => 
   let refundInfo: any = null;
   if (row.order_id && (await hasCatalogV2Columns())) {
     const ord = await query(`SELECT total_amount, paid_amount FROM orders WHERE id = $1`, [row.order_id]);
-    const refs = await query(
+    const refs = await query<DbRow<{ amount: string }>>(
       `SELECT id, amount, original_payment_source, note, created_at FROM refunds WHERE order_id = $1 ORDER BY created_at DESC`,
       [row.order_id]
     );
     const paid = parseFloat(ord.rows[0]?.paid_amount || 0) || 0;
-    const refunded = refs.rows.reduce((s: number, r: any) => s + (parseFloat(r.amount) || 0), 0);
+    const refunded = refs.rows.reduce((s: number, r) => s + (parseFloat(r.amount) || 0), 0);
     refundInfo = {
       totalAmount: parseFloat(ord.rows[0]?.total_amount || 0) || 0,
       paidAmount: paid,
       refundedTotal: refunded,
       refundable: Math.max(0, paid - refunded),
-      refunds: refs.rows.map((r: any) => ({
+      refunds: refs.rows.map((r) => ({
         id: r.id, amount: parseFloat(r.amount), source: r.original_payment_source, note: r.note, createdAt: r.created_at,
       })),
     };
@@ -346,7 +347,7 @@ export const refundComplaint = asyncHandler(async (req: Request, res: Response) 
   }
   if (!complaint.order_id) return errorResponse(res, 'This complaint is not linked to an order.', 400);
 
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       const ord = await client.query(`SELECT paid_amount FROM orders WHERE id = $1 FOR UPDATE`, [complaint.order_id]);
@@ -372,7 +373,8 @@ export const refundComplaint = asyncHandler(async (req: Request, res: Response) 
       );
       return ins.rows[0];
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }

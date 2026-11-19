@@ -98,6 +98,7 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     sortOrder = 'desc',
     featured,
     inStock,
+    ids,
   } = req.query;
 
   // Clamp untrusted page/limit — this is a public endpoint, so an unbounded
@@ -110,13 +111,20 @@ export const getProducts = asyncHandler(async (req: Request, res: Response) => {
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE
   `;
-  const params: any[] = [];
+  const params: unknown[] = [];
   let paramIndex = 1;
 
   const publicCityId = await resolvePublicCityId(req);
   if (publicCityId) {
     sql += ` AND p.city_id = $${paramIndex}`;
     params.push(publicCityId);
+    paramIndex++;
+  }
+
+  // A given set of products (a saved cart being restored on another device).
+  if (typeof ids === 'string' && ids.length > 0) {
+    sql += ` AND p.id = ANY($${paramIndex}::uuid[])`;
+    params.push(ids.split(','));
     paramIndex++;
   }
 
@@ -270,7 +278,7 @@ export const getProductById = asyncHandler(async (req: Request, res: Response) =
     FROM products p
     JOIN categories c ON p.category_id = c.id
     LEFT JOIN categories sc ON p.subcategory_id = sc.id
-    WHERE p.id = $1 AND p.is_active = TRUE`;  const params: any[] = [id];
+    WHERE p.id = $1 AND p.is_active = TRUE`;  const params: unknown[] = [id];
   if (publicCityId) {
     sql += ` AND p.city_id = $2`;
     params.push(publicCityId);
@@ -325,7 +333,7 @@ export const getProductBySlug = asyncHandler(async (req: Request, res: Response)
     FROM products p
     JOIN categories c ON p.category_id = c.id
     LEFT JOIN categories sc ON p.subcategory_id = sc.id
-    WHERE p.slug = $1 AND p.is_active = TRUE`;  const params: any[] = [slug];
+    WHERE p.slug = $1 AND p.is_active = TRUE`;  const params: unknown[] = [slug];
   if (publicCityId) {
     sql += ` AND p.city_id = $2`;
     params.push(publicCityId);
@@ -365,7 +373,7 @@ export const getFeaturedProducts = asyncHandler(async (req: Request, res: Respon
     FROM products p
     JOIN categories c ON p.category_id = c.id
     WHERE p.is_active = TRUE AND p.is_featured = TRUE`;
-  const params: any[] = [];
+  const params: unknown[] = [];
   if (publicCityId) {
     where += ` AND p.city_id = $1`;
     params.push(publicCityId);
@@ -420,7 +428,7 @@ export const getNewArrivals = asyncHandler(async (req: Request, res: Response) =
       c.qualifies_for_free_delivery
     FROM products p
     JOIN categories c ON p.category_id = c.id
-    WHERE p.is_active = TRUE AND p.is_new_arrival = TRUE`;  const params: any[] = [];
+    WHERE p.is_active = TRUE AND p.is_new_arrival = TRUE`;  const params: unknown[] = [];
   if (publicCityId) {
     sql += ` AND p.city_id = $1`;
     params.push(publicCityId);
@@ -476,7 +484,7 @@ export const getRelatedProducts = asyncHandler(async (req: Request, res: Respons
     JOIN categories c ON p.category_id = c.id
     WHERE p.category_id = $1
       AND p.id != $2
-      AND p.is_active = TRUE`;  const params: any[] = [categoryId, id];
+      AND p.is_active = TRUE`;  const params: unknown[] = [categoryId, id];
   if (publicCityId) {
     sql += ` AND p.city_id = $3`;
     params.push(publicCityId);
@@ -508,7 +516,7 @@ export const searchProducts = asyncHandler(async (req: Request, res: Response) =
 
   const publicCityId = await resolvePublicCityId(req);
   let cityClause = '';
-  const params: any[] = [searchTerm, `%${searchTerm}%`];
+  const params: unknown[] = [searchTerm, `%${searchTerm}%`];
   if (publicCityId) {
     cityClause = ` AND p.city_id = $${params.length + 1}`;
     params.push(publicCityId);

@@ -11,6 +11,7 @@
 // for the Supabase setup + env vars.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import multer from 'multer';
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { uploadFileToStorage, isStorageConfigured } from '../config/storage';
@@ -117,8 +118,16 @@ declare global {
 function pushFilesToStorage(folder: string) {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
-      // No upload happened — pass through.
-      if (!req.file && !req.files) return next();
+      // No upload happened — pass through. A multi-file field with no file
+      // gives an EMPTY list, which used to count as an upload: with storage
+      // not set up, even a product saved without a picture was refused (503).
+      const noFiles =
+        !req.file &&
+        (!req.files ||
+          (Array.isArray(req.files)
+            ? req.files.length === 0
+            : Object.values(req.files as Record<string, Express.Multer.File[]>).every((arr) => !arr || arr.length === 0)));
+      if (noFiles) return next();
 
       // Content check BEFORE any storage write — declared mimetype already
       // passed the filter; now the bytes must match an allowed image format.
@@ -171,7 +180,8 @@ function pushFilesToStorage(folder: string) {
       }
 
       next();
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       logger.error('Storage upload failed', {
         folder,
         message: err?.message || String(err),

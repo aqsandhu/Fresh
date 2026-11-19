@@ -223,6 +223,10 @@ export const updateRiderApplication = asyncHandler(async (req: Request, res: Res
 
 /** PUT /api/admin/work-as-rider — edit page content (intro/benefits/hours/terms). */
 export const updateWorkAsRiderContent = asyncHandler(async (req: Request, res: Response) => {
+  // One page for every city → super admin only (B28).
+  if (req.user?.role !== 'super_admin') {
+    return errorResponse(res, 'Only the super admin can change the Work as Rider page (it shows in every city).', 403);
+  }
   const userId = req.user?.id;
   const updates: { key: string; value: string }[] = [];
   if (req.body.intro !== undefined) updates.push({ key: CONTENT_KEYS.intro, value: clean(req.body.intro, 2000) });

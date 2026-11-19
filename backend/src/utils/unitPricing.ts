@@ -68,6 +68,19 @@ export function resolveUnitPrice(
 
 export type ProductQuality = 'A' | 'B' | 'C';
 
+/** One priced line of an order the office builds (WhatsApp order, restaurant order). */
+export interface PricedOrderLine {
+  product_id: string;
+  name: string;
+  image: string | null;
+  sku: string | null;
+  unit: ProductUnit;
+  quality: ProductQuality;
+  unitPrice: number;
+  qty: number;
+  lineTotal: number;
+}
+
 export function normalizeQuality(raw: unknown): ProductQuality {
   const q = String(raw ?? 'A').toUpperCase();
   return q === 'B' || q === 'C' ? (q as ProductQuality) : 'A';

@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { Response } from 'express';
-import { ApiResponse } from '../types';
+import { ApiResponse, PaginationMeta } from '../types';
 
 // Success response
 export const successResponse = <T>(
@@ -11,7 +11,7 @@ export const successResponse = <T>(
   data: T,
   message: string = 'Success',
   statusCode: number = 200,
-  meta?: any
+  meta?: PaginationMeta
 ): void => {
   const response: ApiResponse<T> = {
     success: true,
@@ -31,7 +31,7 @@ export const errorResponse = (
   res: Response,
   message: string = 'Error',
   statusCode: number = 500,
-  error?: any
+  error?: unknown
 ): void => {
   const response: ApiResponse = {
     success: false,

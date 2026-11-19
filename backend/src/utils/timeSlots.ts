@@ -9,6 +9,8 @@ import { PoolClient } from 'pg';
 import { BadRequestError, ConflictError } from '../middleware';
 import { hasTimeSlotBookings } from '../config/timeSlotSchema';
 import { getDeliverySettings } from './deliverySettings';
+import { query } from '../config/database';
+import { isRealIsoDate } from './isoDate';
 
 export interface SlotClaimOpts {
   slotId: string | null | undefined;
@@ -30,11 +32,25 @@ export interface SlotClaimOpts {
  * in the per-(slot, date) capacity counter. Throws on any failure. No-op for
  * urgent orders or when no slot was chosen.
  */
+/**
+ * Every screen offers "today" or "tomorrow". The server allows a week so a
+ * clock or time-zone edge never refuses an honest order, but a crafted request
+ * can no longer book (and hold stock for) a date a year away (N2).
+ */
+export const MAX_ADVANCE_DAYS = 7;
+
+export { isRealIsoDate };
+
 export async function validateAndClaimTimeSlot(client: PoolClient, opts: SlotClaimOpts): Promise<void> {
   if (opts.isUrgent || !opts.slotId) return;
   const slotId = opts.slotId;
   const date = opts.deliveryDate ?? null;
   const trusted = opts.trusted === true;
+  // A string date that is not a real day used to reach Postgres' ::date cast
+  // and come back as a 500 (N2).
+  if (typeof date === 'string' && !isRealIsoDate(date)) {
+    throw new BadRequestError('Please choose a valid delivery date.');
+  }
   const cutoffPercent = trusted ? 100 : (await getDeliverySettings(opts.cityId ?? null, client)).slotCutoffPercent;
 
   // All gates run server-side so a crafted request can't book a
@@ -44,10 +60,12 @@ export async function validateAndClaimTimeSlot(client: PoolClient, opts: SlotCla
   const v = await client.query(
     `SELECT
         ts.max_orders,
+        ts.city_id,
         -- to_jsonb keeps this working on a database without the audience column.
         (COALESCE(to_jsonb(ts)->>'audience', 'consumer') = 'restaurant')        AS restaurant_only,
         (ts.status <> 'available')                                            AS disabled,
         (COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) < (NOW() AT TIME ZONE 'Asia/Karachi')::date) AS past,
+        (COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) > (NOW() AT TIME ZONE 'Asia/Karachi')::date + $4::int) AS too_far,
         (ts.applicable_days IS NOT NULL
           AND NOT (EXTRACT(DOW FROM COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date))::int = ANY(ts.applicable_days))) AS wrong_day,
         (COALESCE($2::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) = (NOW() AT TIME ZONE 'Asia/Karachi')::date
@@ -60,10 +78,15 @@ export async function validateAndClaimTimeSlot(client: PoolClient, opts: SlotCla
           AND EXTRACT(EPOCH FROM ((NOW() AT TIME ZONE 'Asia/Karachi')::time - ts.start_time))
               > EXTRACT(EPOCH FROM (ts.end_time - ts.start_time)) * ($3::numeric / 100)) AS cutoff_passed
       FROM time_slots ts WHERE ts.id = $1`,
-    [slotId, date, cutoffPercent]
+    [slotId, date, cutoffPercent, MAX_ADVANCE_DAYS]
   );
   if (v.rows.length === 0) throw new BadRequestError('Selected time slot does not exist.');
   const row = v.rows[0];
+  // Each city has its own slots (A30): another city's slot is never booked,
+  // not even by an admin. A slot with no city (none since migration 70) fits all.
+  if (opts.cityId && row.city_id && row.city_id !== opts.cityId) {
+    throw new BadRequestError('This delivery slot belongs to another city. Please pick a slot again.');
+  }
   if (!trusted) {
     if (row.disabled) throw new BadRequestError('Selected time slot is not available.');
     // Restaurant slots are hidden from the consumer slot list, but the id
@@ -71,6 +94,9 @@ export async function validateAndClaimTimeSlot(client: PoolClient, opts: SlotCla
     // free-delivery restaurant slot — paid no delivery charge.
     if (row.restaurant_only) throw new BadRequestError('Selected time slot is not available.');
     if (row.past) throw new BadRequestError('Delivery date cannot be in the past.');
+    if (row.too_far) {
+      throw new BadRequestError(`Orders can be booked up to ${MAX_ADVANCE_DAYS} days ahead. Please pick an earlier date.`);
+    }
     if (row.wrong_day) throw new BadRequestError('Selected time slot is not available on that day.');
     if (row.passed) throw new BadRequestError('Selected time slot has already passed for today.');
     if (row.cutoff_passed) {
@@ -143,4 +169,27 @@ export function parseMaxOrders(raw: unknown): number | null | undefined {
   const n = Number(raw);
   if (!Number.isInteger(n) || n < 1 || n > 100000) return undefined;
   return n;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Which city's slots a public slot list shows (A30 — every city has its own):
+ * ?city_id= (or ?city= name), else the city chosen in the admin header
+ * (X-City-Id — the WhatsApp order desk), else the oldest active city (what a
+ * single-city deployment always showed). A request for a city that does not
+ * exist gets no city-specific slots.
+ */
+export async function slotCityFor(req: { query: Record<string, unknown>; headers: Record<string, unknown> }): Promise<string | null> {
+  const q = typeof req.query.city_id === 'string' ? req.query.city_id.trim() : '';
+  if (q) return UUID_RE.test(q) ? q : '00000000-0000-0000-0000-000000000000';
+  const name = typeof req.query.city === 'string' ? req.query.city.trim() : '';
+  if (name) {
+    const r = await query(`SELECT id FROM service_cities WHERE LOWER(name) = LOWER($1) LIMIT 1`, [name]);
+    return r.rows[0]?.id ?? '00000000-0000-0000-0000-000000000000';
+  }
+  const h = typeof req.headers['x-city-id'] === 'string' ? (req.headers['x-city-id'] as string).trim() : '';
+  if (h && UUID_RE.test(h)) return h;
+  const first = await query(`SELECT id FROM service_cities WHERE is_active IS NOT FALSE ORDER BY created_at ASC LIMIT 1`);
+  return first.rows[0]?.id ?? null;
 }

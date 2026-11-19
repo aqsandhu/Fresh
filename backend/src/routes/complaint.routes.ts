@@ -7,6 +7,7 @@ import { Router } from 'express';
 import { authenticate, verifyUserActive, uploadMultiple } from '../middleware';
 import { createRateLimiter } from '../middleware/rateLimiter';
 import { fileComplaint, getMyComplaints } from '../controllers/complaint.controller';
+import { duplicateSubmitGuard } from '../middleware/duplicateSubmitGuard';
 
 const router = Router();
 
@@ -26,6 +27,7 @@ router.post(
   complaintWriteLimiter,
   verifyUserActive,
   uploadMultiple('images', 5, 'complaints'),
+  duplicateSubmitGuard, // three taps = one complaint (A34)
   fileComplaint
 );
 

@@ -4,6 +4,7 @@
 // & approves it, then it logs in to the restaurant storefront.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -42,7 +43,8 @@ export async function hasRestaurantsTable(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'restaurants' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe restaurants table', { error: error?.message });
     cached = false;
   }
@@ -103,13 +105,15 @@ export async function ensureRestaurantsTable(): Promise<boolean> {
             ('restaurants.view',   'View restaurant accounts + requests', 'Restaurants'),
             ('restaurants.manage', 'Approve / disable / ban / remove restaurants + settings', 'Restaurants')
           ON CONFLICT (code) DO NOTHING`);
-      } catch (permErr: any) {
+      } catch (permErrCaught: unknown) {
+        const permErr = asCaughtError(permErrCaught);
         logger.warn('Could not seed restaurants permissions', { error: permErr?.message });
       }
       cached = true;
       logger.info('restaurants table ensured (migration 30 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply restaurants migration — run database/migrations/30 manually', {
         error: error?.message,
       });
@@ -140,7 +144,8 @@ export async function hasRestaurantDeliveryColumns(): Promise<boolean> {
           AND column_name = 'audience' LIMIT 1`
     );
     deliveryColsCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe time_slots.audience', { error: error?.message });
     deliveryColsCached = false;
   }
@@ -169,7 +174,8 @@ export async function ensureRestaurantDeliveryColumns(): Promise<boolean> {
       deliveryColsCached = true;
       logger.info('restaurant delivery columns ensured (migration 35 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply restaurant-delivery migration — run database/migrations/35 manually', {
         error: error?.message,
       });
@@ -216,7 +222,8 @@ export async function ensureRestaurantPhoneUnique(): Promise<void> {
       await pool.query(`ALTER TABLE restaurants DROP CONSTRAINT IF EXISTS restaurants_phone_key`);
       phoneUniqueCached = true;
       logger.info('restaurants phone uniqueness relaxed to live rows (migration 33)');
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not relax restaurants phone uniqueness — run migration 33 manually', {
         error: error?.message,
       });

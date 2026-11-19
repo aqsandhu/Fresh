@@ -13,24 +13,22 @@
 // super-admin only (enforced inline). City admins view + pay + (de)activate.
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query, withTransaction } from '../../config/database';
+import { query, withTransaction, type DbRow } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse, forbiddenResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
 import { ensureFinanceTables } from '../../config/financeSchema';
-import { computeCityProfit, periodFromQuery, periodClause } from '../../utils/profitCalc';
+import { computeCityProfit, periodFromQuery, periodRange, payoutPeriodClause } from '../../utils/profitCalc';
+import { pktDateString } from '../../utils/businessTime';
 import logger from '../../utils/logger';
+import { markCredentialsChanged } from '../../utils/portalCredentials';
 
 const num = (v: unknown): number => { const n = parseFloat(String(v)); return Number.isFinite(n) ? n : NaN; };
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const isSuper = (req: Request) => req.user?.role === 'super_admin';
-
-/** Period SQL fragment for a timestamptz column — same Pakistan-day rules as profitCalc. */
-function periodFilter(req: Request, col: string, startIndex: number): { sql: string; params: any[] } {
-  return periodClause(col, periodFromQuery(req.query), startIndex);
-}
 
 // ── GET /api/finance/profit ──────────────────────────────────────────────────
 export const getProfit = asyncHandler(async (req: Request, res: Response) => {
@@ -45,11 +43,12 @@ export const getProfit = asyncHandler(async (req: Request, res: Response) => {
   const { totalSale, orderCount, totalExpenses, inventoryCost, operatingExpenses, refunds, riderDeliveryPay, profit, freshbazarShare, distributable } = cp;
 
   // Per-shareholder share + received (period) + pending (period) + balance.
-  const sh = await query(
+  // A payout counts for the period it PAYS (migration 69), not the day it was made.
+  const sh = await query<DbRow<{ id: string; share_percent: string }>>(
     `SELECT id, name, email, share_percent, status FROM shareholders WHERE city_id = $1 ORDER BY name ASC`,
     [cityId]
   );
-  const payP = periodFilter(req, 'created_at', 2);
+  const payP = payoutPeriodClause(periodFromQuery(req.query), 2);
   const paid = await query(
     `SELECT shareholder_id, status, COALESCE(SUM(amount),0) AS total
        FROM shareholder_payouts WHERE city_id = $1${payP.sql}
@@ -62,14 +61,17 @@ export const getProfit = asyncHandler(async (req: Request, res: Response) => {
     if (r.status === 'received') recv[r.shareholder_id] = parseFloat(r.total) || 0;
     else if (r.status === 'pending') pend[r.shareholder_id] = parseFloat(r.total) || 0;
   }
-  const shareholders = sh.rows.map((s: any) => {
+  const shareholders = sh.rows.map((s) => {
     const pct = parseFloat(s.share_percent) || 0;
     const share = round2(distributable * (pct / 100));
     const received = round2(recv[s.id] || 0);
     const pending = round2(pend[s.id] || 0);
     return {
       id: s.id, name: s.name, email: s.email, status: s.status, sharePercent: pct,
-      share, received, pending, balance: round2(share - received), // +owed / -overpaid
+      // Balance = what can still be paid for this period (the same number the
+      // payout cap uses): a payment already sent but not yet confirmed is not
+      // owed again. Negative = over-paid.
+      share, received, pending, balance: round2(share - received - pending),
     };
   });
 
@@ -81,7 +83,7 @@ export const getProfit = asyncHandler(async (req: Request, res: Response) => {
   }, 'Profit');
 });
 
-function publicSettings(s: any) {
+function publicSettings(s: DbRow<{ freshbazar_per_order: string; freshbazar_margin_percent: string }>) {
   return {
     enabled: s.freshbazar_enabled === true,
     mode: s.freshbazar_mode,
@@ -100,7 +102,7 @@ export const getProfitSettings = asyncHandler(async (req: Request, res: Response
   const setRow = await query(`SELECT * FROM profit_settings WHERE city_id = $1`, [cityId]);
   // Categories are PER-CITY — scope to this city's categories only, else every
   // city's same-named categories show up as duplicates.
-  const cats = await query(
+  const cats = await query<DbRow<{ percent: string }>>(
     `SELECT c.id AS category_id, c.name_en AS category_name, COALESCE(pcs.percent, 0) AS percent
        FROM categories c
        LEFT JOIN profit_category_shares pcs ON pcs.category_id = c.id AND pcs.city_id = $1
@@ -110,7 +112,7 @@ export const getProfitSettings = asyncHandler(async (req: Request, res: Response
   return successResponse(res, {
     needsCity: false, canEdit: isSuper(req),
     settings: setRow.rows[0] ? publicSettings(setRow.rows[0]) : defaultSettings(),
-    categoryShares: cats.rows.map((c: any) => ({ categoryId: c.category_id, categoryName: c.category_name, percent: parseFloat(c.percent) || 0 })),
+    categoryShares: cats.rows.map((c) => ({ categoryId: c.category_id, categoryName: c.category_name, percent: parseFloat(c.percent) || 0 })),
   }, 'Settings');
 });
 
@@ -160,7 +162,7 @@ export const listShareholders = asyncHandler(async (req: Request, res: Response)
   const scope = await resolveCityScope(req);
   const cityId = scope.cityId;
   if (!cityId) return successResponse(res, { needsCity: true, shareholders: [] }, 'Shareholders');
-  const r = await query(
+  const r = await query<DbRow<{ share_percent: string; received_total: string; pending_total: string }>>(
     `SELECT s.id, s.name, s.email, s.share_percent, s.status, s.last_login_at,
             COALESCE((SELECT SUM(amount) FROM shareholder_payouts p WHERE p.shareholder_id = s.id AND p.status='received'),0) AS received_total,
             COALESCE((SELECT SUM(amount) FROM shareholder_payouts p WHERE p.shareholder_id = s.id AND p.status='pending'),0) AS pending_total
@@ -169,7 +171,7 @@ export const listShareholders = asyncHandler(async (req: Request, res: Response)
   );
   return successResponse(res, {
     needsCity: false, canManage: isSuper(req),
-    shareholders: r.rows.map((s: any) => ({
+    shareholders: r.rows.map((s) => ({
       id: s.id, name: s.name, email: s.email, sharePercent: parseFloat(s.share_percent) || 0, status: s.status,
       lastLoginAt: s.last_login_at, receivedTotal: parseFloat(s.received_total) || 0, pendingTotal: parseFloat(s.pending_total) || 0,
     })),
@@ -192,7 +194,7 @@ export const createShareholder = asyncHandler(async (req: Request, res: Response
   if (password.length < 6) return errorResponse(res, 'Password must be at least 6 characters.', 400);
 
   const hash = await bcrypt.hash(password, 10);
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       // Serialise share changes per city so concurrent adds can't both slip
@@ -221,7 +223,8 @@ export const createShareholder = asyncHandler(async (req: Request, res: Response
       );
       return ins.rows[0];
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
@@ -240,8 +243,8 @@ export const updateShareholder = asyncHandler(async (req: Request, res: Response
   if (!scope.unrestricted && scope.cityId && s.city_id !== scope.cityId) return notFoundResponse(res, 'Shareholder not found');
 
   const sets: string[] = [];
-  const vals: any[] = [];
-  const add = (col: string, v: any) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+  const vals: unknown[] = [];
+  const add = (col: string, v: unknown) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
 
   // Status toggle — allowed for city admin + super.
   if (req.body?.status === 'active' || req.body?.status === 'inactive') add('status', req.body.status);
@@ -273,6 +276,8 @@ export const updateShareholder = asyncHandler(async (req: Request, res: Response
   if (sets.length === 0) return errorResponse(res, 'Nothing to update.', 400);
   vals.push(req.params.id);
   await query(`UPDATE shareholders SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${vals.length}`, vals);
+  // A password set by the super admin ends the shareholder's old sessions (B38).
+  if (sets.some((x) => x.startsWith('password_hash'))) await markCredentialsChanged('shareholders', req.params.id);
   return successResponse(res, { id: req.params.id }, 'Shareholder updated');
 });
 
@@ -283,55 +288,83 @@ export const getShareholderPayouts = asyncHandler(async (req: Request, res: Resp
   const r = await query(`SELECT city_id FROM shareholders WHERE id = $1`, [req.params.id]);
   if (r.rows.length === 0) return notFoundResponse(res, 'Shareholder not found');
   if (!scope.unrestricted && scope.cityId && r.rows[0].city_id !== scope.cityId) return notFoundResponse(res, 'Shareholder not found');
-  const p = await query(
-    `SELECT id, amount, status, note, created_at, received_at FROM shareholder_payouts
+  const p = await query<DbRow<{ amount: string }>>(
+    `SELECT id, amount, status, note, created_at, received_at,
+            period_start::text AS period_start, period_end::text AS period_end
+       FROM shareholder_payouts
       WHERE shareholder_id = $1 ORDER BY created_at DESC LIMIT 100`,
     [req.params.id]
   );
-  return successResponse(res, p.rows.map((x: any) => ({ ...x, amount: parseFloat(x.amount) })), 'Payouts');
+  return successResponse(res, p.rows.map((x) => ({ ...x, amount: parseFloat(x.amount) })), 'Payouts');
 });
 
 // ── POST /api/finance/shareholders/:id/pay — city admin records a payout ─────
 // Stays 'pending' until the shareholder RECEIVES it via their own login.
+//
+// A payout pays ONE period (a Pakistan day or month — ?date=, ?month=&year=,
+// ?period=today|month; nothing = this month) and records it (migration 69).
+// The cap is that period's share minus every payout whose period overlaps it,
+// checked under a per-shareholder lock. It used to count only payouts MADE in
+// the period: last month's share paid this month never counted against last
+// month, so it could be paid again and again, and two presses at once both
+// passed (bug A26).
 export const payShareholder = asyncHandler(async (req: Request, res: Response) => {
   if (!(await ensureFinanceTables())) return errorResponse(res, 'Finance not ready.', 503);
   const scope = await resolveCityScope(req);
-  const amount = num(req.body?.amount);
+  const amount = round2(num(req.body?.amount));
   if (!Number.isFinite(amount) || amount <= 0) return errorResponse(res, 'Enter a valid amount.', 400);
+
+  const period = periodFromQuery(req.query);
+  const asked = ['date', 'month', 'year', 'period'].some((k) => typeof req.query[k] === 'string' && req.query[k] !== '');
+  let range = periodRange(period);
+  if (!range && asked) {
+    return errorResponse(res, 'Choose the period this payment is for: a day, or a month with its year.', 400);
+  }
+  if (!range) {
+    period.period = 'month';
+    range = periodRange(period)!;
+  }
+  if (range.start > pktDateString()) return errorResponse(res, 'That period has not started yet.', 400);
+
   const r = await query(`SELECT id, city_id, status, share_percent FROM shareholders WHERE id = $1`, [req.params.id]);
   const s = r.rows[0];
   if (!s) return notFoundResponse(res, 'Shareholder not found');
   if (!scope.unrestricted && scope.cityId && s.city_id !== scope.cityId) return notFoundResponse(res, 'Shareholder not found');
+  if (!s.city_id) return errorResponse(res, 'This shareholder has no city, so there is no profit to pay from.', 400);
 
-  // Cap the payout at the shareholder's CURRENT-PERIOD balance: their share
-  // of the distributable profit minus what they already received or have
-  // pending. Without this an admin could pay out more than the city earned.
-  if (s.city_id) {
-    const period = periodFromQuery(req.query);
-    if (!period.period && !period.date && !period.month) period.period = 'month';
-    const cp = await computeCityProfit(s.city_id, period);
-    const myShare = (cp.distributable * ((parseFloat(s.share_percent) || 0) / 100));
-    const payP = periodClause('created_at', period, 2);
-    const paid = await query(
-      `SELECT COALESCE(SUM(amount),0) AS total FROM shareholder_payouts
-        WHERE shareholder_id = $1 AND status IN ('pending','received')${payP.sql}`,
-      [req.params.id, ...payP.params]
-    );
-    const balance = Math.round((myShare - (parseFloat(paid.rows[0].total) || 0) + Number.EPSILON) * 100) / 100;
-    if (amount > balance + 1e-6) {
-      return errorResponse(
-        res,
-        `Payout exceeds the shareholder's current-period balance (Rs. ${Math.max(0, balance)}).`,
-        400
+  const cp = await computeCityProfit(s.city_id, period);
+  const myShare = round2(cp.distributable * ((parseFloat(s.share_percent) || 0) / 100));
+  const label = range.start === range.end ? range.start : range.start.slice(0, 7);
+
+  let created: { id: string };
+  try {
+    created = await withTransaction(async (client) => {
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('shareholder-pay:' || $1::text))`, [s.id]);
+      const payP = payoutPeriodClause(period, 2);
+      const paid = await client.query(
+        `SELECT COALESCE(SUM(amount),0) AS total FROM shareholder_payouts
+          WHERE shareholder_id = $1 AND status IN ('pending','received')${payP.sql}`,
+        [s.id, ...payP.params]
       );
-    }
+      const balance = round2(myShare - (parseFloat(paid.rows[0].total) || 0));
+      if (amount > balance + 1e-6) {
+        throw Object.assign(
+          new Error(`Payout exceeds the shareholder's balance for ${label} (Rs. ${Math.max(0, balance)}).`),
+          { http: 400 }
+        );
+      }
+      const ins = await client.query(
+        `INSERT INTO shareholder_payouts (shareholder_id, city_id, amount, note, created_by, period_start, period_end)
+         VALUES ($1,$2,$3,$4,$5,$6::date,$7::date) RETURNING id`,
+        [s.id, s.city_id, amount, req.body?.note || null, req.user?.id ?? null, range!.start, range!.end]
+      );
+      return ins.rows[0];
+    });
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
   }
-
-  const ins = await query(
-    `INSERT INTO shareholder_payouts (shareholder_id, city_id, amount, note, created_by)
-     VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-    [req.params.id, s.city_id, amount, req.body?.note || null, req.user?.id ?? null]
-  );
-  logger.info('Shareholder payout sent (pending)', { id: ins.rows[0].id, shareholder: req.params.id, amount, by: req.user?.id });
-  return successResponse(res, { id: ins.rows[0].id }, 'Payment sent — pending until the shareholder receives it');
+  logger.info('Shareholder payout sent (pending)', { id: created.id, shareholder: s.id, amount, period: label, by: req.user?.id });
+  return successResponse(res, { id: created.id, periodStart: range.start, periodEnd: range.end }, 'Payment sent — pending until the shareholder receives it');
 });

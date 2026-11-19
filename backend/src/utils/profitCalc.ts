@@ -14,7 +14,7 @@
 // ============================================================================
 
 import { query } from '../config/database';
-import { BUSINESS_TZ, TODAY_SQL, isThisMonthSql, localDate, localMidnight, localTs } from './businessTime';
+import { BUSINESS_TZ, TODAY_SQL, isThisMonthSql, localDate, localMidnight, localTs, pktDateString } from './businessTime';
 
 export interface ProfitPeriod {
   period?: string;          // 'today' | 'month'
@@ -29,8 +29,8 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
  * Period SQL fragment + params for a timestamptz column (most specific wins).
  * Days and months are Pakistan days/months (see utils/businessTime).
  */
-export function periodClause(col: string, p: ProfitPeriod, startIndex: number): { sql: string; params: any[] } {
-  const params: any[] = [];
+export function periodClause(col: string, p: ProfitPeriod, startIndex: number): { sql: string; params: unknown[] } {
+  const params: unknown[] = [];
   if (p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date)) {
     params.push(p.date);
     return { sql: ` AND ${localDate(col)} = $${startIndex}::date`, params };
@@ -45,8 +45,8 @@ export function periodClause(col: string, p: ProfitPeriod, startIndex: number): 
 }
 
 /** Stock bought up to the END of the period (Pakistan time) counts for its cost. */
-function purchaseCostCutoffClause(col: string, p: ProfitPeriod, startIndex: number): { sql: string; params: any[] } {
-  const params: any[] = [];
+function purchaseCostCutoffClause(col: string, p: ProfitPeriod, startIndex: number): { sql: string; params: unknown[] } {
+  const params: unknown[] = [];
   if (p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date)) {
     params.push(p.date);
     return { sql: ` AND ${col} < ${localMidnight(`$${startIndex}::date + 1`)}`, params };
@@ -62,8 +62,52 @@ function purchaseCostCutoffClause(col: string, p: ProfitPeriod, startIndex: numb
   return { sql: '', params };
 }
 
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+function monthRange(year: number, month: number): { start: string; end: string } {
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { start: `${year}-${pad2(month)}-01`, end: `${year}-${pad2(month)}-${pad2(last)}` };
+}
+
+const isRealDate = (d: string): boolean =>
+  /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`)) && new Date(`${d}T00:00:00Z`).toISOString().slice(0, 10) === d;
+
+/**
+ * First and last Pakistan day (YYYY-MM-DD) a period covers, with the same
+ * "most specific wins" order as periodClause. null = no period chosen
+ * ("all time") or a period that does not exist (2026-02-31, month 13).
+ */
+export function periodRange(p: ProfitPeriod, today: string = pktDateString()): { start: string; end: string } | null {
+  if (p.date !== undefined && p.date !== '') {
+    return isRealDate(p.date) ? { start: p.date, end: p.date } : null;
+  }
+  if (p.month !== undefined && !Number.isNaN(p.month)) {
+    const ok = Number.isInteger(p.month) && (p.month as number) >= 1 && (p.month as number) <= 12
+      && Number.isInteger(p.year) && (p.year as number) >= 2000 && (p.year as number) <= 2100;
+    return ok ? monthRange(p.year as number, p.month as number) : null;
+  }
+  if (p.period === 'today') return { start: today, end: today };
+  if (p.period === 'month') return monthRange(Number(today.slice(0, 4)), Number(today.slice(5, 7)));
+  return null;
+}
+
+/**
+ * Shareholder payouts that pay for any day of the period (they record the
+ * days they pay for — migration 69; an older row without them counts for the
+ * day it was made). No period = every payout.
+ */
+export function payoutPeriodClause(p: ProfitPeriod, startIndex: number): { sql: string; params: unknown[] } {
+  const r = periodRange(p);
+  if (!r) return { sql: '', params: [] };
+  return {
+    sql: ` AND COALESCE(period_start, ${localDate('created_at')}) <= $${startIndex}::date`
+      + ` AND COALESCE(period_end, ${localDate('created_at')}) >= $${startIndex + 1}::date`,
+    params: [r.end, r.start],
+  };
+}
+
 /** Read period params off an Express query object. */
-export function periodFromQuery(q: any): ProfitPeriod {
+export function periodFromQuery(q: Record<string, unknown>): ProfitPeriod {
   return {
     period: typeof q.period === 'string' ? q.period : undefined,
     month: q.month !== undefined ? parseInt(String(q.month), 10) : undefined,

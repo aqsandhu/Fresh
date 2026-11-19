@@ -2,6 +2,7 @@
 // ADDRESS SCHEMA — idempotent column migration + safe column detection
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -48,7 +49,8 @@ export async function hasLocationAddedByColumn(): Promise<boolean> {
         LIMIT 1`
     );
     locationAddedByCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe location_added_by column', { error: error?.message });
     locationAddedByCached = false;
   }
@@ -102,7 +104,8 @@ export async function ensureAddressColumns(): Promise<boolean> {
     const ready = await hasLocationAddedByColumn();
     logger.info('Address schema migrations applied', { location_added_by: ready });
     return true;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn(
       'Could not apply address schema migrations automatically — run database/migrations/02-add-location-added-by-to-addresses.sql in Supabase SQL Editor',
       { error: error?.message }

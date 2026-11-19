@@ -3,6 +3,13 @@ import jwt from 'jsonwebtoken';
 
 const ACCESS_COOKIE = 'token';
 const REFRESH_COOKIE = 'refreshToken';
+// The admin panel's session has its OWN cookie names: a customer session and
+// an admin session in the same browser can then never be mistaken for each
+// other, whatever domain the cookies end up on.
+const ADMIN_ACCESS_COOKIE = 'admin_token';
+const ADMIN_REFRESH_COOKIE = 'admin_refresh';
+/** Header value the admin panel sends when its session lives in cookies. */
+export const ADMIN_COOKIE_PLATFORM = 'admin-cookie';
 
 type SameSiteOption = 'lax' | 'strict' | 'none';
 
@@ -97,15 +104,58 @@ export function clearAuthCookies(res: Response): void {
   });
 }
 
-export function getRefreshTokenFromRequest(req: {
+/**
+ * Admin panel session cookies (owner decision Q2: admin.<site> + api.<site>).
+ * HttpOnly, host-only (no Domain), SameSite=Strict — a page on another site
+ * cannot make the browser send them, and script on the panel cannot read them.
+ */
+function adminCookieOptions(maxAgeMs: number, path: string) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const sameSite: SameSiteOption = resolveSameSite() === 'none' ? 'none' : 'strict';
+  return { httpOnly: true, secure: isProd || sameSite === 'none', sameSite, maxAge: maxAgeMs, path };
+}
+
+export function setAdminAuthCookies(res: Response, tokens: { accessToken: string; refreshToken: string }): void {
+  res.cookie(ADMIN_ACCESS_COOKIE, tokens.accessToken, adminCookieOptions(maxAgeForToken(tokens.accessToken, ACCESS_MAX_AGE_MS), '/'));
+  res.cookie(ADMIN_REFRESH_COOKIE, tokens.refreshToken, adminCookieOptions(maxAgeForToken(tokens.refreshToken, REFRESH_MAX_AGE_MS), '/api/auth'));
+}
+
+export function clearAdminAuthCookies(res: Response): void {
+  res.clearCookie(ADMIN_ACCESS_COOKIE, { path: '/' });
+  res.clearCookie(ADMIN_REFRESH_COOKIE, { path: '/api/auth' });
+}
+
+type CookieRequest = {
   body?: { refreshToken?: string; refresh_token?: string };
   cookies?: Record<string, string>;
-}): string | undefined {
+  get?: (name: string) => string | undefined;
+};
+
+const isAdminCookieRequest = (req: CookieRequest): boolean =>
+  typeof req.get === 'function' && isAdminCookieClient(req as Pick<Request, 'get'>);
+
+export function getRefreshTokenFromRequest(req: CookieRequest): string | undefined {
   return (
     req.body?.refreshToken ||
     req.body?.refresh_token ||
-    req.cookies?.[REFRESH_COOKIE]
+    (isAdminCookieRequest(req) ? req.cookies?.[ADMIN_REFRESH_COOKIE] : req.cookies?.[REFRESH_COOKIE])
   );
+}
+
+/** The session cookie that applies to this caller (admin panel vs website). */
+export function getAccessTokenFromCookies(req: CookieRequest): string | undefined {
+  return isAdminCookieRequest(req) ? req.cookies?.[ADMIN_ACCESS_COOKIE] : req.cookies?.[ACCESS_COOKIE];
+}
+
+/** Set the right cookies for whoever is calling (admin panel in cookie mode, or the website). */
+export function setSessionCookies(req: Pick<Request, 'get'>, res: Response, tokens: { accessToken: string; refreshToken: string }): void {
+  if (isAdminCookieClient(req)) setAdminAuthCookies(res, tokens);
+  else setAuthCookies(res, tokens);
+}
+
+export function clearSessionCookies(req: Pick<Request, 'get'>, res: Response): void {
+  if (isAdminCookieClient(req)) clearAdminAuthCookies(res);
+  else clearAuthCookies(res);
 }
 
 export function isWebsiteCookieClient(req: Pick<Request, 'get'>): boolean {
@@ -113,17 +163,21 @@ export function isWebsiteCookieClient(req: Pick<Request, 'get'>): boolean {
 }
 
 /**
- * Admin panel cookie mode is opt-in via ADMIN_AUTH_COOKIES=true (set the
- * matching VITE_AUTH_COOKIES=true on the panel). Kept behind its own flag so
- * the existing bearer-token deployment keeps working until the operator
- * aligns domains / SameSite for the cross-site SPA.
+ * Admin panel cookie mode. The panel decides: when it runs on the same site as
+ * the API (admin.<site> + api.<site>) it sends X-Client-Platform: admin-cookie
+ * and its session then lives in HttpOnly cookies — the tokens never reach the
+ * page's JavaScript, so an injected script has nothing to steal. A panel on
+ * another site (a Vercel preview) keeps sending "admin" and gets bearer tokens.
+ * On in production; ADMIN_AUTH_COOKIES=true/false forces it either way.
  */
 export function adminCookiesEnabled(): boolean {
-  return process.env.ADMIN_AUTH_COOKIES === 'true';
+  const v = process.env.ADMIN_AUTH_COOKIES;
+  if (v !== undefined && v !== '') return v === 'true';
+  return process.env.NODE_ENV === 'production';
 }
 
 export function isAdminCookieClient(req: Pick<Request, 'get'>): boolean {
-  return adminCookiesEnabled() && req.get('x-client-platform') === 'admin';
+  return adminCookiesEnabled() && req.get('x-client-platform') === ADMIN_COOKIE_PLATFORM;
 }
 
 /** Any browser client whose session lives in HttpOnly cookies. */

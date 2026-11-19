@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import * as addressController from '../controllers/address.controller';
+import { duplicateSubmitGuard } from '../middleware/duplicateSubmitGuard';
 import {
   authenticate,
   verifyUserActive,
@@ -26,6 +27,7 @@ router.post(
   uploadDoorPicture,
   handleUploadError,
   validate(addressSchemas.create),
+  duplicateSubmitGuard, // three taps = one address (A34)
   addressController.createAddress
 );
 router.put(

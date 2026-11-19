@@ -10,6 +10,8 @@ import { hasUrgentDeliveryColumns } from '../config/orderSchema';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { hasCatalogV2Columns } from '../config/catalogV2Schema';
 import { hasTimeSlotBookings } from '../config/timeSlotSchema';
+import { isRealIsoDate } from './isoDate';
+import { MAX_ADVANCE_DAYS } from './timeSlots';
 import { reserveProductStock } from './systemStock';
 import { unitNotOfferedMessage } from './unitOffer';
 import {
@@ -19,6 +21,7 @@ import {
   isQualityOffered,
   qualityStockColumn,
   stockUnitsNeeded,
+  type PricedOrderLine,
 } from './unitPricing';
 
 // Restaurant fraction + enable columns (migration 37) — pulled into the order
@@ -53,10 +56,21 @@ export interface PlaceRestaurantOrderOpts {
   frontImageUrl?: string | null;
 }
 
+/**
+ * A saved delivery figure, 0 included (0 = free delivery / no minimum) — I22.
+ * Blank, broken or negative values fall back. `parseFloat(v) || fallback` used
+ * to turn a saved 0 back into the default.
+ */
+export function deliveryFigure(value: unknown, fallback: number): number {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = parseFloat(String(value));
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
 /** Effective delivery config for a restaurant (per-restaurant override or global default). */
 export async function getRestaurantDelivery(restaurant: {
-  free_delivery_threshold?: any;
-  delivery_base_charge?: any;
+  free_delivery_threshold?: unknown;
+  delivery_base_charge?: unknown;
 }): Promise<{ baseCharge: number; freeThreshold: number; urgentCharge: number; urgentEta: string; slotCutoffPercent: number }> {
   const s = await query(
     `SELECT key, value FROM site_settings WHERE key IN (
@@ -71,23 +85,18 @@ export async function getRestaurantDelivery(restaurant: {
   let urgentEta = '';
   let slotCutoffPercent = 60;
   for (const row of s.rows) {
-    if (row.key === 'restaurant_delivery_base_charge') baseChargeGlobal = parseFloat(row.value) || baseChargeGlobal;
-    if (row.key === 'restaurant_free_delivery_threshold') freeThresholdGlobal = parseFloat(row.value) || freeThresholdGlobal;
-    if (row.key === 'restaurant_delivery_urgent_charge') urgentCharge = parseFloat(row.value) || 0;
+    if (row.key === 'restaurant_delivery_base_charge') baseChargeGlobal = deliveryFigure(row.value, baseChargeGlobal);
+    if (row.key === 'restaurant_free_delivery_threshold') freeThresholdGlobal = deliveryFigure(row.value, freeThresholdGlobal);
+    if (row.key === 'restaurant_delivery_urgent_charge') urgentCharge = deliveryFigure(row.value, 0);
     if (row.key === 'restaurant_delivery_urgent_eta') urgentEta = String(row.value || '').trim();
     if (row.key === 'restaurant_slot_cutoff_percent') {
       const n = parseFloat(row.value);
       if (Number.isFinite(n)) slotCutoffPercent = Math.min(100, Math.max(0, n));
     }
   }
-  const num = (v: any, fb: number) => {
-    if (v === null || v === undefined || v === '') return fb;
-    const n = parseFloat(String(v));
-    return Number.isFinite(n) && n >= 0 ? n : fb;
-  };
   return {
-    baseCharge: num(restaurant.delivery_base_charge, baseChargeGlobal),
-    freeThreshold: num(restaurant.free_delivery_threshold, freeThresholdGlobal),
+    baseCharge: deliveryFigure(restaurant.delivery_base_charge, baseChargeGlobal),
+    freeThreshold: deliveryFigure(restaurant.free_delivery_threshold, freeThresholdGlobal),
     urgentCharge,
     urgentEta,
     slotCutoffPercent,
@@ -171,7 +180,7 @@ export async function placeRestaurantOrder(
     }
 
     let subtotal = 0;
-    const lines: any[] = [];
+    const lines: PricedOrderLine[] = [];
     for (const item of items) {
       const pr = await client.query(
         // City-bound: a restaurant can only order its own city's catalog. The
@@ -218,7 +227,7 @@ export async function placeRestaurantOrder(
       opts.address != null && String(opts.address).trim() ? String(opts.address).trim() : null;
     const hasPin = opts.lat != null && opts.lng != null && Number.isFinite(opts.lat) && Number.isFinite(opts.lng);
     const profileSets: string[] = [];
-    const profileVals: any[] = [];
+    const profileVals: unknown[] = [];
     let pIdx = 1;
     if (trimmedAddr) { profileSets.push(`address = $${pIdx++}`); profileVals.push(trimmedAddr); }
     if (hasPin) {
@@ -254,14 +263,34 @@ export async function placeRestaurantOrder(
       deliveryCharge = roundMoney(delivery.urgentCharge);
       urgentEta = delivery.urgentEta;
     } else if (opts.timeSlotId) {
+      // The same date gates as the consumer checkout (N4): this path used to
+      // book a past date, a date a year away, a slot that was already over
+      // today, and answered an impossible date ('2026-02-30') with a 500.
+      const wanted = opts.requestedDeliveryDate || null;
+      if (wanted && !isRealIsoDate(wanted)) {
+        throw new RestaurantOrderError('Please choose a valid delivery date.');
+      }
       const slot = await client.query(
-        `SELECT id, is_free_delivery_slot, max_orders FROM time_slots
-          WHERE id = $1 AND audience = 'restaurant' AND status = 'available'`,
-        [opts.timeSlotId]
+        `SELECT id, is_free_delivery_slot, max_orders,
+                (COALESCE($3::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) < (NOW() AT TIME ZONE 'Asia/Karachi')::date) AS past,
+                (COALESCE($3::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) > (NOW() AT TIME ZONE 'Asia/Karachi')::date + $4::int) AS too_far,
+                (applicable_days IS NOT NULL
+                  AND NOT (EXTRACT(DOW FROM COALESCE($3::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date))::int = ANY(applicable_days))) AS wrong_day,
+                (COALESCE($3::date, (NOW() AT TIME ZONE 'Asia/Karachi')::date) = (NOW() AT TIME ZONE 'Asia/Karachi')::date
+                  AND (NOW() AT TIME ZONE 'Asia/Karachi')::time >= end_time) AS passed
+           FROM time_slots
+          WHERE id = $1 AND audience = 'restaurant' AND status = 'available'
+            AND (city_id = $2::uuid OR city_id IS NULL)`,
+        [opts.timeSlotId, restaurant.city_id ?? null, wanted, MAX_ADVANCE_DAYS]
       );
       if (slot.rows.length === 0) {
         throw new RestaurantOrderError('Selected time slot is not available. Please pick another.');
       }
+      const gate = slot.rows[0];
+      if (gate.past) throw new RestaurantOrderError('Delivery date cannot be in the past.');
+      if (gate.too_far) throw new RestaurantOrderError(`Orders can be booked up to ${MAX_ADVANCE_DAYS} days ahead. Please pick an earlier date.`);
+      if (gate.wrong_day) throw new RestaurantOrderError('Selected time slot is not available on that day.');
+      if (gate.passed) throw new RestaurantOrderError('Selected time slot has already passed for today. Please pick a later slot.');
       slotMaxOrders = slot.rows[0].max_orders === null ? null : Number(slot.rows[0].max_orders);
       effectiveSlotId = opts.timeSlotId;
       deliveryCharge = slot.rows[0].is_free_delivery_slot === true

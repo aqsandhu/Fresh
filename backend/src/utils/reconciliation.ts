@@ -15,7 +15,8 @@
 // later at the single alert point below.
 // ============================================================================
 
-import { query } from '../config/database';
+import { asCaughtError } from './caughtError';
+import { query, type DbRow } from '../config/database';
 import { emitToSuperAdmins } from '../config/socket';
 import { hasStockCounts, hasOrderCashReceivedColumn } from '../config/controlsSchema';
 import logger from './logger';
@@ -45,7 +46,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
     return { ok: true, anomalyCount: 0, summary: { skipped: 'reconciliation tables unavailable' } };
   }
 
-  const anomalies: any[] = [];
+  const anomalies: Record<string, unknown>[] = [];
 
   // Window = since the previous run. First run only sets the baseline snapshot.
   const last = await query(`SELECT run_at FROM reconciliation_runs ORDER BY run_at DESC LIMIT 1`);
@@ -140,7 +141,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
   // both directions: billing MORE than packed
   // (customer overcharged) and packing MORE than billed (goods given away —
   // the extra weight is even added back to system stock).
-  const weightBias: any[] = [];
+  const weightBias: unknown[] = [];
   try {
     const wb = await query(
       `SELECT e.edited_by, u.full_name AS editor, COUNT(*)::int AS edits,
@@ -167,9 +168,9 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
 
   // Coupons that give away a lot (created since the last run) + how much
   // coupon discount was actually used.
-  const coupons: any = { risky: [], discount_total: 0 };
+  const coupons: { risky: Record<string, unknown>[]; discount_total: number } = { risky: [], discount_total: 0 };
   try {
-    const rc = await query(
+    const rc = await query<DbRow<{ discount_value: string }>>(
       `SELECT c.id, c.code, c.discount_type, c.discount_value, c.max_discount_amount, c.usage_limit,
               c.created_by, u.full_name AS created_by_name
          FROM coupons c LEFT JOIN users u ON u.id = c.created_by
@@ -180,7 +181,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
           )`,
       [since]
     );
-    coupons.risky = rc.rows.map((r: any) => ({ ...r, discount_value: parseFloat(r.discount_value) || 0 }));
+    coupons.risky = rc.rows.map((r) => ({ ...r, discount_value: parseFloat(r.discount_value) || 0 }));
     for (const c of coupons.risky) anomalies.push({ type: 'risky_coupon', code: c.code, discount_type: c.discount_type, discount_value: c.discount_value, created_by: c.created_by, created_by_name: c.created_by_name });
     const used = await query(
       `SELECT COALESCE(SUM(coupon_discount), 0) AS total FROM orders
@@ -193,7 +194,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
 
   // Stock purchases far off normal: waste share, or a buying rate well above
   // the product's own 30-day average (price inflated / A-grade entered as C).
-  const purchases: any[] = [];
+  const purchases: unknown[] = [];
   try {
     const pr = await query(
       `SELECT sp.id, sp.product_id, p.name_en AS product, sp.raw_weight, sp.purchase_price, sp.waste,
@@ -229,7 +230,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
   } catch { /* finance tables may not exist yet */ }
 
   // Physical counts that found less on the shelf than the system says.
-  const stockCounts: any = { count: 0, shortage_value: 0, shortages: [] };
+  const stockCounts: { count: number; shortage_value: number; shortages: Record<string, unknown>[] } = { count: 0, shortage_value: 0, shortages: [] };
   if (await hasStockCounts()) {
     try {
       const sc = await query(
@@ -258,7 +259,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
   // Cash each admin took in since the last run (rider hand-overs, OCP
   // settlements, office "Payment received"). The owner compares this with
   // what actually reached him — no other report shows who holds cash.
-  const cashByAdmin: any[] = [];
+  const cashByAdmin: unknown[] = [];
   try {
     const officeCash = (await hasOrderCashReceivedColumn())
       ? `UNION ALL
@@ -298,10 +299,10 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
   } catch { /* settlement tables may not exist yet */ }
 
   // ── 3) OCP CASH / SHORTAGES ────────────────────────────────────────────────
-  const ocp: any = { overdue: [], open_shortages: 0 };
+  const ocp: { overdue: { ocp_id: string; name: string; due: number; oldest: unknown }[]; open_shortages: number } = { overdue: [], open_shortages: 0 };
   if (await hasOcpTables()) {
     try {
-      const overdue = await query(
+      const overdue = await query<DbRow<{ id: string; name: string; due: string }>>(
         `SELECT o.id, o.name, COALESCE(SUM(od.paid_amount), 0) AS due, MIN(od.delivered_at) AS oldest
            FROM orders od JOIN order_collection_points o ON o.id = od.ocp_id
           WHERE od.deleted_at IS NULL AND od.paid_amount > 0 AND od.status = 'delivered'
@@ -316,7 +317,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
           GROUP BY o.id, o.name HAVING COALESCE(SUM(od.paid_amount), 0) > 0`,
         [String(OCP_CASH_OVERDUE_DAYS)]
       );
-      ocp.overdue = overdue.rows.map((r: any) => ({ ocp_id: r.id, name: r.name, due: round2(parseFloat(r.due) || 0), oldest: r.oldest }));
+      ocp.overdue = overdue.rows.map((r) => ({ ocp_id: r.id, name: r.name, due: round2(parseFloat(r.due) || 0), oldest: r.oldest }));
       for (const o of ocp.overdue) anomalies.push({ type: 'ocp_cash_overdue', ...o });
       const sh = await query(`SELECT COUNT(*)::int AS c FROM ocp_stock_shortages WHERE status = 'open'`);
       ocp.open_shortages = Number(sh.rows[0].c) || 0;
@@ -328,7 +329,7 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
   // The database refuses negative stock, totals that do not add up and paid >
   // total — but a rule is only switched on when no old row breaks it. A rule
   // that is still off is reported here with the number of rows in its way.
-  const integrity: any[] = [];
+  const integrity: unknown[] = [];
   try {
     const adds = `ABS(total_amount - GREATEST(0, COALESCE(subtotal, 0) + COALESCE(delivery_charge, 0) + COALESCE(tax_amount, 0)
                     - COALESCE(discount_amount, 0) - COALESCE(coupon_discount, 0))) > 0.05`;
@@ -337,8 +338,8 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
       ['orders_total_adds_up', `SELECT COUNT(*)::int AS c FROM orders WHERE ${adds}`],
       ['orders_paid_within_total', `SELECT COUNT(*)::int AS c FROM orders WHERE COALESCE(paid_amount, 0) > total_amount + 0.05`],
     ];
-    const on = await query(`SELECT conname FROM pg_constraint WHERE conname = ANY($1::text[])`, [rules.map((r) => r[0])]);
-    const active = new Set(on.rows.map((r: any) => r.conname));
+    const on = await query<DbRow>(`SELECT conname FROM pg_constraint WHERE conname = ANY($1::text[])`, [rules.map((r) => r[0])]);
+    const active = new Set(on.rows.map((r) => r.conname));
     for (const [rule, countSql] of rules) {
       if (active.has(rule)) continue;
       const c = await query(countSql);
@@ -385,7 +386,8 @@ export async function runReconciliation(opts: { createdBy?: string | null } = {}
           [s.id, 'Reconciliation: please review', `${anomalyCount} issue(s) found in the latest books check. Open the Reconciliation report.`]
         );
       }
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       logger.warn('reconciliation alert notify failed', { error: e?.message });
     }
   }

@@ -6,6 +6,7 @@
 // aggregates are recomputed inside the same transaction.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import { PoolClient } from 'pg';
 import { query, withTransaction } from '../config/database';
@@ -232,7 +233,8 @@ export const submitReview = asyncHandler(async (req: Request, res: Response) => 
     });
 
     return createdResponse(res, mapReview(row), 'Thank you for your feedback');
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     // Belt-and-braces: a race that trips the unique index → treat as success-ish.
     if (err?.code === '23505') {
       return errorResponse(res, 'You have already reviewed this. Refresh and edit instead.', 409);

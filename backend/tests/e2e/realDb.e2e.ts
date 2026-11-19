@@ -58,6 +58,8 @@ suite('real database — the real API end to end', () => {
       // Two-step admin login is exercised through the same bypass rule as every other OTP.
       OTP_BYPASS_ENABLED: 'true',
       OTP_BYPASS_CODE: '123789',
+      // Admin cookie sessions are on in production; switch them on here so the regression checks cover them.
+      ADMIN_AUTH_COOKIES: 'true',
     });
     app = (await import('../../src/app')).default;
     await waitUntilReady();
@@ -75,6 +77,13 @@ suite('real database — the real API end to end', () => {
     const { pass, fail } = await run({ api: `${BASE}/api`, databaseUrl: DATABASE_URL, jwtSecret: process.env.JWT_SECRET });
     expect(fail).toBe(0);
     expect(pass).toBeGreaterThanOrEqual(60);
+  });
+
+  it('round 6 stays clean — presses at once, other riders, coupons, city-B against city A', async () => {
+    const { run } = require(path.join(__dirname, '..', '..', '..', 'docs', 'rider-e2e', 'regressions-round6.js'));
+    const { pass, fail } = await run({ api: `${BASE}/api`, databaseUrl: DATABASE_URL, jwtSecret: process.env.JWT_SECRET });
+    expect(fail).toBe(0);
+    expect(pass).toBeGreaterThanOrEqual(20);
   });
 
   it('no GET route answers 5xx — as the owner, as a customer, and with no token', async () => {

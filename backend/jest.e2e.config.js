@@ -29,10 +29,11 @@ module.exports = {
   collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/**/migrations/**', '!src/__tests__/**'],
   coverageDirectory: 'coverage-e2e',
   coverageReporters: ['text-summary', 'json-summary', 'json', 'lcov'],
-  // Ratchet floor, a little under what the suite reaches today (43 % lines, 39 % functions,
-  // whole source, 15 Nov 2026):
+  // Ratchet floor, one point under what the suite reaches today (19 Nov 2026,
+  // W18: 65.7 % lines, 62.2 % statements, 65.7 % functions, 43.0 % branches —
+  // whole source; unit + real database together 70.7 % lines):
   // real-database coverage may grow, it may not silently shrink.
-  coverageThreshold: { global: { lines: 42, statements: 39, functions: 37, branches: 21 } },
+  coverageThreshold: { global: { lines: 64, statements: 61, functions: 64, branches: 41 } },
   testTimeout: 600000,
   maxWorkers: 1,
   // The app keeps its HTTP server, pool and schedulers alive by design.

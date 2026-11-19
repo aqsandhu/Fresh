@@ -11,6 +11,7 @@ import { verifyOcpToken } from '../config/jwt';
 import { unauthorizedResponse, forbiddenResponse } from '../utils/response';
 import { asyncHandler } from './errorHandler';
 import { markAuthGuard } from '../config/openapiRoutes';
+import { CREDENTIALS_CHANGED_SELECT, tokenPredatesCredentialChange } from '../utils/portalCredentials';
 
 export interface AuthedOcp {
   id: string;
@@ -55,9 +56,10 @@ export const authenticateOcp = asyncHandler(
     }
 
     const result = await query(
-      `SELECT id, name, phone, city_id, status
-         FROM order_collection_points
-        WHERE id = $1 AND deleted_at IS NULL`,
+      `SELECT o.id, o.name, o.phone, o.city_id, o.status,
+              ${CREDENTIALS_CHANGED_SELECT('o')}
+         FROM order_collection_points o
+        WHERE o.id = $1 AND o.deleted_at IS NULL`,
       [payload.ocpId]
     );
     const ocp = result.rows[0];
@@ -70,6 +72,12 @@ export const authenticateOcp = asyncHandler(
       forbiddenResponse(res, 'This OCP account is disabled. Please contact the admin.');
       return;
     }
+    // A session from before the last PIN change has ended (B38).
+    if (tokenPredatesCredentialChange(payload.iat, ocp.credentials_changed_at)) {
+      unauthorizedResponse(res, 'Your PIN was changed. Please log in again.');
+      return;
+    }
+    delete ocp.credentials_changed_at;
 
     req.ocp = ocp as AuthedOcp;
     next();

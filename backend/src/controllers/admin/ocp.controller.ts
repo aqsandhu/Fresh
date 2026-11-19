@@ -5,19 +5,22 @@
 // permission. Order assignment + operations remain city-scoped elsewhere.
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query, withTransaction } from '../../config/database';
+import { query, withTransaction, type DbRow } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, createdResponse, errorResponse, notFoundResponse } from '../../utils/response';
 import { normalizePhoneNumber } from '../../utils/validators';
 import { ensureOcpTables } from '../../config/ocpSchema';
 import { cityRowInScope, resolveCityScope } from '../../utils/cityScope';
 import logger from '../../utils/logger';
+import { markCredentialsChanged } from '../../utils/portalCredentials';
+import { isWeakPin, WEAK_PIN_MESSAGE } from '../../utils/pinStrength';
 
 const PIN_ROUNDS = 10;
 
-function rowToOcp(o: any) {
+function rowToOcp(o: DbRow) {
   return {
     id: o.id,
     name: o.name,
@@ -36,9 +39,17 @@ function rowToOcp(o: any) {
 /** GET /api/admin/ocp — list collection points (optional ?city_id=). */
 export const listOcps = asyncHandler(async (req: Request, res: Response) => {
   if (!(await ensureOcpTables())) return successResponse(res, [], 'OCPs');
-  const params: any[] = [];
+  // A city admin sees only their own city's OCPs (B27: every city's names,
+  // phones and addresses used to be listed); the super admin sees all.
+  const scope = await resolveCityScope(req);
+  if (scope.forbidden) return successResponse(res, [], 'OCPs');
+  const params: unknown[] = [];
   let where = 'WHERE o.deleted_at IS NULL';
-  if (typeof req.query.city_id === 'string' && req.query.city_id) {
+  if (req.user?.role !== 'super_admin') {
+    if (!scope.cityId) return successResponse(res, [], 'OCPs');
+    params.push(scope.cityId);
+    where += ` AND o.city_id = $${params.length}`;
+  } else if (typeof req.query.city_id === 'string' && req.query.city_id) {
     params.push(req.query.city_id);
     where += ` AND o.city_id = $${params.length}`;
   }
@@ -60,8 +71,20 @@ export const createOcp = asyncHandler(async (req: Request, res: Response) => {
   if (!(await ensureOcpTables())) {
     return errorResponse(res, 'OCP module is being set up. Please try again shortly.', 503);
   }
-  const { name, owner_name, address, city_id, pin } = req.body;
+  const { name, owner_name, address, pin } = req.body;
   if (!name || !String(name).trim()) return errorResponse(res, 'Name is required.', 400);
+  // A city admin creates OCPs only in their own city (B27: another city's
+  // admin could plant an OCP here with a PIN they chose). The super admin
+  // picks the city (body, or the city chosen in the header).
+  const scope = await resolveCityScope(req);
+  let city_id: string | null = typeof req.body.city_id === 'string' && req.body.city_id ? req.body.city_id : null;
+  if (req.user?.role !== 'super_admin') {
+    if (!scope.cityId) return errorResponse(res, 'Your admin account is not assigned to a city.', 403);
+    if (city_id && city_id !== scope.cityId) return errorResponse(res, 'You can only create an OCP in your own city.', 403);
+    city_id = scope.cityId;
+  } else if (!city_id) {
+    city_id = scope.cityId;
+  }
   if (!city_id) return errorResponse(res, 'City is required.', 400);
   if (!/^\d{4}$/.test(String(pin || ''))) return errorResponse(res, 'PIN must be exactly 4 digits.', 400);
 
@@ -75,6 +98,7 @@ export const createOcp = asyncHandler(async (req: Request, res: Response) => {
   const city = await query('SELECT id, name FROM service_cities WHERE id = $1 AND is_active = TRUE', [city_id]);
   if (city.rows.length === 0) return errorResponse(res, 'Invalid city.', 400);
 
+  if (isWeakPin(pin)) return errorResponse(res, WEAK_PIN_MESSAGE, 400); // B33
   const pinHash = await bcrypt.hash(String(pin), PIN_ROUNDS);
 
   let result;
@@ -93,7 +117,8 @@ export const createOcp = asyncHandler(async (req: Request, res: Response) => {
         req.user?.id ?? null,
       ]
     );
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.code === '23505') {
       return errorResponse(res, 'An OCP with this phone already exists.', 409);
     }
@@ -117,7 +142,7 @@ export const updateOcp = asyncHandler(async (req: Request, res: Response) => {
   }
 
   const sets: string[] = [];
-  const vals: any[] = [];
+  const vals: unknown[] = [];
   let i = 1;
   const { name, owner_name, address, status, city_id, pin } = req.body;
   if (city_id !== undefined && city_id && !cityRowInScope(scope, city_id)) {
@@ -138,6 +163,7 @@ export const updateOcp = asyncHandler(async (req: Request, res: Response) => {
   }
   if (pin !== undefined && pin !== '') {
     if (!/^\d{4}$/.test(String(pin))) return errorResponse(res, 'PIN must be exactly 4 digits.', 400);
+    if (isWeakPin(pin)) return errorResponse(res, WEAK_PIN_MESSAGE, 400); // B33
     sets.push(`pin_hash = $${i++}`); vals.push(await bcrypt.hash(String(pin), PIN_ROUNDS));
   }
 
@@ -147,6 +173,8 @@ export const updateOcp = asyncHandler(async (req: Request, res: Response) => {
     `UPDATE order_collection_points SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${i} RETURNING *`,
     vals
   );
+  // A new PIN ends every session signed in with the old one (B38).
+  if (pin !== undefined && pin !== '' && result.rows[0]) await markCredentialsChanged('order_collection_points', id);
   logger.info('OCP updated', { ocpId: id, by: req.user?.id });
   return successResponse(res, rowToOcp(result.rows[0]), 'OCP updated');
 });
@@ -166,7 +194,10 @@ export const createStockRequest = asyncHandler(async (req: Request, res: Respons
     `SELECT id, city_id, status FROM order_collection_points WHERE id = $1 AND deleted_at IS NULL`,
     [id]
   );
-  if (ocp.rows.length === 0) return notFoundResponse(res, 'OCP not found');
+  // Another city's OCP is "not found" (B27).
+  if (ocp.rows.length === 0 || !cityRowInScope(await resolveCityScope(req), ocp.rows[0].city_id)) {
+    return notFoundResponse(res, 'OCP not found');
+  }
   if (ocp.rows[0].status !== 'active') return errorResponse(res, 'OCP is disabled.', 400);
   // Normalise + validate lines.
   const clean: { product_id: string; quality: string; quantity: number }[] = [];
@@ -184,8 +215,8 @@ export const createStockRequest = asyncHandler(async (req: Request, res: Respons
   // (Central availability is enforced atomically when the OCP receives.)
   const ocpCityId = ocp.rows[0].city_id;
   const productIds = [...new Set(clean.map((l) => l.product_id))];
-  const prods = await query(`SELECT id, city_id FROM products WHERE id = ANY($1::uuid[])`, [productIds]);
-  const cityById = new Map<string, string | null>(prods.rows.map((r: any) => [r.id, r.city_id]));
+  const prods = await query<DbRow<{ id: string; city_id: string | null }>>(`SELECT id, city_id FROM products WHERE id = ANY($1::uuid[])`, [productIds]);
+  const cityById = new Map<string, string | null>(prods.rows.map((r) => [r.id, r.city_id]));
   for (const l of clean) {
     if (!cityById.has(l.product_id)) return errorResponse(res, 'One or more products were not found.', 400);
     const pCity = cityById.get(l.product_id);
@@ -218,6 +249,10 @@ export const createStockRequest = asyncHandler(async (req: Request, res: Respons
 /** GET /api/admin/ocp/:id/stock-requests — requests for an OCP (admin view). */
 export const listStockRequests = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const owner = await query(`SELECT city_id FROM order_collection_points WHERE id = $1`, [id]);
+  if (owner.rows.length === 0 || !cityRowInScope(await resolveCityScope(req), owner.rows[0].city_id)) {
+    return notFoundResponse(res, 'OCP not found');
+  }
   const result = await query(
     `SELECT r.id, r.status, r.note, r.created_at, r.received_at,
             COALESCE(json_agg(json_build_object(
@@ -242,7 +277,7 @@ export const listShortages = asyncHandler(async (req: Request, res: Response) =>
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, [], 'Shortages');
 
-  const params: any[] = [];
+  const params: unknown[] = [];
   let where = '1=1';
   const status = typeof req.query.status === 'string' ? req.query.status : 'open';
   if (['open', 'resolved'].includes(status)) {
@@ -258,7 +293,7 @@ export const listShortages = asyncHandler(async (req: Request, res: Response) =>
     where += ` AND o.city_id = $${params.length}`;
   }
 
-  const result = await query(
+  const result = await query<DbRow<{ shortage_qty: string }>>(
     `SELECT sh.id, sh.ocp_id, sh.product_id, sh.order_id, sh.quality,
             sh.shortage_qty, sh.status, sh.note, sh.created_at,
             sh.resolved_at, sh.resolution_note,
@@ -279,7 +314,7 @@ export const listShortages = asyncHandler(async (req: Request, res: Response) =>
 
   return successResponse(
     res,
-    result.rows.map((row: any) => ({ ...row, shortage_qty: parseFloat(row.shortage_qty) || 0 })),
+    result.rows.map((row) => ({ ...row, shortage_qty: parseFloat(row.shortage_qty) || 0 })),
     'Shortages'
   );
 });
@@ -300,7 +335,7 @@ export const resolveShortage = asyncHandler(async (req: Request, res: Response) 
   }
 
   const scope = await resolveCityScope(req);
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       const row = await client.query(
@@ -326,7 +361,8 @@ export const resolveShortage = asyncHandler(async (req: Request, res: Response) 
       );
       return updated.rows[0];
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 404) return notFoundResponse(res, err.message);
     if (err?.http === 409) return errorResponse(res, err.message, 409);
     throw err;
@@ -343,7 +379,7 @@ export const listSettlements = asyncHandler(async (req: Request, res: Response) 
   if (!(await ensureOcpTables())) return successResponse(res, [], 'Settlements');
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, [], 'Settlements');
-  const params: any[] = [];
+  const params: unknown[] = [];
   let where = '1=1';
   const status = typeof req.query.status === 'string' ? req.query.status : 'pending';
   if (['pending', 'received', 'rejected'].includes(status)) {
@@ -358,7 +394,7 @@ export const listSettlements = asyncHandler(async (req: Request, res: Response) 
     params.push(scope.cityId);
     where += ` AND o.city_id = $${params.length}`;
   }
-  const result = await query(
+  const result = await query<DbRow<{ amount: string }>>(
     `SELECT s.id, s.amount, s.status, s.requested_at, s.received_at,
             o.name AS ocp_name, o.id AS ocp_id,
             (SELECT COUNT(*) FROM ocp_stock_shortages sh WHERE sh.ocp_id = o.id AND sh.status = 'open') AS open_shortage_count,
@@ -370,7 +406,7 @@ export const listSettlements = asyncHandler(async (req: Request, res: Response) 
       LIMIT 100`,
     params
   );
-  return successResponse(res, result.rows.map((r: any) => ({
+  return successResponse(res, result.rows.map((r) => ({
     ...r,
     amount: parseFloat(r.amount),
     order_count: Number(r.order_count),
@@ -398,7 +434,7 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
     return errorResponse(res, 'Incorrect password.', 400);
   }
 
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       const s = await client.query(
@@ -430,7 +466,8 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
       );
       return { id, status: 'received', amount: parseFloat(s.rows[0].amount) };
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 404) return notFoundResponse(res, err.message);
     if (err?.http === 409) return errorResponse(res, err.message, 409);
     throw err;
@@ -443,7 +480,7 @@ export const receiveSettlement = asyncHandler(async (req: Request, res: Response
 export const rejectSettlement = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const scope = await resolveCityScope(req);
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       const s = await client.query(
@@ -462,7 +499,8 @@ export const rejectSettlement = asyncHandler(async (req: Request, res: Response)
       await client.query(`UPDATE ocp_settlements SET status = 'rejected', received_by = $1 WHERE id = $2`, [req.user?.id ?? null, id]);
       return { id, status: 'rejected' };
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 404) return notFoundResponse(res, err.message);
     if (err?.http === 409) return errorResponse(res, err.message, 409);
     throw err;
@@ -474,6 +512,10 @@ export const rejectSettlement = asyncHandler(async (req: Request, res: Response)
 /** DELETE /api/admin/ocp/:id — soft delete. */
 export const deleteOcp = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
+  const owner = await query(`SELECT city_id FROM order_collection_points WHERE id = $1 AND deleted_at IS NULL`, [id]);
+  if (owner.rows.length === 0 || !cityRowInScope(await resolveCityScope(req), owner.rows[0].city_id)) {
+    return notFoundResponse(res, 'OCP not found');
+  }
   const result = await query(
     `UPDATE order_collection_points SET deleted_at = NOW(), status = 'disabled', updated_at = NOW()
       WHERE id = $1 AND deleted_at IS NULL RETURNING id`,

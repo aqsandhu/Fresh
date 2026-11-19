@@ -26,16 +26,24 @@ describe('approvalForValue', () => {
   });
 
   it('logs a small value-out action without asking for approval', async () => {
-    const client = { query: jest.fn<any>().mockResolvedValueOnce({ rows: [{ total: '0' }] }).mockResolvedValue({ rows: [] }) } as any;
+    const client = { query: jest.fn<any>().mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ total: '0' }] }).mockResolvedValue({ rows: [] }) } as any;
     const out = await approvalForValue(client, fakeReq(), 1000, { kind: 'waste' });
     expect(out.approvedBy).toBeNull();
-    expect(String(client.query.mock.calls[1][0])).toContain('INSERT INTO approval_value_log');
-    expect(client.query.mock.calls[1][1]).toEqual(['admin-self', 'waste', 1000, null]);
+    expect(String(client.query.mock.calls[2][0])).toContain('INSERT INTO approval_value_log');
+    expect(client.query.mock.calls[2][1]).toEqual(['admin-self', 'waste', 1000, null]);
+  });
+
+  it('J9: the day total is read under a per-admin lock (actions sent at once cannot all see "0")', async () => {
+    const client = { query: jest.fn<any>().mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ total: '0' }] }).mockResolvedValue({ rows: [] }) } as any;
+    await approvalForValue(client, fakeReq(), 1000, { kind: 'waste' });
+    expect(String(client.query.mock.calls[0][0])).toContain('pg_advisory_xact_lock');
+    expect(client.query.mock.calls[0][1]).toEqual(['admin-self']);
+    expect(String(client.query.mock.calls[1][0])).toContain('FROM approval_value_log');
   });
 
   it('salami-slicing: small actions that add up past the DAILY limit need a second admin', async () => {
     const already = APPROVAL_VALUE_THRESHOLD - 100; // today's un-approved total so far
-    const client = { query: jest.fn<any>().mockResolvedValueOnce({ rows: [{ total: String(already) }] }) } as any;
+    const client = { query: jest.fn<any>().mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ total: String(already) }] }) } as any;
     await expect(approvalForValue(client, fakeReq({ body: {} }), 200, { kind: 'convert' }))
       .rejects.toMatchObject({ http: 400, message: expect.stringContaining('per day') });
   });

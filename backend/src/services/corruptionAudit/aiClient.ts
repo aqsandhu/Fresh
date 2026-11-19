@@ -12,6 +12,7 @@
 // redacted from the audit log by the existing "api_key" rule.
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { fetchGlobalSettings, upsertGlobalSiteSetting } from '../../utils/siteSettings';
 
 export const AUDIT_AI_KEYS = {
@@ -138,7 +139,8 @@ async function postJson(url: string, headers: Record<string, string>, body: unkn
       throw Object.assign(new Error(typeof msg === 'string' ? msg : JSON.stringify(msg).slice(0, 300)), { status: res.status });
     }
     return data;
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.name === 'AbortError') throw new Error(`The AI did not answer within ${Math.round(TIMEOUT_MS / 1000)} seconds.`);
     throw err;
   } finally {
@@ -184,10 +186,11 @@ export async function callAuditAi(cfg: AuditAiConfig, system: string, user: stri
   // round — try the modern name first and fall back once.
   const messages = [{ role: 'system', content: system }, { role: 'user', content: user }];
   const headers = { authorization: `Bearer ${cfg.apiKey}` };
-  let data: any;
+  let data;
   try {
     data = await postJson(`${base}/chat/completions`, headers, { model: cfg.model, messages, max_completion_tokens: maxTokens });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.status !== 400 && err?.status !== 422) throw err;
     data = await postJson(`${base}/chat/completions`, headers, { model: cfg.model, messages, max_tokens: maxTokens });
   }

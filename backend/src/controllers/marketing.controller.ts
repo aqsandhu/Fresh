@@ -2,6 +2,7 @@
 // MARKETING CONTROLLER — abandoned-cart tracking + reminders + ad-pixel config
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { asyncHandler } from '../middleware';
@@ -31,15 +32,15 @@ export const snapshotCart = asyncHandler(async (req: Request, res: Response) => 
   const deviceId = String(req.body.deviceId || req.body.device_id || '').trim().slice(0, 64);
   if (!deviceId) return errorResponse(res, 'deviceId is required', 400);
 
-  const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
-  const items = rawItems.slice(0, 100).map((i: any) => ({
+  const rawItems: Partial<Record<'name' | 'quantity' | 'price' | 'quality', unknown>>[] = Array.isArray(req.body.items) ? req.body.items : [];
+  const items = rawItems.slice(0, 100).map((i) => ({
     name: String(i?.name || '').slice(0, 120),
     quantity: Number(i?.quantity) || 0,
     price: Number(i?.price) || 0,
     quality: i?.quality ? String(i.quality).slice(0, 2) : undefined,
   }));
   const itemCount = Math.min(
-    items.reduce((n: number, i: any) => n + (i.quantity || 0), 0),
+    items.reduce((n, i) => n + (i.quantity || 0), 0),
     500
   );
   // Clamp money to a sane range — a crafted body used to persist absurd
@@ -88,7 +89,7 @@ export const listAbandonedCarts = asyncHandler(async (req: Request, res: Respons
   const olderThanHours = Number(req.query.olderThanHours ?? req.query.older_than_hours);
   const scope = req.cityScope;
   const conditions = [`ac.status = 'active'`, `ac.item_count > 0`];
-  const params: any[] = [];
+  const params: unknown[] = [];
   let idx = 1;
 
   if (Number.isFinite(olderThanHours) && olderThanHours > 0) {
@@ -174,7 +175,8 @@ export async function runAbandonedCartReminders(): Promise<number> {
         data: { type: 'cart_reminder', screen: 'cart' },
       });
       sent++;
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       logger.warn('Abandoned-cart reminder failed', { id: row.id, error: err?.message });
     }
   }

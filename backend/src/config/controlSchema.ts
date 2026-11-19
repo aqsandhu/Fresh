@@ -7,6 +7,7 @@
 // Mirrors catalogV2Schema.ts (probe → DDL on a direct connection → cache).
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -47,7 +48,8 @@ export async function hasControlColumns(): Promise<boolean> {
           AND column_name = 'approved_by' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe refunds.approved_by', { error: error?.message });
     cached = false;
   }
@@ -115,7 +117,8 @@ export async function ensureControlColumns(): Promise<boolean> {
       cached = true;
       logger.info('internal-control columns ensured');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not add internal-control columns', { error: error?.message });
       cached = false;
       return false;

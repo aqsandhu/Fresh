@@ -12,6 +12,7 @@ import {
   createdResponse,
 } from '../../utils/response';
 import logger from '../../utils/logger';
+import { resolveConsumerUnitPrice, resolveUnitPrice } from '../../utils/unitPricing';
 import { isMissingTable } from '../../utils/dbErrors';
 
 interface BasketItemInput {
@@ -20,6 +21,26 @@ interface BasketItemInput {
   quality?: string;
   quantity?: number | string;
   unit?: string;
+}
+
+/**
+ * A basket's products must all come from one city, and the basket belongs to
+ * that city (A35). Made in the "All cities" view it used to get no city and
+ * was shown in EVERY city, though its products can be bought only in one.
+ */
+async function basketCityFor(
+  productIds: string[],
+  requested: string | null
+): Promise<{ cityId: string | null; error?: string }> {
+  if (productIds.length === 0) return { cityId: requested };
+  const r = await query('SELECT DISTINCT city_id FROM products WHERE id = ANY($1::uuid[])', [productIds]);
+  const cities = r.rows.map((x: { city_id: string | null }) => x.city_id).filter(Boolean) as string[];
+  if (cities.length > 1) return { cityId: null, error: 'All products in a basket must be from the same city.' };
+  const own = cities[0] ?? null;
+  if (requested && own && requested !== own) {
+    return { cityId: null, error: "These products belong to a different city than the one chosen for the basket." };
+  }
+  return { cityId: requested || own };
 }
 
 function requireSuperAdmin(req: Request, res: Response): boolean {
@@ -39,6 +60,8 @@ function normalizeItems(raw: unknown): Array<{
   if (!Array.isArray(raw)) return [];
   const out: Array<{ product_id: string; quality: string; quantity: number; unit: string }> = [];
   for (const r of raw as BasketItemInput[]) {
+    // a null / text entry in the list used to crash the request (G37)
+    if (!r || typeof r !== 'object') continue;
     const productId = r.product_id || r.productId;
     if (!productId) continue;
     const quality = String(r.quality || 'A').toUpperCase();
@@ -63,14 +86,22 @@ async function fetchBasketWithItems(basketId: string) {
   if (basket.rows.length === 0) return null;
   const items = await query(
     `SELECT bi.id, bi.product_id, bi.quality, bi.quantity, bi.unit,
-            p.name_en, p.name_ur, p.primary_image
+            p.name_en, p.name_ur, p.primary_image, to_jsonb(p) AS product
        FROM basket_items bi
        JOIN products p ON p.id = bi.product_id
       WHERE bi.basket_id = $1
       ORDER BY bi.created_at ASC`,
     [basketId]
   );
-  return { ...basket.rows[0], items: items.rows };
+  // What customers pay today for "Add basket to cart" — same pricing as the
+  // cart; the typed total_price is only a reference now (A35).
+  let currentTotal = 0;
+  const rows = items.rows.map(({ product, ...it }: any) => {
+    const unitPrice = resolveConsumerUnitPrice(product, it.quality, it.unit) ?? resolveUnitPrice(product, it.unit);
+    currentTotal += unitPrice * Number(it.quantity);
+    return { ...it, unit_price: Math.round(unitPrice * 100) / 100 };
+  });
+  return { ...basket.rows[0], current_total: Math.round(currentTotal * 100) / 100, items: rows };
 }
 
 /**
@@ -117,12 +148,14 @@ export const createBasket = asyncHandler(async (req: Request, res: Response) => 
     return errorResponse(res, 'A valid total price is required', 400);
   }
   if (items.length === 0) return errorResponse(res, 'Add at least one product to the basket', 400);
+  const place = await basketCityFor(items.map((it) => it.product_id), cityId);
+  if (place.error) return errorResponse(res, place.error, 400);
 
   const created = await withTransaction(async (client) => {
     const basketRes = await client.query(
       `INSERT INTO baskets (city_id, name, description, total_price, image_url, is_active, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [cityId, name, description, totalPrice, imageUrl, isActive === false ? false : true, req.user?.id || null]
+      [place.cityId, name, description, totalPrice, imageUrl, isActive === false ? false : true, req.user?.id || null]
     );
     const basketId = basketRes.rows[0].id;
     for (const it of items) {
@@ -148,14 +181,22 @@ export const updateBasket = asyncHandler(async (req: Request, res: Response) => 
   if (!requireSuperAdmin(req, res)) return;
   const { id } = req.params;
 
-  const existing = await query('SELECT id FROM baskets WHERE id = $1', [id]);
+  const existing = await query('SELECT id, city_id FROM baskets WHERE id = $1', [id]);
   if (existing.rows.length === 0) return notFoundResponse(res, 'Basket not found');
+  const newItems = req.body.items !== undefined ? normalizeItems(req.body.items) : null;
+  let newCity: string | null | undefined;
+  if (newItems) {
+    const requested = req.body.city_id ?? req.body.cityId ?? existing.rows[0].city_id ?? null;
+    const place = await basketCityFor(newItems.map((it) => it.product_id), requested);
+    if (place.error) return errorResponse(res, place.error, 400);
+    newCity = place.cityId;
+  }
 
   await withTransaction(async (client) => {
     const sets: string[] = [];
-    const params: any[] = [];
+    const params: unknown[] = [];
     let idx = 1;
-    const pushSet = (col: string, val: any) => {
+    const pushSet = (col: string, val: unknown) => {
       sets.push(`${col} = $${idx++}`);
       params.push(val);
     };
@@ -174,16 +215,17 @@ export const updateBasket = asyncHandler(async (req: Request, res: Response) => 
       pushSet('is_active', v === true || v === 'true');
     }
 
+    if (newCity !== undefined) pushSet('city_id', newCity);
+
     if (sets.length > 0) {
       sets.push('updated_at = NOW()');
       params.push(id);
       await client.query(`UPDATE baskets SET ${sets.join(', ')} WHERE id = $${idx}`, params);
     }
 
-    if (req.body.items !== undefined) {
-      const items = normalizeItems(req.body.items);
+    if (newItems) {
       await client.query('DELETE FROM basket_items WHERE basket_id = $1', [id]);
-      for (const it of items) {
+      for (const it of newItems) {
         await client.query(
           `INSERT INTO basket_items (basket_id, product_id, quality, quantity, unit)
            VALUES ($1, $2, $3, $4, $5)`,

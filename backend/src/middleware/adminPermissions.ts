@@ -44,6 +44,11 @@ async function loadPermissions(userId: string, role: string): Promise<string[]> 
   return row.permissions || [];
 }
 
+/** An admin's current permission codes ("*" for the super admin) — used by the approval replay. */
+export async function permissionsFor(userId: string, role: string): Promise<string[]> {
+  return loadPermissions(userId, role);
+}
+
 export const attachAdminPermissions = async (
   req: Request,
   _res: Response,
@@ -91,6 +96,10 @@ function resolveRequiredPermissions(
   if (p === '/badge-counts') return ANY_ADMIN;
   // Any active admin may give a second-admin approval code (their own).
   if (p === '/approval-codes') return ANY_ADMIN;
+  // Approval queue: everyone sees their own entries (GET); deciding needs
+  // approvals.decide — checked again in the controller.
+  if (p === '/approvals') return ANY_ADMIN;
+  if (p.startsWith('/approvals/')) return ['approvals.decide'];
   if (p.startsWith('/orders')) {
     if (m === 'GET') return ['orders.view'];
     if (p === '/orders/bulk-status' || p.endsWith('/status')) {
@@ -108,7 +117,8 @@ function resolveRequiredPermissions(
     return ['orders.update'];
   }
   if (p.startsWith('/products')) {
-    if (m === 'GET') return ['products.view'];
+    // Editing prices needs the list it edits (G12).
+    if (m === 'GET') return ['products.view', 'products.update'];
     // Gallery add/remove is an edit of an existing product, not create/delete.
     if (/^\/products\/[^/]+\/images(\/|$)/.test(p)) return ['products.update'];
     if (m === 'DELETE') return ['products.delete'];
@@ -131,9 +141,15 @@ function resolveRequiredPermissions(
     ) {
       return ['stock.adjust'];
     }
-    return m === 'GET' ? ['products.view'] : ['products.update'];
+    // A stock keeper (stock.adjust) must see the stock it adjusts (G12).
+    return m === 'GET' ? ['products.view', 'products.update', 'stock.adjust'] : ['products.update'];
   }
-  if (p.startsWith('/categories')) return ['categories.manage'];
+  if (p.startsWith('/categories')) {
+    // Category names are needed to filter / file products (G12).
+    return m === 'GET'
+      ? ['categories.manage', 'products.view', 'products.update', 'products.create']
+      : ['categories.manage'];
+  }
   if (p.startsWith('/customers')) {
     // PII export has its own granular code (view kept as fallback so existing
     // city admins keep working until roles are re-seeded).
@@ -146,7 +162,7 @@ function resolveRequiredPermissions(
     if (p.includes('/cash-settlements')) {
       return m === 'GET' ? ['riders.view', 'finance.rider_cash.receive'] : ['finance.rider_cash.receive'];
     }
-    return m === 'GET' ? ['riders.view'] : ['riders.manage'];
+    return m === 'GET' ? ['riders.view', 'riders.manage'] : ['riders.manage'];
   }
   if (p.startsWith('/whatsapp-orders') || p.startsWith('/atta-requests')) {
     return m === 'GET' ? ['orders.view'] : ['orders.update'];
@@ -208,16 +224,21 @@ function resolveRequiredPermissions(
   }
   if (p.startsWith('/delivery-zones')) {
     return m === 'GET'
-      ? ['settings.delivery_zones.view', 'settings.view', 'settings.update']
+      ? ['settings.delivery_zones.view', 'settings.delivery_zones.manage', 'settings.view', 'settings.update']
       : ['settings.delivery_zones.manage', 'settings.update'];
   }
   if (p === '/settings' && m === 'GET') {
-    return ['settings.delivery.view', 'settings.view', 'settings.update'];
+    return ['settings.delivery.view', 'settings.delivery.update', 'settings.view', 'settings.update'];
   }
   if (p === '/settings/delivery') {
     return m === 'GET'
-      ? ['settings.delivery.view', 'settings.view', 'settings.update']
+      ? ['settings.delivery.view', 'settings.delivery.update', 'settings.view', 'settings.update']
       : ['settings.delivery.update', 'settings.update'];
+  }
+  // Atta Chakki charges sit on the Delivery tab (read-only for city admins;
+  // only the super admin may change them — checked in the controller).
+  if (p === '/settings/atta-charges' && m === 'GET') {
+    return ['settings.delivery.view', 'settings.delivery.update', 'settings.view', 'settings.update'];
   }
   if (p.startsWith('/settings/time-slots')) {
     // Restaurant-audience slots are managed from the Restaurants page by
@@ -226,6 +247,7 @@ function resolveRequiredPermissions(
     if (m === 'GET') {
       return [
         'settings.timeslots.view',
+        'settings.timeslots.manage',
         'settings.view',
         'settings.update',
         'riders.view',
@@ -242,24 +264,24 @@ function resolveRequiredPermissions(
   }
   if (p.startsWith('/settings/business-hours')) {
     return m === 'GET'
-      ? ['settings.business_hours.view', 'settings.view', 'settings.update']
+      ? ['settings.business_hours.view', 'settings.business_hours.update', 'settings.view', 'settings.update']
       : ['settings.business_hours.update', 'settings.update'];
   }
   if (p.startsWith('/site-settings/brand')) {
     return m === 'GET'
-      ? ['settings.brand.view', 'settings.view', 'settings.update']
+      ? ['settings.brand.view', 'settings.brand.update', 'settings.view', 'settings.update']
       : ['settings.brand.update', 'settings.update'];
   }
   if (p.startsWith('/site-settings/favicon')) {
     return m === 'GET'
-      ? ['settings.favicon.view', 'settings.view', 'settings.update']
+      ? ['settings.favicon.view', 'settings.favicon.update', 'settings.view', 'settings.update']
       : ['settings.favicon.update', 'settings.update'];
   }
   if (p.startsWith('/site-settings/hero')) {
     // Hero image is part of the storefront an admin already manages — anyone
     // who can edit the banner (or has general settings access) can edit it.
     return m === 'GET'
-      ? ['settings.hero.view', 'settings.banner.view', 'settings.view', 'settings.update']
+      ? ['settings.hero.view', 'settings.hero.update', 'settings.banner.view', 'settings.banner.update', 'settings.view', 'settings.update']
       : ['settings.hero.update', 'settings.banner.update', 'settings.update'];
   }
   if (
@@ -267,7 +289,7 @@ function resolveRequiredPermissions(
     p.startsWith('/site-settings/whatsapp-order')
   ) {
     return m === 'GET'
-      ? ['settings.banner.view', 'settings.view', 'settings.update']
+      ? ['settings.banner.view', 'settings.banner.update', 'settings.view', 'settings.update']
       : ['settings.banner.update', 'settings.update'];
   }
   if (p.startsWith('/settings') || p.startsWith('/site-settings')) {

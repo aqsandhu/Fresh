@@ -121,6 +121,7 @@ function stopSchedulers(): void {
 import { morganStream } from './utils/logger';
 import { redactUrl } from './utils/redact';
 import { requestId } from './middleware/requestId';
+import { adminCookieOriginGuard } from './middleware/adminOrigin';
 import { enforceEnvironment } from './config/envCheck';
 import {
   apiRateLimiters,
@@ -298,6 +299,8 @@ app.use(
 
 // Parse cookies (HttpOnly auth tokens for browser clients)
 app.use(cookieParser());
+// The admin cookie session answers only the admin panel (ADMIN_PANEL_ORIGIN, N8).
+app.use(adminCookieOriginGuard);
 
 // Parse URL-encoded bodies
 app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || '1mb' }));

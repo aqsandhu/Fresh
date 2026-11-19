@@ -8,9 +8,10 @@
 // task history and customer feedback.
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query, withTransaction } from '../../config/database';
+import { query, withTransaction, type DbRow } from '../../config/database';
 import { asyncHandler, BadRequestError } from '../../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../../utils/response';
 import { normalizePhoneNumber, parsePagination } from '../../utils/validators';
@@ -32,7 +33,7 @@ import { hasFeedbackTables } from '../../config/feedbackSchema';
 import { computeRiderStats } from '../../utils/riderStats';
 import { resolveDutyStatus } from '../../utils/riderAvailability';
 import { revokeAllUserRefreshTokens } from '../../services/refreshToken.service';
-import { emitToUser } from '../../config/socket';
+import { emitToUser, syncUserSockets } from '../../config/socket';
 
 const SALT_ROUNDS = 12;
 const VEHICLE_TYPES = ['bike', 'car', 'van', 'bicycle', 'rickshaw'];
@@ -106,7 +107,7 @@ export const getRiders = asyncHandler(async (req: Request, res: Response) => {
     WHERE r.deleted_at IS NULL
   `;
 
-  const params: any[] = [];
+  const params: unknown[] = [];
   let paramIndex = 1;
 
   if (typeof status === 'string' && ['available', 'busy', 'offline', 'on_leave'].includes(status)) {
@@ -293,7 +294,8 @@ export const createRider = asyncHandler(async (req: Request, res: Response) => {
 
       return { user, rider: riderRes.rows[0] };
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err.code === '23505') {
       const detail = err.detail || '';
       if (detail.includes('cnic')) return errorResponse(res, 'A rider with this CNIC already exists', 409);
@@ -352,7 +354,7 @@ export const updateRider = asyncHandler(async (req: Request, res: Response) => {
   try {
     await withTransaction(async (client) => {
       const userFields: string[] = [];
-      const userParams: any[] = [];
+      const userParams: unknown[] = [];
       let idx = 1;
 
       if (full_name) { userFields.push(`full_name = $${idx++}`); userParams.push(String(full_name).trim()); }
@@ -371,7 +373,7 @@ export const updateRider = asyncHandler(async (req: Request, res: Response) => {
       }
 
       const riderFields: string[] = [];
-      const riderParams: any[] = [];
+      const riderParams: unknown[] = [];
       let ri = 1;
       const setNullable = (column: string, value: unknown) => {
         if (value === undefined) return;
@@ -399,7 +401,8 @@ export const updateRider = asyncHandler(async (req: Request, res: Response) => {
         await client.query(`UPDATE riders SET ${riderFields.join(', ')} WHERE id = $${ri}`, riderParams);
       }
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err.code === '23505') return errorResponse(res, 'Phone or CNIC already in use', 409);
     throw err;
   }
@@ -448,6 +451,7 @@ export const deleteRider = asyncHandler(async (req: Request, res: Response) => {
   await query(`UPDATE users SET status = 'inactive', updated_at = NOW() WHERE id = $1`, [result.rows[0].user_id]);
   await kickRider(id, 'Your rider account has been removed.');
   logger.info('Rider deleted', { riderId: id, by: req.user?.id });
+  await syncUserSockets(result.rows[0].user_id);
   successResponse(res, null, 'Rider deleted successfully');
 });
 
@@ -498,6 +502,8 @@ export const verifyRider = asyncHandler(async (req: Request, res: Response) => {
     );
   }
   logger.info('Rider verification changed', { riderId: id, verification_status, by: req.user?.id });
+  // A blocked / un-verified rider's open socket is closed at once (B29).
+  await syncUserSockets(result.rows[0]?.user_id);
   successResponse(res, result.rows[0], 'Rider verification updated');
 });
 
@@ -592,7 +598,7 @@ export const getRiderStats = asyncHandler(async (req: Request, res: Response) =>
 
   // time_slot_id is what the admin per-slot editor keys on — without it the
   // editor always opened blank and looked like no rate was configured.
-  const chargesResult = await query(
+  const chargesResult = await query<DbRow<{ charge_per_order: string }>>(
     `SELECT rdc.id, rdc.time_slot_id, rdc.charge_per_order, rdc.effective_from,
             ts.slot_name, ts.start_time, ts.end_time
      FROM rider_delivery_charges rdc
@@ -606,7 +612,7 @@ export const getRiderStats = asyncHandler(async (req: Request, res: Response) =>
     rider: riderCheck.rows[0],
     stats,
     payment,
-    deliveryCharges: chargesResult.rows.map((row: any) => ({
+    deliveryCharges: chargesResult.rows.map((row) => ({
       ...row,
       charge_per_order: parseFloat(row.charge_per_order) || 0,
     })),
@@ -704,7 +710,7 @@ export const listRiderCashSettlements = asyncHandler(async (req: Request, res: R
   if (!(await hasRiderCashSettlementTables())) return successResponse(res, [], 'Rider cash settlements');
 
   const attaReady = await hasAttaCashColumns();
-  const result = await query(
+  const result = await query<DbRow<{ amount: string }>>(
     `SELECT s.id, s.amount, s.status, s.note, s.received_at,
             u.full_name AS received_by_name,
             (SELECT COUNT(*)::int FROM rider_cash_settlement_orders so WHERE so.settlement_id = s.id) AS order_count,
@@ -719,7 +725,7 @@ export const listRiderCashSettlements = asyncHandler(async (req: Request, res: R
 
   return successResponse(
     res,
-    result.rows.map((row: any) => ({
+    result.rows.map((row) => ({
       ...row,
       amount: parseFloat(row.amount) || 0,
       order_count: Number(row.order_count) || 0,
@@ -752,7 +758,7 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
 
   const attaReady = await hasAttaCashColumns();
   const officeCashCol = await hasOrderCashReceivedColumn();
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       const rider = await client.query('SELECT id, city_id, user_id FROM riders WHERE id = $1 AND deleted_at IS NULL FOR UPDATE', [id]);
@@ -783,7 +789,7 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
 
       let attaLines: { attaId: string; amount: number }[] = [];
       if (attaReady) {
-        const atta = await client.query(
+        const atta = await client.query<DbRow<{ id: string; paid_amount: string }>>(
           `SELECT ar.id, ar.paid_amount
              FROM atta_requests ar
             WHERE ar.collected_by_rider_id = $1
@@ -793,7 +799,7 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
             FOR UPDATE`,
           [id]
         );
-        attaLines = atta.rows.map((row: any) => ({ attaId: row.id as string, amount: parseFloat(row.paid_amount) || 0 }));
+        attaLines = atta.rows.map((row) => ({ attaId: row.id as string, amount: parseFloat(row.paid_amount) || 0 }));
       }
 
       if (orderLines.length === 0 && attaLines.length === 0) {
@@ -837,7 +843,8 @@ export const receiveRiderCashSettlement = asyncHandler(async (req: Request, res:
         rider_user_id: rider.rows[0].user_id,
       };
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 404) return notFoundResponse(res, err.message);
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
@@ -896,6 +903,13 @@ export const setRiderDeliveryCharges = asyncHandler(async (req: Request, res: Re
       if (!Number.isFinite(charge) || charge < 0) {
         throw new BadRequestError('charge_per_order must be a finite number ≥ 0');
       }
+      // A rider is paid per slot of THEIR city (every city has its own slots — A30).
+      const fits = await client.query(
+        `SELECT 1 FROM time_slots ts JOIN riders r ON r.id = $2
+          WHERE ts.id = $1 AND (ts.city_id IS NULL OR r.city_id IS NULL OR ts.city_id = r.city_id)`,
+        [item.time_slot_id, id]
+      );
+      if (fits.rows.length === 0) throw new BadRequestError('That delivery slot belongs to another city.');
       await client.query(
         `INSERT INTO rider_delivery_charges (rider_id, time_slot_id, charge_per_order, effective_from, created_by)
          VALUES ($1, $2, $3, NOW(), $4)

@@ -4,9 +4,10 @@
 // user/admin auth via the OCP token (see middleware/ocpAuth.ts).
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { query, withTransaction } from '../config/database';
+import { query, withTransaction, type DbRow } from '../config/database';
 import { asyncHandler } from '../middleware';
 import {
   successResponse,
@@ -22,9 +23,9 @@ import { assertNoOpenOcpShortages, moveCentralToOcp } from '../utils/ocpStock';
 import { hasOrderCashReceivedColumn } from '../config/controlsSchema';
 import { assignRiderToOrder } from '../utils/assignRiderToOrder';
 import {
-  getPinLockoutState,
-  registerPinFailure,
+  pinAttemptFailed,
   clearPinFailures,
+  reservePinAttempt,
 } from '../config/pinLockout';
 import logger from '../utils/logger';
 
@@ -32,7 +33,19 @@ import logger from '../utils/logger';
 // limiter — a 4-digit PIN is only 10k combinations).
 const pinLockKey = (phone: string) => `pin:ocp:${phone}`;
 
-function publicOcp(o: any) {
+/** An order as the collection point sees it (NUMERIC columns arrive as strings). */
+type OcpOrderRow = DbRow<{
+  id: string;
+  order_number: string;
+  status: string;
+  subtotal: string;
+  delivery_charge: string;
+  total_amount: string;
+  paid_amount: string | null;
+  phone_visible_to_ocp: boolean | null;
+  delivery_address_snapshot: { written_address?: string; location?: unknown } | null;
+}>;
+function publicOcp(o: DbRow) {
   return {
     id: o.id,
     name: o.name,
@@ -64,8 +77,10 @@ export const loginOcp = asyncHandler(async (req: Request, res: Response) => {
 
   // Per-account lockout takes priority over any per-IP limit.
   const lockKey = pinLockKey(normPhone);
-  const lockState = await getPinLockoutState(lockKey);
-  if (lockState.lockedUntil && lockState.lockedUntil > Date.now()) {
+  // B39: the attempt is reserved (counted) before the check — guesses sent
+  // at the same moment cannot get past the lock.
+  const lockState = await reservePinAttempt(lockKey);
+  if (!lockState.allowed) {
     const retryAfter = Math.ceil((lockState.lockedUntil - Date.now()) / 1000);
     res.setHeader('Retry-After', String(retryAfter));
     return errorResponse(res, 'Too many failed PIN attempts. Try again later.', 429);
@@ -81,14 +96,14 @@ export const loginOcp = asyncHandler(async (req: Request, res: Response) => {
   const ocp = result.rows[0];
   if (!ocp) {
     // Count the failure so attackers can't probe phone numbers for free.
-    await registerPinFailure(lockKey);
+    await pinAttemptFailed(lockKey);
     return unauthorizedResponse(res, 'Invalid phone or PIN');
   }
   // PIN first, status after (the "disabled" message used to answer any phone
   // number without a PIN — telling anyone which numbers are OCPs).
   const valid = Boolean(ocp.pin_hash) && (await bcrypt.compare(String(pin), ocp.pin_hash));
   if (!valid) {
-    const { lockedUntil } = await registerPinFailure(lockKey);
+    const { lockedUntil } = await pinAttemptFailed(lockKey);
     logger.warn('OCP PIN verify failed', { ocpId: ocp.id, lockedUntil });
     if (lockedUntil) {
       const retryAfter = Math.ceil((lockedUntil - Date.now()) / 1000);
@@ -133,7 +148,7 @@ export const getOcpMe = asyncHandler(async (req: Request, res: Response) => {
 
 /** GET /api/ocp/orders — orders assigned to this OCP (phone redacted by default). */
 export const getOcpOrders = asyncHandler(async (req: Request, res: Response) => {
-  const result = await query(
+  const result = await query<OcpOrderRow>(
     `SELECT o.id, o.order_number, o.status, o.subtotal, o.delivery_charge, o.total_amount,
             o.paid_amount, o.payment_status, o.created_at, o.placed_at,
             o.phone_visible_to_ocp, o.ocp_payment_settled,
@@ -146,7 +161,7 @@ export const getOcpOrders = asyncHandler(async (req: Request, res: Response) => 
       LIMIT 200`,
     [req.ocp!.id]
   );
-  const rows = result.rows.map((o: any) => {
+  const rows = result.rows.map((o) => {
     const snap = o.delivery_address_snapshot || {};
     const phoneVisible = o.phone_visible_to_ocp === true;
     return {
@@ -156,7 +171,7 @@ export const getOcpOrders = asyncHandler(async (req: Request, res: Response) => 
       subtotal: parseFloat(o.subtotal),
       delivery_charge: parseFloat(o.delivery_charge),
       total_amount: parseFloat(o.total_amount),
-      paid_amount: parseFloat(o.paid_amount || 0),
+      paid_amount: parseFloat(o.paid_amount || '0'),
       payment_status: o.payment_status,
       created_at: o.created_at,
       customer_name: o.customer_name,
@@ -181,6 +196,9 @@ export const getOcpOrderDetail = asyncHandler(async (req: Request, res: Response
             o.delivery_address_snapshot, o.customer_notes,
             u.full_name AS customer_name, u.phone AS customer_phone, u.email AS customer_email,
             ts.slot_name,
+            -- When the order is due (the OCP saw only the slot name — session 10).
+            o.requested_delivery_date::text AS requested_delivery_date,
+            to_char(ts.start_time, 'HH24:MI') AS slot_start, to_char(ts.end_time, 'HH24:MI') AS slot_end,
             COALESCE(json_agg(json_build_object(
               'id', oi.id, 'product_name', oi.product_name, 'quantity', oi.quantity,
               'unit', oi.unit, 'quality', oi.quality, 'unit_price', oi.unit_price,
@@ -191,7 +209,7 @@ export const getOcpOrderDetail = asyncHandler(async (req: Request, res: Response
        LEFT JOIN time_slots ts ON o.time_slot_id = ts.id
        LEFT JOIN order_items oi ON oi.order_id = o.id
       WHERE o.id = $1 AND o.ocp_id = $2 AND o.deleted_at IS NULL
-      GROUP BY o.id, u.full_name, u.phone, u.email, ts.slot_name`,
+      GROUP BY o.id, u.full_name, u.phone, u.email, ts.slot_name, ts.start_time, ts.end_time`,
     [id, req.ocp!.id]
   );
   if (result.rows.length === 0) return notFoundResponse(res, 'Order not found');
@@ -214,6 +232,9 @@ export const getOcpOrderDetail = asyncHandler(async (req: Request, res: Response
     created_at: o.created_at,
     placed_at: o.placed_at,
     slot_name: o.slot_name,
+    requested_delivery_date: o.requested_delivery_date ?? null,
+    slot_start: o.slot_start ?? null,
+    slot_end: o.slot_end ?? null,
     is_urgent_delivery: o.is_urgent_delivery === true,
     urgent_delivery_eta: o.urgent_delivery_eta,
     customer_notes: o.customer_notes,
@@ -236,7 +257,7 @@ export const getOcpOrderDetail = asyncHandler(async (req: Request, res: Response
 /** GET /api/ocp/riders — verified riders in the OCP's city to assign. */
 export const getOcpRiders = asyncHandler(async (req: Request, res: Response) => {
   const cityId = req.ocp!.city_id;
-  const params: any[] = [];
+  const params: unknown[] = [];
   let cityClause = '';
   if (cityId) { params.push(cityId); cityClause = ` AND r.city_id = $${params.length}`; }
   const result = await query(
@@ -267,7 +288,8 @@ export const assignOcpRider = asyncHandler(async (req: Request, res: Response) =
   try {
     const { order, rider } = await assignRiderToOrder(id, rider_id, undefined);
     return successResponse(res, { order_id: order.id, rider }, 'Rider assigned');
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 404) return notFoundResponse(res, err.message || 'Not found');
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
@@ -306,7 +328,7 @@ export const receiveStockRequest = asyncHandler(async (req: Request, res: Respon
   const { id } = req.params;
   const ocpId = req.ocp!.id;
 
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       const reqRow = await client.query(
@@ -338,7 +360,8 @@ export const receiveStockRequest = asyncHandler(async (req: Request, res: Respon
       );
       return upd.rows[0];
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 404) return notFoundResponse(res, err.message);
     if (err?.http === 409) return errorResponse(res, err.message, 409);
     if (err?.http === 400) return errorResponse(res, err.message, 400);
@@ -372,7 +395,7 @@ export const getOcpStock = asyncHandler(async (req: Request, res: Response) => {
 export const collectOcpPayment = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       const ord = await client.query(
@@ -401,7 +424,8 @@ export const collectOcpPayment = asyncHandler(async (req: Request, res: Response
       );
       return { paid_amount: parseFloat(upd.rows[0].paid_amount), payment_status: upd.rows[0].payment_status };
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 404) return notFoundResponse(res, err.message);
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     throw err;
@@ -432,7 +456,7 @@ export const getOcpSettlements = asyncHandler(async (req: Request, res: Response
         AND NOT EXISTS (SELECT 1 FROM ocp_settlement_orders so WHERE so.order_id = o.id)`,
     [ocpId]
   );
-  const list = await query(
+  const list = await query<DbRow<{ amount: string }>>(
     `SELECT id, amount, status, requested_at, received_at FROM ocp_settlements
       WHERE ocp_id = $1 ORDER BY requested_at DESC LIMIT 50`,
     [ocpId]
@@ -444,7 +468,7 @@ export const getOcpSettlements = asyncHandler(async (req: Request, res: Response
       due_orders: Number(due.rows[0].orders) || 0,
       shortage_locked: openShortages > 0,
       open_shortages: openShortages,
-      settlements: list.rows.map((s: any) => ({ ...s, amount: parseFloat(s.amount) })),
+      settlements: list.rows.map((s) => ({ ...s, amount: parseFloat(s.amount) })),
     },
     'Settlements'
   );
@@ -455,12 +479,16 @@ export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response
   if (!(await ensureOcpTables())) return errorResponse(res, 'OCP system not ready.', 503);
   const ocpId = req.ocp!.id;
   const officeCash = (await hasOrderCashReceivedColumn()) ? ' AND o.cash_received_by IS NULL' : '';
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
+      // One settlement at a time per OCP: two presses at once both picked the
+      // same orders and the second crashed on the unique index (500 — A29).
+      // The second now waits, then finds nothing left to settle.
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('ocp-settle:' || $1::text))`, [ocpId]);
       await assertNoOpenOcpShortages(client, ocpId);
       // Lock the free collected orders (paid, not already in a settlement).
-      const orders = await client.query(
+      const orders = await client.query<DbRow<{ id: string; paid_amount: string }>>(
         `SELECT o.id, o.paid_amount
           FROM orders o
           WHERE o.ocp_id = $1 AND o.deleted_at IS NULL AND o.paid_amount > 0
@@ -474,7 +502,7 @@ export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response
       if (orders.rows.length === 0) {
         throw Object.assign(new Error('No collected cash to settle.'), { http: 400 });
       }
-      const amount = orders.rows.reduce((s: number, o: any) => s + (parseFloat(o.paid_amount) || 0), 0);
+      const amount = orders.rows.reduce((s: number, o) => s + (parseFloat(o.paid_amount) || 0), 0);
       const set = await client.query(
         `INSERT INTO ocp_settlements (ocp_id, amount, status) VALUES ($1, $2, 'pending') RETURNING id, amount, status, requested_at`,
         [ocpId, amount]
@@ -488,9 +516,11 @@ export const sendOcpSettlement = asyncHandler(async (req: Request, res: Response
       }
       return { id: settlementId, amount, orders: orders.rows.length };
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http === 400) return errorResponse(res, err.message, 400);
     if (err?.http === 409) return errorResponse(res, err.message, 409);
+    if (err?.code === '23505') return errorResponse(res, 'This cash was already sent in a settlement.', 409);
     throw err;
   }
   logger.info('OCP sent settlement', { settlementId: out.id, ocpId, amount: out.amount });

@@ -4,6 +4,7 @@
 // (non-pooler) connection. Mirrors restaurantSchema.ts.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -44,7 +45,8 @@ export async function hasOcpTables(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'order_collection_points' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe order_collection_points table', { error: error?.message });
     cached = false;
   }
@@ -193,7 +195,8 @@ export async function ensureOcpTables(): Promise<boolean> {
             ('ocp.settlements.receive','Receive OCP cash settlements',            'OCP'),
             ('ocp.shortages.manage',   'View and resolve OCP stock shortages',    'OCP')
           ON CONFLICT (code) DO NOTHING`);
-      } catch (permErr: any) {
+      } catch (permErrCaught: unknown) {
+        const permErr = asCaughtError(permErrCaught);
         logger.warn('Could not seed OCP permissions', { error: permErr?.message });
       }
 
@@ -201,7 +204,8 @@ export async function ensureOcpTables(): Promise<boolean> {
       ddlEnsured = true;
       logger.info('OCP tables ensured (current additive schema applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply OCP migration — run database/migrations/36 manually', {
         error: error?.message,
       });

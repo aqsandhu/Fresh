@@ -17,7 +17,7 @@ import { query as poolQuery } from '../config/database';
 
 export type Queryable = { query: (sql: string, params?: unknown[]) => Promise<QueryResult<any>> };
 
-const defaultRunner: Queryable = { query: (sql, params) => poolQuery(sql, params as any[]) };
+const defaultRunner: Queryable = { query: (sql, params) => poolQuery(sql, params) };
 
 /**
  * Recompute riders.status for one rider from his active tasks. Returns the

@@ -14,6 +14,7 @@ import { normalizePhoneNumber } from './validators';
 import { hasApprovalValueLog } from '../config/controlsSchema';
 import { TODAY_SQL, localDate } from './businessTime';
 import { query as autocommitQuery } from '../config/database';
+import { QueuedForApproval, approvalReplayOf, enqueueApproval } from './approvalQueue';
 
 /** Approval code from the approver's own phone: valid this long, this many wrong tries. */
 export const APPROVAL_CODE_TTL_SECONDS = 180;
@@ -140,15 +141,27 @@ export async function approvalForValue(
   client: Pick<PoolClient, 'query'>,
   req: Request,
   value: number,
-  opts: { threshold?: number; label?: string; kind?: string } = {}
+  opts: {
+    threshold?: number; label?: string; kind?: string;
+    /** Needs a second admin whatever the value (e.g. a salary increase — J8). */
+    always?: boolean;
+    /** Not money leaving today: kept out of the daily un-approved total. */
+    noLog?: boolean;
+  } = {}
 ): Promise<{ approvedBy: string | null; approvedAt: string | null }> {
   const threshold = opts.threshold ?? APPROVAL_VALUE_THRESHOLD;
+  const replay = approvalReplayOf(req);
   const amount = Number.isFinite(value) && value > 0 ? value : 0;
   const adminId = req.user?.id ?? null;
   const logReady = adminId ? await hasApprovalValueLog() : false;
 
   let todayBefore = 0;
   if (logReady && amount > 0) {
+    // One admin's value-out actions are counted one at a time (held until the
+    // caller's transaction ends): read-then-write without it let 16 shortages
+    // of Rs 4,900 sent at once pass as "0 + 4,900" each — Rs 49,000 with no
+    // second admin (J9).
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext('approval-day:' || $1::text))`, [adminId]);
     const r = await client.query(
       `SELECT COALESCE(SUM(value), 0) AS total
          FROM approval_value_log
@@ -163,10 +176,29 @@ export async function approvalForValue(
   const dayOver = amount > 0 && todayBefore + amount >= threshold;
   let result: { approvedBy: string | null; approvedAt: string | null } = { approvedBy: null, approvedAt: null };
 
-  if (singleOver || dayOver) {
+  if (singleOver || dayOver || opts.always) {
     const phone = String(req.body?.approval_phone || req.body?.approvalPhone || '');
     const password = String(req.body?.approval_password || req.body?.approvalPassword || req.body?.password || '');
+    if (replay) {
+      // The city admin approved this entry from the approval queue (J1).
+      return logValue({ approvedBy: replay.approvedBy, approvedAt: new Date().toISOString() });
+    }
     if (!phone || !password) {
+      // Staff with no approval code: the entry waits for the city admin
+      // (owner's decision J1) instead of being refused. Nothing is applied.
+      if (req.user?.role !== 'super_admin') {
+        const label = String(opts.label || 'this action');
+        const queued = await enqueueApproval(req, { kind: String(opts.kind || 'value'), label, value: amount });
+        if (queued) {
+          throw new QueuedForApproval(
+            `Sent to the city admin for approval: ${label}${amount > 0 ? ` (Rs. ${Math.round(amount).toLocaleString('en-PK')})` : ''}. Nothing changes until it is approved.`,
+            queued.id
+          );
+        }
+      }
+      if (opts.always && !singleOver && !dayOver) {
+        throw Object.assign(new Error(`A second admin's approval is required for ${opts.label || 'this action'}.`), { http: 400 });
+      }
       const limit = threshold.toLocaleString('en-PK');
       const msg = singleOver
         ? `A second admin's approval is required for ${opts.label || 'this action'} worth Rs. ${limit} or more.`
@@ -176,12 +208,14 @@ export async function approvalForValue(
     const approvedBy = await verifySecondApprover(client, req, phone, password, String(opts.label || opts.kind || 'approval'));
     result = { approvedBy, approvedAt: new Date().toISOString() };
   }
+  return logValue(result);
 
-  if (logReady && amount > 0) {
+  async function logValue(out: { approvedBy: string | null; approvedAt: string | null }) {
+    if (!logReady || amount <= 0 || opts.noLog) return out;
     await client.query(
       `INSERT INTO approval_value_log (admin_id, kind, value, approved_by) VALUES ($1, $2, $3, $4)`,
-      [adminId, String(opts.kind || opts.label || 'value').slice(0, 40), Math.round(amount * 100) / 100, result.approvedBy]
+      [adminId, String(opts.kind || opts.label || 'value').slice(0, 40), Math.round(amount * 100) / 100, out.approvedBy]
     );
+    return out;
   }
-  return result;
 }

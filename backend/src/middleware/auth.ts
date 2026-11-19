@@ -2,13 +2,15 @@
 // AUTHENTICATION MIDDLEWARE
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../config/jwt';
 import { query } from '../config/database';
 import { UserRole, JwtPayload } from '../types';
 import { UnauthorizedError, ForbiddenError } from './errorHandler';
-import logger from '../utils/logger';
+import logger from '../utils/logger';
 import { markAuthGuard } from '../config/openapiRoutes';
+import { getAccessTokenFromCookies } from '../utils/authCookies';
 
 // Extend Express Request to include user
 declare global {
@@ -31,12 +33,9 @@ const extractToken = (req: Request): string | null => {
     return authHeader.substring(7);
   }
   
-  // Also check cookies if using cookie-based auth
-  if (req.cookies?.token) {
-    return req.cookies.token;
-  }
-  
-  return null;
+  // Cookie sessions: the admin panel and the website each have their own
+  // cookie; which one applies is decided by who is calling.
+  return getAccessTokenFromCookies(req) || null;
 };
 
 // Verify JWT token middleware — uses JWT claims only (no DB roundtrip).
@@ -60,7 +59,8 @@ export const authenticate = (
     };
 
     next();
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     if (error instanceof UnauthorizedError) {
       next(error);
     } else if (error.name === 'TokenExpiredError') {

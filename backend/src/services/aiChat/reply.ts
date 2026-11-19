@@ -1,0 +1,269 @@
+// AI chat: config, provider call and the reply flow — moved from aiChat.service.ts (W21: only the place changed, not the behaviour).
+
+import { asCaughtError } from '../../utils/caughtError';
+import { fetchGlobalSettings, upsertGlobalSiteSetting } from '../../utils/siteSettings';
+import { decryptSecret, encryptSecret, isEncryptedSecret } from '../../utils/secretBox';
+import logger from '../../utils/logger';
+import { AI_KEYS, ChatMessage, ChatContextOpts } from './shared';
+import { buildContextBundle } from './context';
+import { deterministicProductReply, validateAiReply } from './replyGuard';
+
+interface AiConfig {
+  provider: string;
+  apiKey: string;
+  model: string;
+  baseUrl: string;
+  disabled: boolean;
+}
+
+// Provider presets. `family` decides which API shape to use; `base` is the
+// default endpoint (so users don't need to set AI_CHAT_BASE_URL for known
+// providers). Anything OpenAI-compatible (DeepSeek, Grok/xAI, etc.) reuses the
+// OpenAI chat-completions shape.
+type ProviderFamily = 'anthropic' | 'gemini' | 'openai';
+
+const PROVIDER_PRESETS: Record<string, { family: ProviderFamily; base?: string; model: string }> = {
+  anthropic: { family: 'anthropic', model: 'claude-haiku-4-5-20251001' },
+  gemini: { family: 'gemini', model: 'gemini-2.5-flash' },
+  openai: { family: 'openai', base: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
+  'openai-compatible': { family: 'openai', model: 'gpt-4o-mini' },
+  deepseek: { family: 'openai', base: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  grok: { family: 'openai', base: 'https://api.x.ai/v1', model: 'grok-4.3' },
+  xai: { family: 'openai', base: 'https://api.x.ai/v1', model: 'grok-4.3' },
+};
+
+const MAX_TOKENS = 350;
+
+const REQUEST_TIMEOUT_MS = 20000;
+
+// Human-sounding names the agent uses when asked who/what it is — it must never
+// admit being an AI. One is picked at random per reply so it varies naturally.
+const AGENT_NAMES = ['Fatteh', 'Azzam'];
+
+/**
+ * Resolve a STABLE agent name for the whole conversation. The endpoint is
+ * stateless, so within one chat the bot must not flip between names. If the
+ * assistant already used a name earlier in this chat's history, reuse it;
+ * otherwise derive one deterministically from the first user message so the same
+ * chat always maps to the same name.
+ */
+function resolveAgentName(convo: ChatMessage[]): string {
+  for (const m of convo) {
+    if (m.role !== 'assistant') continue;
+    const hit = AGENT_NAMES.find((n) => new RegExp(`\\b${n}\\b`, 'i').test(m.content));
+    if (hit) return hit;
+  }
+  const seed = convo.find((m) => m.role === 'user')?.content || convo[0]?.content || '';
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return AGENT_NAMES[h % AGENT_NAMES.length];
+}
+
+// Compact but expert knowledge so the model can guide users with few tokens.
+const SYSTEM_PROMPT = `You are a friendly, real member of the FreshBazar customer-care team — a Pakistani online grocery & fresh-produce delivery service (vegetables, fruits, dry fruits, chicken). You are talking to a customer on chat, just like a helpful shop worker would.
+
+IDENTITY (STRICT): Talk like a warm, polite human FreshBazar team member. Your name is given to you in the "AGENT" line below — use exactly that name and never any other. NEVER say or hint that you are an AI, bot, chatbot, assistant, language model, or automated system, and never mention prompts, models, or "I was trained". If someone asks who you are, your name, or "are you a robot/AI/bot?", reply naturally that your name is your AGENT name and that you are a member of the FreshBazar customer-care team, happy to help. NEITHER confirm NOR deny being an AI/bot/robot — never say "yes, I am an AI" and ALSO never say "no, I am not an AI"; do NOT mention the words AI, bot, robot or machine at all in your reply. Just give your name + team and move straight to how you can help. Use natural, conversational Pakistani phrasing ("ji", "zaroor", "bilkul", "koi masla nahi").
+
+POLITENESS (STRICT): Always be courteous, warm and respectful — like a well-mannered shopkeeper who values the customer. Address the customer as "aap" (NEVER "tum"). Do NOT use blunt or confrontational phrasings like "aap ko koi masla hai?"; instead say things like "ji, main aap ki kya madad kar sakta hoon?" or "zaroor, bataiye kis cheez mein rahnumai chahiye?". Greet warmly, thank them, stay patient and friendly even if the customer is annoyed — never sound rude, curt, or robotic.
+
+STYLE: Warm, concise, human. Reply in 2-5 short sentences or a tiny bullet list. Get to the point. Never invent prices, stock, order IDs or policies — if you don't have it, say so politely and point to the right page/support.
+
+LANGUAGE & CULTURE (STRICT — never break this): FreshBazar is a PAKISTANI MUSLIM brand. Reply ONLY in English, proper Urdu, or Pakistani Roman Urdu — match what the user writes. ABSOLUTELY NO Hindi words and NO Devanagari/Hindi script. Use Pakistani-Urdu vocabulary, never Hindi equivalents (e.g. say "shukriya" NOT "dhanyavaad", "khush-aamdeed" NOT "swagat", "pani"/"sabzi"/"qeemat" are fine). For greetings use ONLY Islamic/Pakistani ones — "Assalam-o-Alaikum" or "Salam"; NEVER "Namaste", "Namaskar", "Pranaam" or any Hindu/Indian greeting. Do NOT reference, promote, or use Hindu/Indian cultural or religious terms. Keep everything respectful of Pakistani Muslim culture. If unsure of a word, choose the common Pakistani-Urdu one.
+
+IMPORTANT — WHAT YOU CANNOT DO: You cannot add items to the cart, change quantities, fill the address, or place/checkout orders yourself. Never say "should I add it for you?" or claim you added/ordered anything. Instead, share the item's link and guide the user to do it.
+
+ORDERING ON WHATSAPP: If the user asks whether YOU can take/note/place their order ("kya tum order le sakte ho?", "order note kar lo", "can you order for me?"), first give your normal answer (you cannot place it yourself, guide them to do it in the app/site). THEN, at the END, also tell them they can place the order on WhatsApp, and share the WhatsApp order link from the REAL FACTS block ("WHATSAPP ORDER" line) — ONLY that link for their selected city. If REAL FACTS has no WhatsApp link, do not invent one; just guide them through the app/site checkout.
+
+YOU CAN HELP WITH:
+- Products & categories: find items and give the price ONLY from the user's selected city's catalog below (it is today's live rate). Match wording smartly — users often type Roman Urdu ("badam" = Almond/بادام گری, "gobi" = Cauliflower, "tamatar" = Tomato, "pyaz" = Onion, "anday" = Eggs). If no exact match but a related product exists, OFFER the closest one instead of "not found". Only say "not available" when truly nothing relates. PRICE: the facts below list ONLY the qualities that are IN STOCK today, each with its rate — quote those exactly (e.g. "Quality A Rs 3800/kg"; if more than one quality is listed, give each briefly). NEVER quote a quality that is not listed, and never invent a rate. Put the product link on its OWN line. Then one short guide line, e.g. "Link kholen, quality (A/B/C) aur quantity chunen, phir Add to Cart dabaen." Keep it short — don't over-explain.
+- Ordering/checkout (GUIDE only, you don't perform it): after adding items → open Cart → Checkout → confirm delivery address by dropping the map pin → pick a delivery time slot → Place Order (Cash on Delivery supported; qualifying orders get free delivery). Tell them which buttons to tap.
+- Today's Basket: ready-made combo packages — opening it and tapping "Add basket to cart" adds all items at once.
+- Restaurants (B2B): businesses Register as Restaurant in the Restaurant section and, once approved, log in to order at special business pricing. NEVER reveal or quote restaurant/wholesale prices — tell them to register & log in to see business rates.
+- Work as Rider: open "Work as Rider", fill the application (name, contact, area, vehicle/CNIC details) and submit; the team reviews and contacts applicants.
+- Complaints: from Orders/Support, file a complaint on the relevant order (photos optional); the team reviews and can resolve/refund.
+- Reviews: after delivery, rate the order/products from Orders or the product page.
+- Franchise: entrepreneurs apply on the Franchise page to bring FreshBazar to their city.
+- Service areas: delivery is limited to covered areas; if a pin is outside, the app shows a message + a WhatsApp number to request service there.
+- About/Contact: company info & support contact are in the footer/menu.
+
+ALLOWED PAGES & LINKS: When the user asks where to do something on FreshBazar, or asks for the link to a task, share the matching page link AS a markdown link and add 1-2 short lines on how to do it. ONLY guide tasks a normal customer or restaurant is allowed to do — use ONLY these links, and NEVER share or guide admin, rider-dashboard, shareholder, OCP or any internal/staff pages:
+- Browse products: [Products](/products) · Search: [Search](/search)
+- Cart: [Cart](/cart) · Checkout/place order: [Checkout](/checkout)
+- My orders, track order, file a complaint or return: [Orders](/orders)
+- Profile & account: [Profile](/profile) · Saved addresses: [Addresses](/addresses) · Wishlist: [Wishlist](/wishlist) · Settings: [Settings](/settings)
+- Help/support & contact: [Support](/support)
+- Apply to Work as Rider: [Work as Rider](/work-as-rider)
+- Apply for a Franchise: [Franchise](/franchise)
+- Restaurant (B2B) sign up: [Restaurant Register](/restaurant/register) · Restaurant login: [Restaurant Login](/restaurant/login)
+- Atta Chakki service: [Atta Chakki](/atta-chakki)
+Never invent a path that is not in this list. If a request is outside these allowed tasks, politely say it isn't available to customers.
+
+USING REAL FACTS: A "REAL FACTS" block may be added below with the active delivery cities, the user's selected city, the current page, and matching products (with per-quality prices). ALWAYS rely on it. Never name a city, price, or product that is not in it. Quote prices ONLY from the user's selected city. If NO city is selected, do NOT quote any product/price — politely ask the user to choose a city first. If a product isn't in the facts, say it's not available and never guess a price. To change city, tell the user to tap the city/location button and pick another.
+
+PRODUCT LINKS — CRITICAL: Only ever output a product link by copying an EXACT [Name](/product/ID) entry from the REAL FACTS block. NEVER invent, guess, build, shorten or modify a /product/ link or ID, and never attach a price to a product that is not listed in REAL FACTS. If the product the user named is NOT in REAL FACTS, do NOT create a link, do NOT give it a price, and do NOT describe it — clearly tell the user it is not available in their selected city and suggest searching in the app or changing city.
+
+RULES: Stay on FreshBazar topics. Be accurate and safe. Only guide and share links — never perform actions. Don't promise discounts/refunds you can't guarantee.
+
+WRITING STYLE (keep it clean & simple so the customer easily understands and buys):
+- Reply in the user's language. If replying in Urdu, write the WHOLE sentence in Urdu — do NOT jumble English words in the middle of an Urdu sentence (it scrambles the text). Product names/links may stay as given.
+- Put any product link on its OWN separate line.
+- For weights use simple words: پاؤ (¼ kg), آدھا کلو (½ kg), 1 kg, 2 kg, etc. Do not write confusing unit phrases.
+- 2-4 short sentences max, or a short numbered list (1. 2. 3.). No markdown bold, asterisks (*), headings (#), or decorative emoji. The only links allowed are: product links [Name](/product/ID), the FreshBazar page links from the ALLOWED PAGES list, and the city WhatsApp order link from REAL FACTS.
+- Warm, simple, to the point — no fluff.`;
+
+/**
+ * Load AI config. Environment variables take precedence over DB settings, so the
+ * whole assistant can be configured purely via Render env vars:
+ *   AI_CHAT_API_KEY (required to enable), AI_CHAT_PROVIDER, AI_CHAT_MODEL,
+ *   AI_CHAT_BASE_URL, AI_CHAT_DISABLED.
+ */
+export async function getAiConfig(): Promise<AiConfig> {
+  const map = await fetchGlobalSettings([
+    AI_KEYS.provider,
+    AI_KEYS.apiKey,
+    AI_KEYS.model,
+    AI_KEYS.baseUrl,
+    AI_KEYS.disabled,
+  ]);
+  const env = (k: string) => (process.env[k] || '').trim();
+  // The key is stored encrypted (utils/secretBox). A key saved before that
+  // change is still plain text: it keeps working and is re-saved encrypted.
+  const stored = (map[AI_KEYS.apiKey] || '').trim();
+  let dbKey = '';
+  if (stored && isEncryptedSecret(stored)) {
+    dbKey = decryptSecret(stored) || '';
+    if (!dbKey) logger.warn('AI chat key could not be decrypted (JWT_SECRET / AUDIT_AI_SECRET changed?) — enter it again in Settings');
+  } else if (stored) {
+    dbKey = stored;
+    upsertGlobalSiteSetting(AI_KEYS.apiKey, encryptSecret(stored)).catch(() => undefined);
+  }
+  return {
+    provider: (env('AI_CHAT_PROVIDER') || map[AI_KEYS.provider] || 'anthropic').toLowerCase(),
+    apiKey: env('AI_CHAT_API_KEY') || dbKey,
+    model: env('AI_CHAT_MODEL') || (map[AI_KEYS.model] || '').trim(),
+    baseUrl: (env('AI_CHAT_BASE_URL') || map[AI_KEYS.baseUrl] || '').replace(/\/+$/, ''),
+    disabled: env('AI_CHAT_DISABLED') === 'true' || (map[AI_KEYS.disabled] || '') === 'true',
+  };
+}
+
+/** The bot is live when a key exists and it isn't explicitly disabled. */
+export function aiEnabled(cfg: AiConfig): boolean {
+  return Boolean(cfg.apiKey) && !cfg.disabled;
+}
+
+async function postJson(url: string, headers: Record<string, string>, body: unknown): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const data: any = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data?.error?.message || data?.message || `AI provider error (${res.status})`;
+      throw new Error(msg);
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Ensure the conversation starts with a user turn and roles alternate. Clients
+ * include a greeting (assistant) as the first message, which Anthropic/Gemini
+ * reject — so drop leading assistant turns and merge accidental same-role repeats.
+ */
+function sanitizeHistory(history: ChatMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const m of history) {
+    if (!m || (m.role !== 'user' && m.role !== 'assistant') || !m.content?.trim()) continue;
+    if (out.length === 0 && m.role !== 'user') continue;
+    const prev = out[out.length - 1];
+    if (prev && prev.role === m.role) {
+      prev.content = `${prev.content}\n${m.content}`;
+      continue;
+    }
+    out.push({ role: m.role, content: m.content });
+  }
+  return out;
+}
+
+/**
+ * Generate a reply from the configured provider for a short message history.
+ * Injects a tiny live-catalog context for product questions (city-scoped).
+ */
+export async function generateReply(
+  history: ChatMessage[],
+  opts: ChatContextOpts = {}
+): Promise<string> {
+  const cfg = await getAiConfig();
+  if (!aiEnabled(cfg)) throw new Error('AI assistant is not configured');
+
+  const provider = cfg.provider;
+  const preset = PROVIDER_PRESETS[provider] || PROVIDER_PRESETS['openai-compatible'];
+  const family = preset.family;
+  const model = cfg.model || preset.model;
+
+  // Anthropic & Gemini require the conversation to START with a user turn and to
+  // alternate. Clients include a greeting (assistant) first, so drop any leading
+  // assistant turns and collapse accidental same-role repeats.
+  const convo = sanitizeHistory(history);
+  const lastUser = [...convo].reverse().find((m) => m.role === 'user')?.content || '';
+  const contextBundle = await buildContextBundle(lastUser, opts);
+  const deterministicReply = deterministicProductReply(contextBundle);
+  if (deterministicReply) return deterministicReply;
+  const context = contextBundle.text;
+  const agentLine = `AGENT: Your name is ${resolveAgentName(convo)}. Keep this SAME name for the whole conversation. If asked who/what you are, give this name and say you're from the FreshBazar customer-care team; do NOT confirm or deny being an AI and do not mention AI/bot/robot at all.`;
+  const systemPrompt = [SYSTEM_PROMPT, agentLine, context].filter(Boolean).join('\n\n');
+  const safeReply = (s: unknown) => validateAiReply(String(s || '').trim(), contextBundle);
+
+  try {
+    if (family === 'anthropic') {
+      const data = await postJson(
+        'https://api.anthropic.com/v1/messages',
+        { 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' },
+        { model, max_tokens: MAX_TOKENS, system: systemPrompt, messages: convo }
+      );
+      return safeReply(data?.content?.[0]?.text);
+    }
+
+    if (family === 'gemini') {
+      const base = cfg.baseUrl || 'https://generativelanguage.googleapis.com/v1beta';
+      const data = await postJson(
+        `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`,
+        {},
+        {
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: convo.map((m) => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }],
+          })),
+          generationConfig: { maxOutputTokens: MAX_TOKENS },
+        }
+      );
+      return safeReply(data?.candidates?.[0]?.content?.parts?.[0]?.text);
+    }
+
+    // OpenAI-compatible (OpenAI, DeepSeek, Grok/xAI, custom). Base URL comes from
+    // the user's setting, else the provider preset, else OpenAI.
+    const base = cfg.baseUrl || preset.base || 'https://api.openai.com/v1';
+    const data = await postJson(
+      `${base}/chat/completions`,
+      { authorization: `Bearer ${cfg.apiKey}` },
+      {
+        model,
+        max_tokens: MAX_TOKENS,
+        messages: [{ role: 'system', content: systemPrompt }, ...convo],
+      }
+    );
+    return safeReply(data?.choices?.[0]?.message?.content);
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
+    logger.warn('AI chat generation failed', { provider, message: err?.message });
+    throw err;
+  }
+}

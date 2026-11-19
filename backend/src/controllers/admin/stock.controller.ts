@@ -10,8 +10,10 @@
 // append-only ledger row, and is guarded so nothing can go negative or leak.
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { Request, Response } from 'express';
-import { query, withTransaction } from '../../config/database';
+import type { PoolClient } from 'pg';
+import { query, withTransaction, type DbRow } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
@@ -32,9 +34,36 @@ const num = (v: unknown): number => {
 };
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
+/** Stock + price columns of a product. pg returns NUMERIC as a string (or null). */
+interface ProductStockCols {
+  price: string | null;
+  price_b: string | null;
+  price_c: string | null;
+  stock_quantity: string | null;
+  stock_quantity_b: string | null;
+  stock_quantity_c: string | null;
+  reserved_quantity: string | null;
+  reserved_quantity_b: string | null;
+  reserved_quantity_c: string | null;
+}
+/** A product row locked for a stock change. */
+interface LockedProduct extends ProductStockCols {
+  id: string;
+  city_id: string | null;
+  name_en: string;
+}
+/** One row of the stock overview list. */
+interface StockOverviewRow extends ProductStockCols {
+  id: string;
+  name_en: string;
+  unit_type: string;
+  category_id: string;
+  category_name: string;
+}
+
 /** Lock a product row in scope, returning its city_id (or throws http error). */
-async function lockProductInScope(client: any, id: string, scope: { cityId: string | null; unrestricted: boolean }) {
-  const r = await client.query(
+async function lockProductInScope(client: PoolClient, id: string, scope: { cityId: string | null; unrestricted: boolean }): Promise<LockedProduct> {
+  const r = await client.query<LockedProduct>(
     `SELECT id, city_id, name_en,
             price, price_b, price_c,
             stock_quantity, stock_quantity_b, stock_quantity_c,
@@ -50,7 +79,7 @@ async function lockProductInScope(client: any, id: string, scope: { cityId: stri
   return row;
 }
 
-function priceForQuality(product: any, quality: string): number {
+function priceForQuality(product: ProductStockCols, quality: string): number {
   const col = quality === 'B' ? 'price_b' : quality === 'C' ? 'price_c' : 'price';
   const preferred = parseFloat(String(product[col] ?? ''));
   if (Number.isFinite(preferred) && preferred >= 0) return preferred;
@@ -59,11 +88,11 @@ function priceForQuality(product: any, quality: string): number {
 }
 
 /** High-value stock changes (waste/convert) require a second admin (shared util). */
-const approvalForStock = (client: any, req: Request, value: number, kind: string) =>
+const approvalForStock = (client: PoolClient, req: Request, value: number, kind: string) =>
   approvalForValue(client, req, value, { label: 'a stock change', kind });
 
 /** Σ of a product+quality across all OCPs (physical breakdown). */
-async function sumOcpStock(client: any, productId: string, quality: string): Promise<number> {
+async function sumOcpStock(client: PoolClient, productId: string, quality: string): Promise<number> {
   const r = await client.query(
     `SELECT COALESCE(SUM(quantity), 0) AS total FROM ocp_stock WHERE product_id = $1 AND quality = $2`,
     [productId, quality]
@@ -71,7 +100,7 @@ async function sumOcpStock(client: any, productId: string, quality: string): Pro
   return parseFloat(r.rows[0].total) || 0;
 }
 
-async function recordOcpMovement(client: any, ocpId: string, productId: string, quality: string, delta: number, createdBy?: string | null) {
+async function recordOcpMovement(client: PoolClient, ocpId: string, productId: string, quality: string, delta: number, createdBy?: string | null) {
   await client.query(
     `INSERT INTO ocp_stock_movements (ocp_id, product_id, quality, delta, reason, created_by)
      VALUES ($1, $2, $3, $4, 'adjust', $5)`,
@@ -85,7 +114,7 @@ export const getStockOverview = asyncHandler(async (req: Request, res: Response)
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, { products: [], ocps: [] }, 'Stock');
 
-  const params: any[] = [];
+  const params: unknown[] = [];
   let where = 'p.is_active = TRUE';
   if (!scope.unrestricted && scope.cityId) { params.push(scope.cityId); where += ` AND p.city_id = $${params.length}`; }
   if (typeof req.query.search === 'string' && req.query.search.trim()) {
@@ -93,7 +122,7 @@ export const getStockOverview = asyncHandler(async (req: Request, res: Response)
     where += ` AND LOWER(p.name_en) LIKE $${params.length}`;
   }
 
-  const prod = await query(
+  const prod = await query<StockOverviewRow>(
     `SELECT p.id, p.name_en, p.unit_type, p.category_id, c.name_en AS category_name,
             p.price, p.price_b, p.price_c,
             p.stock_quantity, p.stock_quantity_b, p.stock_quantity_c,
@@ -109,7 +138,7 @@ export const getStockOverview = asyncHandler(async (req: Request, res: Response)
   const holdings: Record<string, Record<string, { ocpId: string; name: string; qty: number }[]>> = {};
   let ocps: { id: string; name: string }[] = [];
   if (ocpReady && prod.rows.length > 0) {
-    const ids = prod.rows.map((r: any) => r.id);
+    const ids = prod.rows.map((r) => r.id);
     const h = await query(
       `SELECT s.product_id, s.quality, s.ocp_id, o.name, s.quantity
          FROM ocp_stock s JOIN order_collection_points o ON o.id = s.ocp_id
@@ -131,13 +160,12 @@ export const getStockOverview = asyncHandler(async (req: Request, res: Response)
     ocps = oc.rows;
   }
 
-  const offered = (p: any, q: string): boolean => q === 'A' || (q === 'B' ? p.price_b != null : p.price_c != null);
-  const colFor = (q: string, base: string) => (q === 'A' ? base : `${base}_${q.toLowerCase()}`);
+  const offered = (p: StockOverviewRow, q: string): boolean => q === 'A' || (q === 'B' ? p.price_b != null : p.price_c != null);
 
-  const products = prod.rows.map((p: any) => {
+  const products = prod.rows.map((p) => {
     const qualities = QUALITIES.filter((q) => offered(p, q)).map((q) => {
-      const onHand = parseFloat(p[colFor(q, 'stock_quantity')]) || 0;
-      const reserved = parseFloat(p[colFor(q, 'reserved_quantity')]) || 0;
+      const onHand = num(p[qualityStockColumn(q)]) || 0;
+      const reserved = num(p[reservedColumn(q)]) || 0;
       const ocpList = holdings[p.id]?.[q] || [];
       const atOcps = ocpList.reduce((s, x) => s + x.qty, 0);
       return {
@@ -161,7 +189,7 @@ export const getStockMovements = asyncHandler(async (req: Request, res: Response
   if (!(await hasCatalogV2Columns())) return successResponse(res, [], 'Movements');
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, [], 'Movements');
-  const params: any[] = [req.params.productId];
+  const params: unknown[] = [req.params.productId];
   let cityWhere = '';
   if (!scope.unrestricted && scope.cityId) {
     params.push(scope.cityId);
@@ -188,7 +216,7 @@ export const getWasteReport = asyncHandler(async (req: Request, res: Response) =
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, [], 'Waste report');
 
-  const params: any[] = [];
+  const params: unknown[] = [];
   const where: string[] = [`m.reason = 'waste'`];
   if (!scope.unrestricted && scope.cityId) {
     params.push(scope.cityId);
@@ -207,7 +235,7 @@ export const getWasteReport = asyncHandler(async (req: Request, res: Response) =
     where.push(isTodaySql('m.created_at'));
   }
 
-  const r = await query(
+  const r = await query<DbRow<{ delta: string; evidence_quantity: string | null }>>(
     `SELECT m.id, m.product_id, p.name_en AS product_name, m.quality, m.delta, m.note,
             m.proof_url, m.evidence_quantity, m.approved_at, m.created_at,
             cu.full_name AS created_by_name, au.full_name AS approved_by_name
@@ -222,7 +250,7 @@ export const getWasteReport = asyncHandler(async (req: Request, res: Response) =
   );
   return successResponse(
     res,
-    r.rows.map((row: any) => ({
+    r.rows.map((row) => ({
       ...row,
       delta: parseFloat(row.delta) || 0,
       evidence_quantity: row.evidence_quantity != null ? parseFloat(row.evidence_quantity) : null,
@@ -254,7 +282,8 @@ export const addStock = asyncHandler(async (req: Request, res: Response) => {
         createdBy: req.user?.id ?? null, note,
       });
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
@@ -286,7 +315,7 @@ export const wasteStock = asyncHandler(async (req: Request, res: Response) => {
       const stockCol = qualityStockColumn(quality);
       const resCol = reservedColumn(quality);
       const atOcps = await sumOcpStock(client, product_id, quality);
-      const movable = (parseFloat(p[stockCol]) || 0) - (parseFloat(p[resCol]) || 0) - atOcps;
+      const movable = (num(p[stockCol]) || 0) - (num(p[resCol]) || 0) - atOcps;
       if (qty > movable) throw Object.assign(new Error(`Only ${movable} available to waste (rest is reserved or at an OCP).`), { http: 400 });
       const value = qty * priceForQuality(p, quality);
       const approval = await approvalForStock(client, req, value, 'waste');
@@ -301,7 +330,8 @@ export const wasteStock = asyncHandler(async (req: Request, res: Response) => {
         approvedAt: approval.approvedAt,
       });
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
@@ -328,7 +358,7 @@ export const convertQuality = asyncHandler(async (req: Request, res: Response) =
       const toCol = qualityStockColumn(to);
       const fromRes = reservedColumn(from);
       const atOcps = await sumOcpStock(client, product_id, from);
-      const movable = (parseFloat(p[fromCol]) || 0) - (parseFloat(p[fromRes]) || 0) - atOcps;
+      const movable = (num(p[fromCol]) || 0) - (num(p[fromRes]) || 0) - atOcps;
       if (qty > movable) throw Object.assign(new Error(`Only ${movable} of Quality ${from} can be converted (rest is reserved or at an OCP).`), { http: 400 });
       const value = qty * priceForQuality(p, from);
       const approval = await approvalForStock(client, req, value, 'convert');
@@ -351,7 +381,8 @@ export const convertQuality = asyncHandler(async (req: Request, res: Response) =
         approvedAt: approval.approvedAt,
       });
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
@@ -383,7 +414,8 @@ export const shiftToOcp = asyncHandler(async (req: Request, res: Response) => {
         note: `shift ${qty} to OCP`,
       });
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
@@ -415,7 +447,8 @@ export const returnFromOcp = asyncHandler(async (req: Request, res: Response) =>
       await recordOcpMovement(client, ocp_id, product_id, quality, -qty, req.user?.id);
       await recordStockMovement(client, { productId: product_id, quality, delta: 0, reason: 'shift', refOcpId: ocp_id, createdBy: req.user?.id ?? null, note: `return ${qty} from OCP` });
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
@@ -455,7 +488,8 @@ export const transferOcpToOcp = asyncHandler(async (req: Request, res: Response)
       await recordOcpMovement(client, to_ocp_id, product_id, quality, qty, req.user?.id);
       await recordStockMovement(client, { productId: product_id, quality, delta: 0, reason: 'shift', refOcpId: to_ocp_id, createdBy: req.user?.id ?? null, note: `transfer ${qty} between OCPs` });
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
@@ -480,12 +514,12 @@ export const countStock = asyncHandler(async (req: Request, res: Response) => {
   const note = typeof req.body.note === 'string' ? req.body.note.trim().slice(0, 500) : '';
   const scope = await resolveCityScope(req);
 
-  let out: any;
+  let out;
   try {
     out = await withTransaction(async (client) => {
       const p = await lockProductInScope(client, product_id, scope);
       const stockCol = qualityStockColumn(quality);
-      const onHand = parseFloat(p[stockCol]) || 0;
+      const onHand = num(p[stockCol]) || 0;
       const atOcps = await sumOcpStock(client, product_id, quality);
       // Packed goods already out with riders (still on hand until delivered).
       const withRiders = await client.query(
@@ -525,9 +559,17 @@ export const countStock = asyncHandler(async (req: Request, res: Response) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, created_at`,
         [p.city_id, product_id, quality, expected, counted, variance, value, note || null, req.user?.id ?? null, approval.approvedBy]
       );
-      return { id: ins.rows[0].id, product: p.name_en, quality, expected, counted, variance, value, outWithRiders, atOcps };
+      // A count below what open (not yet dispatched) orders hold used to pass
+      // silently — those orders could no longer be packed in full (A33).
+      const heldForOpenOrders = Math.max(0, (num(p[reservedColumn(quality)]) || 0) - outWithRiders);
+      const shortForOpenOrders = Math.round(Math.max(0, heldForOpenOrders - (counted + atOcps)) * 1000) / 1000;
+      return {
+        id: ins.rows[0].id, product: p.name_en, quality, expected, counted, variance, value, outWithRiders, atOcps,
+        heldForOpenOrders, shortForOpenOrders,
+      };
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }
@@ -537,7 +579,10 @@ export const countStock = asyncHandler(async (req: Request, res: Response) => {
     : out.variance < 0
       ? `Shortage of ${Math.abs(out.variance)} (Rs. ${Math.abs(out.value)}) recorded`
       : `Surplus of ${out.variance} recorded`;
-  return successResponse(res, out, msg);
+  const warn = out.shortForOpenOrders > 0
+    ? ` — open orders need ${out.heldForOpenOrders} but only ${Math.round((out.counted + out.atOcps) * 1000) / 1000} is in stock: ${out.shortForOpenOrders} short. Restock or call those customers.`
+    : '';
+  return successResponse(res, out, msg + warn);
 });
 
 // ── GET /api/admin/stock/counts?date=YYYY-MM-DD — counts for a Pakistan day ──
@@ -545,13 +590,13 @@ export const listStockCounts = asyncHandler(async (req: Request, res: Response) 
   if (!(await hasStockCounts())) return successResponse(res, [], 'Stock counts');
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, [], 'Stock counts');
-  const params: any[] = [];
+  const params: unknown[] = [];
   const where: string[] = [];
   if (!scope.unrestricted && scope.cityId) { params.push(scope.cityId); where.push(`sc.city_id = $${params.length}`); }
   const date = typeof req.query.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date) ? req.query.date : null;
   if (date) { params.push(date); where.push(`${localDate('sc.created_at')} = $${params.length}::date`); }
   else where.push(isTodaySql('sc.created_at'));
-  const r = await query(
+  const r = await query<DbRow<{ expected_qty: string; counted_qty: string; variance: string; variance_value: string }>>(
     `SELECT sc.id, sc.product_id, p.name_en AS product_name, sc.quality, sc.expected_qty, sc.counted_qty,
             sc.variance, sc.variance_value, sc.note, sc.created_at,
             cu.full_name AS counted_by_name, au.full_name AS approved_by_name
@@ -563,7 +608,7 @@ export const listStockCounts = asyncHandler(async (req: Request, res: Response) 
       ORDER BY sc.created_at DESC LIMIT 500`,
     params
   );
-  return successResponse(res, r.rows.map((x: any) => ({
+  return successResponse(res, r.rows.map((x) => ({
     ...x,
     expected_qty: parseFloat(x.expected_qty), counted_qty: parseFloat(x.counted_qty),
     variance: parseFloat(x.variance), variance_value: parseFloat(x.variance_value),

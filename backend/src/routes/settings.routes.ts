@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { UNLIMITED_SLOT_AVAILABLE } from '../utils/timeSlots';
+import { slotCityFor } from '../utils/timeSlots';
 import { getDeliverySettings } from '../utils/deliverySettings';
 import { asyncHandler } from '../middleware/errorHandler';
 import { successResponse } from '../utils/response';
@@ -19,6 +20,7 @@ import { query } from '../config/database';
 import { hasRestaurantDeliveryColumns } from '../config/restaurantSchema';
 import { MARKETING_KEYS } from '../controllers/marketing.controller';
 import { isMissingTable } from '../utils/dbErrors';
+import { resolveConsumerUnitPrice, resolveUnitPrice } from '../utils/unitPricing';
 
 const router = Router();
 
@@ -136,7 +138,7 @@ router.get('/baskets', asyncHandler(async (req, res) => {
   if (ids.length > 0) {
     const items = await query(
       `SELECT bi.basket_id, bi.product_id, bi.quality, bi.quantity, bi.unit,
-              p.name_en, p.name_ur, p.primary_image
+              p.name_en, p.name_ur, p.primary_image, to_jsonb(p) AS product
          FROM basket_items bi
          JOIN products p ON p.id = bi.product_id
         WHERE bi.basket_id = ANY($1::uuid[]) AND p.is_active = true
@@ -144,6 +146,8 @@ router.get('/baskets', asyncHandler(async (req, res) => {
       [ids]
     );
     itemsByBasket = items.rows.reduce((acc: Record<string, any[]>, row) => {
+      // Today's price, exactly as the cart will charge it (A35).
+      const unitPrice = resolveConsumerUnitPrice(row.product, row.quality, row.unit) ?? resolveUnitPrice(row.product, row.unit);
       (acc[row.basket_id] = acc[row.basket_id] || []).push({
         product_id: row.product_id,
         name: row.name_en || row.name_ur,
@@ -151,6 +155,7 @@ router.get('/baskets', asyncHandler(async (req, res) => {
         quality: row.quality,
         quantity: Number(row.quantity),
         unit: row.unit,
+        unit_price: Math.round(unitPrice * 100) / 100,
       });
       return acc;
     }, {});
@@ -161,7 +166,13 @@ router.get('/baskets', asyncHandler(async (req, res) => {
       id: b.id,
       name: b.name,
       description: b.description,
-      total_price: Number(b.total_price),
+      // The price shown is what "Add basket to cart" really costs today: the
+      // sum of the items at their current prices. It used to be a number the
+      // admin typed once, so it went stale as prices moved (A35).
+      total_price: Math.round(
+        (itemsByBasket[b.id] || []).reduce((sum, it) => sum + it.unit_price * it.quantity, 0) * 100
+      ) / 100,
+      label_price: Number(b.total_price),
       image_url: b.image_url,
       items: itemsByBasket[b.id] || [],
     }))
@@ -217,6 +228,7 @@ router.get('/maps-key', asyncHandler(async (_req, res) => {
 router.get('/time-slots', asyncHandler(async (req, res) => {
   const dayOfWeek = new Date().getDay();
   const audienceClause = (await hasRestaurantDeliveryColumns()) ? `AND audience = 'consumer'` : '';
+  const slotCity = await slotCityFor(req); // every city has its own slots (A30)
   const result = await query(
     `SELECT id, slot_name, start_time, end_time,
             is_free_delivery_slot, is_express_slot,
@@ -226,9 +238,10 @@ router.get('/time-slots', asyncHandler(async (req, res) => {
      FROM time_slots
      WHERE status = 'available'
      ${audienceClause}
+     AND (city_id = $2::uuid OR city_id IS NULL)
      AND (applicable_days IS NULL OR $1 = ANY(applicable_days))
      ORDER BY start_time ASC`,
-    [dayOfWeek]
+    [dayOfWeek, slotCity]
   );
   successResponse(res, result.rows, 'Time slots retrieved');
 }));

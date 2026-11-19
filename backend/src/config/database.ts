@@ -2,9 +2,17 @@
 // DATABASE CONFIGURATION - PostgreSQL Connection Pool
 // ============================================================================
 
-import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { asCaughtError } from '../utils/caughtError';
+import { Pool, PoolClient, QueryResult, QueryResultRow, types } from 'pg';
 import logger from '../utils/logger';
 import { buildSslConfig } from './dbSsl';
+
+// A DATE column is a calendar day, not a moment: keep it as 'YYYY-MM-DD'.
+// By default pg turns it into a JS Date at the SERVER's local midnight, so on
+// any server not running in UTC every delivery date, attendance day and
+// payout period came back one day early (round 6, C7 — production was right
+// only because Render runs in UTC).
+types.setTypeParser(types.builtins.DATE, (value: string) => value);
 
 function parsePoolInt(value: string | undefined, fallback: number, min: number): number {
   const parsed = Number.parseInt(value || '', 10);
@@ -145,10 +153,13 @@ pool.on('error', (err) => {
   logger.error('Unexpected database pool error:', err);
 });
 
+/** A result row: the columns the code reads are typed; any others stay unknown. */
+export type DbRow<T extends object = Record<never, never>> = T & Record<string, unknown>;
+
 // Query helper function
 export const query = async <T extends QueryResultRow = any>(
   text: string,
-  params?: any[]
+  params?: unknown[]
 ): Promise<QueryResult<T>> => {
   const start = Date.now();
   try {
@@ -226,7 +237,8 @@ export const testConnection = async (retries = 3, delay = 3000): Promise<boolean
         attempt,
       });
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.error(`Database connection attempt ${attempt}/${retries} failed:`, error.message);
       if (attempt < retries) {
         logger.info(`Retrying in ${delay}ms...`);

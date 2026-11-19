@@ -2,6 +2,7 @@
 // FIREBASE AUTH SERVICE - Phone token verification via Firebase Admin SDK
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import * as admin from 'firebase-admin';
 import logger from '../utils/logger';
 import {
@@ -53,7 +54,8 @@ export async function verifyFirebaseToken(
     }
 
     return { success: true, phone: decoded.phone_number, message: 'Token verified' };
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.error('Firebase token verification failed', { error: error.message });
 
     if (error.code === 'auth/id-token-expired') {

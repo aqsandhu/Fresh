@@ -5,13 +5,15 @@
 // adds to the totals. City-scoped.
 // ============================================================================
 
+import { asCaughtError } from '../../utils/caughtError';
 import { Request, Response } from 'express';
-import { query, withTransaction } from '../../config/database';
+import { query, withTransaction, type DbRow } from '../../config/database';
 import { asyncHandler } from '../../middleware';
 import { successResponse, errorResponse, notFoundResponse } from '../../utils/response';
 import { resolveCityScope } from '../../utils/cityScope';
 import { ensureFinanceTables } from '../../config/financeSchema';
 import { ledgerDateFor, approvalForExpense } from './expenses.controller';
+import { approvalForValue } from '../../utils/adminApproval';
 import { localTs } from '../../utils/businessTime';
 import logger from '../../utils/logger';
 
@@ -33,17 +35,17 @@ export const listWorkers = asyncHandler(async (req: Request, res: Response) => {
   if (!(await ensureFinanceTables())) return successResponse(res, [], 'Workers');
   const scope = await resolveCityScope(req);
   if (scope.forbidden) return successResponse(res, [], 'Workers');
-  const params: any[] = [];
+  const params: unknown[] = [];
   let where = '1=1';
   if (!scope.unrestricted && scope.cityId) { params.push(scope.cityId); where += ` AND w.city_id = $${params.length}`; }
   else if (typeof req.query.city_id === 'string' && req.query.city_id) { params.push(req.query.city_id); where += ` AND w.city_id = $${params.length}`; }
-  const r = await query(
+  const r = await query<DbRow<{ basic_salary: string }>>(
     `SELECT w.id, w.name, w.phone, w.designation, w.basic_salary, w.status, w.city_id, sc.name AS city_name, w.created_at
        FROM workers w LEFT JOIN service_cities sc ON sc.id = w.city_id
       WHERE ${where} ORDER BY (w.status='active') DESC, w.name ASC`,
     params
   );
-  return successResponse(res, r.rows.map((w: any) => ({ ...w, basic_salary: parseFloat(w.basic_salary) })), 'Workers');
+  return successResponse(res, r.rows.map((w) => ({ ...w, basic_salary: parseFloat(w.basic_salary) })), 'Workers');
 });
 
 // ── POST /api/finance/workers ────────────────────────────────────────────────
@@ -70,8 +72,8 @@ export const updateWorker = asyncHandler(async (req: Request, res: Response) => 
   const w = await workerInScope(scope, req.params.id);
   if (!w) return notFoundResponse(res, 'Worker not found');
   const sets: string[] = [];
-  const vals: any[] = [];
-  const add = (col: string, v: any) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
+  const vals: unknown[] = [];
+  const add = (col: string, v: unknown) => { vals.push(v); sets.push(`${col} = $${vals.length}`); };
   if (typeof req.body?.name === 'string' && req.body.name.trim()) add('name', req.body.name.trim());
   if (req.body?.phone !== undefined) add('phone', req.body.phone || null);
   if (req.body?.designation !== undefined) add('designation', req.body.designation || null);
@@ -88,12 +90,12 @@ export const getWorker = asyncHandler(async (req: Request, res: Response) => {
   const scope = await resolveCityScope(req);
   const w = await workerInScope(scope, req.params.id);
   if (!w) return notFoundResponse(res, 'Worker not found');
-  const changes = await query(
+  const changes = await query<DbRow<{ new_basic_salary: string }>>(
     `SELECT id, effective_from, new_basic_salary, note, created_at FROM worker_salary_changes
       WHERE worker_id = $1 ORDER BY effective_from DESC, created_at DESC`,
     [req.params.id]
   );
-  const payments = await query(
+  const payments = await query<DbRow<{ amount: string }>>(
     `SELECT id, category, amount, comment, for_month, incurred_at FROM expenses
       WHERE ref_type = 'worker_payment' AND ref_id = $1 ORDER BY incurred_at DESC LIMIT 100`,
     [req.params.id]
@@ -101,8 +103,8 @@ export const getWorker = asyncHandler(async (req: Request, res: Response) => {
   return successResponse(res, {
     ...w,
     basic_salary: parseFloat(w.basic_salary),
-    salaryChanges: changes.rows.map((c: any) => ({ ...c, new_basic_salary: parseFloat(c.new_basic_salary) })),
-    payments: payments.rows.map((p: any) => ({ ...p, amount: parseFloat(p.amount) })),
+    salaryChanges: changes.rows.map((c) => ({ ...c, new_basic_salary: parseFloat(c.new_basic_salary) })),
+    payments: payments.rows.map((p) => ({ ...p, amount: parseFloat(p.amount) })),
   }, 'Worker');
 });
 
@@ -114,7 +116,7 @@ export const getWorkerAttendance = asyncHandler(async (req: Request, res: Respon
   if (!w) return notFoundResponse(res, 'Worker not found');
   const month = parseInt(String(req.query.month || ''), 10);
   const year = parseInt(String(req.query.year || ''), 10);
-  const params: any[] = [req.params.id];
+  const params: unknown[] = [req.params.id];
   let where = 'worker_id = $1';
   if (Number.isInteger(month) && month >= 1 && month <= 12 && Number.isInteger(year)) {
     params.push(year); params.push(month);
@@ -156,6 +158,13 @@ export const addIncrement = asyncHandler(async (req: Request, res: Response) => 
   // or neither (they were two separate writes — a failure between them left
   // the history saying one salary and the worker row another).
   await withTransaction(async (client) => {
+    // A raise is the city admin's call (J8): a city admin could raise the
+    // basic salary at will and then pay the "salary" up to it. Staff entries
+    // wait in the approval queue; the owner's apply at once.
+    if (req.user?.role !== 'super_admin') {
+      const raise = Math.max(0, newSalary - (parseFloat(w.basic_salary) || 0));
+      await approvalForValue(client, req, raise, { label: `a salary change for ${w.name} to Rs. ${Math.round(newSalary).toLocaleString('en-PK')}`, kind: 'salary_increment', always: true, noLog: true });
+    }
     await client.query(
       `INSERT INTO worker_salary_changes (worker_id, effective_from, new_basic_salary, note, created_by)
        VALUES ($1,$2,$3,$4,$5)`,
@@ -180,7 +189,7 @@ export const payWorker = asyncHandler(async (req: Request, res: Response) => {
   const ledger = ledgerDateFor(req, req.body?.paid_at);
   if (ledger.error) return errorResponse(res, ledger.error, 400);
   const incurredAt = ledger.iso;
-  let r: any;
+  let r;
   try {
     r = await withTransaction(async (client) => {
       // One salary per month: a "salary" that takes the worker's total for
@@ -212,7 +221,8 @@ export const payWorker = asyncHandler(async (req: Request, res: Response) => {
         [w.city_id, kind, amount, req.body?.comment || null, req.params.id, req.body?.for_month || null, incurredAt, req.user?.id ?? null]
       );
     });
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     if (err?.http) return errorResponse(res, err.message, err.http);
     throw err;
   }

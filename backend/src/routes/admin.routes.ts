@@ -2,7 +2,7 @@
 // ADMIN ROUTES
 // ============================================================================
 
-import { Router } from 'express';
+import { Router, type Request, type Response, type NextFunction } from 'express';
 import * as authController from '../controllers/auth.controller';
 import * as adminController from '../controllers/admin';
 import * as couponController from '../controllers/coupon.controller';
@@ -15,11 +15,13 @@ import * as ocpController from '../controllers/admin/ocp.controller';
 import * as stockController from '../controllers/admin/stock.controller';
 import * as reconciliationController from '../controllers/admin/reconciliation.controller';
 import * as approvalCodesController from '../controllers/admin/approvalCodes.controller';
+import * as approvalsController from '../controllers/admin/approvals.controller';
 import * as corruptionAuditController from '../controllers/admin/corruptionAudit.controller';
 import * as serviceAreasController from '../controllers/admin/serviceAreas.controller';
 import * as basketsController from '../controllers/admin/baskets.controller';
 import * as franchiseController from '../controllers/franchise.controller';
 import * as marketingController from '../controllers/marketing.controller';
+import { duplicateSubmitGuard } from '../middleware/duplicateSubmitGuard';
 import {
   authenticate,
   requireAdmin,
@@ -131,7 +133,7 @@ router.get('/riders/:id/location', adminController.getRiderLocation);
 router.put('/riders/:id/delivery-charges', adminController.setRiderDeliveryCharges);
 
 // Middleware to coerce FormData string values to proper types for Joi validation
-const coerceProductFields = (req: any, res: any, next: any) => {
+const coerceProductFields = (req: Request, _res: Response, next: NextFunction) => {
   const body = req.body;
   if (body.price !== undefined) body.price = parseFloat(body.price);
   if (body.compare_at_price !== undefined) body.compare_at_price = parseFloat(body.compare_at_price);
@@ -157,7 +159,7 @@ const coerceProductFields = (req: any, res: any, next: any) => {
 };
 
 // Middleware to coerce FormData string values for category fields
-const coerceCategoryFields = (req: any, res: any, next: any) => {
+const coerceCategoryFields = (req: Request, _res: Response, next: NextFunction) => {
   const body = req.body;
 
   // Admin panel sends camelCase keys in multipart FormData
@@ -246,6 +248,7 @@ router.delete('/categories/:id', adminController.deleteCategory);
 router.post(
   '/whatsapp-orders',
   validate(adminSchemas.createWhatsappOrder),
+  duplicateSubmitGuard,
   adminController.createWhatsappOrder
 );
 
@@ -316,7 +319,7 @@ router.put('/reviews/:id', adminRateLimiter, reviewController.updateReviewAdmin)
 router.get('/complaints', complaintController.listComplaints);
 router.get('/complaints/:id', complaintController.getComplaint);
 router.put('/complaints/:id', adminRateLimiter, complaintController.updateComplaint);
-router.post('/complaints/:id/refund', adminRateLimiter, complaintController.refundComplaint);
+router.post('/complaints/:id/refund', adminRateLimiter, duplicateSubmitGuard, complaintController.refundComplaint);
 
 // Rider applications + "Work as Rider" page content
 router.get('/rider-applications', riderAppController.listRiderApplications);
@@ -328,7 +331,7 @@ router.get('/restaurants', restaurantsController.getRestaurants);
 // Specific sub-routes MUST precede '/restaurants/:id' so 'orders'/'dashboard'/
 // 'settings' aren't captured as an :id.
 router.get('/restaurants/orders', restaurantsController.getRestaurantOrders);
-router.post('/restaurants/orders', adminRateLimiter, validate(adminSchemas.createRestaurantOrder), restaurantsController.createAdminRestaurantOrder);
+router.post('/restaurants/orders', adminRateLimiter, validate(adminSchemas.createRestaurantOrder), duplicateSubmitGuard, restaurantsController.createAdminRestaurantOrder);
 router.put('/restaurants/orders/:id/status', adminRateLimiter, restaurantsController.updateRestaurantOrderStatus);
 router.get('/restaurants/dashboard', restaurantsController.getRestaurantDashboard);
 router.get('/restaurants/settings', restaurantsController.getRestaurantSettings);
@@ -358,12 +361,12 @@ router.delete('/ocp/:id', adminRateLimiter, ocpController.deleteOcp);
 // before '/stock/:productId/movements'.
 router.get('/stock', stockController.getStockOverview);
 router.get('/stock/waste-report', stockController.getWasteReport);
-router.post('/stock/add', adminRateLimiter, stockController.addStock);
-router.post('/stock/waste', adminRateLimiter, uploadSingle('proof', 'stock/proofs'), stockController.wasteStock);
-router.post('/stock/convert', adminRateLimiter, stockController.convertQuality);
-router.post('/stock/shift', adminRateLimiter, stockController.shiftToOcp);
-router.post('/stock/return', adminRateLimiter, stockController.returnFromOcp);
-router.post('/stock/transfer', adminRateLimiter, stockController.transferOcpToOcp);
+router.post('/stock/add', adminRateLimiter, duplicateSubmitGuard, stockController.addStock);
+router.post('/stock/waste', adminRateLimiter, uploadSingle('proof', 'stock/proofs'), duplicateSubmitGuard, stockController.wasteStock);
+router.post('/stock/convert', adminRateLimiter, duplicateSubmitGuard, stockController.convertQuality);
+router.post('/stock/shift', adminRateLimiter, duplicateSubmitGuard, stockController.shiftToOcp);
+router.post('/stock/return', adminRateLimiter, duplicateSubmitGuard, stockController.returnFromOcp);
+router.post('/stock/transfer', adminRateLimiter, duplicateSubmitGuard, stockController.transferOcpToOcp);
 router.post('/stock/count', adminRateLimiter, stockController.countStock);
 router.get('/stock/counts', stockController.listStockCounts);
 router.get('/stock/:productId/movements', stockController.getStockMovements);
@@ -376,6 +379,12 @@ router.get('/audit-logs', reconciliationController.getAuditLogs);
 router.post('/approval-codes', adminRateLimiter, approvalCodesController.createApprovalCode);
 router.get('/approval-codes', approvalCodesController.listMyApprovalCodes);
 
+// Staff entries waiting for the city admin (owner's decision J1).
+router.get('/approvals', approvalsController.listApprovals);
+router.post('/approvals/approve-all', adminRateLimiter, approvalsController.approveAll);
+router.post('/approvals/:id/approve', adminRateLimiter, approvalsController.approveRequest);
+router.post('/approvals/:id/reject', adminRateLimiter, approvalsController.rejectRequest);
+
 // AI corruption audit (super-admin only; role-checked in the controller, and
 // the path is unmapped in adminPermissions so every other admin is denied).
 router.get('/corruption-audit/settings', corruptionAuditController.getAuditSettings);
@@ -385,7 +394,7 @@ router.post('/corruption-audit/run', adminRateLimiter, corruptionAuditController
 router.get('/corruption-audit/runs', corruptionAuditController.listAuditRuns);
 router.get('/corruption-audit/runs/:id', corruptionAuditController.getAuditRun);
 router.get('/corruption-audit/cash', corruptionAuditController.getCashPosition);
-router.post('/corruption-audit/cash-handovers', adminRateLimiter, corruptionAuditController.recordCashHandover);
+router.post('/corruption-audit/cash-handovers', adminRateLimiter, duplicateSubmitGuard, corruptionAuditController.recordCashHandover);
 
 // User guidance tips (per-city; global tips are super-admin only)
 router.get('/tips', tipsController.listTips);

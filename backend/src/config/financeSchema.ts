@@ -8,10 +8,11 @@
 // profit_category_shares, shareholders, shareholder_payouts.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
-import { buildSslConfig } from './dbSsl';
+import { buildSslConfig } from './dbSsl';
 import { schemaSelfHealEnabled } from './schemaSelfHeal';
 
 let cached: boolean | null = null;
@@ -47,7 +48,8 @@ export async function hasFinanceTables(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'expenses' LIMIT 1`
     );
     cached = (r.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe finance tables', { error: error?.message });
     cached = false;
   }
@@ -187,6 +189,9 @@ async function runFinanceDdl(connectionString: string): Promise<void> {
         received_at TIMESTAMPTZ
       )`);
     await pool.query(`CREATE INDEX IF NOT EXISTS shareholder_payouts_idx ON shareholder_payouts (shareholder_id, status, created_at DESC)`);
+    // Migration 69: the period a payout pays for.
+    await pool.query(`ALTER TABLE shareholder_payouts ADD COLUMN IF NOT EXISTS period_start DATE`);
+    await pool.query(`ALTER TABLE shareholder_payouts ADD COLUMN IF NOT EXISTS period_end DATE`);
   } finally {
     await pool.end().catch(() => undefined);
   }
@@ -210,7 +215,8 @@ export async function ensureFinanceTables(): Promise<boolean> {
       cached = true;
       logger.info('finance tables ensured (migration 38 applied)');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not apply finance migration — run database/migrations/38-finance.sql manually', {
         error: error?.message,
       });

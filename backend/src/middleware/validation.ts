@@ -7,6 +7,13 @@ import Joi, { ObjectSchema, ValidationError as JoiValidationError } from 'joi';
 import { ENABLED_PAYMENT_METHODS } from '../config/payments';
 import { ValidationError } from './errorHandler';
 import { isCodeEntryMode } from '../config/otpProvider';
+import { isRealIsoDate } from '../utils/isoDate';
+
+/** A delivery date: YYYY-MM-DD that is a real calendar day ('2026-02-30' was a 500 — N2). */
+const deliveryDay = () => Joi.string()
+  .pattern(/^\d{4}-\d{2}-\d{2}$/)
+  .custom((v: string, h) => (isRealIsoDate(v) ? v : h.error('any.invalid')))
+  .messages({ 'any.invalid': 'Please choose a valid delivery date.', 'string.pattern.base': 'Please choose a valid delivery date.' });
 
 // Validation source types
 type ValidationSource = 'body' | 'query' | 'params' | 'headers' | 'cookies';
@@ -42,7 +49,7 @@ export const validate = (
 // error went to the server log and back to the client (crash reporters, proxy
 // logs). Joi's own messages can quote the value too ("with value ..."), so it
 // is cut out of the message as well.
-const formatJoiErrors = (error: JoiValidationError): any[] => {
+const formatJoiErrors = (error: JoiValidationError): { field: string; message: string }[] => {
   return error.details.map((detail) => {
     const raw = detail.context?.value;
     let message = detail.message;
@@ -202,6 +209,14 @@ export const authSchemas = {
     phone: commonSchemas.phone.required(),
     password: Joi.string().required(),
   }),
+
+  // Rider app sign-in: only that both are there (the rider app sends digits
+  // only, e.g. 923001234567 — the handler normalises the number). A missing
+  // phone used to throw inside the handler → 500 (G37).
+  riderLogin: Joi.object({
+    phone: Joi.string().trim().min(10).max(20).required(),
+    password: Joi.string().max(200).required(),
+  }),
   
   // Website sends an EMPTY body — its refresh token lives in an HttpOnly
   // cookie that the controller reads via getRefreshTokenFromRequest. Requiring
@@ -264,8 +279,16 @@ const positivePrice = Joi.number().greater(0).max(999999.99).messages({
   'number.greater': 'Price must be greater than 0',
 });
 
+// An optional price box: blank (null / '') = automatic or not offered, but
+// never 0. A 0 used to be stored, and the price resolver treats 0 as a real
+// price — that ½ kg / Quality B / restaurant unit sold for Rs. 0 (B37).
+const optionalPositivePrice = () =>
+  Joi.number().greater(0).max(999999.99).allow(null, '').optional().messages({
+    'number.greater': '{{#label}} must be greater than 0 (leave it blank instead)',
+  });
+
 // Product validation schemas
-const fractionPrice = () => commonSchemas.price.allow(null, '', 0).optional();
+const fractionPrice = optionalPositivePrice;
 const CATALOG_V2_PRODUCT_FIELDS = {
   consumer_enabled_a: Joi.boolean().optional(),
   consumer_enabled_b: Joi.boolean().optional(),
@@ -304,6 +327,10 @@ export const productSchemas = {
     sortOrder: commonSchemas.sortOrder,
     featured: Joi.boolean(),
     inStock: Joi.boolean(),
+    // Up to 100 product ids, comma-separated (restoring a saved cart).
+    ids: Joi.string().pattern(/^[0-9a-fA-F-]{36}(,[0-9a-fA-F-]{36}){0,99}$/).messages({
+      'string.pattern.base': 'ids must be up to 100 product ids separated by commas',
+    }),
     // City scope — MUST be allowed, else stripUnknown deletes it and the
     // listing leaks products from every city (resolvePublicCityId reads it).
     city_id: commonSchemas.uuid,
@@ -335,9 +362,9 @@ export const productSchemas = {
     price: positivePrice.required(),
     compare_at_price: commonSchemas.price.allow(null, 0),
     // Optional per-unit overrides. NULL => derive from `price`.
-    half_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
-    quarter_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
-    half_dozen_price: commonSchemas.price.allow(null, '', 0).optional(),
+    half_kg_price: optionalPositivePrice(),
+    quarter_kg_price: optionalPositivePrice(),
+    half_dozen_price: optionalPositivePrice(),
     unit_type: Joi.string().valid('kg', 'gram', 'piece', 'dozen', 'liter', 'ml', 'pack').default('kg'),
     unit_value: Joi.number().positive().default(1),
     description_ur: Joi.string().allow('', null),
@@ -352,12 +379,12 @@ export const productSchemas = {
     tags: Joi.array().items(Joi.string().trim().min(1).max(100)).optional(),
     // Quality tiers. Stock is intentionally not accepted here; product create
     // starts at 0 and inventory is added through the stock/finance flow.
-    price_b: commonSchemas.price.allow(null, '', 0).optional(),
-    price_c: commonSchemas.price.allow(null, '', 0).optional(),
+    price_b: optionalPositivePrice(),
+    price_c: optionalPositivePrice(),
     available_for_restaurants: Joi.boolean().optional(),
-    restaurant_price_a: commonSchemas.price.allow(null, '', 0).optional(),
-    restaurant_price_b: commonSchemas.price.allow(null, '', 0).optional(),
-    restaurant_price_c: commonSchemas.price.allow(null, '', 0).optional(),
+    restaurant_price_a: optionalPositivePrice(),
+    restaurant_price_b: optionalPositivePrice(),
+    restaurant_price_c: optionalPositivePrice(),
     // Catalog v2 (migration 37). Without these keys stripUnknown silently
     // dropped them: "Allow for restaurants" / "Allow for consumers" per quality
     // and every B/C + restaurant fraction price never saved — so the
@@ -378,15 +405,15 @@ export const productSchemas = {
     subcategory_id: commonSchemas.uuid,
     price: positivePrice,
     compare_at_price: commonSchemas.price.allow(null, 0),
-    half_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
-    quarter_kg_price: commonSchemas.price.allow(null, '', 0).optional(),
-    half_dozen_price: commonSchemas.price.allow(null, '', 0).optional(),
-    price_b: commonSchemas.price.allow(null, '', 0).optional(),
-    price_c: commonSchemas.price.allow(null, '', 0).optional(),
+    half_kg_price: optionalPositivePrice(),
+    quarter_kg_price: optionalPositivePrice(),
+    half_dozen_price: optionalPositivePrice(),
+    price_b: optionalPositivePrice(),
+    price_c: optionalPositivePrice(),
     available_for_restaurants: Joi.boolean().optional(),
-    restaurant_price_a: commonSchemas.price.allow(null, '', 0).optional(),
-    restaurant_price_b: commonSchemas.price.allow(null, '', 0).optional(),
-    restaurant_price_c: commonSchemas.price.allow(null, '', 0).optional(),
+    restaurant_price_a: optionalPositivePrice(),
+    restaurant_price_b: optionalPositivePrice(),
+    restaurant_price_c: optionalPositivePrice(),
     // Catalog v2 (migration 37). Without these keys stripUnknown silently
     // dropped them: "Allow for restaurants" / "Allow for consumers" per quality
     // and every B/C + restaurant fraction price never saved — so the
@@ -512,7 +539,7 @@ export const orderSchemas = {
     requested_delivery_date: Joi.when('urgent_delivery', {
       is: true,
       then: Joi.forbidden(),
-      otherwise: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      otherwise: deliveryDay().optional(),
     }),
     // COD only until a payment gateway exists (config/payments.ts).
     payment_method: Joi.string()
@@ -626,7 +653,7 @@ export const restaurantSchemas = {
     customer_notes: Joi.string().max(1000).allow('', null),
     // Delivery: a slot is required unless urgent delivery is chosen (controller enforces).
     time_slot_id: commonSchemas.uuid.optional().allow(null, ''),
-    requested_delivery_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional().allow(null, ''),
+    requested_delivery_date: deliveryDay().optional().allow(null, ''),
     urgent_delivery: Joi.boolean().truthy('true', '1', 1).falsy('false', '0', 0).default(false),
     // Editable restaurant profile (persisted to the master row + snapshot).
     address: Joi.string().max(1000).optional().allow('', null),
@@ -695,7 +722,7 @@ export const adminSchemas = {
     ).min(1).required(),
     urgent_delivery: Joi.boolean().default(false),
     time_slot_id: commonSchemas.uuid.optional().allow(null, ''),
-    requested_delivery_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional().allow(null, ''),
+    requested_delivery_date: deliveryDay().optional().allow(null, ''),
     admin_notes: Joi.string().allow('', null),
     // Complaint-replacement flow (controller guards: complaint must match the
     // order + override prices need approval). Without these keys the Joi

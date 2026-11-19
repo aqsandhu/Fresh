@@ -11,12 +11,15 @@
 //   - atta_free_delivery_threshold_kg  (default: 20)
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
-import { query } from '../config/database';
+import { query, withTransaction } from '../config/database';
+import { cancelActiveAttaTasks, notifyAttaTasksCancelled } from '../utils/riderTaskEvents';
 import { asyncHandler } from '../middleware';
 import { successResponse, notFoundResponse, errorResponse, createdResponse } from '../utils/response';
 import { parsePagination } from '../utils/validators';
 import logger from '../utils/logger';
+import { fetchGlobalSettings, ATTA_CHAKKI_ENABLED_KEY } from '../utils/siteSettings';
 
 /**
  * Atta charge configuration from database
@@ -133,6 +136,14 @@ export const createAttaRequest = asyncHandler(async (req: Request, res: Response
     return errorResponse(res, 'Authentication required', 401);
   }
 
+  // The owner's on/off switch (A36): with Atta Chakki switched off the site
+  // and app hide it, but an older app build or a direct call still created
+  // requests that reached the admin Atta page.
+  const flags = await fetchGlobalSettings([ATTA_CHAKKI_ENABLED_KEY]);
+  if (flags[ATTA_CHAKKI_ENABLED_KEY] !== 'true') {
+    return errorResponse(res, 'Atta Chakki is not available yet. It is coming soon in your area.', 403);
+  }
+
   const {
     address_id,
     wheat_quality = 'desi',
@@ -217,7 +228,7 @@ export const getAttaRequests = asyncHandler(async (req: Request, res: Response) 
   const { page: safePage, limit: safeLimit, offset } = parsePagination(page, limit, { defaultLimit: 10 });
 
   let whereSql = `WHERE ar.user_id = $1`;
-  const params: any[] = [req.user.id];
+  const params: unknown[] = [req.user.id];
   let paramIndex = 2;
 
   if (status) {
@@ -373,30 +384,42 @@ export const cancelAttaRequest = asyncHandler(async (req: Request, res: Response
   }
 
   const { id } = req.params;
+  const userId = req.user.id;
 
-  // Check if request exists and belongs to user
-  const requestResult = await query(
-    'SELECT * FROM atta_requests WHERE id = $1 AND user_id = $2',
-    [id, req.user.id]
-  );
-
-  if (requestResult.rows.length === 0) {
-    return notFoundResponse(res, 'Atta request not found');
+  // Only before the wheat is picked up (A28): once the rider has it, the
+  // wheat is with the company and the request goes on to the mill — it used
+  // to be cancellable at every step before delivery, leaving the wheat with
+  // nowhere to go. One atomic update, so presses at the same moment cancel once.
+  let out: { request: { id: string; request_number: string }; tasks: Awaited<ReturnType<typeof cancelActiveAttaTasks>> };
+  try {
+    out = await withTransaction(async (client) => {
+      const upd = await client.query(
+        `UPDATE atta_requests SET status = 'cancelled', updated_at = NOW()
+          WHERE id = $1 AND user_id = $2 AND status = 'pending_pickup'
+          RETURNING id, request_number`,
+        [id, userId]
+      );
+      if (upd.rows.length === 0) {
+        const now = await client.query('SELECT status FROM atta_requests WHERE id = $1 AND user_id = $2', [id, userId]);
+        if (now.rows.length === 0) throw Object.assign(new Error('Atta request not found'), { http: 404 });
+        const status = String(now.rows[0].status);
+        throw Object.assign(
+          new Error(status === 'cancelled'
+            ? 'This request is already cancelled.'
+            : 'This request can no longer be cancelled — the wheat has already been picked up. Please call the office.'),
+          { http: 409 }
+        );
+      }
+      const tasks = await cancelActiveAttaTasks(client, id, 'Cancelled by the customer');
+      return { request: upd.rows[0], tasks };
+    });
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
+    if (err?.http === 404) return notFoundResponse(res, err.message);
+    if (err?.http) return errorResponse(res, err.message, err.http);
+    throw err;
   }
-
-  const request = requestResult.rows[0];
-
-  // Check if request can be cancelled
-  if (['delivered', 'cancelled', 'out_for_delivery'].includes(request.status)) {
-    return errorResponse(res, `Request cannot be cancelled in ${request.status} status`, 400);
-  }
-
-  await query(
-    `UPDATE atta_requests
-     SET status = 'cancelled', updated_at = NOW()
-     WHERE id = $1`,
-    [id]
-  );
+  notifyAttaTasksCancelled(out.tasks, out.request, 'Cancelled by the customer');
 
   successResponse(res, null, 'Atta request cancelled successfully');
 });

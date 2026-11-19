@@ -2,6 +2,7 @@
 // CART CONTROLLER
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Request, Response } from 'express';
 import { resolvePublicCityId } from '../utils/cityScope';
 import { query, withTransaction } from '../config/database';
@@ -96,7 +97,8 @@ const getOrCreateCart = async (userId: string) => {
         // Lost the race — the winner's cart is now visible; fetch it.
         cartResult = await selectActive();
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       if (err?.code === '42P10') {
         // Index not deployed yet: plain insert; if a concurrent insert beat us
         // to it (any pre-existing unique constraint), re-select instead.
@@ -107,7 +109,8 @@ const getOrCreateCart = async (userId: string) => {
              RETURNING *`,
             [userId]
           );
-        } catch (inner: any) {
+        } catch (innerCaught: unknown) {
+          const inner = asCaughtError(innerCaught);
           if (inner?.code !== '23505') throw inner;
           cartResult = await selectActive();
         }

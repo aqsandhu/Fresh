@@ -13,6 +13,7 @@ import {
   riderLocationRateLimiter,
   validate,
   riderSchemas,
+  authSchemas,
   uploadDoorPicture as uploadDoorPictureMiddleware,
   uploadDeliveryProof,
 } from '../middleware';
@@ -20,7 +21,9 @@ import {
 const router = Router();
 
 // Rider login (public but rate limited)
-router.post('/login', authRateLimiter, authController.riderLogin);
+// Same request rules as the customer sign-in: a missing / malformed phone used
+// to throw inside the handler and answer 500 (G37).
+router.post('/login', authRateLimiter, validate(authSchemas.riderLogin), authController.riderLogin);
 
 // All rider routes require authentication and rider role
 router.use(authenticate);

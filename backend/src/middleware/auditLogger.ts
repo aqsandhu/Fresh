@@ -61,8 +61,8 @@ export interface AuditLogEntry {
   adminEmail?: string;
   resource: string;
   resourceId?: string;
-  oldData?: any;
-  newData?: any;
+  oldData?: unknown;
+  newData?: unknown;
   // NULL (not 'system'/'unknown') when no IP is available — ip_address is INET.
   ip: string | null;
   userAgent?: string;
@@ -113,7 +113,7 @@ const buildActionName = (req: Request): string => {
  * Sanitize sensitive data before logging
  * Removes passwords, tokens, secrets, etc.
  */
-const sanitizeData = (data: any): any => {
+const sanitizeData = (data: unknown): unknown => {
   if (!data || typeof data !== 'object') return data;
 
   const sensitiveKeys = [
@@ -131,7 +131,7 @@ const sanitizeData = (data: any): any => {
     return data.map(sanitizeData);
   }
 
-  const sanitized: Record<string, any> = {};
+  const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     const lowerKey = key.toLowerCase();
     if (exactSensitiveKeys.has(lowerKey) || sensitiveKeys.some((sk) => lowerKey.includes(sk))) {
@@ -212,7 +212,7 @@ export const auditLogger = (options?: { optional?: boolean }) => {
     const newData = req.body;
 
     // For PUT/PATCH, try to fetch old data before the change
-    let oldData: any = null;
+    let oldData: unknown = null;
     if (['PUT', 'PATCH'].includes(req.method) && resourceId) {
       try {
         const tableMap: Record<string, string> = {
@@ -245,11 +245,12 @@ export const auditLogger = (options?: { optional?: boolean }) => {
     let responseStatus: 'success' | 'failed' = 'success';
     let errorMessage: string | undefined;
 
-    res.json = function (body: any) {
+    res.json = function (body: unknown) {
       // Check response for failure indicators
-      if (body && (body.success === false || res.statusCode >= 400)) {
+      const b = (body && typeof body === 'object' ? body : {}) as { success?: unknown; message?: unknown };
+      if (body && (b.success === false || res.statusCode >= 400)) {
         responseStatus = 'failed';
-        errorMessage = body?.message || `HTTP ${res.statusCode}`;
+        errorMessage = (typeof b.message === 'string' && b.message) || `HTTP ${res.statusCode}`;
       }
       return originalJson(body);
     };
@@ -292,8 +293,8 @@ export const logAdminAction = async (params: {
   adminEmail?: string;
   resource: string;
   resourceId?: string;
-  oldData?: any;
-  newData?: any;
+  oldData?: unknown;
+  newData?: unknown;
   ip?: string;
   status?: 'success' | 'failed';
   errorMessage?: string;

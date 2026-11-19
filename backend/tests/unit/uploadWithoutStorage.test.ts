@@ -9,7 +9,7 @@ jest.mock('../../src/config/storage', () => ({
   uploadFileToStorage: jest.fn(),
 }));
 
-import { uploadSingle } from '../../src/middleware/upload';
+import { uploadSingle, uploadMultiple } from '../../src/middleware/upload';
 import { errorHandler } from '../../src/middleware/errorHandler';
 
 // Smallest valid PNG (so the content check passes and storage is the only problem).
@@ -34,6 +34,17 @@ describe('upload when storage is not configured', () => {
     const res = await request(app()).post('/upload').field('name', 'no picture');
     expect(res.status).toBe(200);
     expect(res.body.saved).toBe(true);
+  });
+
+  it('a multi-picture field with NO picture is not an upload (round 7: a product without pictures was refused 503)', async () => {
+    const a = express();
+    a.post('/products', ...uploadMultiple('images', 5), (req, res) => res.json({ saved: true, files: (req.files as unknown[] | undefined)?.length ?? 0 }));
+    a.use(errorHandler);
+    const res = await request(a).post('/products').field('name_en', 'UI Test Tomato');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ saved: true, files: 0 });
+    const withPic = await request(a).post('/products').attach('images', PNG, { filename: 'x.png', contentType: 'image/png' });
+    expect(withPic.status).toBe(503);
   });
 });
 

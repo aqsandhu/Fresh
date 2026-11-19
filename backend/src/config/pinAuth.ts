@@ -4,6 +4,7 @@
 // Supabase *pooler* (port 6543) often rejects DDL. We probe information_schema
 // first and never SELECT pin_hash until the column exists.
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -34,7 +35,8 @@ export async function hasPinColumns(): Promise<boolean> {
         LIMIT 1`
     );
     pinColumnsCached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe pin_hash column', { error: error?.message });
     pinColumnsCached = false;
   }
@@ -116,7 +118,8 @@ export async function ensurePinColumns(): Promise<boolean> {
         );
       }
       return ready;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not add PIN columns automatically', { error: error?.message });
       pinColumnsCached = false;
       return false;

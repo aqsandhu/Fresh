@@ -12,6 +12,7 @@ const good = {
   SENTRY_DSN: 'https://x@sentry.example/1',
   SUPABASE_SERVICE_ROLE_KEY: 'k',
   AUDIT_AI_SECRET: 's'.repeat(32),
+  ADMIN_PANEL_ORIGIN: 'https://admin.freshbazar.example',
 } as NodeJS.ProcessEnv;
 
 describe('checkEnvironment', () => {
@@ -56,6 +57,17 @@ describe('checkEnvironment', () => {
     expect(text).toMatch(/ADMIN_JWT_REFRESH_EXPIRES_IN=30d is long/);
     expect(text).toMatch(/JWT_EXPIRES_IN=7d is long/);
     expect(checkEnvironment({ ...good, ADMIN_JWT_EXPIRES_IN: '15m', ADMIN_JWT_REFRESH_EXPIRES_IN: '8h', JWT_EXPIRES_IN: '15m' }).warnings.join(' ')).not.toMatch(/is long/);
+  });
+
+  it('ADMIN_PANEL_ORIGIN (N8): missing or not a bare address is a warning, never a refusal to start', () => {
+    const missing = checkEnvironment({ ...good, ADMIN_PANEL_ORIGIN: '' });
+    expect(missing.errors).toEqual([]);
+    expect(missing.warnings.join(' ')).toMatch(/ADMIN_PANEL_ORIGIN is not set/);
+    const withPath = checkEnvironment({ ...good, ADMIN_PANEL_ORIGIN: 'https://admin.freshbazar.example/admin/login' });
+    expect(withPath.errors).toEqual([]);
+    expect(withPath.warnings.join(' ')).toMatch(/must be just an address/);
+    expect(checkEnvironment({ ...good, ADMIN_PANEL_ORIGIN: 'https://admin.freshbazar.example/, http://localhost:5173' }).warnings).toEqual([]);
+    expect(checkEnvironment({ ...good, ADMIN_PANEL_ORIGIN: '', ADMIN_AUTH_COOKIES: 'false' }).warnings).toEqual([]);
   });
 
   it('outside production only the value checks apply', () => {

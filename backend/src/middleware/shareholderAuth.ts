@@ -12,6 +12,7 @@ import { verifyShareholderToken } from '../config/jwt';
 import { unauthorizedResponse, forbiddenResponse } from '../utils/response';
 import { asyncHandler } from './errorHandler';
 import { markAuthGuard } from '../config/openapiRoutes';
+import { CREDENTIALS_CHANGED_SELECT, tokenPredatesCredentialChange } from '../utils/portalCredentials';
 
 export interface AuthedShareholder {
   id: string;
@@ -57,8 +58,9 @@ export const authenticateShareholder = asyncHandler(
     }
 
     const result = await query(
-      `SELECT id, name, email, city_id, share_percent, status
-         FROM shareholders WHERE id = $1`,
+      `SELECT s.id, s.name, s.email, s.city_id, s.share_percent, s.status,
+              ${CREDENTIALS_CHANGED_SELECT('s')}
+         FROM shareholders s WHERE s.id = $1`,
       [payload.shareholderId]
     );
     const row = result.rows[0];
@@ -68,6 +70,11 @@ export const authenticateShareholder = asyncHandler(
     }
     if (row.status !== 'active') {
       forbiddenResponse(res, 'This account is inactive. Please contact the admin.');
+      return;
+    }
+    // A session from before the last password change has ended (B38).
+    if (tokenPredatesCredentialChange(payload.iat, row.credentials_changed_at)) {
+      unauthorizedResponse(res, 'Your password was changed. Please log in again.');
       return;
     }
 

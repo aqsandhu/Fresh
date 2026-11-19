@@ -7,6 +7,7 @@
 // drove to a cancelled order (pickup then failed with 409).
 // ============================================================================
 
+import { asCaughtError } from './caughtError';
 import { PoolClient } from 'pg';
 import { emitToUser } from '../config/socket';
 import { query } from '../config/database';
@@ -134,6 +135,47 @@ export function notifyRiderTasksCancelled(
       channelId: 'task-update',
     }).catch(() => {});
     logger.info('Rider task cancelled', { taskId: task.taskId, riderId: task.riderId, orderId: order.id });
+  }
+}
+
+/**
+ * Call off every active rider task of an atta request (it was cancelled):
+ * the pickup used to stay on the rider's list after the customer cancelled.
+ */
+export async function cancelActiveAttaTasks(
+  client: PoolClient,
+  attaRequestId: string,
+  note: string
+): Promise<CancelledRiderTask[]> {
+  const result = await client.query(
+    `UPDATE rider_tasks rt
+        SET status = 'cancelled', completed_at = NOW(), notes = COALESCE(rt.notes, $2), updated_at = NOW()
+       FROM riders r
+      WHERE rt.rider_id = r.id AND rt.atta_request_id = $1 AND rt.status IN ('assigned', 'in_progress')
+      RETURNING rt.id AS task_id, rt.rider_id, r.user_id AS rider_user_id`,
+    [attaRequestId, note]
+  );
+  const cancelled = result.rows.map((row) => ({ taskId: row.task_id, riderId: row.rider_id, riderUserId: row.rider_user_id ?? null }));
+  await syncRidersAvailability(cancelled.map((t) => t.riderId), client);
+  return cancelled;
+}
+
+/** Tell each rider their atta task was called off (live + push). */
+export function notifyAttaTasksCancelled(
+  tasks: CancelledRiderTask[],
+  request: { id: string; request_number?: string | null },
+  reason: string
+): void {
+  for (const task of tasks) {
+    if (!task.riderUserId) continue;
+    const payload = { taskId: task.taskId, attaRequestId: request.id, orderNumber: request.request_number ?? null, reason, message: `Atta request ${request.request_number ?? ''} was cancelled` };
+    emitToUser(task.riderUserId, 'rider:task_cancelled', payload);
+    sendExpoPushToUsers([task.riderUserId], {
+      title: 'Task cancelled',
+      body: `Atta request ${request.request_number ?? ''} was cancelled.`,
+      data: { type: 'task_cancelled', ...payload },
+      channelId: 'task-update',
+    }).catch(() => {});
   }
 }
 
@@ -299,7 +341,8 @@ export async function notifyActiveRiderOfOrderChange(
         }).catch(() => {});
       }
     }
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     logger.warn('notifyActiveRiderOfOrderChange failed', { orderId, err: err?.message });
   }
 }

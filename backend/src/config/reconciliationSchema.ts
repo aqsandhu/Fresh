@@ -6,6 +6,7 @@
 // audited ledger, and surface money/stock anomalies. Mirrors catalogV2Schema.
 // ============================================================================
 
+import { asCaughtError } from '../utils/caughtError';
 import { Pool } from 'pg';
 import { query } from './database';
 import logger from '../utils/logger';
@@ -45,7 +46,8 @@ export async function hasReconciliationTables(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'reconciliation_runs' LIMIT 1`
     );
     cached = (result.rowCount ?? 0) > 0;
-  } catch (error: any) {
+  } catch (errorCaught: unknown) {
+    const error = asCaughtError(errorCaught);
     logger.warn('Could not probe reconciliation_runs', { error: error?.message });
     cached = false;
   }
@@ -103,7 +105,8 @@ export async function ensureReconciliationTables(): Promise<boolean> {
       cached = true;
       logger.info('reconciliation tables ensured');
       return true;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       logger.warn('Could not create reconciliation tables', { error: error?.message });
       cached = false;
       return false;

@@ -14,7 +14,7 @@ import { query } from '../config/database';
 import { hasSiteSettingsCityColumn } from './siteSettings';
 
 type Runner = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> };
-const defaultRunner: Runner = { query: (sql, params) => query(sql, params as any[]) };
+const defaultRunner: Runner = { query: (sql, params) => query(sql, params) };
 
 export const DELIVERY_SETTING_KEYS = {
   baseCharge: 'delivery_base_charge',

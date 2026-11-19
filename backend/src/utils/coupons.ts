@@ -6,6 +6,7 @@
 // The client never computes its own discount.
 // ============================================================================
 
+import { asCaughtError } from './caughtError';
 import { query } from '../config/database';
 import { roundMoney } from './money';
 import logger from './logger';
@@ -213,7 +214,8 @@ export async function hasCouponsTable(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'coupons' LIMIT 1`
     );
     couponsTableCached = (r.rowCount ?? 0) > 0;
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     logger.warn('Could not probe coupons table', { error: err?.message });
     couponsTableCached = false;
   }

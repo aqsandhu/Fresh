@@ -11,6 +11,7 @@
 // redemption ownership is re-checked at order placement under the coupon lock.
 // ============================================================================
 
+import { asCaughtError } from './caughtError';
 import { query } from '../config/database';
 import { CouponRow, buildCouponSummary } from './coupons';
 import logger from './logger';
@@ -25,7 +26,8 @@ export async function hasUserCouponsTable(): Promise<boolean> {
         WHERE table_schema = 'public' AND table_name = 'user_coupons' LIMIT 1`
     );
     userCouponsTableCached = (r.rowCount ?? 0) > 0;
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     logger.warn('Could not probe user_coupons table', { error: err?.message });
     userCouponsTableCached = false;
   }
@@ -48,7 +50,8 @@ async function createGrantNotification(userId: string, coupon: CouponRow): Promi
         `${coupon.code} — ${buildCouponSummary(coupon)} Apply it at checkout.`,
       ]
     );
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     // Non-fatal: the grant still stands even if the notification insert fails.
     logger.warn('Could not create coupon grant notification', { error: err?.message });
   }
@@ -192,7 +195,8 @@ export async function evaluateAutoCoupons(
       evaluateMilestone(userId, cityId),
     ]);
     return [...a, ...b];
-  } catch (err: any) {
+  } catch (errCaught: unknown) {
+    const err = asCaughtError(errCaught);
     logger.warn('evaluateAutoCoupons failed', { error: err?.message });
     return [];
   }

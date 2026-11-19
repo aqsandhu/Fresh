@@ -103,7 +103,7 @@ export const sendMessage = asyncHandler(async (req: Request, res: Response) => {
   const result = await query(
     `INSERT INTO order_messages (order_id, sender_type, sender_id, message)
      VALUES ($1, $2, $3, $4)
-     RETURNING id, message, sender_type, created_at`,
+     RETURNING id, order_id, message, sender_type, created_at`, // order_id: see I13
     [orderId, senderType, req.user.id, trimmedMessage]
   );
 
