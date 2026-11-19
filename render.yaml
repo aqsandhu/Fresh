@@ -14,7 +14,13 @@ services:
     region: oregon
     branch: main
     rootDir: backend
-    buildCommand: npm install && npm run build
+    # Installs EXACTLY the versions in the repo's pnpm-lock.yaml (the ones CI
+    # and local tests ran) — `npm install` here had no lockfile and resolved
+    # fresh versions on every deploy (N11). --prod=false: the build needs
+    # typescript / ts-node (devDependencies) even with NODE_ENV=production.
+    # If the service is not Blueprint-synced, paste the same line into
+    # Render → Settings → Build Command.
+    buildCommand: npx --yes pnpm@10.12.3 install --frozen-lockfile --prod=false --filter @freshbazar/backend && npx --yes pnpm@10.12.3 run build
     # Apply versioned SQL migrations before the new API process receives traffic.
     preDeployCommand: npm run migrate:sql
     startCommand: npm start
@@ -66,6 +72,10 @@ services:
         value: "https://freshbazar.pk,https://www.freshbazar.pk,https://freshbazar-admin.vercel.app,https://admin.freshbazar.pk"
       - key: CORS_CREDENTIALS
         value: "true"
+      # The admin cookie session answers only this page (a script on the
+      # website, same site, cannot use it). Set in the dashboard.
+      - key: ADMIN_PANEL_ORIGIN
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_REFRESH_SECRET
