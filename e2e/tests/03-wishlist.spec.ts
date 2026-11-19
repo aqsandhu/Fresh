@@ -36,7 +36,12 @@ test('the same wishlist in two browsers signed in to one account', async ({ brow
   const a = await signedInPage(browser, customerPhone, city);
   await a.goto(`${WEBSITE}/product/${product.id}`);
   const heart = a.getByRole('button', { name: 'Wishlist' });
-  await heart.click();
+  // The heart turns on at once; wait for the SERVER to have it before the
+  // other device looks (the CI machine is slow enough to lose that race).
+  await Promise.all([
+    a.waitForResponse((r) => r.request().method() === 'POST' && /\/wishlist\//.test(r.url()) && r.ok()),
+    heart.click(),
+  ]);
   await expect(heart).toHaveAttribute('aria-pressed', 'true');
 
   // Browser B (a different device) shows it, then removes it.
@@ -44,7 +49,10 @@ test('the same wishlist in two browsers signed in to one account', async ({ brow
   await b.goto(`${WEBSITE}/wishlist`);
   await expect(b.getByText('Saved to your account')).toBeVisible();
   await expect(b.getByRole('link', { name: 'E2E Tomato' })).toBeVisible();
-  await b.getByRole('button', { name: 'Remove E2E Tomato from wishlist' }).click();
+  await Promise.all([
+    b.waitForResponse((r) => r.request().method() === 'DELETE' && /\/wishlist\//.test(r.url()) && r.ok()),
+    b.getByRole('button', { name: 'Remove E2E Tomato from wishlist' }).click(),
+  ]);
   await expect(b.getByText('Your Wishlist is Empty')).toBeVisible();
 
   // Browser A, opened again, does not bring it back.
