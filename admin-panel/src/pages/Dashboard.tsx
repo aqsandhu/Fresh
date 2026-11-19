@@ -33,7 +33,7 @@ export const Dashboard: React.FC = () => {
         <StatCard
           title="Daily Sales"
           value={isLoading ? '-' : formatCurrency(today?.totalSales || 0)}
-          subtitle="Today's revenue"
+          subtitle="Orders placed today (not cancelled)"
           icon={<TrendingUp className="w-6 h-6 text-primary-600" />}
         />
         <StatCard
@@ -59,14 +59,14 @@ export const Dashboard: React.FC = () => {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <Card>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Weekly Summary</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Last 7 days</h3>
           <p className="text-2xl font-bold text-primary-600">{formatCurrency(data?.weekly?.totalSales || 0)}</p>
-          <p className="text-sm text-gray-500">{data?.weekly?.totalOrders || 0} orders this week</p>
+          <p className="text-sm text-gray-500">{data?.weekly?.totalOrders || 0} orders in the last 7 days (today included)</p>
         </Card>
         <Card>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Monthly Summary</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">This month</h3>
           <p className="text-2xl font-bold text-primary-600">{formatCurrency(data?.monthly?.totalSales || 0)}</p>
-          <p className="text-sm text-gray-500">{data?.monthly?.totalOrders || 0} orders this month</p>
+          <p className="text-sm text-gray-500">{data?.monthly?.totalOrders || 0} orders since the 1st of this month</p>
         </Card>
         <Card>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Riders</h3>

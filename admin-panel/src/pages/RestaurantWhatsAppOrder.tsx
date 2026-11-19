@@ -1,9 +1,11 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { UtensilsCrossed, Plus, Trash2, Package, Receipt, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { restaurantService } from '@/services/restaurant.service';
 import { productService } from '@/services/product.service';
+import type { Product } from '@/types';
 import { useDebounce } from '@/hooks/useDebounce';
 import toast from 'react-hot-toast';
 
@@ -26,7 +28,7 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(x) ? x : null;
 };
 
-function qualityBase(p: any, q: Quality): number | null {
+function qualityBase(p: Product, q: Quality): number | null {
   // Restaurant pays restaurant_price_* (falling back to the consumer price for
   // that tier). A tier is offered only when the admin enabled it for
   // restaurants (restaurant_enabled_*, default OFF) — the backend rejects any
@@ -42,14 +44,14 @@ function qualityBase(p: any, q: Quality): number | null {
   if (p?.restaurantEnabledA !== true) return null;
   return num(p?.restaurantPriceA) ?? num(p?.price) ?? 0;
 }
-function availableQualities(p: any): Quality[] {
+function availableQualities(p: Product): Quality[] {
   const out: Quality[] = [];
   if (qualityBase(p, 'A') != null) out.push('A');
   if (qualityBase(p, 'B') != null) out.push('B');
   if (qualityBase(p, 'C') != null) out.push('C');
   return out;
 }
-function unitsFor(p: any): { value: Unit; label: string; short: string }[] {
+function unitsFor(p: Product): { value: Unit; label: string; short: string }[] {
   const t = String(p?.unitType || 'kg').toLowerCase();
   const baseShort = t === 'dozen' ? 'dozen' : t === 'kg' || t === 'gram' ? 'kg' : t || 'unit';
   const out: { value: Unit; label: string; short: string }[] = [{ value: 'full', label: `Per ${baseShort}`, short: baseShort }];
@@ -62,7 +64,7 @@ function unitsFor(p: any): { value: Unit; label: string; short: string }[] {
   return out;
 }
 /** Explicit per-quality restaurant fraction price (null when blank/absent). */
-function explicitRestaurantFraction(p: any, q: Quality, u: Unit): number | null {
+function explicitRestaurantFraction(p: Product, q: Quality, u: Unit): number | null {
   const opt = (v: unknown): number | null => {
     const n = num(v);
     return n != null && n >= 0 ? n : null;
@@ -75,7 +77,7 @@ function explicitRestaurantFraction(p: any, q: Quality, u: Unit): number | null 
 
 /** Mirrors backend resolveRestaurantUnitPrice: explicit restaurant fraction
  *  price first, then the restaurant/consumer base scaled by the fraction. */
-function unitPrice(p: any, q: Quality, u: Unit): number | null {
+function unitPrice(p: Product, q: Quality, u: Unit): number | null {
   const base = qualityBase(p, q);
   if (base == null) return null;
   const explicit = explicitRestaurantFraction(p, q, u);
@@ -110,7 +112,7 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
   // Unified catalog: only ACTIVE products flagged "also for restaurants" with at
   // least one restaurant-enabled quality tier can be ordered here.
   const products = (productsData?.products || []).filter(
-    (p: any) => p.availableForRestaurants && p.isActive !== false && availableQualities(p).length > 0
+    (p) => p.availableForRestaurants && p.isActive !== false && availableQualities(p).length > 0
   );
   const productsTruncated = (productsData?.pagination?.total || 0) > (productsData?.products || []).length;
 
@@ -132,7 +134,7 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
       toast.success('Restaurant order placed — visible in Orders → Restaurants');
       reset();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Failed to place order'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || errorView(e)?.message || 'Failed to place order'),
   });
 
   const reset = () => {
@@ -149,7 +151,7 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
   const pricing = useMemo(() => {
     let subtotal = 0;
     for (const it of validItems) {
-      const p = (products as any[]).find((x) => x.id === it.productId);
+      const p = products.find((x) => x.id === it.productId);
       const up = p ? unitPrice(p, it.quality, it.unit) : null;
       if (up != null) subtotal += round2(up * it.quantity);
     }
@@ -175,6 +177,7 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
           <UtensilsCrossed className="w-5 h-5 mr-2" /> Restaurant
         </h3>
         <select
+          aria-label="Restaurant"
           value={restaurantId}
           onChange={(e) => setRestaurantId(e.target.value)}
           className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
@@ -199,6 +202,7 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
         </h3>
         <input
           type="search"
+          aria-label="Search products"
           value={productSearch}
           onChange={(e) => setProductSearch(e.target.value)}
           placeholder="Search products by name…"
@@ -209,7 +213,7 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
         )}
         <div className="space-y-3">
           {items.map((item, idx) => {
-            const product = (products as any[]).find((p) => p.id === item.productId);
+            const product = products.find((p) => p.id === item.productId);
             const qualities = product ? availableQualities(product) : (['A'] as Quality[]);
             const units = product ? unitsFor(product) : [{ value: 'full' as Unit, label: 'Per unit', short: 'unit' }];
             const selUnit = units.find((u) => u.value === item.unit) || units[0];
@@ -219,19 +223,21 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm text-gray-500 w-5">{idx + 1}.</span>
                   <select
+                    aria-label={`Product ${idx + 1}`}
                     value={item.productId}
                     onChange={(e) => {
-                      const next = (products as any[]).find((p) => p.id === e.target.value);
+                      const next = products.find((p) => p.id === e.target.value);
                       update(item.id, { productId: e.target.value, quality: next ? (availableQualities(next)[0] ?? 'A') : 'A', unit: 'full' });
                     }}
                     className="flex-1 min-w-[180px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                   >
                     <option value="">Select product</option>
-                    {(products as any[]).map((p) => (
+                    {products.map((p) => (
                       <option key={p.id} value={p.id}>{p.nameEn}</option>
                     ))}
                   </select>
                   <select
+                    aria-label={`Quality ${idx + 1}`}
                     value={item.quality}
                     onChange={(e) => update(item.id, { quality: e.target.value as Quality })}
                     disabled={!product || qualities.length <= 1}
@@ -240,6 +246,7 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
                     {qualities.map((q) => <option key={q} value={q}>Quality {q}</option>)}
                   </select>
                   <select
+                    aria-label={`Unit ${idx + 1}`}
                     value={item.unit}
                     onChange={(e) => update(item.id, { unit: e.target.value as Unit })}
                     disabled={!product || units.length <= 1}
@@ -248,11 +255,11 @@ export const RestaurantWhatsAppOrder: React.FC = () => {
                     {units.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
                   </select>
                   <div className="flex items-center rounded-lg border border-gray-300">
-                    <button type="button" onClick={() => update(item.id, { quantity: Math.max(1, item.quantity - 1) })} className="px-2.5 py-1.5 text-gray-600 hover:bg-gray-100 rounded-l-lg">−</button>
+                    <button type="button" aria-label={`Decrease quantity ${idx + 1}`} onClick={() => update(item.id, { quantity: Math.max(1, item.quantity - 1) })} className="px-2.5 py-1.5 text-gray-600 hover:bg-gray-100 rounded-l-lg">−</button>
                     <span className="w-9 text-center text-sm font-medium tabular-nums">{item.quantity}</span>
-                    <button type="button" onClick={() => update(item.id, { quantity: item.quantity + 1 })} className="px-2.5 py-1.5 text-gray-600 hover:bg-gray-100 rounded-r-lg">+</button>
+                    <button type="button" aria-label={`Increase quantity ${idx + 1}`} onClick={() => update(item.id, { quantity: item.quantity + 1 })} className="px-2.5 py-1.5 text-gray-600 hover:bg-gray-100 rounded-r-lg">+</button>
                   </div>
-                  <button type="button" onClick={() => removeItem(item.id)} disabled={items.length === 1} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                  <button type="button" aria-label={`Remove item ${idx + 1}`} onClick={() => removeItem(item.id)} disabled={items.length === 1} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>

@@ -3,6 +3,16 @@ import '@testing-library/jest-dom';
 process.env.VITE_API_URL = 'http://localhost:3000/api';
 process.env.NODE_ENV = 'test';
 
+// No unit test may reach the network (D10). An un-mocked request — the Login
+// page's brand logo asked the real API — kept the jest worker alive after the
+// tests ("A worker process has failed to exit gracefully"). Now it fails at
+// once and names the call that needs a mock.
+const testNetworkError = (what: string) =>
+  Object.assign(new Error(`Unit tests must not reach the network (${what}). Mock the service.`), { code: 'ERR_TEST_NETWORK' });
+require('axios').default.defaults.adapter = (config: { method?: string; url?: string }) =>
+  Promise.reject(testNetworkError(`${(config.method || 'get').toUpperCase()} ${config.url}`));
+global.fetch = jest.fn((url: unknown) => Promise.reject(testNetworkError(`fetch ${String(url)}`))) as unknown as typeof fetch;
+
 // Mock localStorage
 const localStorageMock = {
   getItem: jest.fn(),

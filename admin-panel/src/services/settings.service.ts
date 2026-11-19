@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api, unwrap } from './api';
 import type { 
   Settings,
@@ -21,7 +22,8 @@ export const settingsService = {
     try {
       const response = await api.get<ApiResponse<AttaChargeSettings>>('/admin/settings/atta-charges');
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw new Error(error?.response?.data?.message || 'Failed to load Atta Chakki charges');
     }
   },
@@ -30,7 +32,8 @@ export const settingsService = {
     try {
       const response = await api.put<ApiResponse<AttaChargeSettings>>('/admin/settings/atta-charges', data);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw new Error(error?.response?.data?.message || 'Failed to update Atta Chakki charges');
     }
   },
@@ -39,7 +42,8 @@ export const settingsService = {
     try {
       const response = await api.get<ApiResponse<Settings>>('/admin/settings');
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching settings:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch settings');
     }
@@ -49,7 +53,8 @@ export const settingsService = {
   resetDeliveryToGlobal: async (): Promise<void> => {
     try {
       await api.put('/admin/settings/delivery', { resetToGlobal: true });
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw new Error(error?.response?.data?.message || 'Failed to reset delivery settings');
     }
   },
@@ -58,7 +63,8 @@ export const settingsService = {
     try {
       const response = await api.put<ApiResponse<DeliverySettings>>('/admin/settings/delivery', settings);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating delivery settings:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update delivery settings');
     }
@@ -68,7 +74,8 @@ export const settingsService = {
     try {
       const response = await api.get<ApiResponse<TimeSlot[]>>('/admin/settings/time-slots');
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching time slots:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch time slots');
     }
@@ -78,7 +85,8 @@ export const settingsService = {
     try {
       const response = await api.post<ApiResponse<TimeSlot>>('/admin/settings/time-slots', timeSlot);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error creating time slot:', error);
       throw new Error(error?.response?.data?.message || 'Failed to create time slot');
     }
@@ -88,7 +96,8 @@ export const settingsService = {
     try {
       const response = await api.put<ApiResponse<TimeSlot>>(`/admin/settings/time-slots/${id}`, timeSlot);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating time slot:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update time slot');
     }
@@ -99,7 +108,8 @@ export const settingsService = {
     try {
       const res = await api.delete<ApiResponse<{ deactivated: boolean }>>(`/admin/settings/time-slots/${id}`);
       return (res as { message?: string })?.message || 'Time slot deleted';
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error deleting time slot:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete time slot');
     }
@@ -109,7 +119,8 @@ export const settingsService = {
     try {
       const response = await api.get<ApiResponse<BusinessHours[]>>('/admin/settings/business-hours');
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching business hours:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch business hours');
     }
@@ -119,7 +130,8 @@ export const settingsService = {
     try {
       const response = await api.put<ApiResponse<BusinessHours[]>>('/admin/settings/business-hours', { hours });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating business hours:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update business hours');
     }
@@ -140,7 +152,8 @@ export const settingsService = {
         minAppVersion: string;
       }>>('/admin/settings/app');
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching app settings:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch app settings');
     }
@@ -162,7 +175,8 @@ export const settingsService = {
         orderDeliveryTemplate: string;
       }>>('/admin/settings/notifications');
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching notification settings:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch notification settings');
     }
@@ -195,7 +209,7 @@ export const settingsService = {
     hasKey: boolean;
     enabled: boolean;
   }> => {
-    const response = await api.get<ApiResponse<any>>('/admin/settings/ai-chat');
+    const response = await api.get<ApiResponse<{ provider: string; model: string; baseUrl: string; disabled: boolean; hasKey: boolean; enabled: boolean; }>>('/admin/settings/ai-chat');
     return unwrap(response);
   },
 
@@ -214,7 +228,7 @@ export const settingsService = {
     hasKey: boolean;
     enabled: boolean;
   }> => {
-    const response = await api.put<ApiResponse<any>>('/admin/settings/ai-chat', settings);
+    const response = await api.put<ApiResponse<{ provider: string; model: string; baseUrl: string; disabled: boolean; hasKey: boolean; enabled: boolean; }>>('/admin/settings/ai-chat', settings);
     return unwrap(response);
   },
 };

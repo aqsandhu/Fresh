@@ -1,7 +1,8 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
 import { CITY_STORAGE_KEY, clearCitySelection } from '@/lib/cityStorage';
-import { API_BASE_URL, AUTH_COOKIES_ENABLED } from '@/config/env';
+import { queuedFromResponse } from '@/lib/approvalQueue';
+import { API_BASE_URL, AUTH_COOKIES_ENABLED, CLIENT_PLATFORM } from '@/config/env';
 
 if (!process.env.VITE_API_URL) {
   // Dev-only fallback — config/env.ts throws in production before this runs.
@@ -70,7 +71,7 @@ apiClient.interceptors.request.use(
     if (config.headers) {
       // Tells the backend which cookie policy applies (and to strip token
       // strings from auth responses in cookie mode).
-      config.headers['X-Client-Platform'] = 'admin';
+      config.headers['X-Client-Platform'] = CLIENT_PLATFORM;
     }
     if (!AUTH_COOKIES_ENABLED) {
       const token = localStorage.getItem('admin_token');
@@ -106,7 +107,7 @@ apiClient.interceptors.request.use(
   }
 );
 
-import { refreshAdminAccessToken } from '@/lib/adminTokenRefresh';
+import { refreshAdminAccessToken, isServerUnreachable, ServerUnreachableError } from '@/lib/adminTokenRefresh';
 
 function redirectToLogin() {
   localStorage.removeItem('admin_token');
@@ -137,10 +138,19 @@ apiClient.interceptors.response.use(
     if (response.data) {
       response.data = toCamelCase(response.data);
     }
+    // Waiting for the city admin (J1): say so, and do NOT let the form treat
+    // it as done — it rejects with QueuedForApproval (forms check isQueued).
+    const queued = queuedFromResponse(response.status, response.data);
+    if (queued) {
+      toast.success(queued.message, { id: `queued-${queued.requestId ?? 'x'}`, duration: 6000 });
+      return Promise.reject(queued);
+    }
     return response;
   },
   async (error: AxiosError) => {
-    const message = (error.response?.data as { message?: string })?.message || 'Something went wrong';
+    const rawMessage = (error.response?.data as { message?: unknown })?.message;
+    const serverMessage = typeof rawMessage === 'string' && rawMessage.trim() ? rawMessage.trim() : '';
+    const message = serverMessage || 'Something went wrong';
     const original = error.config as RetryableRequestConfig;
 
     if (error.response?.status === 401 && original && !original._retried) {
@@ -156,7 +166,17 @@ apiClient.interceptors.response.use(
 
       // Try to refresh the access token transparently and retry the request.
       original._retried = true;
-      const newToken = await refreshAdminAccessToken();
+      let newToken: string | null;
+      try {
+        newToken = await refreshAdminAccessToken();
+      } catch (refreshError) {
+        // Server down / restarting (G13): keep the session, say what happened.
+        if (isServerUnreachable(refreshError)) {
+          toast.error(new ServerUnreachableError().message, { id: 'server-unreachable' });
+          return Promise.reject(refreshError);
+        }
+        throw refreshError;
+      }
       if (newToken) {
         if (!original.headers) {
           original.headers = {} as InternalAxiosRequestConfig['headers'];
@@ -180,9 +200,14 @@ apiClient.interceptors.response.use(
         redirectToLogin();
       }
     } else if (error.response?.status === 403) {
-      toast.error('You do not have permission to perform this action');
+      // The server says WHY ("Only the super admin can add a city") — show it.
+      toast.error(serverMessage || 'You do not have permission to perform this action');
+    } else if (!error.response && !axios.isCancel(error)) {
+      // No answer at all — say so instead of "Something went wrong".
+      toast.error(new ServerUnreachableError().message, { id: 'server-unreachable' });
     } else if (error.response?.status && error.response.status >= 500) {
-      toast.error('Server error. Please try again later.');
+      // 503 carries a real reason (e.g. picture storage not set up); a 500 does not.
+      toast.error(error.response.status === 503 && serverMessage ? serverMessage : 'Server error. Please try again later.');
     } else {
       toast.error(message);
     }
@@ -207,21 +232,42 @@ export function unwrap<T>(response: { data?: T; message?: string }): T {
 }
 
 // Generic API methods
+// An identical write that is already on its way is sent ONCE and every
+// caller shares its answer (A34): a double / triple click used to book a
+// refund, an expense or a rider payment two or three times — the button only
+// locks after React re-renders. File uploads (FormData) are not merged.
+const inflightWrites = new Map<string, Promise<unknown>>();
+export function sendWriteOnce<T>(method: string, url: string, data: unknown, send: () => Promise<T>): Promise<T> {
+  if (typeof FormData !== 'undefined' && data instanceof FormData) return send();
+  let key: string;
+  try {
+    key = `${method} ${url} ${JSON.stringify(data ?? null)}`;
+  } catch {
+    return send();
+  }
+  const running = inflightWrites.get(key);
+  if (running) return running as Promise<T>;
+  const p = send().finally(() => inflightWrites.delete(key));
+  inflightWrites.set(key, p);
+  return p;
+}
+
 export const api = {
   get: <T>(url: string, params?: object) => 
     apiClient.get<T>(url, { params }).then(res => res.data),
   
   post: <T>(url: string, data?: object) => 
-    apiClient.post<T>(url, data).then(res => res.data),
+    sendWriteOnce('POST', url, data, () => apiClient.post<T>(url, data).then(res => res.data)),
   
   put: <T>(url: string, data?: object) => 
-    apiClient.put<T>(url, data).then(res => res.data),
+    sendWriteOnce('PUT', url, data, () => apiClient.put<T>(url, data).then(res => res.data)),
   
   patch: <T>(url: string, data?: object) => 
-    apiClient.patch<T>(url, data).then(res => res.data),
+    sendWriteOnce('PATCH', url, data, () => apiClient.patch<T>(url, data).then(res => res.data)),
   
   delete: <T>(url: string, data?: object) =>
-    apiClient.delete<T>(url, data ? { data: toSnakeCase(data) } : undefined).then(res => res.data),
+    sendWriteOnce('DELETE', url, data, () =>
+      apiClient.delete<T>(url, data ? { data: toSnakeCase(data) } : undefined).then(res => res.data)),
   
   postForm: <T>(url: string, data: FormData) => 
     apiClient.post<T>(url, data).then(res => res.data),

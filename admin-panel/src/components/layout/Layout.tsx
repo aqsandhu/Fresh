@@ -1,6 +1,8 @@
 import React, { useState, useContext } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { Search } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -32,7 +34,25 @@ export const Layout: React.FC<LayoutProps> = ({
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   // Rendered inside another Layout (a tab) — skip the chrome, keep the content.
-  if (nested) return <>{children}</>;
+  // A tab that searches keeps its search box: the header that normally holds
+  // it is not drawn for a tab (Products inside Catalog had no search at all).
+  if (nested) {
+    return (
+      <>
+        {onSearch && (
+          <div className="mb-4 w-full sm:w-72">
+            <Input
+              aria-label={searchPlaceholder || 'Search'}
+              placeholder={searchPlaceholder || 'Search...'}
+              leftIcon={<Search className="w-5 h-5 text-gray-400" />}
+              onChange={(e) => onSearch(e.target.value)}
+            />
+          </div>
+        )}
+        {children}
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex">

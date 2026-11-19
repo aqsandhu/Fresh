@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Search, Loader2, Send, Undo2, Trash2, Repeat, ArrowLeftRight, History, FileText, ClipboardCheck } from 'lucide-react';
@@ -8,6 +9,9 @@ import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { stockService, type StockProduct, type StockQuality, type Quality } from '@/services/stock.service';
 import toast from 'react-hot-toast';
+import { isQueued } from '@/lib/approvalQueue';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toLocaleString('en-PK');
 const todayInput = () => {
@@ -24,6 +28,10 @@ interface ActionCtx { action: Action; product: StockProduct; quality: Quality }
 
 export const StockManagement: React.FC = () => {
   const qc = useQueryClient();
+  // Every stock action needs stock.adjust on the server; a role that may only
+  // look (products.view) was offered them all and refused (G23).
+  const { user } = useAuthContext();
+  const canAdjust = hasPermission(user?.permissions, 'stock.adjust');
   const [search, setSearch] = useState('');
   const [ctx, setCtx] = useState<ActionCtx | null>(null);
   const [historyFor, setHistoryFor] = useState<StockProduct | null>(null);
@@ -95,7 +103,7 @@ export const StockManagement: React.FC = () => {
                   </thead>
                   <tbody>
                     {p.qualities.map((q) => (
-                      <QualityRow key={q.quality} p={p} q={q} onAction={(action) => setCtx({ action, product: p, quality: q.quality })} />
+                      <QualityRow key={q.quality} p={p} q={q} canAdjust={canAdjust} onAction={(action) => setCtx({ action, product: p, quality: q.quality })} />
                     ))}
                   </tbody>
                 </table>
@@ -112,7 +120,7 @@ export const StockManagement: React.FC = () => {
   );
 };
 
-function QualityRow({ q, onAction }: { p: StockProduct; q: StockQuality; onAction: (a: Action) => void }) {
+function QualityRow({ q, onAction, canAdjust }: { p: StockProduct; q: StockQuality; onAction: (a: Action) => void; canAdjust: boolean }) {
   const tone = q.quality === 'A' ? 'bg-emerald-50 text-emerald-700' : q.quality === 'B' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700';
   return (
     <tr className="border-t border-gray-100">
@@ -125,6 +133,7 @@ function QualityRow({ q, onAction }: { p: StockProduct; q: StockQuality; onActio
         {q.ocps.length === 0 ? '—' : q.ocps.map((o) => `${o.name}: ${fmt(o.qty)}`).join(', ')}
       </td>
       <td className="py-2 pl-2">
+        {canAdjust ? (
         <div className="flex flex-wrap gap-1 justify-end">
           <IconBtn title="Send to OCP" onClick={() => onAction('shift')}><Send className="w-3.5 h-3.5" /></IconBtn>
           <IconBtn title="Return from OCP" onClick={() => onAction('return')}><Undo2 className="w-3.5 h-3.5" /></IconBtn>
@@ -133,6 +142,9 @@ function QualityRow({ q, onAction }: { p: StockProduct; q: StockQuality; onActio
           <IconBtn title="Count stock" onClick={() => onAction('count')}><ClipboardCheck className="w-3.5 h-3.5" /></IconBtn>
           <IconBtn title="Waste" danger onClick={() => onAction('waste')}><Trash2 className="w-3.5 h-3.5" /></IconBtn>
         </div>
+        ) : (
+          <span className="block text-right text-xs text-gray-400">View only</span>
+        )}
       </td>
     </tr>
   );
@@ -205,21 +217,34 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
       }
     },
     onSuccess: (res: any) => {
-      if (action === 'count') toast.success(res?.message || 'Count saved');
+      // A count below what open orders hold is saved, but shown as a warning (A33).
+      if (action === 'count' && Number(res?.data?.shortForOpenOrders) > 0) toast.error(res?.message, { duration: 10000 });
+      else if (action === 'count') toast.success(res?.message || 'Count saved');
       else toast.success(action === 'shift' ? 'Sent — the OCP must confirm receipt in its portal' : `${meta.verb} done`);
       onDone();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (eCaught: unknown) => {
+      const e = errorView(eCaught);
+      if (isQueued(e)) { onDone(); return; } // waste / conversion / shortage waits for the city admin (J1)
+      toast.error(e?.response?.data?.message || 'Failed');
+    },
   });
 
   const needsOcp = action === 'shift' || action === 'return' || action === 'transfer';
   const needsToOcp = action === 'transfer';
-  const valid =
-    (action === 'count' ? qty.trim() !== '' && parseFloat(qty) >= 0 : parseFloat(qty) > 0) &&
-    (!needsOcp || ocpId) &&
-    (!needsToOcp || (toOcpId && toOcpId !== ocpId)) &&
-    (action !== 'convert' || (toQuality !== quality && reason.trim().length > 0)) &&
-    (action !== 'waste' || (reason.trim().length > 0 && parseFloat(evidenceQty) > 0 && !!proofFile));
+  // What is still missing — the button used to sit disabled with no word on
+  // why (waste also needs a matching evidence quantity and a photo) (G14).
+  const missing: string[] = [];
+  if (action === 'count' ? !(qty.trim() !== '' && parseFloat(qty) >= 0) : !(parseFloat(qty) > 0)) missing.push('a quantity');
+  if (needsOcp && !ocpId) missing.push(action === 'transfer' ? 'the "from" OCP' : 'an OCP');
+  if (needsToOcp && !(toOcpId && toOcpId !== ocpId)) missing.push('a different "to" OCP');
+  if ((action === 'convert' || action === 'waste') && !reason.trim()) missing.push('a reason');
+  if (action === 'waste') {
+    if (!(parseFloat(evidenceQty) > 0)) missing.push('the evidence quantity');
+    else if (Math.abs(parseFloat(evidenceQty) - parseFloat(qty)) > 0.001) missing.push('an evidence quantity equal to the quantity');
+    if (!proofFile) missing.push('a proof photo');
+  }
+  const valid = missing.length === 0 && (action !== 'convert' || toQuality !== quality);
 
   return (
     <Modal isOpen onClose={onClose} title={`${meta.title} — ${product.name} (Q${quality})`}
@@ -259,6 +284,7 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
         <div>
           <label htmlFor="stockmanagement-f8" className="block text-sm font-medium text-gray-700 mb-1">
             {action === 'count' ? `Quantity you counted — shelf + packed bags in the store (${product.unitType})` : `Quantity (${product.unitType})`}
+            {' '}<span className="text-red-500">*</span>
           </label>
           <input id="stockmanagement-f8" type="number" min={0} step="0.001" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus
             className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -266,12 +292,12 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
         {action === 'waste' && (
           <div className="space-y-3">
             <div>
-              <label htmlFor="stockmanagement-f4" className="block text-sm font-medium text-gray-700 mb-1">Evidence quantity</label>
+              <label htmlFor="stockmanagement-f4" className="block text-sm font-medium text-gray-700 mb-1">Evidence quantity (same as the quantity, as seen in the photo) <span className="text-red-500">*</span></label>
               <input id="stockmanagement-f4" type="number" min={0} step="0.001" value={evidenceQty} onChange={(e) => setEvidenceQty(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             </div>
             <div>
-              <label htmlFor="stockmanagement-f5" className="block text-sm font-medium text-gray-700 mb-1">Proof image</label>
+              <label htmlFor="stockmanagement-f5" className="block text-sm font-medium text-gray-700 mb-1">Proof image <span className="text-red-500">*</span></label>
               <input id="stockmanagement-f5" type="file" accept="image/*" onChange={(e) => setProofFile(e.target.files?.[0] || null)}
                 className="block w-full text-sm text-gray-700 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200" />
             </div>
@@ -299,6 +325,9 @@ function ActionModal({ ctx, ocps, onClose, onDone }: { ctx: ActionCtx; ocps: { i
             <Input label="Approver phone (high value)" value={approvalPhone} onChange={(e) => setApprovalPhone(e.target.value)} />
             <Input label="Approval code from the second admin (high value)" type="text" inputMode="numeric" maxLength={6} value={approvalPassword} onChange={(e) => setApprovalPassword(e.target.value)} />
           </>
+        )}
+        {missing.length > 0 && (qty !== '' || reason !== '' || evidenceQty !== '' || !!proofFile) && (
+          <p className="text-xs text-amber-700" role="status">Still needed: {missing.join(', ')}.</p>
         )}
         <p className="text-xs text-gray-400">
           {action === 'waste' && 'Removes from the city total. Only central, unreserved stock can be wasted.'}

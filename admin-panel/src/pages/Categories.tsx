@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -45,6 +46,9 @@ export const Categories: React.FC = () => {
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // The stored picture was removed in Edit (and no new one picked) — the
+  // update must say so, or the picture came back after saving (G19).
+  const [removedStoredImage, setRemovedStoredImage] = useState(false);
 
   const [formData, setFormData] = useState<CreateCategoryData>({
     nameEn: '',
@@ -68,7 +72,8 @@ export const Categories: React.FC = () => {
       toast.success('Category created successfully');
       closeModal();
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+      const err = errorView(errCaught);
       toast.error(err?.message || 'Failed to create category');
     },
   });
@@ -80,7 +85,8 @@ export const Categories: React.FC = () => {
       toast.success('Category created successfully');
       closeModal();
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+      const err = errorView(errCaught);
       toast.error(err?.message || 'Failed to create category');
     },
   });
@@ -93,7 +99,8 @@ export const Categories: React.FC = () => {
       toast.success('Category updated successfully');
       closeModal();
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+      const err = errorView(errCaught);
       toast.error(err?.message || 'Failed to update category');
     },
   });
@@ -106,7 +113,8 @@ export const Categories: React.FC = () => {
       toast.success('Category updated successfully');
       closeModal();
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+      const err = errorView(errCaught);
       toast.error(err?.message || 'Failed to update category');
     },
   });
@@ -117,7 +125,8 @@ export const Categories: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success('Category deleted successfully');
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+      const err = errorView(errCaught);
       toast.error(err?.response?.data?.message || err?.message || 'Failed to delete category');
     },
   });
@@ -128,13 +137,15 @@ export const Categories: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       toast.success(res.isActive ? 'Category activated' : 'Category deactivated');
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+      const err = errorView(errCaught);
       toast.error(err?.message || 'Failed to update category');
     },
   });
 
   const openAddModal = () => {
     setEditingCategory(null);
+    setRemovedStoredImage(false);
     setSelectedImage(null);
     setImagePreview(null);
     setFormErrors({});
@@ -152,6 +163,7 @@ export const Categories: React.FC = () => {
 
   const openEditModal = (category: Category) => {
     setEditingCategory(category);
+    setRemovedStoredImage(false);
     setSelectedImage(null);
     setFormErrors({});
     setFormData({
@@ -205,6 +217,7 @@ export const Categories: React.FC = () => {
   };
 
   const removeImage = () => {
+    if (editingCategory?.imageUrl) setRemovedStoredImage(true);
     setSelectedImage(null);
     setImagePreview(null);
   };
@@ -276,7 +289,10 @@ export const Categories: React.FC = () => {
         submitData.append('image', selectedImage);
         updateWithImageMutation.mutate({ id: editingCategory.id, data: submitData });
       } else {
-        updateMutation.mutate({ id: editingCategory.id, data: payload });
+        updateMutation.mutate({
+          id: editingCategory.id,
+          data: removedStoredImage ? { ...payload, imageUrl: null } : payload,
+        });
       }
     } else if (selectedImage) {
       const submitData = new FormData();
@@ -543,6 +559,7 @@ export const Categories: React.FC = () => {
                   />
                   <button
                     type="button"
+                    aria-label="Remove image"
                     onClick={removeImage}
                     className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
                   >

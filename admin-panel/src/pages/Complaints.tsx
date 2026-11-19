@@ -1,8 +1,10 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquareWarning, Loader2, ChevronDown, ChevronUp, Wallet, PackagePlus } from 'lucide-react';
-import toast from 'react-hot-toast';
+import toast from 'react-hot-toast';
+import { isQueued } from '@/lib/approvalQueue';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -136,7 +138,7 @@ function ComplaintCard({
       toast.success('Complaint updated');
       queryClient.invalidateQueries({ queryKey: ['admin-complaints'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Update failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Update failed'),
   });
 
   return (
@@ -178,7 +180,7 @@ function ComplaintCard({
                   rel="noopener noreferrer"
                   className="h-20 w-20 overflow-hidden rounded-lg border border-gray-200"
                 >
-                  <img src={resolveImageUrl(img)} alt="" className="h-full w-full object-cover" />
+                  <img src={resolveImageUrl(img)} alt={`Complaint photo ${i + 1}`} className="h-full w-full object-cover" />
                 </a>
               ))}
             </div>
@@ -239,7 +241,11 @@ function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { user } = useAuthContext();
-  const canManage = hasPermission(user?.permissions, COMPLAINT_MANAGE_CODES);
+  // The server records a refund only for orders.refund, and the replacement
+  // composer (WhatsApp orders) opens only for orders.update — both used to be
+  // offered on complaints.manage and refused (G26).
+  const canRefund = hasPermission(user?.permissions, 'orders.refund');
+  const canReplace = hasPermission(user?.permissions, 'orders.update');
   const [refundOpen, setRefundOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [source, setSource] = useState<'admin' | 'ocp'>('admin');
@@ -258,7 +264,12 @@ function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) 
       setRefundOpen(false); setAmount(''); setNote('');
       queryClient.invalidateQueries({ queryKey: ['complaint-detail', complaint.id] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Refund failed'),
+    onError: (eCaught: unknown) => {
+
+      const e = errorView(eCaught);
+      if (isQueued(e)) { setRefundOpen(false); setAmount(''); setNote(''); return; } // waits for the city admin (J1)
+      toast.error(e?.response?.data?.message || 'Refund failed');
+    },
   });
 
   return (
@@ -271,10 +282,10 @@ function RefundReplacementSection({ complaint }: { complaint: AdminComplaint }) 
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" disabled={!canManage || !order || order.refundable <= 0} title={canManage ? undefined : 'No permission'} onClick={() => { setAmount(String(order?.refundable ?? '')); setRefundOpen(true); }}>
+        <Button size="sm" variant="outline" disabled={!canRefund || !order || order.refundable <= 0} title={canRefund ? undefined : 'Needs the "Refund orders" permission'} onClick={() => { setAmount(String(order?.refundable ?? '')); setRefundOpen(true); }}>
           <Wallet className="w-4 h-4 mr-1 inline" /> Refund
         </Button>
-        <Button size="sm" variant="outline" disabled={!canManage} title={canManage ? undefined : 'No permission'} onClick={() => navigate(`/admin/whatsapp-orders?replacementFor=${complaint.orderId}&complaintId=${complaint.id}`)}>
+        <Button size="sm" variant="outline" disabled={!canReplace} title={canReplace ? undefined : 'Needs the "Update orders" permission'} onClick={() => navigate(`/admin/whatsapp-orders?replacementFor=${complaint.orderId}&complaintId=${complaint.id}`)}>
           <PackagePlus className="w-4 h-4 mr-1 inline" /> Send replacement
         </Button>
       </div>

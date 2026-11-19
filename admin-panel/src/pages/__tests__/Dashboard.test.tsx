@@ -1,8 +1,9 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Dashboard } from '@/pages/Dashboard';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { newTestQueryClient } from '@/testDoubles/testQueryClient';
+import { Dashboard } from '@/pages/Dashboard';
 import { ROUTER_FUTURE } from '@/lib/routerFuture';
 
 // Mock dashboard service
@@ -76,11 +77,7 @@ jest.mock('lucide-react', () => ({
 
 describe('Dashboard Page', () => {
   const createTestQueryClient = () =>
-    new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    });
+    newTestQueryClient();
 
   const mockDashboardData = {
     today: {
@@ -190,7 +187,7 @@ describe('Dashboard Page', () => {
     renderDashboard();
     
     await waitFor(() => {
-      expect(screen.getByText('Weekly Summary')).toBeInTheDocument();
+      expect(screen.getByText('Last 7 days')).toBeInTheDocument();
     });
   });
 
@@ -198,7 +195,7 @@ describe('Dashboard Page', () => {
     renderDashboard();
     
     await waitFor(() => {
-      expect(screen.getByText('Monthly Summary')).toBeInTheDocument();
+      expect(screen.getByText('This month')).toBeInTheDocument();
     });
   });
 

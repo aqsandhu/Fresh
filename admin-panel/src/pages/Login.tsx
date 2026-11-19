@@ -162,7 +162,7 @@ export const Login: React.FC = () => {
 
         {/* Footer */}
         <p className="text-center text-sm text-gray-600 mt-8">
-          © 2024 Fresh Bazar. All rights reserved.
+          © {new Date().getFullYear()} Fresh Bazar. All rights reserved.
         </p>
       </div>
     </div>

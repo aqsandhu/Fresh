@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, ShoppingCart, Filter } from 'lucide-react';
@@ -10,8 +11,12 @@ import { financeService, type ExpenseFilters } from '@/services/finance.service'
 import { formatDateTime } from '@/utils/formatters';
 import { getStockPurchaseBalance } from '@/utils/stockPurchase';
 import toast from 'react-hot-toast';
+import { isQueued } from '@/lib/approvalQueue';
 import { ApproverFields } from '@/components/ui/ApproverFields';
+import { PurchaseRequests } from '@/components/finance/PurchaseRequests';
 import { needsSecondAdmin } from '@/utils/auditPeriod';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
 const TYPE_LABEL: Record<string, string> = {
@@ -27,6 +32,12 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 
 export const Expenses: React.FC = () => {
   const qc = useQueryClient();
+  // Staff may enter purchases / expenses without seeing the books (G12): the
+  // list used to be fetched for everyone and refused with a red pop-up.
+  const { user } = useAuthContext();
+  const canViewList = hasPermission(user?.permissions, 'finance.expenses.view');
+  const canBuyStock = hasPermission(user?.permissions, 'finance.stock_purchase.create');
+  const canAddExpense = hasPermission(user?.permissions, 'finance.expenses.create');
   const [mode, setMode] = useState<'all' | 'today' | 'month' | 'day' | 'pickMonth'>('today');
   const [typeFilter, setTypeFilter] = useState('');
   const [day, setDay] = useState('');
@@ -48,6 +59,7 @@ export const Expenses: React.FC = () => {
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', filters],
     queryFn: () => financeService.listExpenses(filters),
+    enabled: canViewList,
   });
   const invalidate = () => qc.invalidateQueries({ queryKey: ['expenses'] });
 
@@ -62,10 +74,18 @@ export const Expenses: React.FC = () => {
   return (
     <Layout title="Expenses" subtitle="Stock purchases, rider & worker payments, and all other expenses">
       <div className="flex flex-wrap gap-2 mb-4">
-        <Button onClick={() => setStockOpen(true)} leftIcon={<ShoppingCart className="w-4 h-4" />}>Stock purchase</Button>
-        <Button variant="outline" onClick={() => setExpenseOpen(true)} leftIcon={<Plus className="w-4 h-4" />}>Add expense</Button>
+        {canBuyStock && <Button onClick={() => setStockOpen(true)} leftIcon={<ShoppingCart className="w-4 h-4" />}>Stock purchase</Button>}
+        {canAddExpense && <Button variant="outline" onClick={() => setExpenseOpen(true)} leftIcon={<Plus className="w-4 h-4" />}>Add expense</Button>}
       </div>
 
+      <PurchaseRequests onApplied={invalidate} />
+
+      {!canViewList && (
+        <Card className="text-center py-8 text-sm text-gray-500">
+          Your role can enter purchases and expenses, but the expense list is visible only to roles with &quot;View expenses&quot;.
+        </Card>
+      )}
+      {canViewList && (<>
       {/* Filters */}
       <Card className="mb-4">
         <div className="flex flex-wrap items-center gap-3">
@@ -77,17 +97,17 @@ export const Expenses: React.FC = () => {
             ))}
           </div>
           {mode === 'day' && (
-            <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+            <input type="date" aria-label="Day" value={day} onChange={(e) => setDay(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           )}
           {mode === 'pickMonth' && (
             <>
-              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <select aria-label="Month" value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
                 {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
               </select>
-              <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              <input type="number" aria-label="Year" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             </>
           )}
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm ml-auto">
+          <select aria-label="Expense type filter" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm ml-auto">
             <option value="">All types</option>
             {Object.entries(TYPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
@@ -154,6 +174,7 @@ export const Expenses: React.FC = () => {
           </table>
         </Card>
       )}
+      </>)}
 
       {stockOpen && <StockPurchaseModal onClose={() => setStockOpen(false)} onDone={() => { setStockOpen(false); invalidate(); }} />}
       {expenseOpen && <AddExpenseModal onClose={() => setExpenseOpen(false)} onDone={() => { setExpenseOpen(false); invalidate(); }} />}
@@ -162,6 +183,7 @@ export const Expenses: React.FC = () => {
 };
 
 function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const qc = useQueryClient();
   const { data: products = [] } = useQuery({ queryKey: ['finance-products'], queryFn: () => financeService.products() });
   const [productId, setProductId] = useState('');
   const [purchasedAt, setPurchasedAt] = useState(nowLocal());
@@ -187,8 +209,14 @@ function StockPurchaseModal({ onClose, onDone }: { onClose: () => void; onDone: 
       supplierName: supplierName.trim(), supplierPhone: supplierPhone.trim() || undefined,
       billNumber: billNumber.trim() || undefined, billPhoto,
     }),
-    onSuccess: () => { toast.success('Stock purchased & added to stock'); onDone(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onSuccess: (r) => {
+      // Staff entries wait for the city admin; an approver's own entry applies at once.
+      const pending = (r as { status?: string } | undefined)?.status === 'pending';
+      toast.success(pending ? 'Entered — waiting for the city admin to approve' : 'Stock purchased & added to stock');
+      qc.invalidateQueries({ queryKey: ['purchase-requests'] });
+      onDone();
+    },
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed'),
   });
 
   const { raw, gradedTotal, remaining, balanced } = getStockPurchaseBalance(rawWeight, gradeA, gradeB, gradeC, waste);
@@ -270,7 +298,9 @@ function AddExpenseModal({ onClose, onDone }: { onClose: () => void; onDone: () 
       approvalPhone: approvalPhone.trim() || undefined, approvalPassword: approvalPassword || undefined,
     }),
     onSuccess: () => { toast.success('Expense added'); onDone(); },
-    onError: (e: any) => {
+    onError: (eCaught: unknown) => {
+      const e = errorView(eCaught);
+      if (isQueued(e)) { onDone(); return; } // waits for the city admin (J1)
       const msg = e?.response?.data?.message || 'Failed';
       if (needsSecondAdmin(msg)) setNeedApproval(true);
       toast.error(msg);

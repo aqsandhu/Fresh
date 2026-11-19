@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -50,6 +51,9 @@ export const Riders: React.FC = () => {
   const queryClient = useQueryClient();
   const { user } = useAuthContext();
   const canManage = hasPermission(user?.permissions, 'riders.manage');
+  // Paying a rider is a finance entry (server: finance.rider_payments.create),
+  // not rider management (G25).
+  const canPay = hasPermission(user?.permissions, 'finance.rider_payments.create');
 
   const [searchQuery, setSearchQuery] = useState('');
   const search = useDebounce(searchQuery, 300);
@@ -99,7 +103,7 @@ export const Riders: React.FC = () => {
   const deleteMutation = useMutation({
     mutationFn: riderService.deleteRider,
     onSuccess: () => { invalidate(); toast.success('Rider deleted'); },
-    onError: (e: any) => toast.error(e?.message || 'Failed to delete rider'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to delete rider'),
   });
 
   const updateStatusMutation = useMutation({
@@ -108,7 +112,7 @@ export const Riders: React.FC = () => {
       invalidate();
       toast.success(`Duty status: ${RIDER_STATUS_LABEL[r?.status] || r?.status || 'updated'}`);
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to update status'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to update status'),
   });
 
   const verifyMutation = useMutation({
@@ -117,7 +121,7 @@ export const Riders: React.FC = () => {
       invalidate();
       toast.success(v.status === 'verified' ? 'Rider can work now' : v.status === 'rejected' ? 'Rider blocked and signed out' : 'Verification updated');
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to update rider'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to update rider'),
   });
 
   const handleDelete = (rider: Rider) => {
@@ -255,10 +259,10 @@ export const Riders: React.FC = () => {
             />
           </div>
           <div className="w-48">
-            <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} options={RIDER_STATUS} />
+            <Select aria-label="Duty filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} options={RIDER_STATUS} />
           </div>
           <div className="w-48">
-            <Select value={verificationFilter} onChange={(e) => setVerificationFilter(e.target.value)} options={VERIFICATION_STATUS} />
+            <Select aria-label="Account filter" value={verificationFilter} onChange={(e) => setVerificationFilter(e.target.value)} options={VERIFICATION_STATUS} />
           </div>
           <label className="inline-flex items-center gap-2 text-sm text-gray-700 pb-2">
             <input type="checkbox" checked={onlineOnly} onChange={(e) => setOnlineOnly(e.target.checked)} />
@@ -377,9 +381,11 @@ export const Riders: React.FC = () => {
                               {rider.verificationStatus === 'rejected' ? <Shield className="w-4 h-4" /> : <ShieldOff className="w-4 h-4" />}
                             </IconButton>
                           )}
-                          <IconButton title="Pay rider (salary / bonus)" onClick={() => setPayRider(rider)} hover="green"><DollarSign className="w-4 h-4" /></IconButton>
                           <IconButton title="Delete" onClick={() => handleDelete(rider)} hover="red"><Trash2 className="w-4 h-4" /></IconButton>
                         </>
+                      )}
+                      {canPay && (
+                        <IconButton title="Pay rider (salary / bonus)" onClick={() => setPayRider(rider)} hover="green"><DollarSign className="w-4 h-4" /></IconButton>
                       )}
                     </div>
                   </div>

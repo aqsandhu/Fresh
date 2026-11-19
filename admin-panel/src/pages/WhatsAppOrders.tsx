@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -14,9 +15,13 @@ import { whatsappService } from '@/services/whatsapp.service';
 import { productService } from '@/services/product.service';
 import { resolveImageUrl } from '@/utils/formatters';
 import { useDebounce } from '@/hooks/useDebounce';
-import type { WhatsAppOrderData, WhatsappCustomerAddress, ApiResponse } from '@/types';
+import type { WhatsAppOrderData, WhatsappCustomerAddress, ApiResponse, Product } from '@/types';
+import type { WaSlot, WaDeliverySettings } from '@/lib/whatsappOrderShapes';
 import { RestaurantWhatsAppOrder } from './RestaurantWhatsAppOrder';
 import toast from 'react-hot-toast';
+import { isQueued } from '@/lib/approvalQueue';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 
 type Quality = 'A' | 'B' | 'C';
 
@@ -64,7 +69,7 @@ function fmtTime(t?: string): string {
 }
 
 /** Whether a slot has already passed (today only). */
-function slotPassed(slot: any, day: 'today' | 'tomorrow'): boolean {
+function slotPassed(slot: WaSlot, day: 'today' | 'tomorrow'): boolean {
   if (day !== 'today') return false;
   const end = String(slot.endTime || '');
   const [hStr, mStr] = end.split(':');
@@ -75,7 +80,7 @@ function slotPassed(slot: any, day: 'today' | 'tomorrow'): boolean {
 }
 
 /** Units the admin enabled for a product — base unit + allowed fractions. */
-function allowedUnitsFor(product: any): UnitOption[] {
+function allowedUnitsFor(product: Product | undefined): UnitOption[] {
   const unitType = String(product?.unitType || 'kg').toLowerCase();
   const baseLabel =
     unitType === 'dozen'
@@ -101,14 +106,14 @@ const optNum = (v: unknown): number | null => {
 };
 
 /** Consumer base (per-full-unit) price for a quality tier (null = not offered). */
-function qualityBaseConsumer(product: any, quality: Quality): number | null {
+function qualityBaseConsumer(product: Product | undefined, quality: Quality): number | null {
   if (quality === 'B') return optNum(product?.priceB);
   if (quality === 'C') return optNum(product?.priceC);
   return Number(product?.price) || 0;
 }
 
 /** Quality tiers a product offers: A always; B/C only when a consumer price is set. */
-function offeredQualities(product: any): Quality[] {
+function offeredQualities(product: Product | undefined): Quality[] {
   const out: Quality[] = ['A'];
   if (qualityBaseConsumer(product, 'B') != null) out.push('B');
   if (qualityBaseConsumer(product, 'C') != null) out.push('C');
@@ -116,7 +121,7 @@ function offeredQualities(product: any): Quality[] {
 }
 
 /** Explicit per-quality consumer fraction price (null when blank/absent). */
-function explicitConsumerFraction(product: any, unit: string, quality: Quality): number | null {
+function explicitConsumerFraction(product: Product | undefined, unit: string, quality: Quality): number | null {
   if (unit === 'half_kg') return optNum(quality === 'A' ? product?.halfKgPrice : quality === 'B' ? product?.halfKgPriceB : product?.halfKgPriceC);
   if (unit === 'quarter_kg') return optNum(quality === 'A' ? product?.quarterKgPrice : quality === 'B' ? product?.quarterKgPriceB : product?.quarterKgPriceC);
   if (unit === 'half_dozen') return optNum(quality === 'A' ? product?.halfDozenPrice : quality === 'B' ? product?.halfDozenPriceB : product?.halfDozenPriceC);
@@ -125,7 +130,7 @@ function explicitConsumerFraction(product: any, unit: string, quality: Quality):
 
 /** Per-unit price — mirrors backend resolveConsumerUnitPrice (no rounding here).
  *  Every quality honours its explicit fraction price first, then derives from base. */
-function unitPriceFor(product: any, unit: string, quality: Quality = 'A'): number {
+function unitPriceFor(product: Product | undefined, unit: string, quality: Quality = 'A'): number {
   const base = qualityBaseConsumer(product, quality) ?? (Number(product?.price) || 0);
   const explicit = explicitConsumerFraction(product, unit, quality);
   if (explicit != null) return explicit;
@@ -188,13 +193,21 @@ export const WhatsAppOrders: React.FC = () => {
   const [productSearch, setProductSearch] = useState('');
   const debouncedProductSearch = useDebounce(productSearch.trim());
 
+  // The product list needs "View products"; restaurant orders need
+  // "Manage restaurants". Without them the page used to fire refused calls
+  // (red pop-ups) and offer a form that could never be completed.
+  const { user } = useAuthContext();
+  const canSeeProducts = hasPermission(user?.permissions, 'products.view');
+  const canRestaurantOrder = hasPermission(user?.permissions, 'restaurants.manage');
+
   const { data: productsData } = useQuery({
     queryKey: ['products-for-whatsapp', debouncedProductSearch],
     queryFn: () => productService.getProducts({ page: 1, limit: 200, search: debouncedProductSearch || undefined }),
+    enabled: canSeeProducts,
   });
   // Cache every fetched product so items already picked keep rendering (and
   // pricing) correctly even when they fall out of the current search results.
-  const productCache = useRef<Record<string, any>>({});
+  const productCache = useRef<Record<string, Product>>({});
   useEffect(() => {
     for (const p of productsData?.products || []) productCache.current[p.id] = p;
   }, [productsData]);
@@ -203,9 +216,9 @@ export const WhatsAppOrders: React.FC = () => {
   const products = useMemo(() => {
     const list = productsData?.products || [];
     const missing = items
-      .filter((i) => i.productId && !list.some((p: any) => p.id === i.productId))
+      .filter((i) => i.productId && !list.some((p) => p.id === i.productId))
       .map((i) => productCache.current[i.productId])
-      .filter(Boolean);
+      .filter((p): p is Product => Boolean(p));
     return missing.length ? [...list, ...missing] : list;
   }, [productsData?.products, items]);
 
@@ -213,7 +226,7 @@ export const WhatsAppOrders: React.FC = () => {
   const { data: deliveryConf } = useQuery({
     queryKey: ['wa-delivery-settings'],
     queryFn: async () => {
-      const r = await api.get<ApiResponse<any>>('/site-settings/delivery');
+      const r = await api.get<ApiResponse<WaDeliverySettings>>('/site-settings/delivery');
       return r.data;
     },
   });
@@ -227,7 +240,7 @@ export const WhatsAppOrders: React.FC = () => {
   const { data: slotsData, isLoading: slotsLoading } = useQuery({
     queryKey: ['wa-time-slots', selectedDay],
     queryFn: async () => {
-      const r = await api.get<ApiResponse<any[]>>('/orders/time-slots', { date: dateStr(selectedDay) });
+      const r = await api.get<ApiResponse<WaSlot[]>>('/orders/time-slots', { date: dateStr(selectedDay) });
       return r.data || [];
     },
   });
@@ -240,7 +253,10 @@ export const WhatsAppOrders: React.FC = () => {
       toast.success('WhatsApp order placed — visible in Orders');
       resetForm();
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+
+      const err = errorView(errCaught);
+      if (isQueued(err)) { resetForm(); return; } // discount waits for the city admin (J1)
       toast.error(err?.message || err?.response?.data?.message || 'Failed to place order');
     },
   });
@@ -323,7 +339,7 @@ export const WhatsAppOrders: React.FC = () => {
   const updateItem = (id: string, field: keyof OrderItem, value: string | number) =>
     setItems(items.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
 
-  const selectedSlotObj = slots.find((s: any) => s.id === timeSlotId);
+  const selectedSlotObj = slots.find((s) => s.id === timeSlotId);
 
   // ── Live pricing preview (mirrors the server's authoritative math) ──────────
   const pricing = useMemo(() => {
@@ -331,7 +347,7 @@ export const WhatsAppOrders: React.FC = () => {
     let subtotal = 0;
     let vegFruitSubtotal = 0;
     for (const it of validItems) {
-      const product = (products as any[]).find((p: any) => p.id === it.productId);
+      const product = products.find((p) => p.id === it.productId);
       if (!product) continue;
       // An explicit override price (replacement orders) is what the server will
       // charge — the payload sends it (same predicate), so the preview must too.
@@ -408,7 +424,14 @@ export const WhatsAppOrders: React.FC = () => {
             </div>
           </div>
         )}
+        {!canSeeProducts && (
+          <div role="alert" className="mb-4 rounded-xl border-2 border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            Your role cannot see the product list, so an order cannot be built here. Ask the owner to add
+            &quot;View products&quot; to your role.
+          </div>
+        )}
         {/* Customer vs Restaurant order */}
+        {canRestaurantOrder && (
         <div className="mb-4 inline-flex rounded-lg bg-gray-100 p-1">
           {(['customer', 'restaurant'] as const).map((m) => (
             <button
@@ -423,8 +446,9 @@ export const WhatsAppOrders: React.FC = () => {
             </button>
           ))}
         </div>
+        )}
 
-        {mode === 'restaurant' ? (
+        {mode === 'restaurant' && canRestaurantOrder ? (
           <Card>
             <RestaurantWhatsAppOrder />
           </Card>
@@ -462,7 +486,7 @@ export const WhatsAppOrders: React.FC = () => {
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                       required
                     />
-                    <Button type="button" variant="outline" onClick={handleLookup} disabled={lookingUp}>
+                    <Button type="button" variant="outline" onClick={handleLookup} disabled={lookingUp} aria-label="Look up customer">
                       {lookingUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
                     </Button>
                   </div>
@@ -475,7 +499,7 @@ export const WhatsAppOrders: React.FC = () => {
                   )}
                 </div>
                 <Input
-                  label="Customer Name *"
+                  label="Customer Name"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="Enter customer name"
@@ -602,6 +626,7 @@ export const WhatsAppOrders: React.FC = () => {
               <div className="relative mb-3">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
+                  aria-label="Search products"
                   value={productSearch}
                   onChange={(e) => setProductSearch(e.target.value)}
                   // Enter searches instead of submitting the whole form.
@@ -612,7 +637,7 @@ export const WhatsAppOrders: React.FC = () => {
               </div>
               <div className="space-y-3">
                 {items.map((item, index) => {
-                  const product = (products as any[]).find((p: any) => p.id === item.productId);
+                  const product = products.find((p) => p.id === item.productId);
                   const units = product ? allowedUnitsFor(product) : [{ value: 'full', label: 'Per unit', short: 'unit' }];
                   const selectedUnit = units.find((u) => u.value === item.unit) || units[0];
                   const qualities = product ? offeredQualities(product) : (['A'] as Quality[]);
@@ -623,6 +648,7 @@ export const WhatsAppOrders: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm text-gray-500 w-5">{index + 1}.</span>
                         <select
+                          aria-label={`Product ${index + 1}`}
                           value={item.productId}
                           onChange={(e) => {
                             // New product resets unit + quality to defaults.
@@ -631,7 +657,7 @@ export const WhatsAppOrders: React.FC = () => {
                           className="flex-1 min-w-[180px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
                         >
                           <option value="">Select product</option>
-                          {(products as any[]).map((p: any) => (
+                          {products.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.nameEn}
                             </option>
@@ -640,6 +666,7 @@ export const WhatsAppOrders: React.FC = () => {
 
                         {/* Quality — shown only when the product offers B/C tiers */}
                         <select
+                          aria-label={`Quality ${index + 1}`}
                           value={item.quality}
                           onChange={(e) => updateItem(item.id, 'quality', e.target.value)}
                           disabled={!item.productId || qualities.length <= 1}
@@ -655,6 +682,7 @@ export const WhatsAppOrders: React.FC = () => {
 
                         {/* Unit — only the units the admin enabled for this product */}
                         <select
+                          aria-label={`Unit ${index + 1}`}
                           value={item.unit}
                           onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
                           disabled={!item.productId || units.length <= 1}
@@ -671,6 +699,7 @@ export const WhatsAppOrders: React.FC = () => {
                         <div className="flex items-center rounded-lg border border-gray-300">
                           <button
                             type="button"
+                            aria-label={`Decrease quantity ${index + 1}`}
                             onClick={() => updateItem(item.id, 'quantity', Math.max(1, item.quantity - 1))}
                             className="px-2.5 py-1.5 text-gray-600 hover:bg-gray-100 rounded-l-lg"
                           >
@@ -679,6 +708,7 @@ export const WhatsAppOrders: React.FC = () => {
                           <span className="w-9 text-center text-sm font-medium tabular-nums">{item.quantity}</span>
                           <button
                             type="button"
+                            aria-label={`Increase quantity ${index + 1}`}
                             onClick={() => updateItem(item.id, 'quantity', item.quantity + 1)}
                             className="px-2.5 py-1.5 text-gray-600 hover:bg-gray-100 rounded-r-lg"
                           >
@@ -688,6 +718,7 @@ export const WhatsAppOrders: React.FC = () => {
 
                         <button
                           type="button"
+                          aria-label={`Remove item ${index + 1}`}
                           onClick={() => removeItem(item.id)}
                           className="p-2 text-red-500 hover:bg-red-50 rounded-lg"
                           disabled={items.length === 1}
@@ -715,6 +746,7 @@ export const WhatsAppOrders: React.FC = () => {
                           <span className="text-gray-500">Replacement price / {selectedUnit.short}:</span>
                           <input
                             type="number" min={0} step="0.01" placeholder={`normal ${unitPrice}`}
+                            aria-label={`Replacement price ${index + 1}`}
                             value={item.overridePrice ?? ''}
                             onChange={(e) => updateItem(item.id, 'overridePrice', e.target.value)}
                             className="w-28 px-2 py-1 border border-amber-300 rounded-lg text-sm"
@@ -809,7 +841,7 @@ export const WhatsAppOrders: React.FC = () => {
                         No time slots available for {selectedDay}.
                       </p>
                     ) : (
-                      slots.map((slot: any) => {
+                      slots.map((slot) => {
                         const full = (slot.availableSlots ?? 0) <= 0;
                         const passed = slotPassed(slot, selectedDay);
                         const disabled = full || passed;

@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Trash2, Plus, ShieldAlert, MessageCircle } from 'lucide-react';
@@ -116,14 +117,14 @@ export const ServiceAreas: React.FC = () => {
       toast.success('Service area saved');
       resetEditor();
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to save service area'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to save service area'),
   });
 
   const toggleMutation = useMutation({
     mutationFn: (area: ServiceArea) =>
       serviceAreaService.update(area.id, { isActive: !area.isActive }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['service-areas', cityId] }),
-    onError: (e: any) => toast.error(e?.message || 'Failed to update'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to update'),
   });
 
   const deleteMutation = useMutation({
@@ -133,7 +134,7 @@ export const ServiceAreas: React.FC = () => {
       toast.success('Service area deleted');
       resetEditor();
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to delete'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to delete'),
   });
 
   const messagesMutation = useMutation({
@@ -148,7 +149,7 @@ export const ServiceAreas: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['service-area-messages'] });
       toast.success('Out-of-area message saved');
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to save message'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to save message'),
   });
 
   const cityName = useMemo(

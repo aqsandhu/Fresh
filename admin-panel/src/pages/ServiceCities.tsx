@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MapPin, Plus, Trash2, ToggleLeft, ToggleRight, Copy } from 'lucide-react';
@@ -43,7 +44,9 @@ export const ServiceCities: React.FC = () => {
       setNewCity('');
       queryClient.invalidateQueries({ queryKey: ['service-cities'] });
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+
+      const err = errorView(errCaught);
       toast.error(err?.response?.data?.message || 'Failed to add city');
     },
   });
@@ -89,7 +92,9 @@ export const ServiceCities: React.FC = () => {
       setImportTargetId('');
       queryClient.invalidateQueries();
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+
+      const err = errorView(errCaught);
       toast.error(err?.response?.data?.message || 'Import failed');
     },
   });
@@ -105,6 +110,8 @@ export const ServiceCities: React.FC = () => {
 
   return (
     <Layout title="Service Cities" subtitle="Manage cities where delivery is available">
+      {/* A new city goes public at once — super admin only (B28). */}
+      {isSuperAdmin && (
       <Card className="mb-6">
         <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[200px]">
@@ -129,6 +136,7 @@ export const ServiceCities: React.FC = () => {
           </Button>
         </form>
       </Card>
+      )}
 
       {isSuperAdmin && cities.length >= 2 && (
         <Card className="mb-6">

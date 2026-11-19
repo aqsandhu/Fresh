@@ -3,6 +3,18 @@ import { SOCKET_URL } from '@/config/env';
 
 let socket: Socket | null = null;
 
+// Every listener a page or the notification provider asked for, by event.
+// `socket?.on` alone dropped a listener added before the socket existed (a
+// page mounted by a reload subscribes before the provider has its token) and
+// every listener when a new socket was built (B36). Kept here, they are
+// attached to whichever socket exists now or is created later.
+type Listener = (data: unknown) => void;
+const listeners = new Map<string, Set<Listener>>();
+
+const attachAll = (s: Socket) => {
+  listeners.forEach((set, event) => set.forEach((cb) => s.on(event, cb)));
+};
+
 /**
  * Connect to Socket.IO server with admin authentication
  */
@@ -35,6 +47,7 @@ export const connectSocket = (token: string): Socket => {
     console.error('[Socket] Admin connection error:', err.message);
   });
 
+  attachAll(socket);
   return socket;
 };
 
@@ -71,38 +84,42 @@ export const isSocketConnected = (): boolean => socket?.connected ?? false;
 /**
  * Listen for new orders
  */
-export const onNewOrder = (callback: (data: any) => void) => {
-  socket?.on('order:new', callback);
-};
+export const onNewOrder = <T = unknown>(callback: (data: T) => void) => onSocketEvent('order:new', callback);
 
 /**
  * Listen for order status updates
  */
-export const onOrderStatusUpdated = (callback: (data: any) => void) => {
-  socket?.on('order:status_updated', callback);
-};
+export const onOrderStatusUpdated = <T = unknown>(callback: (data: T) => void) => onSocketEvent('order:status_updated', callback);
 
 /**
  * Listen for cancelled orders
  */
-export const onOrderCancelled = (callback: (data: any) => void) => {
-  socket?.on('order:cancelled', callback);
-};
+export const onOrderCancelled = <T = unknown>(callback: (data: T) => void) => onSocketEvent('order:cancelled', callback);
 
 /**
  * Generic event listener
  */
-export const onSocketEvent = (event: string, callback: (data: any) => void) => {
-  socket?.on(event, callback);
-};
+export function onSocketEvent<T = unknown>(event: string, callback: (data: T) => void): void {
+  let set = listeners.get(event);
+  if (!set) {
+    set = new Set();
+    listeners.set(event, set);
+  }
+  const listener = callback as Listener;
+  if (set.has(listener)) return; // already attached — once per event
+  set.add(listener);
+  socket?.on(event, listener);
+}
 
 /**
  * Remove event listener
  */
-export const offSocketEvent = (event: string, callback?: (data: any) => void) => {
+export const offSocketEvent = <T = unknown>(event: string, callback?: (data: T) => void) => {
   if (callback) {
+    listeners.get(event)?.delete(callback as Listener);
     socket?.off(event, callback);
   } else {
+    listeners.delete(event);
     socket?.off(event);
   }
 };

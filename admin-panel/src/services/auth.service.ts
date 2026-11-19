@@ -1,6 +1,7 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api, unwrap } from './api';
 import { clearCitySelection, setCitySelection } from '@/lib/cityStorage';
-import { refreshAdminAccessToken } from '@/lib/adminTokenRefresh';
+import { refreshAdminAccessToken, isServerUnreachable, ServerUnreachableError } from '@/lib/adminTokenRefresh';
 import { normalizeAdminUser } from '@/lib/adminUser';
 import { AUTH_COOKIES_ENABLED } from '@/config/env';
 import type { 
@@ -57,11 +58,17 @@ export const authService = {
         }
       }
       return { ...response.data, user };
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Login error:', error);
       
       // Handle specific error cases
       if (error.response?.status === 401) {
+        // The plain "Invalid credentials" gets a friendlier wording; any other
+        // reason (e.g. "Account is not active") is the real answer — a
+        // suspended admin used to be told the password was wrong (G21).
+        const reason = typeof error.response?.data?.message === 'string' ? error.response.data.message.trim() : '';
+        if (reason && !/^invalid credentials$/i.test(reason)) throw new Error(reason);
         throw new Error(credentials.otp ? 'Incorrect verification code' : 'Invalid phone number or password');
       }
       if (error.response?.status === 403) {
@@ -137,7 +144,12 @@ export const authService = {
   },
 
   refreshToken: async (): Promise<boolean> => {
-    const accessToken = await refreshAdminAccessToken();
+    let accessToken: string | null;
+    try {
+      accessToken = await refreshAdminAccessToken();
+    } catch {
+      return false; // server unreachable — keep the stored session (G13)
+    }
     if (!accessToken) {
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_refresh_token');
@@ -160,6 +172,9 @@ export const authService = {
       }
       return user;
     } catch (error) {
+      // Server down / restarting is not "signed out" (G13): callers keep the
+      // stored session. Only a real refusal ends it (null).
+      if (isServerUnreachable(error)) throw new ServerUnreachableError();
       console.error('Session refresh error:', error);
       return null;
     }
@@ -179,7 +194,8 @@ export const authService = {
         currentPassword,
         newPassword,
       });
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Password change error:', error);
       if (error.response?.status === 401) {
         throw new Error('Current password is incorrect');
@@ -205,7 +221,8 @@ export const authService = {
       }
       
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Profile update error:', error);
       if (error.response?.data?.message) {
         throw new Error(error.response.data.message);

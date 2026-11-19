@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api } from './api';
 import type { ApiResponse } from '@/types';
 
@@ -24,7 +25,8 @@ export const appWidgetService = {
         '/admin/site-settings/app-widget'
       );
       return mapWidget(response.data || {});
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw new Error(error?.response?.data?.message || 'Failed to fetch app widget settings');
     }
   },
@@ -36,7 +38,8 @@ export const appWidgetService = {
         data
       );
       return mapWidget(response.data || {});
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw new Error(error?.response?.data?.message || 'Failed to update app widget settings');
     }
   },

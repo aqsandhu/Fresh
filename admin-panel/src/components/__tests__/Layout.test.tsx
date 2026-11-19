@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { Layout, LayoutNestedContext } from '@/components/layout/Layout';
 
 // Isolate Layout from its heavy children — this suite's job is to (a) ensure the
@@ -41,5 +41,34 @@ describe('Layout', () => {
     expect(screen.getByText('nested body')).toBeInTheDocument();
     expect(screen.queryByTestId('sidebar')).not.toBeInTheDocument();
     expect(screen.queryByTestId('header')).not.toBeInTheDocument();
+  });
+
+  // Round D (browser journey): Products opens as a tab of Catalog — the only
+  // way in from the sidebar — and its search box lived in the header that a
+  // tab does not draw, so products could not be searched at all.
+  it('a tab that searches keeps its search box', () => {
+    const onSearch = jest.fn();
+    render(
+      <LayoutNestedContext.Provider value={true}>
+        <Layout title="Products" searchPlaceholder="Search products..." onSearch={onSearch}>
+          <p>nested body</p>
+        </Layout>
+      </LayoutNestedContext.Provider>
+    );
+    const box = screen.getByRole('textbox', { name: 'Search products...' });
+    fireEvent.change(box, { target: { value: 'tomato' } });
+    expect(onSearch).toHaveBeenCalledWith('tomato');
+    expect(screen.getByText('nested body')).toBeInTheDocument();
+  });
+
+  it('a tab without search draws no search box', () => {
+    render(
+      <LayoutNestedContext.Provider value={true}>
+        <Layout title="Categories">
+          <p>nested body</p>
+        </Layout>
+      </LayoutNestedContext.Provider>
+    );
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 });

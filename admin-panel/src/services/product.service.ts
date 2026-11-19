@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api, unwrap } from './api';
 import type {
   Product,
@@ -44,7 +45,7 @@ export const productService = {
   getProducts: async (filters: ProductFilters = {}): Promise<{ products: Product[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> => {
     try {
       // Map frontend filter names to backend query param names
-      const params: Record<string, any> = {};
+      const params: Record<string, unknown> = {};
       if (filters.page) params.page = filters.page;
       if (filters.limit) params.limit = filters.limit;
       if (filters.categoryId) params.category = filters.categoryId;
@@ -72,7 +73,8 @@ export const productService = {
         return { products: products.slice(0, wanted), pagination: { ...meta, limit: products.length } };
       }
       return { products: response.data, pagination: response.meta };
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching products:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch products');
     }
@@ -82,7 +84,8 @@ export const productService = {
     try {
       const response = await api.get<ApiResponse<Product>>(`/admin/products/${id}`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch product');
     }
@@ -129,7 +132,8 @@ export const productService = {
 
       const response = await api.postForm<ApiResponse<Product>>('/admin/products', formData);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error creating product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to create product');
     }
@@ -183,7 +187,8 @@ export const productService = {
 
       const response = await api.putForm<ApiResponse<Product>>(`/admin/products/${id}`, formData);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update product');
     }
@@ -193,7 +198,8 @@ export const productService = {
   deleteProduct: async (id: string): Promise<void> => {
     try {
       await api.delete<ApiResponse<void>>(`/admin/products/${id}?soft=true`);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error deleting product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete product');
     }
@@ -203,7 +209,8 @@ export const productService = {
   hardDeleteProduct: async (id: string): Promise<void> => {
     try {
       await api.delete<ApiResponse<void>>(`/admin/products/${id}`);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error hard-deleting product:', error);
       throw new Error(error?.response?.data?.message || 'Failed to permanently delete product');
     }
@@ -216,7 +223,8 @@ export const productService = {
         { product_ids: productIds, category_id: categoryId }
       );
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error moving products:', error);
       throw new Error(error?.response?.data?.message || 'Failed to move products');
     }
@@ -232,19 +240,10 @@ export const productService = {
         `/admin/products/${id}/toggle-active`
       );
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error toggling product status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update status');
-    }
-  },
-
-  getLowStockProducts: async (): Promise<Product[]> => {
-    try {
-      const response = await api.get<ApiResponse<Product[]>>('/admin/products/low-stock');
-      return unwrap(response);
-    } catch (error: any) {
-      console.error('Error fetching low stock products:', error);
-      throw new Error(error?.response?.data?.message || 'Failed to fetch low stock products');
     }
   },
 
@@ -259,7 +258,8 @@ export const productService = {
         formData
       );
       return unwrap(response).imageUrls;
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error uploading product images:', error);
       throw new Error(error?.response?.data?.message || 'Failed to upload images');
     }
@@ -268,7 +268,8 @@ export const productService = {
   deleteProductImage: async (productId: string, imageIndex: number): Promise<void> => {
     try {
       await api.delete<ApiResponse<void>>(`/admin/products/${productId}/images/${imageIndex}`);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error deleting product image:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete image');
     }

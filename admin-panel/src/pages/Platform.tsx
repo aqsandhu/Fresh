@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Wheat, Save, ShieldAlert, Bot, CheckCircle2, Megaphone, Send } from 'lucide-react';
@@ -50,7 +51,7 @@ export const Platform: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['platform-settings'] });
       toast.success('Platform settings saved');
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to save platform settings'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to save platform settings'),
   });
 
   // ---- AI chatbot config ----
@@ -89,7 +90,7 @@ export const Platform: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
       toast.success('AI settings saved');
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to save AI settings'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to save AI settings'),
   });
 
   const aiClearKeyMutation = useMutation({
@@ -98,7 +99,7 @@ export const Platform: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['ai-settings'] });
       toast.success('API key removed');
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to remove key'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to remove key'),
   });
 
   // ---- Marketing (ad pixels + abandoned-cart reminders) ----
@@ -134,13 +135,13 @@ export const Platform: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['marketing-settings'] });
       toast.success('Marketing settings saved');
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to save marketing settings'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to save marketing settings'),
   });
 
   const runRemindersMutation = useMutation({
     mutationFn: marketingService.runReminders,
     onSuccess: (d) => toast.success(`Sent ${d.sent} reminder(s)`),
-    onError: (err: any) => toast.error(err?.message || 'Failed to run reminders'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to run reminders'),
   });
 
   if (!authLoading && !isSuperAdmin) {
@@ -259,6 +260,7 @@ export const Platform: React.FC = () => {
               <Input
                 label="API key"
                 type="password"
+                autoComplete="new-password"
                 value={aiApiKey}
                 onChange={(e) => setAiApiKey(e.target.value)}
                 placeholder={ai?.hasKey ? '•••••••••• (key set — leave blank to keep)' : 'Paste API key'}

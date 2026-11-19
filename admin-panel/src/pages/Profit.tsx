@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Save, Wallet, Plus, Ban, Check, Edit, PieChart } from 'lucide-react';
@@ -10,6 +11,13 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { financeService, type ExpenseFilters, type ProfitShareholder, type ShareholderRow } from '@/services/finance.service';
 import toast from 'react-hot-toast';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
+
+// What each part of the page needs — the same codes the server checks (G12).
+const REPORT_CODES = ['finance.profit.view', 'finance.shareholders.pay'];
+const SHAREHOLDER_CODES = ['finance.shareholders.view', 'finance.shareholders.manage', 'finance.shareholders.pay'];
+const FORMULA_CODES = ['finance.profit.view', 'finance.profit.manage'];
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -33,14 +41,22 @@ export const Profit: React.FC = () => {
     return {};
   })();
 
-  const { data: profit, isLoading } = useQuery({ queryKey: ['profit', filters], queryFn: () => financeService.getProfit(filters) });
-  const { data: shList } = useQuery({ queryKey: ['shareholders'], queryFn: () => financeService.listShareholders() });
+  const { user } = useAuthContext();
+  const canSeeReport = hasPermission(user?.permissions, REPORT_CODES);
+  const canSeeFormula = hasPermission(user?.permissions, FORMULA_CODES);
+  const { data: profit, isLoading } = useQuery({
+    queryKey: ['profit', filters], queryFn: () => financeService.getProfit(filters), enabled: canSeeReport,
+  });
+  const { data: shList } = useQuery({
+    queryKey: ['shareholders'], queryFn: () => financeService.listShareholders(),
+    enabled: hasPermission(user?.permissions, SHAREHOLDER_CODES),
+  });
   const invalidate = () => { qc.invalidateQueries({ queryKey: ['profit'] }); qc.invalidateQueries({ queryKey: ['shareholders'] }); };
 
   const statusMut = useMutation({
     mutationFn: (s: ShareholderRow) => financeService.updateShareholder(s.id, { status: s.status === 'active' ? 'inactive' : 'active' }),
     onSuccess: () => { toast.success('Shareholder updated'); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed'),
   });
 
   const canManage = shList?.canManage === true;
@@ -81,13 +97,20 @@ export const Profit: React.FC = () => {
         )}
       </div>
 
-      {isLoading ? (
+      {!canSeeReport ? (
+        <>
+          {canSeeFormula && <FormulaCard onSaved={invalidate} />}
+          <Card className="text-center py-10 text-sm text-gray-500">
+            Profit figures and shareholder balances are visible only to roles with &quot;View profit&quot;.
+          </Card>
+        </>
+      ) : isLoading ? (
         <div className="py-16 text-center"><Loader2 className="w-6 h-6 animate-spin text-primary-600 mx-auto" /></div>
       ) : (
         <>
           {/* Summary */}
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 mb-4">
-            <Card className="text-center"><p className="text-xs text-gray-500">Total sale</p><p className="text-lg font-bold text-gray-900">{money(profit?.totalSale || 0)}</p><p className="text-[11px] text-gray-400">{profit?.orderCount || 0} orders</p></Card>
+            <Card className="text-center"><p className="text-xs text-gray-500">Total sale</p><p className="text-lg font-bold text-gray-900">{money(profit?.totalSale || 0)}</p><p className="text-[11px] text-gray-400">{profit?.orderCount || 0} delivered orders</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Inventory cost</p><p className="text-lg font-bold text-red-600">{money(profit?.inventoryCost || 0)}</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Rider delivery pay</p><p className="text-lg font-bold text-red-600">{money(profit?.riderDeliveryPay || 0)}</p><p className="text-[11px] text-gray-400">per-order pay, auto</p></Card>
             <Card className="text-center"><p className="text-xs text-gray-500">Other expenses</p><p className="text-lg font-bold text-red-600">{money(profit?.operatingExpenses || 0)}</p></Card>
@@ -99,7 +122,7 @@ export const Profit: React.FC = () => {
             <Card className="text-center"><p className="text-xs text-gray-500">Distributable</p><p className="text-lg font-bold text-primary-700">{money(profit?.distributable || 0)}</p></Card>
           </div>
 
-          <FormulaCard onSaved={invalidate} />
+          {canSeeFormula && <FormulaCard onSaved={invalidate} />}
 
           {/* Shareholders */}
           <Card className="p-0">
@@ -119,7 +142,7 @@ export const Profit: React.FC = () => {
                       <th className="px-3 py-2 text-right">Share (period)</th>
                       <th className="px-3 py-2 text-right">Received</th>
                       <th className="px-3 py-2 text-right">Pending</th>
-                      <th className="px-3 py-2 text-right">Balance</th>
+                      <th className="px-3 py-2 text-right" title="Share for this period minus what was already paid or sent">Left to pay</th>
                       <th className="px-3 py-2">Status</th>
                       <th className="px-3 py-2 text-right">Actions</th>
                     </tr>
@@ -159,7 +182,18 @@ export const Profit: React.FC = () => {
         </>
       )}
 
-      {payFor && <PayModal shareholder={payFor} period={filters} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); invalidate(); }} />}
+      {payFor && (
+        <PayModal
+          shareholder={payFor}
+          // A payout pays one period and is recorded against it. "All time" is
+          // not a period you can pay: that view pays this month.
+          period={mode === 'all' ? { period: 'month' } : filters}
+          periodLabel={mode === 'today' ? 'today' : mode === 'pickMonth' ? `${MONTHS[month - 1]} ${year}` : 'this month'}
+          allTimeView={mode === 'all'}
+          onClose={() => setPayFor(null)}
+          onDone={() => { setPayFor(null); invalidate(); }}
+        />
+      )}
       {addOpen && <AddShareholderModal remaining={Math.max(0, 100 - allocatedPercent)} onClose={() => setAddOpen(false)} onDone={() => { setAddOpen(false); invalidate(); }} />}
       {editFor && <EditShareholderModal shareholder={editFor} remaining={Math.max(0, 100 - (allocatedPercent - editFor.sharePercent))} onClose={() => setEditFor(null)} onDone={() => { setEditFor(null); invalidate(); }} />}
     </Layout>
@@ -191,7 +225,7 @@ function FormulaCard({ onSaved }: { onSaved: () => void }) {
       categoryShares: cats.map((c) => ({ categoryId: c.categoryId, percent: c.percent })),
     }),
     onSuccess: () => { toast.success('Profit-sharing formula saved'); qc.invalidateQueries({ queryKey: ['profit-settings'] }); onSaved(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed'),
   });
 
   if (isLoading || !data || data.needsCity) return null;
@@ -247,8 +281,12 @@ function FormulaCard({ onSaved }: { onSaved: () => void }) {
   );
 }
 
-function PayModal({ shareholder, period, onClose, onDone }: { shareholder: ProfitShareholder; period: ExpenseFilters; onClose: () => void; onDone: () => void }) {
-  const [amount, setAmount] = useState(shareholder.balance > 0 ? String(shareholder.balance) : '');
+function PayModal({ shareholder, period, periodLabel, allTimeView, onClose, onDone }: {
+  shareholder: ProfitShareholder; period: ExpenseFilters; periodLabel: string; allTimeView: boolean; onClose: () => void; onDone: () => void;
+}) {
+  // The shown balance is for the period on screen; in the all-time view it is
+  // not this month's, so nothing is prefilled there.
+  const [amount, setAmount] = useState(!allTimeView && shareholder.balance > 0 ? String(shareholder.balance) : '');
   const [note, setNote] = useState('');
   const mut = useMutation({
     // The backend caps the payout at the balance of the period it is given —
@@ -256,13 +294,19 @@ function PayModal({ shareholder, period, onClose, onDone }: { shareholder: Profi
     // silently falls back to "this month" and rejects the prefilled amount.
     mutationFn: () => financeService.payShareholder(shareholder.id, { amount: parseFloat(amount) || 0, note: note.trim() || undefined }, period),
     onSuccess: () => { toast.success('Payment sent — pending until received'); onDone(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed'),
   });
   return (
     <Modal isOpen onClose={onClose} title={`Pay ${shareholder.name}`}
       footer={<div className="flex justify-end gap-3"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => mut.mutate()} disabled={!(parseFloat(amount) > 0) || mut.isPending} isLoading={mut.isPending}>Send payment</Button></div>}>
       <div className="space-y-3">
-        <p className="text-sm text-gray-600">This stays <strong>pending</strong> until {shareholder.name} confirms receipt from their own login.</p>
+        <p className="text-sm text-gray-600" data-testid="pay-period">
+          This pays {shareholder.name}&apos;s share for <strong>{periodLabel}</strong>. A period can only be paid up to its share — once.
+        </p>
+        {allTimeView && (
+          <p className="text-sm text-amber-700">You are looking at all time, so this payment counts for this month. To pay an older month, choose &quot;Specific month&quot; first.</p>
+        )}
+        <p className="text-sm text-gray-600">It stays <strong>pending</strong> until {shareholder.name} confirms receipt from their own login.</p>
         <Input label="Amount (Rs.)" type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
         <Input label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
@@ -275,7 +319,7 @@ function AddShareholderModal({ remaining, onClose, onDone }: { remaining: number
   const mut = useMutation({
     mutationFn: () => financeService.createShareholder({ name: form.name.trim(), email: form.email.trim(), password: form.password, sharePercent: parseFloat(form.sharePercent) || 0 }),
     onSuccess: () => { toast.success('Shareholder added (login created)'); onDone(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed'),
   });
   const pct = parseFloat(form.sharePercent) || 0;
   const overCap = pct > remaining + 1e-6;
@@ -302,7 +346,7 @@ function EditShareholderModal({ shareholder, remaining, onClose, onDone }: { sha
   const mut = useMutation({
     mutationFn: () => financeService.updateShareholder(shareholder.id, { name: name.trim(), sharePercent: parseFloat(sharePercent) || 0, ...(password ? { password } : {}) }),
     onSuccess: () => { toast.success('Shareholder updated'); onDone(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed'),
   });
   const pct = parseFloat(sharePercent) || 0;
   const overCap = pct > remaining + 1e-6;

@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api } from './api';
 import type { ApiResponse } from '@/types';
 
@@ -38,7 +39,8 @@ export const bannerService = {
     try {
       const response = await api.get<ApiResponse<Record<string, string>>>('/admin/site-settings/banner');
       return mapBanner(response.data || {});
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching banner settings:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch banner settings');
     }
@@ -48,7 +50,8 @@ export const bannerService = {
     try {
       const response = await api.put<ApiResponse<Record<string, string>>>('/admin/site-settings/banner', data);
       return mapBanner(response.data || {});
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating banner settings:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update banner settings');
     }

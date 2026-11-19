@@ -17,9 +17,10 @@ export type SettingsTabId =
   | 'appwidget';
 
 const TAB_VIEW: Record<SettingsTabId, string[]> = {
-  delivery: ['settings.delivery.view', 'settings.view', 'settings.update'],
+  delivery: ['settings.delivery.view', 'settings.delivery.update', 'settings.view', 'settings.update'],
   timeslots: [
     'settings.timeslots.view',
+    'settings.timeslots.manage',
     'settings.view',
     'settings.update',
     'orders.view',
@@ -27,23 +28,18 @@ const TAB_VIEW: Record<SettingsTabId, string[]> = {
     'riders.view',
     'riders.manage',
   ],
-  business: ['settings.business_hours.view', 'settings.view', 'settings.update'],
-  banner: ['settings.banner.view', 'settings.view', 'settings.update'],
+  business: ['settings.business_hours.view', 'settings.business_hours.update', 'settings.view', 'settings.update'],
+  banner: ['settings.banner.view', 'settings.banner.update', 'settings.view', 'settings.update'],
   // Hero image is per-city like the banner — any admin who can view the banner
   // (or has the dedicated hero/settings codes) can see it.
-  hero: ['settings.hero.view', 'settings.banner.view', 'settings.view', 'settings.update'],
+  hero: ['settings.hero.view', 'settings.hero.update', 'settings.banner.view', 'settings.banner.update', 'settings.view', 'settings.update'],
   coupons: ['coupons.view', 'coupons.manage'],
-  brand: ['settings.brand.view', 'settings.view', 'settings.update'],
-  favicon: ['settings.favicon.view', 'settings.view', 'settings.update'],
-  whatsapp: [
-    'settings.view',
-    'settings.update',
-    'settings.delivery.view',
-    'settings.banner.view',
-    'settings.business_hours.view',
-  ],
+  brand: ['settings.brand.view', 'settings.brand.update', 'settings.view', 'settings.update'],
+  favicon: ['settings.favicon.view', 'settings.favicon.update', 'settings.view', 'settings.update'],
+  // Same codes the server checks on /site-settings/whatsapp-order (G12).
+  whatsapp: ['settings.view', 'settings.update', 'settings.banner.view', 'settings.banner.update'],
   // App widget content is managed like the banner (global marketing copy).
-  appwidget: ['settings.banner.view', 'settings.view', 'settings.update'],
+  appwidget: ['settings.banner.view', 'settings.banner.update', 'settings.view', 'settings.update'],
 };
 
 const TAB_UPDATE: Record<SettingsTabId, string[]> = {
@@ -55,7 +51,7 @@ const TAB_UPDATE: Record<SettingsTabId, string[]> = {
   coupons: ['coupons.manage'],
   brand: ['settings.brand.update', 'settings.update'],
   favicon: ['settings.favicon.update', 'settings.update'],
-  whatsapp: ['settings.update', 'settings.banner.update', 'settings.delivery.update'],
+  whatsapp: ['settings.update', 'settings.banner.update'],
   appwidget: ['settings.banner.update', 'settings.update'],
 };
 
@@ -77,7 +73,9 @@ export function canViewBrandSettingsTab(
   permissions: string[] | undefined,
   role?: string
 ): boolean {
-  if (role === 'super_admin' || role === 'admin') return true;
+  // Only the super admin skips the check: every custom role has role "admin"
+  // and the server reads its permission codes (G12).
+  if (role === 'super_admin') return true;
   return canViewSettingsTab(permissions, 'brand');
 }
 
@@ -89,7 +87,9 @@ export function canViewFaviconSettingsTab(
   permissions: string[] | undefined,
   role?: string
 ): boolean {
-  if (role === 'super_admin' || role === 'admin') return true;
+  // Only the super admin skips the check: every custom role has role "admin"
+  // and the server reads its permission codes (G12).
+  if (role === 'super_admin') return true;
   return canViewSettingsTab(permissions, 'favicon');
 }
 
@@ -129,7 +129,9 @@ export function canViewWhatsappSettingsTab(
   permissions: string[] | undefined,
   role?: string
 ): boolean {
-  if (role === 'super_admin' || role === 'admin') return true;
+  // Only the super admin skips the check: every custom role has role "admin"
+  // and the server reads its permission codes (G12).
+  if (role === 'super_admin') return true;
   return canViewSettingsTab(permissions, 'whatsapp');
 }
 
@@ -137,6 +139,8 @@ export function canUpdateWhatsappSettings(
   permissions: string[] | undefined,
   role?: string
 ): boolean {
-  if (role === 'super_admin' || role === 'admin') return true;
+  // Only the super admin skips the check: every custom role has role "admin"
+  // and the server reads its permission codes (G12).
+  if (role === 'super_admin') return true;
   return canUpdateSettingsTab(permissions, 'whatsapp');
 }

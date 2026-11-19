@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,8 +9,9 @@ import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { restaurantService, type Restaurant } from '@/services/restaurant.service';
+import { restaurantService, type Restaurant, type RestaurantSlot } from '@/services/restaurant.service';
 import { formatDateTime } from '@/utils/formatters';
+import { useAuthContext } from '@/context/AuthContext';
 
 const TABS = [
   { value: 'pending', label: 'Review Requests' },
@@ -114,6 +116,10 @@ function AccountsSection() {
 
 function SettingsSection() {
   const queryClient = useQueryClient();
+  // These charges apply to every city's restaurants — the server lets only the
+  // super admin change them (B28); a city admin sees them read-only.
+  const { user } = useAuthContext();
+  const canEdit = user?.role === 'super_admin';
   const [base, setBase] = useState('');
   const [threshold, setThreshold] = useState('');
   const [urgent, setUrgent] = useState('');
@@ -143,7 +149,7 @@ function SettingsSection() {
       toast.success('Settings saved');
       queryClient.invalidateQueries({ queryKey: ['restaurant-settings'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Save failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Save failed'),
   });
 
   return (
@@ -185,7 +191,8 @@ function SettingsSection() {
             <p className="mt-1 text-xs text-gray-400">A today-slot locks once this % of its window has passed.</p>
           </div>
         </div>
-        <Button className="mt-4" onClick={() => mutation.mutate()} disabled={mutation.isPending}
+        {!canEdit && <p className="mt-4 text-xs text-amber-700">Only the super admin can change these (they apply to every city).</p>}
+        <Button className="mt-4" onClick={() => mutation.mutate()} disabled={mutation.isPending || !canEdit}
           leftIcon={mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}>
           Save
         </Button>
@@ -216,17 +223,17 @@ function RestaurantTimeSlots() {
       startTime: start, endTime: end, maxOrders: maxOrders.trim() === '' ? null : parseInt(maxOrders, 10), isFreeDeliverySlot: freeDelivery,
     }),
     onSuccess: () => { toast.success('Slot added'); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not add slot'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Could not add slot'),
   });
   const toggle = useMutation({
-    mutationFn: (s: any) => restaurantService.updateTimeSlot(s.id, { is_active: !(s.isActive ?? s.is_active) }),
+    mutationFn: (s: RestaurantSlot) => restaurantService.updateTimeSlot(s.id, { is_active: !(s.isActive ?? s.is_active) }),
     onSuccess: invalidate,
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not update slot'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Could not update slot'),
   });
   const remove = useMutation({
     mutationFn: (id: string) => restaurantService.deleteTimeSlot(id),
     onSuccess: () => { toast.success('Slot removed'); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not remove slot'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Could not remove slot'),
   });
 
   return (
@@ -271,7 +278,7 @@ function RestaurantTimeSlots() {
         <p className="text-sm text-gray-500">No restaurant slots yet — add one above so restaurants can order.</p>
       ) : (
         <div className="space-y-2">
-          {slots.map((s: any) => (
+          {slots.map((s) => (
             <div key={s.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
               <div className="text-sm">
                 <span className="font-medium text-gray-900">{s.slotName || s.slot_name}</span>
@@ -321,7 +328,7 @@ function RestaurantCard({ r }: { r: Restaurant }) {
       toast.success(`Restaurant ${act === 'remove' ? 'removed' : act + 'd'}`);
       invalidate();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Action failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || errorView(e)?.message || 'Action failed'),
   });
 
   const saveSettings = useMutation({
@@ -335,7 +342,7 @@ function RestaurantCard({ r }: { r: Restaurant }) {
       toast.success('Saved');
       invalidate();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Save failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Save failed'),
   });
 
   const confirmRemove = () => {

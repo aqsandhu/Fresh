@@ -17,6 +17,20 @@ export interface ExpenseRow {
   incurredAt: string;
   cityName: string | null;
 }
+/** A purchase entered by staff, waiting for the city admin (J1). */
+export interface PurchaseRequest {
+  id: string;
+  productId: string;
+  productName: string | null;
+  payload: {
+    rawWeight: number; purchasePrice: number; gradeA: number; gradeB: number; gradeC: number; waste: number;
+    supplierName: string; supplierPhone: string | null; billNumber: string | null;
+  };
+  billPhotoUrl: string | null;
+  requestedAt: string;
+  requestedByName: string | null;
+}
+
 export interface ExpenseList {
   expenses: ExpenseRow[];
   total: number;
@@ -33,7 +47,7 @@ export interface ExpenseFilters {
 export const financeService = {
   // ── Expenses ───────────────────────────────────────────────────────────────
   listExpenses: async (f: ExpenseFilters = {}): Promise<ExpenseList> => {
-    const params: Record<string, any> = {};
+    const params: Record<string, unknown> = {};
     if (f.type) params.type = f.type;
     if (f.period) params.period = f.period;
     if (f.month) params.month = f.month;
@@ -70,16 +84,26 @@ export const financeService = {
     const res = await api.postForm<ApiResponse<{ id: string }>>('/finance/stock-purchase', form);
     return unwrap(res);
   },
+  purchaseRequests: async (): Promise<{ requests: PurchaseRequest[]; canApprove: boolean }> => {
+    const res = await api.get<ApiResponse<{ requests: PurchaseRequest[]; canApprove: boolean }>>('/finance/purchase-requests');
+    return res.data || { requests: [], canApprove: false };
+  },
+  approvePurchase: async (id: string) => unwrap(await api.post<ApiResponse<{ id: string }>>(`/finance/purchase-requests/${id}/approve`, {})),
+  rejectPurchase: async (id: string, reason?: string) => unwrap(await api.post<ApiResponse<{ id: string }>>(`/finance/purchase-requests/${id}/reject`, { reason })),
+  approveAllPurchases: async (): Promise<{ approved: number; skipped: { id: string; reason: string }[] }> => {
+    const res = await api.post<ApiResponse<{ approved: number; skipped: { id: string; reason: string }[] }>>('/finance/purchase-requests/approve-all', {});
+    return res.data as { approved: number; skipped: { id: string; reason: string }[] };
+  },
   addRiderPayment: async (d: { riderId: string; category: 'salary' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string; paidAt?: string; approvalPhone?: string; approvalPassword?: string }) => {
     const res = await api.post<ApiResponse<{ id: string }>>('/finance/rider-payment', d);
     return unwrap(res);
   },
   products: async (): Promise<{ id: string; name: string; unitType: string; categoryName: string }[]> => {
-    const res = await api.get<ApiResponse<any[]>>('/finance/products');
+    const res = await api.get<ApiResponse<{ id: string; name: string; unitType: string; categoryName: string }[]>>('/finance/products');
     return res.data || [];
   },
   riders: async (): Promise<{ id: string; name: string; status: string }[]> => {
-    const res = await api.get<ApiResponse<any[]>>('/finance/riders');
+    const res = await api.get<ApiResponse<{ id: string; name: string; status: string }[]>>('/finance/riders');
     return res.data || [];
   },
 
@@ -101,15 +125,15 @@ export const financeService = {
     return unwrap(res);
   },
   getAttendance: async (id: string, month: number, year: number): Promise<{ date: string; status: string; note: string | null }[]> => {
-    const res = await api.get<ApiResponse<any[]>>(`/finance/workers/${id}/attendance`, { month, year });
+    const res = await api.get<ApiResponse<{ date: string; status: string; note: string | null }[]>>(`/finance/workers/${id}/attendance`, { month, year });
     return res.data || [];
   },
   markAttendance: async (id: string, d: { date: string; status: string; note?: string }) => {
-    const res = await api.post<ApiResponse<any>>(`/finance/workers/${id}/attendance`, d);
+    const res = await api.post<ApiResponse<unknown>>(`/finance/workers/${id}/attendance`, d);
     return unwrap(res);
   },
   addIncrement: async (id: string, d: { effectiveFrom: string; newBasicSalary: number; note?: string }) => {
-    const res = await api.post<ApiResponse<any>>(`/finance/workers/${id}/increment`, d);
+    const res = await api.post<ApiResponse<unknown>>(`/finance/workers/${id}/increment`, d);
     return unwrap(res);
   },
   payWorker: async (id: string, d: { category: 'salary' | 'bonus' | 'commission' | 'other'; amount: number; comment?: string; forMonth?: string; approvalPhone?: string; approvalPassword?: string }) => {
@@ -119,7 +143,7 @@ export const financeService = {
 
   // ── Profit + sharing + shareholders ─────────────────────────────────────────
   getProfit: async (f: ExpenseFilters = {}): Promise<ProfitData> => {
-    const params: Record<string, any> = {};
+    const params: Record<string, unknown> = {};
     if (f.period) params.period = f.period;
     if (f.month) params.month = f.month;
     if (f.year) params.year = f.year;
@@ -132,7 +156,7 @@ export const financeService = {
     return res.data as ProfitSettingsData;
   },
   updateProfitSettings: async (d: { enabled: boolean; mode: string; perOrder: number; marginPercent: number; categoryShares: { categoryId: string; percent: number }[] }) => {
-    const res = await api.put<ApiResponse<any>>('/finance/profit-settings', d);
+    const res = await api.put<ApiResponse<unknown>>('/finance/profit-settings', d);
     return unwrap(res);
   },
   listShareholders: async (): Promise<ShareholdersData> => {
@@ -159,8 +183,8 @@ export const financeService = {
     const res = await api.post<ApiResponse<{ id: string }>>(`/finance/shareholders/${id}/pay${qs ? `?${qs}` : ''}`, d);
     return unwrap(res);
   },
-  shareholderPayouts: async (id: string): Promise<{ id: string; amount: number; status: string; note: string | null; createdAt: string; receivedAt: string | null }[]> => {
-    const res = await api.get<ApiResponse<any[]>>(`/finance/shareholders/${id}/payouts`);
+  shareholderPayouts: async (id: string): Promise<{ id: string; amount: number; status: string; note: string | null; createdAt: string; receivedAt: string | null; periodStart: string | null; periodEnd: string | null }[]> => {
+    const res = await api.get<ApiResponse<{ id: string; amount: number; status: string; note: string | null; createdAt: string; receivedAt: string | null; periodStart: string | null; periodEnd: string | null }[]>>(`/finance/shareholders/${id}/payouts`);
     return res.data || [];
   },
 };

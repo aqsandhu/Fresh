@@ -1,3 +1,5 @@
+import { errorView } from '@/lib/caughtError';
+import type { Product } from '@/types';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Edit, Trash2, Package, Wallet, MapPin, Phone, Send, Check, Ban, AlertTriangle } from 'lucide-react';
@@ -20,10 +22,21 @@ const qtyFmt = (n: number) => (Math.round((Number(n) + Number.EPSILON) * 1000) /
 
 export const OrderCollectionPoints: React.FC = () => {
   const [tab, setTab] = useState<'points' | 'settlements' | 'shortages'>('points');
+  const { user } = useAuthContext();
+  // Each sub-tab needs the code the server checks (G18: a stock-send-only
+  // role was shown Settlements / Shortages and got refused calls).
+  const tabs = (['points', 'settlements', 'shortages'] as const).filter((t) =>
+    t === 'points'
+      ? true
+      : t === 'settlements'
+      ? hasPermission(user?.permissions, ['ocp.settlements.receive', 'ocp.manage'])
+      : hasPermission(user?.permissions, ['ocp.shortages.manage', 'ocp.manage'])
+  );
+  const shown = tabs.includes(tab) ? tab : 'points';
   return (
     <Layout title="Order Collection Points" subtitle="Create OCPs, send stock, and settle cash">
       <div className="mb-6 inline-flex rounded-lg bg-gray-100 p-1">
-        {(['points', 'settlements', 'shortages'] as const).map((t) => (
+        {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
               tab === t ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'
@@ -32,7 +45,7 @@ export const OrderCollectionPoints: React.FC = () => {
           </button>
         ))}
       </div>
-      {tab === 'points' ? <PointsSection /> : tab === 'settlements' ? <SettlementsSection /> : <ShortagesSection />}
+      {shown === 'points' ? <PointsSection /> : shown === 'settlements' ? <SettlementsSection /> : <ShortagesSection />}
     </Layout>
   );
 };
@@ -61,7 +74,7 @@ function PointsSection() {
   const createMut = useMutation({
     mutationFn: () => ocpService.create(form),
     onSuccess: () => { toast.success('OCP created'); setModalOpen(false); reset(); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed to create'),
   });
   const updateMut = useMutation({
     mutationFn: () => ocpService.update(editing!.id, {
@@ -69,7 +82,7 @@ function PointsSection() {
       ...(form.pin ? { pin: form.pin } : {}),
     }),
     onSuccess: () => { toast.success('OCP updated'); setModalOpen(false); reset(); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to update'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed to update'),
   });
   const statusMut = useMutation({
     mutationFn: (o: Ocp) => ocpService.update(o.id, { status: o.status === 'active' ? 'disabled' : 'active' }),
@@ -78,7 +91,7 @@ function PointsSection() {
   const delMut = useMutation({
     mutationFn: (id: string) => ocpService.remove(id),
     onSuccess: () => { toast.success('OCP removed'); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to remove'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed to remove'),
   });
 
   const openAdd = () => { reset(); setModalOpen(true); };
@@ -125,7 +138,8 @@ function PointsSection() {
                 </p>
               )}
               <div className="flex items-center gap-2 pt-2">
-                {canSendStock && (
+                {/* A disabled point refuses stock — don't offer the form (G14). */}
+                {canSendStock && o.status === 'active' && (
                   <Button size="sm" variant="outline" onClick={() => setStockFor(o)} leftIcon={<Package className="w-4 h-4" />}>Send stock</Button>
                 )}
                 {canManage && (
@@ -187,14 +201,15 @@ type StockEntry = { unit: string; qty: string };
 
 const UNIT_MULTIPLIER: Record<string, number> = { full: 1, half_kg: 0.5, quarter_kg: 0.25, half_dozen: 0.5 };
 
-function offeredQualities(p: any): ('A' | 'B' | 'C')[] {
+function offeredQualities(p: Product): ('A' | 'B' | 'C')[] {
   const out: ('A' | 'B' | 'C')[] = ['A'];
-  if (p.priceB != null && p.priceB !== '') out.push('B');
-  if (p.priceC != null && p.priceC !== '') out.push('C');
+  // (A blank box could still arrive as '' from older answers.)
+  if (p.priceB != null && (p.priceB as unknown) !== '') out.push('B');
+  if (p.priceC != null && (p.priceC as unknown) !== '') out.push('C');
   return out;
 }
 
-function unitOptionsFor(p: any): { value: string; label: string }[] {
+function unitOptionsFor(p: Product): { value: string; label: string }[] {
   const ut = String(p.unitType || 'unit').toLowerCase();
   const opts = [{ value: 'full', label: ut }];
   if (ut === 'kg') {
@@ -222,7 +237,7 @@ function SendStockModal({ ocp, onClose }: { ocp: Ocp; onClose: () => void }) {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return products;
-    return products.filter((p: any) => String(p.nameEn || '').toLowerCase().includes(q) || String(p.nameUr || '').includes(q));
+    return products.filter((p) => String(p.nameEn || '').toLowerCase().includes(q) || String(p.nameUr || '').includes(q));
   }, [products, search]);
 
   const setEntry = (key: string, patch: Partial<StockEntry>) =>
@@ -245,7 +260,7 @@ function SendStockModal({ ocp, onClose }: { ocp: Ocp; onClose: () => void }) {
   const send = useMutation({
     mutationFn: () => ocpService.sendStock(ocp.id, buildLines()),
     onSuccess: () => { toast.success('Stock sent — OCP will verify & receive'); onClose(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to send stock'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed to send stock'),
   });
 
   return (
@@ -260,14 +275,14 @@ function SendStockModal({ ocp, onClose }: { ocp: Ocp; onClose: () => void }) {
         </div>
       }>
       <div className="space-y-3">
-        <Input placeholder="Search products…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <Input placeholder="Search products…" aria-label="Search products" value={search} onChange={(e) => setSearch(e.target.value)} />
         {isLoading ? (
           <p className="text-sm text-gray-500 py-6 text-center">Loading products…</p>
         ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-500 py-6 text-center">No products found.</p>
         ) : (
           <div className="max-h-[55vh] overflow-y-auto divide-y border rounded-lg">
-            {filtered.map((p: any) => {
+            {filtered.map((p) => {
               const quals = offeredQualities(p);
               const units = unitOptionsFor(p);
               return (
@@ -283,11 +298,12 @@ function SendStockModal({ ocp, onClose }: { ocp: Ocp; onClose: () => void }) {
                       return (
                         <div key={q} className="flex items-center gap-2">
                           <span className={`text-xs font-semibold w-7 text-center py-1 rounded ${q === 'A' ? 'bg-emerald-50 text-emerald-700' : q === 'B' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>Q{q}</span>
-                          <select value={e.unit} onChange={(ev) => setEntry(key, { unit: ev.target.value })}
+                          <select aria-label={`${p.nameEn} quality ${q} unit`} value={e.unit} onChange={(ev) => setEntry(key, { unit: ev.target.value })}
                             className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
                             {units.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
                           </select>
                           <input type="number" min={0} step="0.001" placeholder="Qty" value={e.qty}
+                            aria-label={`${p.nameEn} quality ${q} quantity`}
                             onChange={(ev) => setEntry(key, { qty: ev.target.value })}
                             className="w-24 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" />
                         </div>
@@ -321,12 +337,12 @@ function SettlementsSection() {
   const receiveMut = useMutation({
     mutationFn: () => ocpService.receiveSettlement(receiveFor.id, password),
     onSuccess: () => { toast.success('Settlement received'); setReceiveFor(null); setPassword(''); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed — check your password'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed — check your password'),
   });
   const rejectMut = useMutation({
     mutationFn: (id: string) => ocpService.rejectSettlement(id),
     onSuccess: () => { toast.success('Settlement rejected'); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to reject'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed to reject'),
   });
 
   const total = useMemo(
@@ -437,7 +453,7 @@ function ShortagesSection() {
       setPassword('');
       invalidate();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to resolve shortage'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed to resolve shortage'),
   });
 
   const totalQty = useMemo(

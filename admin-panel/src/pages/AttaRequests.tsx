@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Wheat, Bike, AlertTriangle, Image as ImageIcon } from 'lucide-react';
@@ -14,6 +15,8 @@ import { isRiderAssignable, riderDispatchLabel, TASK_STATUS_BADGE, TASK_STATUS_L
 import type { AttaRequest, AttaRequestStatus, RiderTaskStatus } from '@/types';
 import { formatCurrency, formatDateTime, resolveImageUrl } from '@/utils/formatters';
 import toast from 'react-hot-toast';
+import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 
 const ATTA_STATUSES: AttaRequestStatus[] = [
   'pending_pickup', 'picked_up', 'at_mill', 'milling', 'ready_for_delivery', 'out_for_delivery', 'delivered',
@@ -50,9 +53,16 @@ export const AttaRequests: React.FC = () => {
     refetchInterval: 60_000,
   });
 
+  // A viewer-only role must not fetch the rider list (403 pop-up) nor see
+  // buttons the server will refuse.
+  const { user } = useAuthContext();
+  const canUpdate = hasPermission(user?.permissions, 'orders.update');
+  const canAssign = canUpdate && hasPermission(user?.permissions, 'riders.view');
+
   const { data: riders } = useQuery({
     queryKey: ['riders', 'for-assignment'],
     queryFn: () => riderService.getRiders({ verificationStatus: 'verified', limit: 500 }),
+    enabled: canAssign,
   });
   const assignableRiders = (riders || []).filter(isRiderAssignable);
 
@@ -63,7 +73,7 @@ export const AttaRequests: React.FC = () => {
       toast.success('Status updated');
       setIsStatusModalOpen(false);
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to update status'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to update status'),
   });
 
   const assignMutation = useMutation({
@@ -76,7 +86,7 @@ export const AttaRequests: React.FC = () => {
       setAssign(null);
       setAssignRiderId('');
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to assign rider'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to assign rider'),
   });
 
   const openStatus = (request: AttaRequest) => {
@@ -149,7 +159,7 @@ export const AttaRequests: React.FC = () => {
               <p className="text-gray-500">Wheat pickup</p>
               <p className="text-gray-900 font-medium">{req.pickupRiderName || '—'}</p>
               <TaskState status={req.pickupTaskStatus} notes={req.pickupTaskNotes} />
-              {pickupOpen && (
+              {canAssign && pickupOpen && (
                 <button
                   className={`mt-1 inline-flex items-center gap-1 font-medium ${pickupFailed ? 'text-red-700' : 'text-primary-700'} hover:underline`}
                   onClick={() => { setAssign({ request: req, taskType: 'atta_pickup' }); setAssignRiderId(''); }}
@@ -163,7 +173,7 @@ export const AttaRequests: React.FC = () => {
               <p className="text-gray-500">Flour delivery</p>
               <p className="text-gray-900 font-medium">{req.deliveryRiderName || '—'}</p>
               <TaskState status={req.deliveryTaskStatus} notes={req.deliveryTaskNotes} />
-              {deliveryOpen && (
+              {canAssign && deliveryOpen && (
                 <button
                   className={`mt-1 inline-flex items-center gap-1 font-medium ${deliveryFailed ? 'text-red-700' : 'text-primary-700'} hover:underline`}
                   onClick={() => { setAssign({ request: req, taskType: 'atta_delivery' }); setAssignRiderId(''); }}
@@ -194,9 +204,12 @@ export const AttaRequests: React.FC = () => {
     {
       key: 'actions',
       title: 'Actions',
-      render: (req: AttaRequest) => (
-        <Button variant="ghost" size="sm" onClick={() => openStatus(req)}>Update status</Button>
-      ),
+      render: (req: AttaRequest) =>
+        canUpdate ? (
+          <Button variant="ghost" size="sm" onClick={() => openStatus(req)}>Update status</Button>
+        ) : (
+          <span className="text-xs text-gray-400">View only</span>
+        ),
     },
   ];
 

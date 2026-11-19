@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { newTestQueryClient } from '@/testDoubles/testQueryClient';
 import { CorruptionAudit } from '../CorruptionAudit';
 import { corruptionAuditService } from '@/services/corruptionAudit.service';
 
@@ -56,7 +57,7 @@ const run = {
 };
 
 const renderPage = () => render(
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><CorruptionAudit /></QueryClientProvider>
+  <QueryClientProvider client={newTestQueryClient()}><CorruptionAudit /></QueryClientProvider>
 );
 
 describe('AI Audit page', () => {

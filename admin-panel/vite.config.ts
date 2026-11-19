@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
     esbuild: mode === 'production' ? { drop: ['console', 'debugger'] } : undefined,
     define: {
       'process.env.VITE_API_URL': JSON.stringify(apiUrl),
-      'process.env.VITE_AUTH_COOKIES': JSON.stringify(env.VITE_AUTH_COOKIES || 'false'),
+      'process.env.VITE_AUTH_COOKIES': JSON.stringify(env.VITE_AUTH_COOKIES || ''),
     },
     resolve: {
       alias: {

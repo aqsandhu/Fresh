@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,14 +9,8 @@ import {
   Edit,
   Trash2,
   Save,
-  MapPin,
   DollarSign,
-  AlertCircle,
   Monitor,
-  Phone,
-  Type,
-  RotateCcw,
-  Eye,
   MessageCircle,
   Image,
   ImagePlus,
@@ -30,9 +25,10 @@ import { Input } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { settingsService } from '@/services/settings.service';
-import { bannerService } from '@/services/banner.service';
 import { WhatsAppOrderSettingsPanel } from '@/components/settings/WhatsAppOrderSettingsPanel';
-import type { DeliverySettings, TimeSlot, BusinessHours } from '@/types';
+import { BannerSettingsPanel } from '@/components/settings/BannerSettingsPanel';
+import { BusinessHoursSettingsPanel } from '@/components/settings/BusinessHoursSettingsPanel';
+import type { DeliverySettings, TimeSlot } from '@/types';
 import toast from 'react-hot-toast';
 import { useCityContext } from '@/context/CityContext';
 import { useAuthContext } from '@/context/AuthContext';
@@ -54,16 +50,6 @@ import { HeroImageSettingsPanel } from '@/components/settings/HeroImageSettingsP
 import { CouponsSettingsPanel } from '@/components/settings/CouponsSettingsPanel';
 import { AppWidgetSettingsPanel } from '@/components/settings/AppWidgetSettingsPanel';
 import { AttaChargesSettingsPanel } from '@/components/settings/AttaChargesSettingsPanel';
-
-const DAYS_OF_WEEK = [
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-  'Sunday',
-];
 
 interface FormErrors {
   [key: string]: string;
@@ -93,6 +79,10 @@ export const Settings: React.FC = () => {
     [showWhatsappTab, baseTabs]
   );
   const [activeTab, setActiveTab] = useState<SettingsTabId>('delivery');
+  // The tab actually shown: never one the role may not open — the first
+  // render used to mount Delivery for everyone (refused calls, red pop-ups).
+  const shownTab: SettingsTabId | undefined = allowedTabs.includes(activeTab) ? activeTab : allowedTabs[0];
+  const tabAllowed = (tab: SettingsTabId) => allowedTabs.includes(tab);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   useEffect(() => {
@@ -102,7 +92,10 @@ export const Settings: React.FC = () => {
     }
   }, [allowedTabs, activeTab]);
 
-  const canUpdate = (tab: SettingsTabId) => canUpdateSettingsTab(permissions, tab);
+  // Business hours and the app widget are one setting for every city — the
+  // server lets only the super admin change them (B28).
+  const canUpdate = (tab: SettingsTabId) =>
+    (tab === 'business' || tab === 'appwidget') && role !== 'super_admin' ? false : canUpdateSettingsTab(permissions, tab);
   const canEditWhatsapp = canUpdateWhatsappSettings(permissions, role);
 
   // Delivery Settings State
@@ -128,42 +121,22 @@ export const Settings: React.FC = () => {
     isFreeDeliverySlot: false,
   });
 
-  // Business Hours State
-  const [businessHours, setBusinessHours] = useState<BusinessHours[]>([]);
 
-  // Banner State
-  const [bannerForm, setBannerForm] = useState({
-    bannerLeftText: '',
-    bannerMiddleText: '',
-    bannerRightTextEn: '',
-    bannerRightTextUr: '',
-    bannerTickerItems: [] as string[],
-  });
   // Fetch Settings
   // Delivery prices are per city — refetch when the admin switches city.
   const { data: settings } = useQuery({
     queryKey: ['settings', selectedCityId],
     queryFn: () => settingsService.getSettings(),
+    enabled: tabAllowed('delivery'),
   });
 
   // Fetch Time Slots
   const { data: timeSlots, isLoading: isLoadingTimeSlots } = useQuery({
     queryKey: ['timeSlots'],
     queryFn: () => settingsService.getTimeSlots(),
+    enabled: tabAllowed('timeslots'),
   });
 
-  // Fetch Business Hours
-  const { data: businessHoursData, isLoading: isLoadingBusinessHours } = useQuery({
-    queryKey: ['businessHours'],
-    queryFn: () => settingsService.getBusinessHours(),
-  });
-
-  // Fetch Banner Settings
-  const { data: bannerSettings } = useQuery({
-    queryKey: ['bannerSettings', selectedCityId],
-    queryFn: () => bannerService.getBannerSettings(),
-    enabled: !!selectedCityId,
-  });
 
   // Update local state when data is fetched
   useEffect(() => {
@@ -172,33 +145,6 @@ export const Settings: React.FC = () => {
     }
   }, [settings]);
 
-  useEffect(() => {
-    if (businessHoursData) {
-      setBusinessHours(businessHoursData);
-    } else if (!isLoadingBusinessHours) {
-      // Initialize default business hours if none exist
-      setBusinessHours(
-        DAYS_OF_WEEK.map((day) => ({
-          day,
-          open: '09:00',
-          close: '21:00',
-          isOpen: day !== 'Sunday',
-        }))
-      );
-    }
-  }, [businessHoursData, isLoadingBusinessHours]);
-
-  useEffect(() => {
-    if (bannerSettings) {
-      setBannerForm({
-        bannerLeftText: bannerSettings.bannerLeftText || '',
-        bannerMiddleText: bannerSettings.bannerMiddleText || '',
-        bannerRightTextEn: bannerSettings.bannerRightTextEn || '',
-        bannerRightTextUr: bannerSettings.bannerRightTextUr || '',
-        bannerTickerItems: bannerSettings.bannerTickerItems || [],
-      });
-    }
-  }, [bannerSettings]);
 
   // Mutations
   const updateDeliveryMutation = useMutation({
@@ -223,7 +169,7 @@ export const Settings: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       toast.success('This city now uses the default delivery settings');
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to reset'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to reset'),
   });
 
   const createTimeSlotMutation = useMutation({
@@ -254,21 +200,7 @@ export const Settings: React.FC = () => {
     onError: (e: Error) => toast.error(e.message || 'Could not delete the time slot'),
   });
 
-  const updateBusinessHoursMutation = useMutation({
-    mutationFn: settingsService.updateBusinessHours,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['businessHours'] });
-      toast.success('Business hours updated successfully');
-    },
-  });
 
-  const updateBannerMutation = useMutation({
-    mutationFn: (data: typeof bannerForm) => bannerService.updateBannerSettings(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bannerSettings', selectedCityId] });
-      toast.success('Banner settings updated successfully');
-    },
-  });
 
   // Validation Functions
   const validateDeliverySettings = (): boolean => {
@@ -368,15 +300,6 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const handleBusinessHoursChange = (index: number, field: keyof BusinessHours, value: any) => {
-    const updated = [...businessHours];
-    updated[index] = { ...updated[index], [field]: value };
-    setBusinessHours(updated);
-  };
-
-  const handleSaveBusinessHours = () => {
-    updateBusinessHoursMutation.mutate(businessHours);
-  };
 
   // Render Tabs
   const renderDeliverySettings = () => (
@@ -442,7 +365,7 @@ export const Settings: React.FC = () => {
             error={formErrors.freeDeliveryThreshold}
             leftIcon={<DollarSign className="w-4 h-4 text-gray-400" />}
             min={0}
-            helperText="Orders above this amount get free delivery"
+            helperText="Orders of this amount or more get free delivery"
             required
           />
           <Input
@@ -579,7 +502,11 @@ export const Settings: React.FC = () => {
                     <p className="font-medium text-gray-900">
                       {slot.startTime} - {slot.endTime}
                     </p>
-                    <p className="text-sm text-gray-500">{slot.maxOrders == null ? 'No order limit' : `Max ${slot.maxOrders} orders`}</p>
+                    <p className="text-sm text-gray-500">
+                      {slot.maxOrders == null ? 'No order limit' : `Max ${slot.maxOrders} orders`}
+                      {/* Every city has its own slots — named when all cities are shown (super admin). */}
+                      {slot.cityName ? ` · ${slot.cityName}` : ''}
+                    </p>
                   </div>
                   <Badge variant={slot.isActive ? 'success' : 'default'} size="sm">
                     {slot.isActive ? 'Active' : 'Inactive'}
@@ -616,314 +543,6 @@ export const Settings: React.FC = () => {
     </div>
   );
 
-  const renderBusinessHours = () => (
-    <Card>
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-3">
-          <div className="p-2 bg-purple-100 rounded-lg">
-            <Calendar className="w-5 h-5 text-purple-600" />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium text-gray-900">Business Hours</h3>
-            <p className="text-sm text-gray-500">Set your store operating hours</p>
-          </div>
-        </div>
-        <Button
-          onClick={handleSaveBusinessHours}
-          isLoading={updateBusinessHoursMutation.isPending}
-          leftIcon={<Save className="w-4 h-4" />}
-          disabled={!canUpdate('business')}
-        >
-          Save Business Hours
-        </Button>
-      </div>
-
-      {isLoadingBusinessHours ? (
-        <div className="space-y-3">
-          {[...Array(7)].map((_, i) => (
-            <div key={i} className="animate-pulse h-16 bg-gray-100 rounded-lg" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {businessHours.map((hours, index) => (
-            <div
-              key={hours.day}
-              className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
-            >
-              <div className="flex items-center space-x-4">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hours.isOpen}
-                    onChange={(e) =>
-                      handleBusinessHoursChange(index, 'isOpen', e.target.checked)
-                    }
-                    className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
-                  />
-                  <span className="font-medium text-gray-900 w-24">{hours.day}</span>
-                </label>
-              </div>
-
-              <div className="flex items-center space-x-4">
-                {hours.isOpen ? (
-                  <>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-500">Open</span>
-                      <input
-                        type="time"
-                        value={hours.open}
-                        onChange={(e) =>
-                          handleBusinessHoursChange(index, 'open', e.target.value)
-                        }
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm text-gray-500">Close</span>
-                      <input
-                        type="time"
-                        value={hours.close}
-                        onChange={(e) =>
-                          handleBusinessHoursChange(index, 'close', e.target.value)
-                        }
-                        className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <Badge variant="default" size="sm">
-                    Closed
-                  </Badge>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Card>
-  );
-
-  const renderBanner = () => (
-    <div className="max-w-4xl space-y-6">
-      {!selectedCityId && (
-        <Card>
-          <div className="p-4 flex items-start gap-3 text-amber-800 bg-amber-50 rounded-lg">
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-            <p className="text-sm">
-              Select a city from the header before editing the website banner. Each city can have its own green top bar text.
-            </p>
-          </div>
-        </Card>
-      )}
-
-      {selectedCity && (
-        <p className="text-sm text-gray-600">
-          Editing banner for <span className="font-semibold text-gray-900">{selectedCity.name}</span>.
-          Empty fields fall back to global defaults on the website.
-        </p>
-      )}
-
-      {/* Live Preview */}
-      <Card>
-        <div className="p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Eye className="w-5 h-5 text-gray-500" />
-            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Live Preview</h3>
-          </div>
-          <div className="bg-green-700 text-white text-xs py-2 px-4 rounded-lg flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <span className="flex items-center gap-1">
-                <Phone className="w-3 h-3" />
-                {bannerForm.bannerLeftText || 'Left text'}
-              </span>
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3 h-3" />
-                {bannerForm.bannerMiddleText || 'Middle text'}
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span>{bannerForm.bannerRightTextEn || 'English text'}</span>
-              <span dir="rtl">{bannerForm.bannerRightTextUr || 'اردو متن'}</span>
-            </div>
-          </div>
-          <p className="mt-2 text-xs text-gray-400">
-            On mobile and in the customer app, the bar rotates like a news ticker:
-            each of the texts above (plus the extra ticker lines below) is shown one
-            at a time.
-          </p>
-        </div>
-      </Card>
-
-      {/* Edit Form */}
-      <Card>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            updateBannerMutation.mutate(bannerForm);
-          }}
-          className="space-y-6"
-        >
-          <div className="flex items-center space-x-3 mb-6">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Monitor className="w-5 h-5 text-purple-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-medium text-gray-900">Website Banner</h3>
-              <p className="text-sm text-gray-500">
-                Edit the green top bar on the website for the selected city
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <Input
-                label="Left Side Text (Phone Number)"
-                value={bannerForm.bannerLeftText}
-                onChange={(e) => setBannerForm(prev => ({ ...prev, bannerLeftText: e.target.value }))}
-                placeholder="e.g. 0300-1234567"
-                leftIcon={<Phone className="w-4 h-4 text-gray-400" />}
-              />
-              <p className="mt-1 text-xs text-gray-400">Shown with a phone icon on the left side</p>
-            </div>
-
-            <div>
-              <Input
-                label="Middle Text"
-                value={bannerForm.bannerMiddleText}
-                onChange={(e) => setBannerForm(prev => ({ ...prev, bannerMiddleText: e.target.value }))}
-                placeholder="e.g. Free Delivery 10AM-2PM"
-                leftIcon={<MapPin className="w-4 h-4 text-gray-400" />}
-              />
-              <p className="mt-1 text-xs text-gray-400">Shown with a location icon (hidden on mobile)</p>
-            </div>
-
-            <div>
-              <Input
-                label="Right Side Text (English)"
-                value={bannerForm.bannerRightTextEn}
-                onChange={(e) => setBannerForm(prev => ({ ...prev, bannerRightTextEn: e.target.value }))}
-                placeholder="e.g. Fresh Sabzi at Your Doorstep"
-                leftIcon={<Type className="w-4 h-4 text-gray-400" />}
-              />
-              <p className="mt-1 text-xs text-gray-400">English text on the right (hidden on mobile)</p>
-            </div>
-
-            <div>
-              <Input
-                label="Right Side Text (Urdu)"
-                value={bannerForm.bannerRightTextUr}
-                onChange={(e) => setBannerForm(prev => ({ ...prev, bannerRightTextUr: e.target.value }))}
-                placeholder="تازہ سبزیاں آپ کے دروازے پر"
-                dir="rtl"
-                leftIcon={<Type className="w-4 h-4 text-gray-400" />}
-              />
-              <p className="mt-1 text-xs text-gray-400">Urdu text always visible on the right side</p>
-            </div>
-          </div>
-
-          {/* Extra ticker lines — rotate after the four texts above on mobile/app */}
-          <div className="pt-4 border-t border-gray-200">
-            <div className="flex items-center justify-between mb-1">
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900">Extra Ticker Lines (Mobile / App)</h4>
-                <p className="text-xs text-gray-500">
-                  Add more announcements — offers, timings, notices. English and Urdu both work.
-                </p>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                leftIcon={<Plus className="w-4 h-4" />}
-                onClick={() =>
-                  setBannerForm(prev => ({
-                    ...prev,
-                    bannerTickerItems: [...prev.bannerTickerItems, ''],
-                  }))
-                }
-                disabled={bannerForm.bannerTickerItems.length >= 20}
-              >
-                Add Line
-              </Button>
-            </div>
-
-            {bannerForm.bannerTickerItems.length === 0 ? (
-              <p className="text-xs text-gray-400 py-3 text-center bg-gray-50 rounded-lg">
-                No extra lines yet — the ticker rotates through the four texts above.
-              </p>
-            ) : (
-              <div className="space-y-2 mt-2">
-                {bannerForm.bannerTickerItems.map((item, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <span className="w-6 text-xs text-gray-400 text-center shrink-0">{index + 1}.</span>
-                    <input
-                      type="text"
-                      value={item}
-                      dir="auto"
-                      onChange={(e) =>
-                        setBannerForm(prev => ({
-                          ...prev,
-                          bannerTickerItems: prev.bannerTickerItems.map((it, i) =>
-                            i === index ? e.target.value : it
-                          ),
-                        }))
-                      }
-                      placeholder="e.g. Eid Special: 10% off on all fruits"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setBannerForm(prev => ({
-                          ...prev,
-                          bannerTickerItems: prev.bannerTickerItems.filter((_, i) => i !== index),
-                        }))
-                      }
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      aria-label={`Remove line ${index + 1}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                if (bannerSettings) {
-                  setBannerForm({
-                    bannerLeftText: bannerSettings.bannerLeftText || '',
-                    bannerMiddleText: bannerSettings.bannerMiddleText || '',
-                    bannerRightTextEn: bannerSettings.bannerRightTextEn || '',
-                    bannerRightTextUr: bannerSettings.bannerRightTextUr || '',
-                    bannerTickerItems: bannerSettings.bannerTickerItems || [],
-                  });
-                }
-              }}
-              leftIcon={<RotateCcw className="w-4 h-4" />}
-            >
-              Reset
-            </Button>
-            <Button
-              type="submit"
-              isLoading={updateBannerMutation.isPending}
-              leftIcon={<Save className="w-4 h-4" />}
-              disabled={!selectedCityId || !canUpdate('banner')}
-            >
-              Save Banner Settings
-            </Button>
-          </div>
-        </form>
-      </Card>
-    </div>
-  );
 
   const renderWhatsappTab = () => (
     <WhatsAppOrderSettingsPanel canEdit={canEditWhatsapp} />
@@ -1077,24 +696,24 @@ export const Settings: React.FC = () => {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'delivery' && renderDeliverySettings()}
-      {activeTab === 'timeslots' && renderTimeSlots()}
-      {activeTab === 'business' && renderBusinessHours()}
-      {activeTab === 'banner' && renderBanner()}
-      {activeTab === 'hero' && (
+      {shownTab === 'delivery' && renderDeliverySettings()}
+      {shownTab === 'timeslots' && renderTimeSlots()}
+      {shownTab === 'business' && <BusinessHoursSettingsPanel canEdit={canUpdate('business')} />}
+      {shownTab === 'banner' && <BannerSettingsPanel canEdit={canUpdate('banner')} />}
+      {shownTab === 'hero' && (
         <HeroImageSettingsPanel canEdit={canUpdate('hero')} />
       )}
-      {activeTab === 'coupons' && (
+      {shownTab === 'coupons' && (
         <CouponsSettingsPanel canEdit={canUpdate('coupons')} />
       )}
-      {activeTab === 'brand' && (
+      {shownTab === 'brand' && (
         <BrandLogoSettingsPanel canEdit={canEditBrandLogo} />
       )}
-      {activeTab === 'favicon' && (
+      {shownTab === 'favicon' && (
         <BrandFaviconSettingsPanel canEdit={canEditFavicon} />
       )}
-      {activeTab === 'whatsapp' && renderWhatsappTab()}
-      {activeTab === 'appwidget' && (
+      {shownTab === 'whatsapp' && renderWhatsappTab()}
+      {shownTab === 'appwidget' && (
         <AppWidgetSettingsPanel canEdit={canUpdate('appwidget')} />
       )}
 

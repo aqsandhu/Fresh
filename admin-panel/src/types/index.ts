@@ -31,6 +31,8 @@ export interface User {
 export interface Product {
   id: string;
   nameEn: string;
+  /** From the product's category: counts toward the free-delivery threshold. */
+  qualifiesForFreeDelivery?: boolean;
   nameUr?: string;
   descriptionEn?: string;
   price: number;
@@ -297,11 +299,11 @@ export interface RiderFeedback {
   }>;
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   message: string;
   data?: T;
-  error?: any;
+  error?: unknown;
 }
 
 export interface PaginatedResponse<T> {
@@ -309,12 +311,15 @@ export interface PaginatedResponse<T> {
   requests?: T[];
   orders?: T[];
   customers?: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+  pagination: Pagination;
+}
+
+/** Page numbers of a list answer. */
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 }
 
 export interface LoginCredentials {
@@ -470,6 +475,9 @@ export interface TimeSlot {
   maxOrders: number | null;
   isActive?: boolean;
   isFreeDeliverySlot?: boolean;
+  /** Every city has its own slots (A30). */
+  cityId?: string | null;
+  cityName?: string | null;
 }
 
 export interface BusinessHours {
@@ -596,6 +604,8 @@ export interface CreateCategoryData {
   nameUr: string;
   icon?: string;
   image?: File;
+  /** null = remove the stored picture (update only). */
+  imageUrl?: string | null;
   isActive?: boolean;
   displayOrder?: number;
   qualifiesForFreeDelivery?: boolean;

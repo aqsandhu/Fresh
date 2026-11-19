@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api, unwrap } from './api';
 import type { 
   Order, 
@@ -22,7 +23,8 @@ export const orderService = {
     try {
       const response = await api.get<ApiResponse<PaginatedResponse<Order>>>('/admin/orders', filters);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching orders:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch orders');
     }
@@ -32,7 +34,8 @@ export const orderService = {
     try {
       const response = await api.get<ApiResponse<Order>>(`/admin/orders/${id}`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching order:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch order');
     }
@@ -45,7 +48,8 @@ export const orderService = {
         reason,
       });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating order status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update order status');
     }
@@ -58,7 +62,8 @@ export const orderService = {
         riderId,
       });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error assigning rider:', error);
       throw new Error(error?.response?.data?.message || 'Failed to assign rider');
     }
@@ -75,7 +80,8 @@ export const orderService = {
         reason: reason || undefined,
       });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw new Error(error?.response?.data?.message || 'Failed to return the order to the store');
     }
   },
@@ -108,7 +114,8 @@ export const orderService = {
         note?: string;
       }[]>>(`/admin/orders/${id}/timeline`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching order timeline:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch order timeline');
     }
@@ -128,7 +135,8 @@ export const orderService = {
         cancelledOrders: number;
       }>>('/admin/orders/stats', { period });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching order stats:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch order stats');
     }
@@ -140,7 +148,8 @@ export const orderService = {
         showCustomerPhone: show,
       });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error toggling phone visibility:', error);
       throw new Error(error?.response?.data?.message || 'Failed to toggle phone visibility');
     }
@@ -150,7 +159,8 @@ export const orderService = {
     try {
       const response = await api.put<ApiResponse<Order>>(`/admin/orders/${id}/payment-received`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error marking payment received:', error);
       throw new Error(error?.response?.data?.message || 'Failed to mark payment received');
     }
@@ -165,7 +175,8 @@ export const orderService = {
         { weightKg }
       );
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating item weight:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update weight');
     }
@@ -182,7 +193,8 @@ export const orderService = {
         { orderIds, status, reason }
       );
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error bulk updating order status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update orders');
     }
@@ -191,7 +203,8 @@ export const orderService = {
   deleteOrder: async (id: string): Promise<void> => {
     try {
       await api.delete<ApiResponse<void>>(`/admin/orders/${id}`);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error deleting order:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete order');
     }

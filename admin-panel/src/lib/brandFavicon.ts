@@ -36,6 +36,10 @@ export const FAVICON_APPLE_TOUCH_HEIGHT = 512;
 
 export async function applyBrandFavicons(faviconUrl: string): Promise<() => void> {
   const created: HTMLLinkElement[] = [];
+  // The built-in icon (index.html) steps aside while the brand icon is shown.
+  const builtIn = document.getElementById('default-favicon');
+  const builtInParent = builtIn?.parentNode ?? null;
+  builtIn?.remove();
 
   const upsertLink = (rel: string, href: string, sizes: string) => {
     const selector = `link[rel="${rel}"][sizes="${sizes}"]`;
@@ -79,5 +83,6 @@ export async function applyBrandFavicons(faviconUrl: string): Promise<() => void
     for (const link of created) {
       link.remove();
     }
+    if (builtIn && builtInParent) builtInParent.appendChild(builtIn);
   };
 }

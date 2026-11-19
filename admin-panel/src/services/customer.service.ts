@@ -1,5 +1,6 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api, apiClient, unwrap } from './api';
-import type { Customer, Address, ApiResponse } from '@/types';
+import type { Customer, Address, ApiResponse, Pagination } from '@/types';
 
 interface CustomerFilters {
   page?: number;
@@ -20,14 +21,15 @@ export const customerService = {
     return response.data as Blob;
   },
 
-  getCustomers: async (filters: CustomerFilters = {}): Promise<{ customers: Customer[]; pagination: any }> => {
+  getCustomers: async (filters: CustomerFilters = {}): Promise<{ customers: Customer[]; pagination: Pagination }> => {
     try {
-      const response = await api.get<ApiResponse<{ customers: Customer[]; pagination: any }>>('/admin/customers', filters);
+      const response = await api.get<ApiResponse<{ customers: Customer[]; pagination: Pagination }>>('/admin/customers', filters);
       return {
         customers: response.data?.customers || [],
         pagination: response.data?.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 },
       };
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching customers:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch customers');
     }
@@ -37,7 +39,8 @@ export const customerService = {
     try {
       const response = await api.get<ApiResponse<Address[]>>(`/admin/customers/${customerId}/addresses`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching customer addresses:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch customer addresses');
     }
@@ -57,7 +60,8 @@ export const customerService = {
         lastOrderDate: string | null;
       }>>(`/admin/customers/${id}/stats`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching customer stats:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch customer stats');
     }
@@ -75,7 +79,8 @@ export const customerService = {
         deleteAddresses: options.deleteAddresses ?? false,
       });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error deleting customer:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete customer');
     }

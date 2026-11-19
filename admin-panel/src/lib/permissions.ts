@@ -3,14 +3,9 @@ import { ALL_SETTINGS_VIEW_CODES } from './settingsCodes';
 
 /** Permission required to see each sidebar route (any listed code grants access). */
 export const ROUTE_PERMISSIONS: Record<string, string[]> = {
-  '/admin/dashboard': [
-    'orders.view',
-    'products.view',
-    'customers.view',
-    'settings.view',
-    'settings.update',
-    ...ALL_SETTINGS_VIEW_CODES,
-  ],
+  // Exactly the codes the server accepts for /admin/dashboard (G12): a role
+  // with only, say, delivery-zone rights got a page full of refused calls.
+  '/admin/dashboard': ['orders.view', 'products.view', 'customers.view', 'settings.view', 'settings.update'],
   '/admin/orders': ['orders.view'],
   // Catalog = Products + Categories tabs; Management = pricing/stock/finance tabs.
   '/admin/catalog': ['products.view', 'categories.manage'],
@@ -45,7 +40,8 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   // Riders hub = Riders + Applications tabs.
   '/admin/riders-hub': ['riders.view', 'riders.manage', 'rider_applications.view', 'rider_applications.manage'],
   '/admin/atta-requests': ['orders.view'],
-  '/admin/whatsapp-orders': ['orders.view'],
+  // The page is an order-entry form: placing needs orders.update on the server.
+  '/admin/whatsapp-orders': ['orders.update'],
   '/admin/addresses': ['addresses.view'],
   '/admin/service-cities': [
     'settings.cities.view',
@@ -59,7 +55,10 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
     'settings.view',
     'settings.update',
   ],
-  '/admin/roles': ['roles.manage'],
+  // Super admin only: the server's /admin/roles answers only the super admin,
+  // so a city admin holding roles.manage got an empty page of 403s (G7).
+  // '*' is held by the super admin alone.
+  '/admin/roles': ['*'],
   '/admin/coupons-used': ['coupons.view', 'coupons.manage'],
   '/admin/reviews': ['reviews.view', 'reviews.manage', 'orders.view'],
   '/admin/complaints': ['complaints.view', 'complaints.manage', 'orders.view'],

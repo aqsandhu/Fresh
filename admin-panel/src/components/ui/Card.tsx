@@ -36,6 +36,10 @@ export const Card: React.FC<CardProps> = ({
         tabIndex: 0,
         role: 'button',
         onKeyDown: (e: React.KeyboardEvent) => {
+          // Only the card's own key presses: Enter on an Edit / Delete button
+          // inside the card belongs to that button (it used to be cancelled
+          // here and the card opened instead).
+          if (e.target !== e.currentTarget) return;
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
         },
       } : {})}

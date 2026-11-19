@@ -18,6 +18,8 @@ export interface Basket {
   name: string;
   description?: string | null;
   totalPrice: number;
+  /** Items at today's prices — what customers pay (A35). */
+  currentTotal?: number;
   imageUrl?: string | null;
   isActive: boolean;
   items: BasketItem[];

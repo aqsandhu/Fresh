@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bike, Loader2, Save, ChevronDown, ChevronUp } from 'lucide-react';
@@ -96,7 +97,8 @@ export const RiderApplications: React.FC = () => {
 function ContentEditor() {
   const queryClient = useQueryClient();
   const { user } = useAuthContext();
-  const canManage = hasPermission(user?.permissions, RIDER_APP_MANAGE_CODES);
+  // One page for every city — only the super admin may change it (B28).
+  const canManage = user?.role === 'super_admin' && hasPermission(user?.permissions, RIDER_APP_MANAGE_CODES);
   const [content, setContent] = useState<WorkAsRiderContent>({ intro: '', benefits: '', hours: '', terms: '' });
   const [open, setOpen] = useState(false);
 
@@ -111,7 +113,7 @@ function ContentEditor() {
       toast.success('Page content updated');
       queryClient.invalidateQueries({ queryKey: ['work-as-rider-content'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Update failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Update failed'),
   });
 
   const field = (label: string, key: keyof WorkAsRiderContent, rows = 3, hint?: string) => (
@@ -141,7 +143,8 @@ function ContentEditor() {
           {field('Benefits', 'benefits', 4, 'One per line')}
           {field('Working hours', 'hours', 2)}
           {field('Terms & conditions', 'terms', 4, 'One per line')}
-          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !canManage} title={canManage ? undefined : 'No permission'}>
+          {!canManage && <p className="text-xs text-amber-700">Only the super admin can change this page (it shows in every city).</p>}
+          <Button onClick={() => mutation.mutate()} disabled={mutation.isPending || !canManage} title={canManage ? undefined : 'Super admin only'}>
             {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Save className="w-4 h-4 mr-1" /> Save content</>}
           </Button>
         </div>
@@ -180,7 +183,7 @@ function ApplicationCard({ app }: { app: RiderApplication }) {
       toast.success('Application updated');
       queryClient.invalidateQueries({ queryKey: ['rider-applications'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Update failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Update failed'),
   });
 
   return (

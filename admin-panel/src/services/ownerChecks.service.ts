@@ -1,13 +1,29 @@
 import { api } from './api';
 import type { ApiResponse } from '@/types';
 
+type SummaryRow = Record<string, unknown>;
+
+/** What a watchdog run found (keys arrive camelCased by the api layer). */
+export interface ReconciliationSummary {
+  stockDrift?: SummaryRow[];
+  weightBias?: SummaryRow[];
+  coupons?: { risky?: SummaryRow[]; discountTotal?: number };
+  purchases?: SummaryRow[];
+  stockCounts?: { count?: number; shortageValue?: number; shortages?: SummaryRow[] };
+  ocp?: { overdue?: SummaryRow[]; openShortages?: number };
+  integrity?: { rule?: string; breakingRows: number }[];
+  refunds?: { total?: number; count?: number };
+  waste?: { qty?: number; count?: number };
+  cashByAdmin?: { adminId?: string; adminName?: string; riderCash?: number; ocpCash?: number; officeCash?: number; total?: number }[];
+}
+
 /** One watchdog run (keys arrive camelCased by the api layer). */
 export interface ReconciliationRun {
   id: string;
   runAt: string;
   windowFrom: string | null;
   anomalyCount: number;
-  summary?: Record<string, any>;
+  summary?: ReconciliationSummary;
 }
 
 export interface AuditLogRow {
@@ -32,7 +48,7 @@ export const ownerChecksService = {
   },
   runWatchdog: async (): Promise<{ message: string }> => {
     const res = await api.post<ApiResponse<unknown>>('/admin/reconciliation/run', {});
-    return { message: (res as any)?.message || 'Checks complete' };
+    return { message: (res as { message?: string } | undefined)?.message || 'Checks complete' };
   },
   getAuditLogs: async (f: { days?: number; resource?: string; q?: string }): Promise<AuditLogRow[]> => {
     const params: Record<string, unknown> = { days: f.days ?? 7 };

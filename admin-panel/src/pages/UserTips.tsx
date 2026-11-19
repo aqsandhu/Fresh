@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lightbulb, Plus, Trash2, Eye, EyeOff, Loader2, Save, X, Globe } from 'lucide-react';
@@ -144,7 +145,7 @@ function AddTipForm({
       setOpen(false);
       onCreated();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not add tip'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Could not add tip'),
   });
 
   if (!open) {
@@ -238,7 +239,7 @@ function TipRow({ tip }: { tip: UserTip }) {
       invalidate();
       setEditing(false);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Update failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Update failed'),
   });
 
   const remove = useMutation({
@@ -247,7 +248,7 @@ function TipRow({ tip }: { tip: UserTip }) {
       toast.success('Tip deleted');
       invalidate();
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Delete failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Delete failed'),
   });
 
   return (

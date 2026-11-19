@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MapPinned, Plus, Trash2, ToggleLeft, ToggleRight, Pencil, X } from 'lucide-react';
@@ -89,7 +90,9 @@ export const DeliveryZones: React.FC = () => {
       setEditingId(null);
       queryClient.invalidateQueries({ queryKey: ['delivery-zones'] });
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+
+      const err = errorView(errCaught);
       toast.error(err?.response?.data?.message || 'Failed to save zone');
     },
   });

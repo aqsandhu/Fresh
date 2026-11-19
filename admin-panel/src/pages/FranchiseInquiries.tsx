@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Store, Phone, Mail } from 'lucide-react';
@@ -28,7 +29,7 @@ export const FranchiseInquiries: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['franchise-inquiries'] });
       toast.success('Status updated');
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to update'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to update'),
   });
 
   return (

@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, Search, MapPin, Home, Briefcase, Building, Navigation, Image, Star, Trash2, Download } from 'lucide-react';
@@ -85,7 +86,7 @@ export const Customers: React.FC = () => {
         setSelectedCustomer(null);
       }
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to delete customer'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to delete customer'),
   });
 
   const customers = data?.customers || [];

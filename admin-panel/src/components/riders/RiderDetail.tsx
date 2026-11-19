@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -6,6 +7,7 @@ import {
   Star, Phone, Navigation2, Image as ImageIcon, Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { isQueued } from '@/lib/approvalQueue';
 import { ApproverFields } from '@/components/ui/ApproverFields';
 import { needsSecondAdmin } from '@/utils/auditPeriod';
 import { Card } from '@/components/ui/Card';
@@ -47,6 +49,8 @@ export const RiderDetail: React.FC<Props> = ({ rider, onBack, onTrack }) => {
   const { user } = useAuthContext();
   const canReceiveCash = hasPermission(user?.permissions, 'finance.rider_cash.receive');
   const canManage = hasPermission(user?.permissions, 'riders.manage');
+  // A payment is a finance entry; per-order pay is rider management (G25).
+  const canPay = hasPermission(user?.permissions, 'finance.rider_payments.create');
 
   const statsQuery = useQuery({
     queryKey: ['rider-stats', rider.id],
@@ -69,7 +73,7 @@ export const RiderDetail: React.FC<Props> = ({ rider, onBack, onTrack }) => {
         <Button variant="outline" onClick={onBack} leftIcon={<ArrowLeft className="w-4 h-4" />}>Back to riders</Button>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => onTrack(rider)} leftIcon={<Navigation2 className="w-4 h-4" />}>Live location</Button>
-          {canManage && (
+          {canPay && (
             <Button variant="outline" onClick={() => setPayOpen(true)} leftIcon={<DollarSign className="w-4 h-4" />}>Pay rider</Button>
           )}
         </div>
@@ -177,6 +181,7 @@ export const RiderDetail: React.FC<Props> = ({ rider, onBack, onTrack }) => {
               charges={stats.deliveryCharges || []}
               urgentCharge={stats.urgentDeliveryCharge ?? null}
               urgentSupported={stats.urgentChargeSupported !== false}
+              canEdit={canManage}
               onSaved={() => statsQuery.refetch()}
             />
           </div>
@@ -212,8 +217,10 @@ const SlotChargesEditor: React.FC<{
   /** Dedicated pay for urgent (no-slot) orders; null = not set. */
   urgentCharge: number | null;
   urgentSupported: boolean;
+  /** riders.manage — the server refuses the save without it. */
+  canEdit: boolean;
   onSaved: () => void;
-}> = ({ riderId, charges, urgentCharge, urgentSupported, onSaved }) => {
+}> = ({ riderId, charges, urgentCharge, urgentSupported, canEdit, onSaved }) => {
   const [urgent, setUrgent] = useState<string>(urgentCharge === null ? '' : String(urgentCharge));
   useEffect(() => setUrgent(urgentCharge === null ? '' : String(urgentCharge)), [urgentCharge]);
   const { data: timeSlots } = useQuery({ queryKey: ['timeSlots'], queryFn: () => settingsService.getTimeSlots() });
@@ -235,7 +242,7 @@ const SlotChargesEditor: React.FC<{
         urgentSupported ? (urgent.trim() === '' ? null : Number(urgent)) : undefined
       ),
     onSuccess: () => { toast.success('Per-order pay saved'); onSaved(); },
-    onError: (e: any) => toast.error(e?.message || 'Failed to save'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to save'),
   });
 
   const invalid =
@@ -262,6 +269,8 @@ const SlotChargesEditor: React.FC<{
                 type="number"
                 min={0}
                 placeholder="0"
+                aria-label={`Pay per order, ${formatTime(slot.startTime)} – ${formatTime(slot.endTime)}`}
+                disabled={!canEdit}
                 value={values[slot.id] ?? ''}
                 onChange={(e) => setValues((prev) => ({ ...prev, [slot.id]: e.target.value }))}
                 leftIcon={<span className="text-xs text-gray-400">Rs</span>}
@@ -285,17 +294,20 @@ const SlotChargesEditor: React.FC<{
               type="number"
               min={0}
               placeholder="not set"
+              aria-label="Urgent delivery pay per order"
               value={urgent}
-              disabled={!urgentSupported}
+              disabled={!urgentSupported || !canEdit}
               onChange={(e) => setUrgent(e.target.value)}
               leftIcon={<span className="text-xs text-gray-400">Rs</span>}
             />
           </div>
         </div>
       </div>
+      {canEdit && (
       <div className="mt-4 flex justify-end">
         <Button onClick={() => mutation.mutate()} isLoading={mutation.isPending} disabled={invalid} leftIcon={<Save className="w-4 h-4" />}>Save pay</Button>
       </div>
+      )}
     </Card>
   );
 };
@@ -359,9 +371,9 @@ export const TaskRowCard: React.FC<{ task: RiderTaskRow; showRider?: boolean }> 
           </div>
         </div>
         <div className="text-right text-sm">
-          {task.totalAmount != null && <p className="font-semibold">{formatCurrency(task.totalAmount as any)}</p>}
+          {task.totalAmount != null && <p className="font-semibold">{formatCurrency(task.totalAmount)}</p>}
           {task.paymentMethod && <p className="text-xs text-gray-500">{task.paymentMethod === 'cash_on_delivery' ? 'COD' : task.paymentMethod} · {task.paymentStatus}</p>}
-          {task.riderDeliveryCharge != null && Number(task.riderDeliveryCharge) > 0 && <p className="text-xs text-green-700">Rider pay {formatCurrency(task.riderDeliveryCharge as any)}</p>}
+          {task.riderDeliveryCharge != null && Number(task.riderDeliveryCharge) > 0 && <p className="text-xs text-green-700">Rider pay {formatCurrency(task.riderDeliveryCharge)}</p>}
           {proof && (
             <a href={resolveImageUrl(proof)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1">
               <ImageIcon className="w-3 h-3" /> Proof photo
@@ -467,7 +479,9 @@ export function RiderPaymentModal({ rider, onClose }: { rider: Rider; onClose: (
       approvalPhone: approvalPhone.trim() || undefined, approvalPassword: approvalPassword || undefined,
     }),
     onSuccess: () => { toast.success('Payment recorded in Expenses'); onClose(); },
-    onError: (e: any) => {
+    onError: (eCaught: unknown) => {
+      const e = errorView(eCaught);
+      if (isQueued(e)) { onClose(); return; } // waits for the city admin (J1)
       const msg = e?.response?.data?.message || 'Failed';
       if (needsSecondAdmin(msg)) setNeedApproval(true);
       toast.error(msg);
@@ -484,7 +498,7 @@ export function RiderPaymentModal({ rider, onClose }: { rider: Rider; onClose: (
       <div className="space-y-3">
         <div>
           <label htmlFor="riderdetail-f1" className="block text-sm font-medium text-gray-700 mb-1">Payment type</label>
-          <select id="riderdetail-f1" value={category} onChange={(e) => setCategory(e.target.value as any)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <select id="riderdetail-f1" value={category} onChange={(e) => setCategory(e.target.value as 'salary' | 'commission' | 'other')} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="salary">Salary</option>
             <option value="commission">Per-order delivery pay (hand-over)</option>
             <option value="other">Bonus / other</option>
@@ -516,7 +530,7 @@ function ReceiveRiderCashModal({ rider, pending, lines, onClose, onDone }: {
       queryClient.invalidateQueries({ queryKey: ['rider-settlements', rider.id] });
       await onDone();
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to receive cash'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to receive cash'),
   });
   return (
     <Modal isOpen onClose={onClose} title={`Receive cash from ${rider.fullName}`}

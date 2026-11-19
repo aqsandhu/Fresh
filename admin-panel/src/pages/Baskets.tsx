@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit, Save, ShoppingBasket, ShieldAlert, X } from 'lucide-react';
@@ -125,7 +126,7 @@ export const Baskets: React.FC = () => {
       setModalOpen(false);
       setForm(emptyForm());
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to save basket'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to save basket'),
   });
 
   const deleteMutation = useMutation({
@@ -134,7 +135,7 @@ export const Baskets: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-baskets'] });
       toast.success('Basket deleted');
     },
-    onError: (e: any) => toast.error(e?.message || 'Failed to delete'),
+    onError: (e: unknown) => toast.error(errorView(e)?.message || 'Failed to delete'),
   });
 
   const openCreate = () => {
@@ -208,7 +209,9 @@ export const Baskets: React.FC = () => {
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <h3 className="font-semibold text-gray-900">{b.name}</h3>
-                    <p className="text-primary-700 font-bold">{formatCurrency(b.totalPrice)}</p>
+                    <p className="text-primary-700 font-bold" title="What customers pay today: the items at today's prices">
+                      {formatCurrency(b.currentTotal ?? b.totalPrice)}
+                    </p>
                   </div>
                   <span
                     className={`text-xs px-2 py-1 rounded-full ${
@@ -270,7 +273,7 @@ export const Baskets: React.FC = () => {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
-              label="Total price (Rs)"
+              label="Reference price (Rs) — customers see today's item prices"
               type="number"
               value={form.totalPrice}
               onChange={(e) => setForm({ ...form, totalPrice: Number(e.target.value) })}

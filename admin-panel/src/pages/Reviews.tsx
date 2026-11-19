@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Star, Loader2, Eye, EyeOff, MessageSquare } from 'lucide-react';
@@ -128,7 +129,7 @@ function ReviewCard({ review }: { review: AdminReview }) {
       toast.success('Review updated');
       queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Update failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Update failed'),
   });
 
   return (

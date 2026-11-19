@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Loader2, RefreshCw, AlertTriangle, CheckCircle2, ClipboardCheck, History } from 'lucide-react';
@@ -5,7 +6,7 @@ import toast from 'react-hot-toast';
 import { Layout } from '@/components/layout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { ownerChecksService, type AuditLogRow } from '@/services/ownerChecks.service';
+import { ownerChecksService, type AuditLogRow, type ReconciliationSummary } from '@/services/ownerChecks.service';
 import { stockService } from '@/services/stock.service';
 
 // ============================================================================
@@ -20,7 +21,7 @@ const when = (s?: string | null) => (s ? new Date(s).toLocaleString('en-PK', { d
 const todayPk = () => new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10);
 
 /** One plain-language line per finding. */
-function findings(summary: Record<string, any> | undefined): { level: 'high' | 'medium'; text: string }[] {
+function findings(summary: ReconciliationSummary | undefined): { level: 'high' | 'medium'; text: string }[] {
   if (!summary) return [];
   const out: { level: 'high' | 'medium'; text: string }[] = [];
   for (const d of summary.stockDrift || []) {
@@ -53,7 +54,7 @@ function findings(summary: Record<string, any> | undefined): { level: 'high' | '
         : `Database rule "${what}" is not switched on yet — run the database migrations (or ensure_integrity_constraints()).`,
     });
   }
-  if (summary.ocp?.openShortages > 0) out.push({ level: 'medium', text: `${summary.ocp.openShortages} collection-point stock shortage(s) are still open.` });
+  if ((summary.ocp?.openShortages ?? 0) > 0) out.push({ level: 'medium', text: `${summary.ocp?.openShortages} collection-point stock shortage(s) are still open.` });
   return out;
 }
 
@@ -63,7 +64,7 @@ function WatchdogTab() {
   const run = useMutation({
     mutationFn: ownerChecksService.runWatchdog,
     onSuccess: (r) => { toast.success(r.message); qc.invalidateQueries({ queryKey: ['owner-watchdog'] }); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Could not run the checks'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Could not run the checks'),
   });
   const latest = data?.latest;
   const s = latest?.summary;
@@ -132,7 +133,7 @@ function WatchdogTab() {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 text-xs"><tr><th className="text-left px-4 py-2">Admin</th><th className="text-right px-4 py-2">From riders</th><th className="text-right px-4 py-2">From OCPs</th><th className="text-right px-4 py-2">At office</th><th className="text-right px-4 py-2">Total</th></tr></thead>
               <tbody className="divide-y divide-gray-100">
-                {(s?.cashByAdmin || []).map((c: any) => (
+                {(s?.cashByAdmin || []).map((c) => (
                   <tr key={c.adminId || c.adminName}><td className="px-4 py-2">{c.adminName || '—'}</td><td className="px-4 py-2 text-right">{rs(c.riderCash)}</td><td className="px-4 py-2 text-right">{rs(c.ocpCash)}</td><td className="px-4 py-2 text-right">{rs(c.officeCash)}</td><td className="px-4 py-2 text-right font-semibold">{rs(c.total)}</td></tr>
                 ))}
               </tbody>

@@ -25,6 +25,7 @@ import {
   UtensilsCrossed,
   Store,
   LogOut,
+  CheckCheck,
 } from 'lucide-react';
 import { BrandLogo } from '@/components/ui/BrandLogo';
 import { useAuthContext } from '@/context/AuthContext';
@@ -40,7 +41,7 @@ interface NavItem {
   path: string;
   label: string;
   icon: React.ReactNode;
-  badge?: 'orders' | 'riderApplications' | 'restaurantRequests';
+  badge?: 'orders' | 'riderApplications' | 'restaurantRequests' | 'approvals';
 }
 
 const navItems: NavItem[] = [
@@ -48,6 +49,7 @@ const navItems: NavItem[] = [
   { path: '/admin/orders', label: 'Orders', icon: <ShoppingCart className="w-5 h-5" />, badge: 'orders' },
   { path: '/admin/catalog', label: 'Catalog', icon: <Package className="w-5 h-5" /> },
   { path: '/admin/management', label: 'Management', icon: <Boxes className="w-5 h-5" /> },
+  { path: '/admin/approvals', label: 'Approvals', icon: <CheckCheck className="w-5 h-5" />, badge: 'approvals' },
   { path: '/admin/owner-checks', label: 'Owner checks', icon: <ShieldCheck className="w-5 h-5" /> },
   { path: '/admin/corruption-audit', label: 'AI Audit', icon: <ScanSearch className="w-5 h-5" /> },
   { path: '/admin/customers', label: 'Customers', icon: <Users className="w-5 h-5" /> },

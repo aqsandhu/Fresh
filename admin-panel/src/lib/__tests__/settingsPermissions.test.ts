@@ -29,9 +29,16 @@ describe('canViewSettingsTab / canUpdateSettingsTab', () => {
 });
 
 describe('brand / favicon role gates', () => {
-  it('admin + super_admin always view brand & favicon tabs', () => {
-    expect(canViewBrandSettingsTab([], 'admin')).toBe(true);
+  it('super_admin always views brand & favicon tabs', () => {
     expect(canViewBrandSettingsTab([], 'super_admin')).toBe(true);
+  });
+
+  // G12: every custom role has role "admin"; the server reads its permission
+  // codes, so the tab must too (a time-slots-only role got refused calls).
+  it('a custom admin role needs a brand code (or general settings)', () => {
+    expect(canViewBrandSettingsTab(['settings.timeslots.view'], 'admin')).toBe(false);
+    expect(canViewBrandSettingsTab(['settings.brand.view'], 'admin')).toBe(true);
+    expect(canViewBrandSettingsTab(['settings.view'], 'admin')).toBe(true);
   });
 
   it('only super_admin may update the brand logo / favicon', () => {
@@ -43,9 +50,22 @@ describe('brand / favicon role gates', () => {
 });
 
 describe('whatsapp settings', () => {
-  it('any admin/super_admin can view + update', () => {
-    expect(canViewWhatsappSettingsTab([], 'admin')).toBe(true);
+  it('super_admin can view + update', () => {
+    expect(canViewWhatsappSettingsTab([], 'super_admin')).toBe(true);
     expect(canUpdateWhatsappSettings([], 'super_admin')).toBe(true);
+  });
+
+  it('a custom admin role follows the same codes as the server (G12)', () => {
+    expect(canViewWhatsappSettingsTab(['settings.timeslots.view'], 'admin')).toBe(false);
+    expect(canViewWhatsappSettingsTab(['settings.banner.view'], 'admin')).toBe(true);
+    expect(canUpdateWhatsappSettings(['settings.banner.view'], 'admin')).toBe(false);
+    expect(canUpdateWhatsappSettings(['settings.banner.update'], 'admin')).toBe(true);
+  });
+
+  it('an edit code opens its own tab (G12)', () => {
+    expect(canViewSettingsTab(['settings.delivery.update'], 'delivery')).toBe(true);
+    expect(canViewSettingsTab(['settings.timeslots.manage'], 'timeslots')).toBe(true);
+    expect(canViewSettingsTab(['settings.business_hours.update'], 'business')).toBe(true);
   });
 
   it('a scoped admin needs the underlying settings codes', () => {

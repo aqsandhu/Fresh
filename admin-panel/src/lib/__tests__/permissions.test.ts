@@ -94,3 +94,33 @@ describe('safeAdminRedirect', () => {
     }
   });
 });
+
+describe('Roles page is the super admin\'s (G7, round 6)', () => {
+  it('a city admin holding roles.manage does not get the page (the server refuses its data)', () => {
+    expect(canAccessRoute('/admin/roles', ['roles.manage', 'orders.view'])).toBe(false);
+  });
+  it('the super admin does', () => {
+    expect(canAccessRoute('/admin/roles', ['*'])).toBe(true);
+  });
+});
+
+describe('WhatsApp order form needs the right to place orders (G10, round 7)', () => {
+  it('a view-only orders role does not get the form (the server refuses the order)', () => {
+    expect(canAccessRoute('/admin/whatsapp-orders', ['orders.view'])).toBe(false);
+  });
+  it('a role that may update orders does', () => {
+    expect(canAccessRoute('/admin/whatsapp-orders', ['orders.view', 'orders.update'])).toBe(true);
+  });
+});
+
+describe('Dashboard follows the server rule (G12, permission sweep)', () => {
+  it('a role with only a narrow settings code does not get the dashboard', () => {
+    expect(canAccessRoute('/admin/dashboard', ['settings.delivery_zones.manage'])).toBe(false);
+    expect(canAccessRoute('/admin/dashboard', ['settings.timeslots.view'])).toBe(false);
+  });
+  it('order / product / customer viewers and general settings still do', () => {
+    for (const code of ['orders.view', 'products.view', 'customers.view', 'settings.view', 'settings.update']) {
+      expect(canAccessRoute('/admin/dashboard', [code])).toBe(true);
+    }
+  });
+});

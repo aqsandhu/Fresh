@@ -1,3 +1,4 @@
+import { asCaughtError, errorView } from '@/lib/caughtError';
 import { api, unwrap } from './api';
 import type {
   Rider,
@@ -7,7 +8,20 @@ import type {
   RiderTaskRow,
   RiderCashSettlement,
   RiderFeedback,
+  Pagination,
 } from '@/types';
+
+/** Where a rider is (the tracking popup). */
+export interface RiderLocation {
+  id: string;
+  fullName: string;
+  phone: string;
+  status: string;
+  latitude: number | null;
+  longitude: number | null;
+  accuracy: number | null;
+  locationUpdatedAt: string | null;
+}
 
 export interface RiderListFilters {
   status?: string;
@@ -18,8 +32,10 @@ export interface RiderListFilters {
   limit?: number;
 }
 
-const failure = (error: any, fallback: string) =>
-  new Error(error?.response?.data?.message || error?.message || fallback);
+const failure = (caught: unknown, fallback: string) => {
+  const error = errorView(caught);
+  return new Error(error?.response?.data?.message || error?.message || fallback);
+};
 
 export const riderService = {
   /**
@@ -35,12 +51,13 @@ export const riderService = {
       if (f.search?.trim()) params.search = f.search.trim();
       if (f.online) params.online = 'true';
       if (f.limit) params.limit = f.limit;
-      const response = await api.get<ApiResponse<{ riders: Rider[]; pagination: any }>>(
+      const response = await api.get<ApiResponse<{ riders: Rider[]; pagination: Pagination }>>(
         '/admin/riders',
         Object.keys(params).length ? params : undefined
       );
       return response.data?.riders || [];
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching riders:', error);
       throw failure(error, 'Failed to fetch riders');
     }
@@ -51,7 +68,8 @@ export const riderService = {
     try {
       const response = await api.get<ApiResponse<Rider>>(`/admin/riders/${id}`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching rider:', error);
       throw failure(error, 'Failed to fetch rider');
     }
@@ -61,7 +79,8 @@ export const riderService = {
     try {
       const response = await api.postForm<ApiResponse<Rider>>('/admin/riders', formData);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error creating rider:', error);
       throw failure(error, 'Failed to create rider');
     }
@@ -71,7 +90,8 @@ export const riderService = {
     try {
       const response = await api.putForm<ApiResponse<Rider>>(`/admin/riders/${id}`, formData);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating rider:', error);
       throw failure(error, 'Failed to update rider');
     }
@@ -80,7 +100,8 @@ export const riderService = {
   deleteRider: async (id: string): Promise<void> => {
     try {
       await api.delete<ApiResponse<void>>(`/admin/riders/${id}`);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error deleting rider:', error);
       throw failure(error, 'Failed to delete rider');
     }
@@ -92,7 +113,8 @@ export const riderService = {
         status,
       });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating rider status:', error);
       throw failure(error, 'Failed to update rider status');
     }
@@ -105,7 +127,8 @@ export const riderService = {
         verificationStatus,
       });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error verifying rider:', error);
       throw failure(error, 'Failed to update rider verification');
     }
@@ -115,7 +138,8 @@ export const riderService = {
     try {
       const response = await api.get<ApiResponse<RiderStats>>(`/admin/riders/${id}/stats`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching rider stats:', error);
       throw failure(error, 'Failed to fetch rider stats');
     }
@@ -127,13 +151,14 @@ export const riderService = {
     page = 1
   ): Promise<{ tasks: RiderTaskRow[]; pagination: { page: number; total: number; totalPages: number } }> => {
     try {
-      const response = await api.get<ApiResponse<{ tasks: RiderTaskRow[]; pagination: any }>>(
+      const response = await api.get<ApiResponse<{ tasks: RiderTaskRow[]; pagination: Pagination }>>(
         `/admin/riders/${id}/tasks`,
         { scope, page, limit: 30 }
       );
       const data = unwrap(response);
       return { tasks: data.tasks || [], pagination: data.pagination || { page, total: 0, totalPages: 0 } };
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw failure(error, 'Failed to load rider tasks');
     }
   },
@@ -143,7 +168,8 @@ export const riderService = {
       const response = await api.get<ApiResponse<RiderFeedback>>(`/admin/riders/${id}/feedback`);
       const data = unwrap(response);
       return { reviews: data.reviews || [], complaints: data.complaints || [] };
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw failure(error, 'Failed to load rider feedback');
     }
   },
@@ -152,7 +178,8 @@ export const riderService = {
     try {
       const response = await api.get<ApiResponse<RiderCashSettlement[]>>(`/admin/riders/${id}/cash-settlements`);
       return response.data || [];
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       throw failure(error, 'Failed to load cash hand-overs');
     }
   },
@@ -167,7 +194,8 @@ export const riderService = {
         data
       );
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error receiving rider cash:', error);
       throw failure(error, 'Failed to receive rider cash');
     }
@@ -177,13 +205,14 @@ export const riderService = {
    * Per-slot pay + (optionally) the dedicated urgent-order pay.
    * urgentCharge: number = set, null = clear, undefined = leave unchanged.
    */
-  setDeliveryCharges: async (id: string, charges: RiderDeliveryCharge[], urgentCharge?: number | null): Promise<any> => {
+  setDeliveryCharges: async (id: string, charges: RiderDeliveryCharge[], urgentCharge?: number | null): Promise<unknown> => {
     try {
       const body: Record<string, unknown> = { charges };
       if (urgentCharge !== undefined) body.urgentCharge = urgentCharge;
-      const response = await api.put<ApiResponse<any>>(`/admin/riders/${id}/delivery-charges`, body);
+      const response = await api.put<ApiResponse<unknown>>(`/admin/riders/${id}/delivery-charges`, body);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error setting delivery charges:', error);
       throw failure(error, 'Failed to set delivery charges');
     }
@@ -194,17 +223,19 @@ export const riderService = {
       await api.put<ApiResponse<void>>(`/admin/orders/${orderId}/assign-rider`, {
         riderId,
       });
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error assigning order to rider:', error);
       throw failure(error, 'Failed to assign order');
     }
   },
 
-  getRiderLocation: async (id: string): Promise<{ id: string; fullName: string; phone: string; status: string; latitude: number | null; longitude: number | null; accuracy: number | null; locationUpdatedAt: string | null }> => {
+  getRiderLocation: async (id: string): Promise<RiderLocation> => {
     try {
-      const response = await api.get<ApiResponse<any>>(`/admin/riders/${id}/location`);
+      const response = await api.get<ApiResponse<RiderLocation>>(`/admin/riders/${id}/location`);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching rider location:', error);
       throw failure(error, 'Failed to fetch rider location');
     }

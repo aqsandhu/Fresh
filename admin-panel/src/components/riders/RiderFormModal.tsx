@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, Phone, Mail, CreditCard, Upload, X, Loader2 } from 'lucide-react';
@@ -123,7 +124,10 @@ export const RiderFormModal: React.FC<Props> = ({ isOpen, editing, prefill, onCl
       e.emergencyContactPhone = 'Enter a valid phone number';
     }
     setErrors(e);
-    if (e.emergencyContactPhone && Object.keys(e).length === 1) setTab(1);
+    // Show the tab that holds the mistake — "Please fix the highlighted fields"
+    // on a tab with nothing highlighted left the admin guessing (G27).
+    if (Object.keys(e).some((k) => k !== 'emergencyContactPhone')) setTab(0);
+    else if (e.emergencyContactPhone) setTab(1);
     return Object.keys(e).length === 0;
   };
 
@@ -135,7 +139,7 @@ export const RiderFormModal: React.FC<Props> = ({ isOpen, editing, prefill, onCl
       onSaved?.(rider);
       onClose();
     },
-    onError: (error: any) => toast.error(error?.message || 'Failed to save rider'),
+    onError: (error: unknown) => toast.error(errorView(error)?.message || 'Failed to save rider'),
   });
 
   const submit = () => {
@@ -224,7 +228,7 @@ export const RiderFormModal: React.FC<Props> = ({ isOpen, editing, prefill, onCl
                 </div>
                 <label className="absolute bottom-0 right-0 bg-primary-600 text-white rounded-full p-2 cursor-pointer hover:bg-primary-700">
                   <Upload className="w-4 h-4" />
-                  <input type="file" accept="image/jpeg,image/png,image/webp" onChange={pickImage} className="hidden" />
+                  <input type="file" aria-label="Rider photo" accept="image/jpeg,image/png,image/webp" onChange={pickImage} className="hidden" />
                 </label>
                 {image && (
                   <button
@@ -247,6 +251,7 @@ export const RiderFormModal: React.FC<Props> = ({ isOpen, editing, prefill, onCl
                 onChange={set('phone')}
                 error={errors.phone}
                 placeholder="03001234567"
+                autoComplete="off"
                 leftIcon={<Phone className="w-4 h-4 text-gray-400" />}
                 required
               />
@@ -255,6 +260,9 @@ export const RiderFormModal: React.FC<Props> = ({ isOpen, editing, prefill, onCl
               <Input
                 label={editing ? 'New password (leave blank to keep)' : 'Password (rider app login)'}
                 type="password"
+                // A NEW account: the browser must not fill in the signed-in admin's
+                // own saved phone + password (round 7).
+                autoComplete="new-password"
                 value={form.password}
                 onChange={set('password')}
                 error={errors.password}

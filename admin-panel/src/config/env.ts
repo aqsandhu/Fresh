@@ -23,10 +23,44 @@ export const SOCKET_URL = API_BASE_URL.replace(/\/api\/?$/, '');
 export const BACKEND_HOST = API_BASE_URL.replace(/\/api\/?$/, '');
 
 /**
- * HttpOnly-cookie auth mode (XSS-hardening): tokens never touch
- * localStorage; the session lives in HttpOnly cookies set by the backend.
- * Requires ADMIN_AUTH_COOKIES=true on the backend, and (when the panel and
- * API are on different sites) AUTH_COOKIE_SAMESITE=none there too.
- * Default off so existing bearer-token deployments keep working.
+ * Is the API on the same site as this page (admin.example.pk + api.example.pk)?
+ * Only then does the browser send the API's SameSite cookies with our calls.
+ * localhost is left out: local development keeps the simple bearer mode.
  */
-export const AUTH_COOKIES_ENABLED = process.env.VITE_AUTH_COOKIES === 'true';
+export function isSameSiteAsApi(pageHost: string, apiUrl: string): boolean {
+  let apiHost: string;
+  try {
+    apiHost = new URL(apiUrl).hostname;
+  } catch {
+    return false;
+  }
+  const local = (h: string) => h === 'localhost' || /^[0-9.]+$/.test(h) || !h.includes('.');
+  if (local(pageHost) || local(apiHost)) return false;
+  const parent = (h: string) => h.split('.').slice(1).join('.');
+  const a = parent(pageHost);
+  return a.includes('.') && a === parent(apiHost);
+}
+
+/**
+ * HttpOnly-cookie auth mode: the session lives in HttpOnly cookies set by the
+ * API, so no token is in localStorage for an injected script to steal.
+ * - VITE_AUTH_COOKIES=true / false forces it.
+ * - Otherwise it is ON when this page and the API share a site (production:
+ *   admin.freshbazar.pk + api.freshbazar.pk) and OFF elsewhere (a Vercel
+ *   preview on *.vercel.app, local development), where the cookies would not
+ *   be sent and bearer tokens are used as before.
+ */
+export function resolveCookieMode(flag: string | undefined, pageHost: string | undefined, apiUrl: string): boolean {
+  if (flag === 'true') return true;
+  if (flag === 'false') return false;
+  return pageHost ? isSameSiteAsApi(pageHost, apiUrl) : false;
+}
+
+export const AUTH_COOKIES_ENABLED = resolveCookieMode(
+  process.env.VITE_AUTH_COOKIES,
+  typeof window !== 'undefined' ? window.location.hostname : undefined,
+  API_BASE_URL
+);
+
+/** Tells the API which kind of session this panel uses (it answers with cookies only for "admin-cookie"). */
+export const CLIENT_PLATFORM = AUTH_COOKIES_ENABLED ? 'admin-cookie' : 'admin';

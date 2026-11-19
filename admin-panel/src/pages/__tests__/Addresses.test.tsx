@@ -1,6 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { newTestQueryClient } from '@/testDoubles/testQueryClient';
 import { MemoryRouter } from 'react-router-dom';
 import { Addresses } from '@/pages/Addresses';
 import { ROUTER_FUTURE } from '@/lib/routerFuture';
@@ -9,9 +10,10 @@ const mockAssignHouseNumber = jest.fn();
 const mockGetCustomers = jest.fn();
 const mockGetAddresses = jest.fn();
 
+const mockPerms: { list: string[] } = { list: ['addresses.view', 'customers.view'] };
 jest.mock('@/context/AuthContext', () => ({
   useAuthContext: () => ({
-    user: { role: 'admin', fullName: 'Test Admin', permissions: ['addresses.view'] },
+    user: { role: 'admin', fullName: 'Test Admin', permissions: mockPerms.list },
   }),
 }));
 
@@ -103,11 +105,7 @@ const mockAddresses = [
 
 describe('Addresses Page', () => {
   const createTestQueryClient = () =>
-    new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-      },
-    });
+    newTestQueryClient();
 
   const renderAddresses = () => {
     const queryClient = createTestQueryClient();
@@ -276,5 +274,20 @@ describe('Addresses Page', () => {
       expect(screen.getByText('Ali Khan')).toBeInTheDocument();
       expect(screen.getByPlaceholderText('Search customers...')).toBeInTheDocument();
     });
+  });
+
+  // G12 (round 7, permission sweep): an addresses-only role cannot read the
+  // customer list — the picker used to fire a refused call (red pop-up).
+  it('an addresses-only role gets address search but no customer picker or customer call', async () => {
+    mockPerms.list = ['addresses.view'];
+    try {
+      renderAddresses();
+      await waitFor(() => expect(mockGetAddresses).toHaveBeenCalled());
+      expect(screen.getByPlaceholderText(/Search by area/)).toBeInTheDocument();
+      expect(screen.queryByText('Select Customer')).toBeNull();
+      expect(mockGetCustomers).not.toHaveBeenCalled();
+    } finally {
+      mockPerms.list = ['addresses.view', 'customers.view'];
+    }
   });
 });

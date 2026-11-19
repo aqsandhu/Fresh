@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { authService } from '@/services/auth.service';
 import { normalizeAdminUser } from '@/lib/adminUser';
-import { refreshAdminAccessToken, tokenNeedsRefresh } from '@/lib/adminTokenRefresh';
+import { adoptCookieSession, refreshAdminAccessToken, tokenNeedsRefresh } from '@/lib/adminTokenRefresh';
 import { AUTH_COOKIES_ENABLED } from '@/config/env';
 import type { User, LoginCredentials, LoginOtpChallenge } from '@/types';
 
@@ -15,6 +15,15 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const SESSION_RESYNC_MS = 5 * 60 * 1000;
+
+/** Same role, city and permission set — no re-render needed. */
+function sameAccess(a: User, b: User): boolean {
+  const key = (u: User) =>
+    [u.role, u.adminRoleId ?? '', u.adminRoleCityId ?? '', [...(u.permissions ?? [])].sort().join(',')].join('|');
+  return key(a) === key(b);
+}
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -32,15 +41,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // a probable session; /admin/me (with the 401→refresh→retry
       // interceptor behind it) is the authority.
       if (AUTH_COOKIES_ENABLED) {
+        // Old localStorage tokens (from before cookie mode) are traded for a
+        // cookie session and removed.
+        await adoptCookieSession();
         if (!storedUser) {
           setIsLoading(false);
           return;
         }
-        const freshUser = await authService.fetchSession();
-        if (freshUser) {
-          setUser(freshUser);
-        } else {
-          authService.logout();
+        try {
+          const freshUser = await authService.fetchSession();
+          if (freshUser) {
+            setUser(freshUser);
+          } else {
+            authService.logout();
+          }
+        } catch {
+          // Server down / restarting (G13): stay signed in with the stored
+          // user — the next request or window focus re-checks the session.
+          setUser(storedUser);
         }
         setIsLoading(false);
         return;
@@ -55,17 +73,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return;
       }
 
-      if (tokenNeedsRefresh(token)) {
-        const newToken = await refreshAdminAccessToken();
-        if (!newToken) {
-          authService.logout();
-          setIsLoading(false);
-          return;
+      try {
+        if (tokenNeedsRefresh(token)) {
+          const newToken = await refreshAdminAccessToken();
+          if (!newToken) {
+            authService.logout();
+            setIsLoading(false);
+            return;
+          }
         }
+        const freshUser = await authService.fetchSession();
+        setUser(freshUser || storedUser);
+      } catch {
+        // Server unreachable (G13): keep the stored session instead of signing out.
+        setUser(storedUser);
       }
-
-      const freshUser = await authService.fetchSession();
-      setUser(freshUser || storedUser);
       setIsLoading(false);
     };
 
@@ -94,6 +116,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       window.removeEventListener('focus', onFocus);
     };
   }, [user]);
+
+  // A role change by the owner used to reach an open panel only after a page
+  // reload — staff kept seeing menus the server now refuses (or missed new
+  // ones). Re-read the session when the window regains focus and every 5 min.
+  const signedIn = !!user;
+  useEffect(() => {
+    if (!signedIn) return;
+    let alive = true;
+    const sync = () => {
+      authService
+        .fetchSession()
+        .then((fresh) => {
+          if (!alive || !fresh) return;
+          setUser((prev) => (prev && sameAccess(prev, fresh) ? prev : fresh));
+        })
+        .catch(() => {});
+    };
+    const id = window.setInterval(sync, SESSION_RESYNC_MS);
+    window.addEventListener('focus', sync);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+      window.removeEventListener('focus', sync);
+    };
+  }, [signedIn]);
 
   const login = async (credentials: LoginCredentials): Promise<void | LoginOtpChallenge> => {
     const response = await authService.login(credentials);

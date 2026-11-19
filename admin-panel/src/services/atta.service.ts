@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api, unwrap } from './api';
 import type { 
   AttaRequest, 
@@ -20,7 +21,8 @@ export const attaService = {
     try {
       const response = await api.get<ApiResponse<PaginatedResponse<AttaRequest>>>('/admin/atta-requests', filters);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching atta requests:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch atta requests');
     }
@@ -33,7 +35,8 @@ export const attaService = {
         notes,
       });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating atta request status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update status');
     }
@@ -54,7 +57,8 @@ export const attaService = {
         { riderId, taskType }
       );
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error assigning rider to atta request:', error);
       throw new Error(error?.response?.data?.message || 'Failed to assign rider');
     }
@@ -76,7 +80,8 @@ export const attaService = {
         totalRevenue: number;
       }>>('/admin/atta-requests/stats', { period });
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching atta stats:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch atta stats');
     }

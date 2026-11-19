@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Edit, Shield, MapPin, Save, X, UserPlus, Users } from 'lucide-react';
@@ -101,7 +102,7 @@ export const Roles: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'roles'] });
       toast.success('Role deleted');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Could not delete the role'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || errorView(e)?.message || 'Could not delete the role'),
   });
 
   const createUserMutation = useMutation({
@@ -321,6 +322,7 @@ export const Roles: React.FC = () => {
                     size="sm"
                     onClick={() => openEdit(role)}
                     disabled={role.isSystem}
+                    aria-label={`Edit role ${role.name}`}
                   >
                     <Edit className="w-4 h-4" />
                   </Button>
@@ -329,6 +331,7 @@ export const Roles: React.FC = () => {
                     size="sm"
                     onClick={() => handleDelete(role)}
                     disabled={role.isSystem}
+                    aria-label={`Delete role ${role.name}`}
                   >
                     <Trash2 className="w-4 h-4 text-red-500" />
                   </Button>
@@ -387,6 +390,7 @@ export const Roles: React.FC = () => {
                     <td className="py-3 pr-4 capitalize">{user.role.replace('_', ' ')}</td>
                     <td className="py-3 pr-4">
                       <select
+                        aria-label={`Role for ${user.fullName}`}
                         className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                         value={user.adminRoleId || ''}
                         onChange={(e) =>
@@ -454,6 +458,7 @@ export const Roles: React.FC = () => {
           />
           <Input
             label="Phone (login ID)"
+            autoComplete="off"
             required
             value={userForm.phone}
             onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
@@ -463,6 +468,7 @@ export const Roles: React.FC = () => {
           <Input
             label={userForm.id ? 'New Password (optional)' : 'Password'}
             type="password"
+            autoComplete="new-password"
             required={!userForm.id}
             value={userForm.password}
             onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
@@ -613,6 +619,7 @@ export const Roles: React.FC = () => {
                           type="button"
                           onClick={() => toggleCategory(category)}
                           className="text-xs text-primary-600 hover:underline"
+                          aria-label={`${allChecked ? 'Clear all' : 'Select all'} ${category}`}
                         >
                           {allChecked ? 'Clear all' : 'Select all'}
                         </button>

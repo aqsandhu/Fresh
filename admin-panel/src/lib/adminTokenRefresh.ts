@@ -1,10 +1,63 @@
 import axios from 'axios';
-import { API_BASE_URL, AUTH_COOKIES_ENABLED } from '@/config/env';
+import { API_BASE_URL, AUTH_COOKIES_ENABLED, CLIENT_PLATFORM } from '@/config/env';
 
 /** Non-JWT sentinel returned in cookie mode (the real token is HttpOnly). */
 export const COOKIE_SESSION = 'cookie-session';
 
 let refreshPromise: Promise<string | null> | null = null;
+
+/**
+ * The server could not be reached (no answer, or a 5xx while it restarts or
+ * deploys). Different from "session refused": the admin stays signed in.
+ * Before G13 a page reload during a deploy signed the admin out.
+ */
+export class ServerUnreachableError extends Error {
+  constructor() {
+    super("Can't reach the server right now — check the internet and try again.");
+    this.name = 'ServerUnreachableError';
+  }
+}
+
+/** No answer at all, or a 5xx: the server is down / restarting, not refusing. */
+export function isServerUnreachable(err: unknown): boolean {
+  if (err instanceof ServerUnreachableError) return true;
+  const e = err as { isAxiosError?: boolean; response?: { status?: number } } | null;
+  if (!e || !e.isAxiosError) return false;
+  const status = e.response?.status;
+  return status === undefined || status >= 500;
+}
+
+/**
+ * First start in cookie mode on a browser that still holds the old
+ * localStorage tokens: trade the stored refresh token for a cookie session
+ * (the server rotates it and answers with HttpOnly cookies), then remove
+ * every token from localStorage — nothing readable by script is left behind.
+ * If the old token is no longer good, the login page takes over.
+ */
+export async function adoptCookieSession(
+  cookieMode: boolean = AUTH_COOKIES_ENABLED,
+  platform: string = CLIENT_PLATFORM
+): Promise<void> {
+  if (!cookieMode) return;
+  let legacy: string | null = null;
+  try {
+    legacy = localStorage.getItem('admin_refresh_token');
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_refresh_token');
+  } catch {
+    return;
+  }
+  if (!legacy) return;
+  try {
+    await axios.post(
+      `${API_BASE_URL}/auth/refresh`,
+      { refreshToken: legacy },
+      { withCredentials: true, headers: { 'X-Client-Platform': platform } }
+    );
+  } catch {
+    /* expired or revoked — the normal 401 → login flow follows */
+  }
+}
 
 function parseTokenExpiryMs(token: string): number | null {
   try {
@@ -42,10 +95,11 @@ export async function refreshAdminAccessToken(): Promise<string | null> {
         const { data } = await axios.post(
           `${API_BASE_URL}/auth/refresh`,
           {},
-          { withCredentials: true, headers: { 'X-Client-Platform': 'admin' } }
+          { withCredentials: true, headers: { 'X-Client-Platform': CLIENT_PLATFORM } }
         );
         return data?.success ? COOKIE_SESSION : null;
-      } catch {
+      } catch (err) {
+        if (isServerUnreachable(err)) throw new ServerUnreachableError();
         return null;
       } finally {
         setTimeout(() => {
@@ -76,7 +130,8 @@ export async function refreshAdminAccessToken(): Promise<string | null> {
         localStorage.setItem('admin_refresh_token', refreshToken);
       }
       return accessToken;
-    } catch {
+    } catch (err) {
+      if (isServerUnreachable(err)) throw new ServerUnreachableError();
       return null;
     } finally {
       setTimeout(() => {
@@ -100,14 +155,14 @@ export async function getValidAdminAccessToken(): Promise<string | null> {
     const fetchSocketToken = async (): Promise<string | null> => {
       const { data } = await axios.get(`${API_BASE_URL}/auth/socket-token`, {
         withCredentials: true,
-        headers: { 'X-Client-Platform': 'admin' },
+        headers: { 'X-Client-Platform': CLIENT_PLATFORM },
       });
       return data?.data?.token ?? null;
     };
     try {
       return await fetchSocketToken();
     } catch {
-      const refreshed = await refreshAdminAccessToken();
+      const refreshed = await refreshAdminAccessToken().catch(() => null);
       if (!refreshed) return null;
       try {
         return await fetchSocketToken();
@@ -119,5 +174,6 @@ export async function getValidAdminAccessToken(): Promise<string | null> {
 
   const current = localStorage.getItem('admin_token');
   if (!tokenNeedsRefresh(current)) return current;
-  return refreshAdminAccessToken();
+  // Server unreachable → no token for now; the socket retries later.
+  return refreshAdminAccessToken().catch(() => null);
 }

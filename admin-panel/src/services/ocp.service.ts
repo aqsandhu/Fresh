@@ -47,7 +47,7 @@ export const ocpService = {
     });
     return unwrap(res);
   },
-  update: async (id: string, data: Record<string, any>): Promise<Ocp> => {
+  update: async (id: string, data: Record<string, unknown>): Promise<Ocp> => {
     const res = await api.put<ApiResponse<Ocp>>(`/admin/ocp/${id}`, data);
     return unwrap(res);
   },

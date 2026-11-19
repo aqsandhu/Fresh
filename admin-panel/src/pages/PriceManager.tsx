@@ -162,13 +162,23 @@ export const PriceManager: React.FC = () => {
 
   const rowError = (id: string): string | null => {
     const r = rows[id];
+    // Every price box that is sent — a 0 anywhere sold that unit for Rs. 0
+    // (B37: only the A / B / C per-unit prices used to be checked).
     const checks: Array<[string, string]> = [
       ['price', r.price],
       ['½ kg price', r.halfKgPrice],
       ['¼ kg price', r.quarterKgPrice],
+      ['½ dozen price', r.halfDozenPrice],
     ];
-    if (r.bEnabled) checks.push(['Quality B price', r.priceB]);
-    if (r.cEnabled) checks.push(['Quality C price', r.priceC]);
+    if (r.restA) checks.push(['restaurant price', r.restPriceA], ['restaurant ½ kg price', r.restHalfA], ['restaurant ¼ kg price', r.restQuarterA], ['restaurant ½ dozen price', r.restHalfDozenA]);
+    if (r.bEnabled) {
+      checks.push(['Quality B price', r.priceB], ['Quality B ½ kg price', r.halfKgPriceB], ['Quality B ¼ kg price', r.quarterKgPriceB], ['Quality B ½ dozen price', r.halfDozenPriceB]);
+      if (r.restB) checks.push(['Quality B restaurant price', r.restPriceB], ['Quality B restaurant ½ kg price', r.restHalfB], ['Quality B restaurant ¼ kg price', r.restQuarterB], ['Quality B restaurant ½ dozen price', r.restHalfDozenB]);
+    }
+    if (r.cEnabled) {
+      checks.push(['Quality C price', r.priceC], ['Quality C ½ kg price', r.halfKgPriceC], ['Quality C ¼ kg price', r.quarterKgPriceC], ['Quality C ½ dozen price', r.halfDozenPriceC]);
+      if (r.restC) checks.push(['Quality C restaurant price', r.restPriceC], ['Quality C restaurant ½ kg price', r.restHalfC], ['Quality C restaurant ¼ kg price', r.restQuarterC], ['Quality C restaurant ½ dozen price', r.restHalfDozenC]);
+    }
     for (const [label, raw] of checks) {
       const err = fieldError(id, label, raw);
       if (err) return err;
@@ -237,15 +247,15 @@ export const PriceManager: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…"
+            <input aria-label="Search products" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…"
               className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500" />
           </div>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}
+          <select aria-label="Category filter" value={category} onChange={(e) => setCategory(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="">All categories</option>
             {categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)}
+          <select aria-label="Status filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | 'active' | 'paused')}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
             <option value="all">All status</option>
             <option value="active">Active only</option>
@@ -330,15 +340,15 @@ function ProductPriceCard({
       </div>
 
       <div className="mt-2 divide-y divide-gray-50">
-        <QualityEditLine label="A" tone="emerald" isKg={isKg} catRest={catRest} offered enabledToggle={null}
+        <QualityEditLine name={p.nameEn} label="A" tone="emerald" isKg={isKg} catRest={catRest} offered enabledToggle={null}
           isDozen={isDozen} priceKey="price" halfKey="halfKgPrice" quarterKey="quarterKgPrice" halfDozenKey="halfDozenPrice" restKey="restA"
           restPriceKey="restPriceA" restHalfKey="restHalfA" restQuarterKey="restQuarterA" restHalfDozenKey="restHalfDozenA"
           allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set} />
-        <QualityEditLine label="B" tone="blue" isKg={isKg} catRest={catRest} offered={r.bEnabled} enabledToggle={(v) => set({ bEnabled: v })}
+        <QualityEditLine name={p.nameEn} label="B" tone="blue" isKg={isKg} catRest={catRest} offered={r.bEnabled} enabledToggle={(v) => set({ bEnabled: v })}
           isDozen={isDozen} priceKey="priceB" halfKey="halfKgPriceB" quarterKey="quarterKgPriceB" halfDozenKey="halfDozenPriceB" restKey="restB"
           restPriceKey="restPriceB" restHalfKey="restHalfB" restQuarterKey="restQuarterB" restHalfDozenKey="restHalfDozenB"
           allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set} />
-        <QualityEditLine label="C" tone="amber" isKg={isKg} catRest={catRest} offered={r.cEnabled} enabledToggle={(v) => set({ cEnabled: v })}
+        <QualityEditLine name={p.nameEn} label="C" tone="amber" isKg={isKg} catRest={catRest} offered={r.cEnabled} enabledToggle={(v) => set({ cEnabled: v })}
           isDozen={isDozen} priceKey="priceC" halfKey="halfKgPriceC" quarterKey="quarterKgPriceC" halfDozenKey="halfDozenPriceC" restKey="restC"
           restPriceKey="restPriceC" restHalfKey="restHalfC" restQuarterKey="restQuarterC" restHalfDozenKey="restHalfDozenC"
           allowHalf={r.allowHalfKg} allowQuarter={r.allowQuarterKg} r={r} set={set} />
@@ -348,10 +358,12 @@ function ProductPriceCard({
 }
 
 function QualityEditLine({
-  label, tone, isKg, isDozen, catRest, offered, enabledToggle,
+  name, label, tone, isKg, isDozen, catRest, offered, enabledToggle,
   priceKey, halfKey, quarterKey, halfDozenKey, restKey, restPriceKey, restHalfKey, restQuarterKey, restHalfDozenKey,
   allowHalf, allowQuarter, r, set,
 }: {
+  /** Product name — part of every control's accessible name. */
+  name: string;
   label: 'A' | 'B' | 'C';
   tone: 'emerald' | 'blue' | 'amber';
   isKg: boolean; isDozen: boolean; catRest: boolean; offered: boolean;
@@ -374,7 +386,7 @@ function QualityEditLine({
         <div className="flex items-center gap-2 w-24 shrink-0">
           {enabledToggle ? (
             <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input type="checkbox" checked={offered} onChange={(e) => enabledToggle(e.target.checked)} className="w-4 h-4 rounded" />
+              <input type="checkbox" aria-label={`Offer ${name} quality ${label}`} checked={offered} onChange={(e) => enabledToggle(e.target.checked)} className="w-4 h-4 rounded" />
               <span className={`text-xs font-semibold px-2 py-0.5 rounded ${toneCls}`}>Q{label}</span>
             </label>
           ) : (
@@ -383,24 +395,24 @@ function QualityEditLine({
         </div>
 
         <label className="flex items-center gap-1.5 text-xs text-gray-500">/unit
-          <input type="number" min={0} step="0.01" disabled={dis} value={num(priceKey)} onChange={onNum(priceKey)} className={inputCls} /></label>
+          <input type="number" min={0} step="0.01" disabled={dis} aria-label={`${name} Q${label} price per unit`} value={num(priceKey)} onChange={onNum(priceKey)} className={inputCls} /></label>
         {isKg && allowHalf && (
           <label className="flex items-center gap-1.5 text-xs text-gray-500">½kg
-            <input type="number" min={0} step="0.01" disabled={dis} value={num(halfKey)} onChange={onNum(halfKey)} placeholder={placeholderFor(num(priceKey), 0.5)} className={inputCls} /></label>
+            <input type="number" min={0} step="0.01" disabled={dis} aria-label={`${name} Q${label} ½ kg price`} value={num(halfKey)} onChange={onNum(halfKey)} placeholder={placeholderFor(num(priceKey), 0.5)} className={inputCls} /></label>
         )}
         {isKg && allowQuarter && (
           <label className="flex items-center gap-1.5 text-xs text-gray-500">¼kg
-            <input type="number" min={0} step="0.01" disabled={dis} value={num(quarterKey)} onChange={onNum(quarterKey)} placeholder={placeholderFor(num(priceKey), 0.25)} className={inputCls} /></label>
+            <input type="number" min={0} step="0.01" disabled={dis} aria-label={`${name} Q${label} ¼ kg price`} value={num(quarterKey)} onChange={onNum(quarterKey)} placeholder={placeholderFor(num(priceKey), 0.25)} className={inputCls} /></label>
         )}
         {isDozen && (
           <label className="flex items-center gap-1.5 text-xs text-gray-500">1/2 dozen
-            <input type="number" min={0} step="0.01" disabled={dis} value={num(halfDozenKey)} onChange={onNum(halfDozenKey)} placeholder={placeholderFor(num(priceKey), 0.5)} className={inputCls} /></label>
+            <input type="number" min={0} step="0.01" disabled={dis} aria-label={`${name} Q${label} ½ dozen price`} value={num(halfDozenKey)} onChange={onNum(halfDozenKey)} placeholder={placeholderFor(num(priceKey), 0.5)} className={inputCls} /></label>
         )}
 
         <label
           title={!catRest ? 'Enable “Category also for restaurants” on this product’s category first.' : 'Offer this quality to restaurants'}
           className={`flex items-center gap-1.5 text-xs ml-auto ${(!catRest || dis) ? 'text-gray-300 cursor-not-allowed' : 'text-gray-600 cursor-pointer'} select-none`}>
-          <input type="checkbox" disabled={!catRest || dis} checked={restOn} onChange={(e) => set({ [restKey]: e.target.checked } as Partial<Row>)} className="w-4 h-4 rounded" />
+          <input type="checkbox" aria-label={`Sell ${name} quality ${label} to restaurants`} disabled={!catRest || dis} checked={restOn} onChange={(e) => set({ [restKey]: e.target.checked } as Partial<Row>)} className="w-4 h-4 rounded" />
           <UtensilsCrossed className="w-3.5 h-3.5" /> Restaurants
         </label>
       </div>
@@ -410,18 +422,18 @@ function QualityEditLine({
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 ml-24 pl-1 border-l-2 border-amber-200">
           <span className="text-xs font-medium text-amber-700">Restaurant</span>
           <label className="flex items-center gap-1.5 text-xs text-gray-500">/unit
-            <input type="number" min={0} step="0.01" value={num(restPriceKey)} onChange={onNum(restPriceKey)} placeholder={`→ ${num(priceKey) || 'consumer'}`} className={inputCls} /></label>
+            <input type="number" min={0} step="0.01" aria-label={`${name} Q${label} restaurant price per unit`} value={num(restPriceKey)} onChange={onNum(restPriceKey)} placeholder={`→ ${num(priceKey) || 'consumer'}`} className={inputCls} /></label>
           {isKg && allowHalf && (
             <label className="flex items-center gap-1.5 text-xs text-gray-500">½kg
-              <input type="number" min={0} step="0.01" value={num(restHalfKey)} onChange={onNum(restHalfKey)} placeholder={placeholderFor(num(restPriceKey), 0.5)} className={inputCls} /></label>
+              <input type="number" min={0} step="0.01" aria-label={`${name} Q${label} restaurant ½ kg price`} value={num(restHalfKey)} onChange={onNum(restHalfKey)} placeholder={placeholderFor(num(restPriceKey), 0.5)} className={inputCls} /></label>
           )}
           {isKg && allowQuarter && (
             <label className="flex items-center gap-1.5 text-xs text-gray-500">¼kg
-              <input type="number" min={0} step="0.01" value={num(restQuarterKey)} onChange={onNum(restQuarterKey)} placeholder={placeholderFor(num(restPriceKey), 0.25)} className={inputCls} /></label>
+              <input type="number" min={0} step="0.01" aria-label={`${name} Q${label} restaurant ¼ kg price`} value={num(restQuarterKey)} onChange={onNum(restQuarterKey)} placeholder={placeholderFor(num(restPriceKey), 0.25)} className={inputCls} /></label>
           )}
           {isDozen && (
             <label className="flex items-center gap-1.5 text-xs text-gray-500">1/2 dozen
-              <input type="number" min={0} step="0.01" value={num(restHalfDozenKey)} onChange={onNum(restHalfDozenKey)} placeholder={placeholderFor(num(restPriceKey), 0.5)} className={inputCls} /></label>
+              <input type="number" min={0} step="0.01" aria-label={`${name} Q${label} restaurant ½ dozen price`} value={num(restHalfDozenKey)} onChange={onNum(restHalfDozenKey)} placeholder={placeholderFor(num(restPriceKey), 0.5)} className={inputCls} /></label>
           )}
           <span className="text-[11px] text-gray-400">blank → consumer price</span>
         </div>

@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -136,7 +137,14 @@ function toInput(f: FormState): CouponInput {
 }
 
 function couponToForm(c: Coupon): FormState {
-  const dateOnly = (v: string | null) => (v ? v.slice(0, 10) : '');
+  // The PAKISTAN date of a stored moment (the server keeps "from 1 Dec" as
+  // 1 Dec 00:00 Pakistan = 30 Nov 19:00 UTC; slicing the UTC text showed — and
+  // re-saved — 30 Nov).
+  const dateOnly = (v: string | null) => {
+    if (!v) return '';
+    const t = new Date(v).getTime();
+    return Number.isNaN(t) ? v.slice(0, 10) : new Date(t + 5 * 3600 * 1000).toISOString().slice(0, 10);
+  };
   return {
     code: c.code,
     description: c.description || '',
@@ -186,7 +194,7 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
   const toggleMutation = useMutation({
     mutationFn: (id: string) => couponService.toggle(id),
     onSuccess: () => invalidate(),
-    onError: (err: any) => toast.error(err?.message || 'Failed to update coupon'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to update coupon'),
   });
 
   const deleteMutation = useMutation({
@@ -195,7 +203,7 @@ export const CouponsSettingsPanel: React.FC<CouponsSettingsPanelProps> = ({ canE
       invalidate();
       toast.success(message || 'Coupon deleted', { duration: 6000 });
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to delete coupon'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to delete coupon'),
   });
 
   const openCreate = () => {

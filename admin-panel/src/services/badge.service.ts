@@ -7,6 +7,8 @@ export interface BadgeCounts {
   restaurantOrders: number;
   riderApplications: number;
   restaurantRequests: number;
+  /** Entries waiting for this admin's approval (J1). */
+  approvals?: number;
 }
 
 export const badgeService = {

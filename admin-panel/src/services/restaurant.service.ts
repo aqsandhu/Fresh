@@ -21,6 +21,27 @@ export interface Restaurant {
   createdAt: string;
 }
 
+/** A restaurant order as the server lists it (only the id is relied on here). */
+export interface RestaurantOrderRow {
+  id: string;
+  order_number?: string;
+  status?: string;
+  [column: string]: unknown;
+}
+
+/** A restaurant delivery slot (older answers use snake_case names). */
+export interface RestaurantSlot {
+  id: string;
+  slotName?: string;
+  slot_name?: string;
+  maxOrders?: number | null;
+  max_orders?: number | null;
+  isFreeDeliverySlot?: boolean;
+  is_free_delivery_slot?: boolean;
+  isActive?: boolean;
+  is_active?: boolean;
+}
+
 export const restaurantService = {
   list: async (
     status?: string
@@ -54,19 +75,19 @@ export const restaurantService = {
   },
 
   // ── Restaurant orders ──────────────────────────────────────────────────
-  getOrders: async (status?: string): Promise<{ orders: any[]; counts: Record<string, number> }> => {
-    const res = await api.get<ApiResponse<{ orders: any[]; counts: Record<string, number> }>>(
+  getOrders: async (status?: string): Promise<{ orders: RestaurantOrderRow[]; counts: Record<string, number> }> => {
+    const res = await api.get<ApiResponse<{ orders: RestaurantOrderRow[]; counts: Record<string, number> }>>(
       '/admin/restaurants/orders',
       status ? { status } : undefined
     );
-    const data = (res.data || {}) as Partial<{ orders: any[]; counts: Record<string, number> }>;
+    const data = (res.data || {}) as Partial<{ orders: RestaurantOrderRow[]; counts: Record<string, number> }>;
     return { orders: data.orders || [], counts: data.counts || {} };
   },
-  updateOrderStatus: async (id: string, data: { status?: string; riderId?: string | null }): Promise<any> => {
+  updateOrderStatus: async (id: string, data: { status?: string; riderId?: string | null }): Promise<RestaurantOrderRow> => {
     const body: Record<string, unknown> = {};
     if (data.status !== undefined) body.status = data.status;
     if (data.riderId !== undefined) body.rider_id = data.riderId;
-    const res = await api.put<ApiResponse<any>>(`/admin/restaurants/orders/${id}/status`, body);
+    const res = await api.put<ApiResponse<RestaurantOrderRow>>(`/admin/restaurants/orders/${id}/status`, body);
     return unwrap(res);
   },
 
@@ -75,8 +96,8 @@ export const restaurantService = {
     restaurantId: string;
     items: { productId: string; quantity: number; unit: string; quality: string }[];
     customerNotes?: string;
-  }): Promise<any> => {
-    const res = await api.post<ApiResponse<any>>('/admin/restaurants/orders', {
+  }): Promise<RestaurantOrderRow> => {
+    const res = await api.post<ApiResponse<RestaurantOrderRow>>('/admin/restaurants/orders', {
       restaurantId: data.restaurantId,
       items: data.items,
       customerNotes: data.customerNotes,
@@ -90,8 +111,8 @@ export const restaurantService = {
     return res.data || {};
   },
   getSettings: async (): Promise<{ baseCharge: number; freeDeliveryThreshold: number; urgentCharge: number; urgentEta: string; slotCutoffPercent: number }> => {
-    const res = await api.get<ApiResponse<any>>('/admin/restaurants/settings');
-    const d = res.data as any;
+    const res = await api.get<ApiResponse<Partial<Record<'baseCharge' | 'freeDeliveryThreshold' | 'urgentCharge' | 'urgentEta' | 'slotCutoffPercent', unknown>>>>('/admin/restaurants/settings');
+    const d = res.data;
     return {
       baseCharge: Number(d?.baseCharge ?? 100),
       freeDeliveryThreshold: Number(d?.freeDeliveryThreshold ?? 2000),
@@ -117,8 +138,8 @@ export const restaurantService = {
   },
 
   // Restaurant time slots — reuse the admin settings slot CRUD with audience=restaurant.
-  listTimeSlots: async (): Promise<any[]> => {
-    const res = await api.get<ApiResponse<any[]>>('/admin/settings/time-slots', { audience: 'restaurant' });
+  listTimeSlots: async (): Promise<RestaurantSlot[]> => {
+    const res = await api.get<ApiResponse<RestaurantSlot[]>>('/admin/settings/time-slots', { audience: 'restaurant' });
     return res.data || [];
   },
   createTimeSlot: async (data: {
@@ -128,10 +149,10 @@ export const restaurantService = {
     maxOrders?: number | null;
     isActive?: boolean;
     isFreeDeliverySlot?: boolean;
-  }): Promise<any> => {
+  }): Promise<RestaurantSlot> => {
     // `?audience=restaurant` on every call lets the backend permission map
     // grant these to `restaurants.manage` admins without Settings rights.
-    const res = await api.post<ApiResponse<any>>('/admin/settings/time-slots?audience=restaurant', {
+    const res = await api.post<ApiResponse<RestaurantSlot>>('/admin/settings/time-slots?audience=restaurant', {
       start_time: data.startTime,
       end_time: data.endTime,
       max_orders: data.maxOrders ?? null,
@@ -141,8 +162,8 @@ export const restaurantService = {
     });
     return unwrap(res);
   },
-  updateTimeSlot: async (id: string, data: Record<string, any>): Promise<any> => {
-    const res = await api.put<ApiResponse<any>>(`/admin/settings/time-slots/${id}?audience=restaurant`, data);
+  updateTimeSlot: async (id: string, data: Record<string, unknown>): Promise<RestaurantSlot> => {
+    const res = await api.put<ApiResponse<RestaurantSlot>>(`/admin/settings/time-slots/${id}?audience=restaurant`, data);
     return unwrap(res);
   },
   deleteTimeSlot: async (id: string): Promise<void> => {

@@ -1,3 +1,4 @@
+import { asCaughtError } from '@/lib/caughtError';
 import { api, unwrap } from './api';
 import type { 
   Category, 
@@ -10,7 +11,8 @@ export const categoryService = {
     try {
       const response = await api.get<ApiResponse<Category[]>>('/admin/categories');
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching categories:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch categories');
     }
@@ -20,7 +22,8 @@ export const categoryService = {
     try {
       const response = await api.get<ApiResponse<Category[]>>('/categories/tree');
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error fetching category tree:', error);
       throw new Error(error?.response?.data?.message || 'Failed to fetch category tree');
     }
@@ -30,7 +33,8 @@ export const categoryService = {
     try {
       const response = await api.post<ApiResponse<Category>>('/admin/categories', data);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error creating category:', error);
       throw new Error(error?.response?.data?.message || 'Failed to create category');
     }
@@ -40,7 +44,8 @@ export const categoryService = {
     try {
       const response = await api.postForm<ApiResponse<Category>>('/admin/categories', formData);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error creating category with image:', error);
       throw new Error(error?.response?.data?.message || 'Failed to create category');
     }
@@ -50,7 +55,8 @@ export const categoryService = {
     try {
       const response = await api.put<ApiResponse<Category>>(`/admin/categories/${id}`, data);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating category:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update category');
     }
@@ -60,7 +66,8 @@ export const categoryService = {
     try {
       const response = await api.putForm<ApiResponse<Category>>(`/admin/categories/${id}`, formData);
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error updating category with image:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update category');
     }
@@ -69,7 +76,8 @@ export const categoryService = {
   deleteCategory: async (id: string): Promise<void> => {
     try {
       await api.delete<ApiResponse<void>>(`/admin/categories/${id}`);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error deleting category:', error);
       throw new Error(error?.response?.data?.message || 'Failed to delete category');
     }
@@ -84,7 +92,8 @@ export const categoryService = {
         `/admin/categories/${id}/toggle-active`
       );
       return unwrap(response);
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       console.error('Error toggling category status:', error);
       throw new Error(error?.response?.data?.message || 'Failed to update category status');
     }

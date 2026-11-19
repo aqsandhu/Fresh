@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, UserCog, TrendingUp, CalendarCheck, Wallet, Ban, Check } from 'lucide-react';
@@ -11,12 +12,19 @@ import { Badge } from '@/components/ui/Badge';
 import { financeService, type Worker } from '@/services/finance.service';
 import { formatDateTime } from '@/utils/formatters';
 import toast from 'react-hot-toast';
+import { isQueued } from '@/lib/approvalQueue';
 import { ApproverFields } from '@/components/ui/ApproverFields';
 import { needsSecondAdmin } from '@/utils/auditPeriod';
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`;
-const today = () => new Date().toISOString().slice(0, 10);
-const thisMonthStart = () => new Date().toISOString().slice(0, 7) + '-01';
+// The admin's own (Pakistan) date — toISOString() alone is the UTC date, which
+// between 00:00 and 05:00 PKT is still YESTERDAY (G24).
+const today = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+};
+const thisMonthStart = () => today().slice(0, 7) + '-01';
 
 export const Workers: React.FC = () => {
   const qc = useQueryClient();
@@ -30,7 +38,7 @@ export const Workers: React.FC = () => {
   const createMut = useMutation({
     mutationFn: () => financeService.createWorker({ name: form.name.trim(), phone: form.phone.trim() || undefined, designation: form.designation.trim() || undefined, basicSalary: parseFloat(form.basicSalary) || 0 }),
     onSuccess: () => { toast.success('Worker added'); setAddOpen(false); setForm({ name: '', phone: '', designation: '', basicSalary: '' }); invalidate(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed'),
   });
   const statusMut = useMutation({
     mutationFn: (w: Worker) => financeService.updateWorker(w.id, { status: w.status === 'active' ? 'inactive' : 'active' }),
@@ -113,12 +121,16 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
   const markMut = useMutation({
     mutationFn: () => financeService.markAttendance(workerId, { date: attDate, status: attStatus }),
     onSuccess: () => { toast.success('Attendance saved'); refreshAtt(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (e: unknown) => toast.error(errorView(e)?.response?.data?.message || 'Failed'),
   });
   const incMut = useMutation({
     mutationFn: () => financeService.addIncrement(workerId, { effectiveFrom: incFrom, newBasicSalary: parseFloat(incSalary) || 0 }),
     onSuccess: () => { toast.success('Increment applied'); setIncSalary(''); refreshWorker(); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
+    onError: (eCaught: unknown) => {
+      const e = errorView(eCaught);
+      if (isQueued(e)) { setIncSalary(''); return; } // a raise waits for the city admin (J8)
+      toast.error(e?.response?.data?.message || 'Failed');
+    },
   });
   const [needApproval, setNeedApproval] = useState(false);
   const [approvalPhone, setApprovalPhone] = useState('');
@@ -133,7 +145,9 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
       setPayAmount(''); setPayComment(''); setNeedApproval(false); setApprovalPassword('');
       refreshWorker();
     },
-    onError: (e: any) => {
+    onError: (eCaught: unknown) => {
+      const e = errorView(eCaught);
+      if (isQueued(e)) { setPayAmount(''); setPayComment(''); setNeedApproval(false); return; }
       const msg = e?.response?.data?.message || 'Failed';
       if (needsSecondAdmin(msg)) setNeedApproval(true);
       toast.error(msg);
@@ -177,8 +191,8 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
               <span>View month:</span>
-              <input type="number" value={attMonth} min={1} max={12} onChange={(e) => setAttMonth(Number(e.target.value))} className="w-14 px-2 py-1 border border-gray-300 rounded" />
-              <input type="number" value={attYear} onChange={(e) => setAttYear(Number(e.target.value))} className="w-20 px-2 py-1 border border-gray-300 rounded" />
+              <input type="number" aria-label="Attendance month" value={attMonth} min={1} max={12} onChange={(e) => setAttMonth(Number(e.target.value))} className="w-14 px-2 py-1 border border-gray-300 rounded" />
+              <input type="number" aria-label="Attendance year" value={attYear} onChange={(e) => setAttYear(Number(e.target.value))} className="w-20 px-2 py-1 border border-gray-300 rounded" />
             </div>
             <div className="flex flex-wrap gap-1">
               {attendance.length === 0 ? <span className="text-xs text-gray-400">No attendance marked this month.</span> :
@@ -195,7 +209,7 @@ function WorkerDetailModal({ workerId, onClose, onChanged }: { workerId: string;
             <h4 className="font-semibold text-gray-800 flex items-center gap-1.5 mb-2"><Wallet className="w-4 h-4 text-primary-600" /> Pay</h4>
             <div className="flex flex-wrap items-end gap-2">
               <div><label htmlFor="workers-f6" className="block text-xs text-gray-500 mb-1">Type</label>
-                <Select id="workers-f6" value={payKind} onChange={(e) => setPayKind(e.target.value as any)}
+                <Select id="workers-f6" value={payKind} onChange={(e) => setPayKind(e.target.value as 'salary' | 'bonus' | 'commission' | 'other')}
                   options={[{ value: 'salary', label: 'Salary' }, { value: 'bonus', label: 'Bonus' }, { value: 'commission', label: 'Commission' }, { value: 'other', label: 'Other' }]} />
               </div>
               <div><label htmlFor="workers-f4" className="block text-xs text-gray-500 mb-1">Amount</label><input id="workers-f4" type="number" min={0} step="0.01" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm" /></div>

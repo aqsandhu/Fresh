@@ -131,6 +131,8 @@ export function Table<T>({
                     tabIndex: 0,
                     role: 'button',
                     onKeyDown: (e: React.KeyboardEvent) => {
+                      // A button / select inside the row keeps its own keys.
+                      if (e.target !== e.currentTarget) return;
                       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRowClick(item); }
                     },
                   } : {})}

@@ -1,3 +1,4 @@
+import { errorView } from '@/lib/caughtError';
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -21,6 +22,7 @@ import { Button } from '@/components/ui/Button';
 import { addressService } from '@/services/address.service';
 import { customerService } from '@/services/customer.service';
 import { useAuthContext } from '@/context/AuthContext';
+import { hasPermission } from '@/lib/permissions';
 import { resolveImageUrl } from '@/utils/formatters';
 import type { Address, Customer } from '@/types';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -33,6 +35,9 @@ export const Addresses: React.FC = () => {
   const queryClient = useQueryClient();
   const { user } = useAuthContext();
   const isSuperAdmin = user?.role === 'super_admin';
+  // The customer picker reads the customer list (G12): an addresses-only role
+  // works from the address list and its search instead.
+  const canPickCustomer = hasPermission(user?.permissions, 'customers.view');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [addressSearch, setAddressSearch] = useState('');
@@ -55,6 +60,7 @@ export const Addresses: React.FC = () => {
     queryKey: ['customers', 'dropdown', debouncedCustomerSearch],
     queryFn: () => customerService.getCustomers({ limit: CUSTOMER_PICKER_SIZE, search: debouncedCustomerSearch || undefined }),
     staleTime: 60 * 1000,
+    enabled: canPickCustomer,
   });
 
   // Stable [] fallbacks (useMemo) so downstream useMemo deps don't see a new
@@ -113,7 +119,8 @@ export const Addresses: React.FC = () => {
       setEditingAddressId(null);
       queryClient.invalidateQueries({ queryKey: ['addresses'] });
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+      const err = errorView(errCaught);
       toast.error(err?.response?.data?.message || 'Failed to assign house number');
     },
   });
@@ -125,7 +132,8 @@ export const Addresses: React.FC = () => {
       toast.success('Address deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['addresses'] });
     },
-    onError: (err: any) => {
+    onError: (errCaught: unknown) => {
+      const err = errorView(errCaught);
       toast.error(err?.message || 'Failed to delete address');
     },
   });
@@ -136,7 +144,7 @@ export const Addresses: React.FC = () => {
       toast.success('Door picture removed');
       queryClient.invalidateQueries({ queryKey: ['addresses'] });
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to remove door picture'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to remove door picture'),
   });
 
   const clearLocationMutation = useMutation({
@@ -145,7 +153,7 @@ export const Addresses: React.FC = () => {
       toast.success('Location removed');
       queryClient.invalidateQueries({ queryKey: ['addresses'] });
     },
-    onError: (err: any) => toast.error(err?.message || 'Failed to remove location'),
+    onError: (err: unknown) => toast.error(errorView(err)?.message || 'Failed to remove location'),
   });
 
   const handleAssignHouseNumber = (addressId: string) => {
@@ -187,9 +195,10 @@ export const Addresses: React.FC = () => {
         </div>
       </Card>
 
-      {/* Customer Selector */}
+      {/* Customer Selector — the picker needs "View customers" (G12) */}
       <Card className="mb-6">
         <div className="flex flex-col md:flex-row gap-4 items-start">
+          {canPickCustomer && (
           <div className="flex-1 w-full relative">
             <span id="addresses-customer-label" className="block text-sm font-medium text-gray-700 mb-2">
               <User className="w-4 h-4 inline mr-1" />
@@ -321,6 +330,7 @@ export const Addresses: React.FC = () => {
               />
             )}
           </div>
+          )}
 
           {/* Address search */}
           <div className="flex-1 w-full">

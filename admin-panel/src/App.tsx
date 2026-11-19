@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { ROUTER_FUTURE } from './lib/routerFuture';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
+import { ToastLimit } from '@/components/ui/ToastLimit';
 import { AuthProvider, useAuthContext } from '@/context/AuthContext';
 import { CityProvider } from '@/context/CityContext';
 import { NotificationProvider } from '@/context/NotificationContext';
@@ -10,6 +11,10 @@ import { canAccessRoute, firstAccessibleRoute } from '@/lib/permissions';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { BrandFavicon } from '@/components/BrandFavicon';
 import './App.css';
+import { installToastOnce } from '@/lib/toastOnce';
+
+// One toast per message text (the API client and the form both report a failure).
+installToastOnce();
 
 // Route-level code splitting: every page loads as its own chunk on first
 // visit instead of shipping the whole admin in one 888 KB bundle. Pages use
@@ -21,6 +26,7 @@ const Products = React.lazy(() => import('@/pages/Products').then((m) => ({ defa
 const PriceManager = React.lazy(() => import('@/pages/PriceManager').then((m) => ({ default: m.PriceManager })));
 const StockManagement = React.lazy(() => import('@/pages/StockManagement').then((m) => ({ default: m.StockManagement })));
 const Expenses = React.lazy(() => import('@/pages/Expenses').then((m) => ({ default: m.Expenses })));
+const Approvals = React.lazy(() => import('@/pages/Approvals').then((m) => ({ default: m.Approvals })));
 const Workers = React.lazy(() => import('@/pages/Workers').then((m) => ({ default: m.Workers })));
 const Profit = React.lazy(() => import('@/pages/Profit').then((m) => ({ default: m.Profit })));
 const Catalog = React.lazy(() => import('@/pages/Catalog').then((m) => ({ default: m.Catalog })));
@@ -436,6 +442,14 @@ const AppRoutes: React.FC = () => {
         }
       />
       <Route
+        path="/admin/approvals"
+        element={
+          <ProtectedRoute>
+            <Approvals />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/admin/owner-checks"
         element={
           <ProtectedRoute>
@@ -505,6 +519,8 @@ function App() {
         </ErrorBoundary>
         </CityProvider>
         </NotificationProvider>
+        {/* Busy days: only the newest notices stay on screen (G35). */}
+        <ToastLimit max={4} />
         <Toaster
           position="top-right"
           toastOptions={{
