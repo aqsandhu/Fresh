@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Image from 'next/image'
+import { isOptimisableImage } from '@/lib/optimizedImage'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
@@ -176,7 +177,9 @@ export default function HeroSection() {
               fill
               sizes="100vw"
               className="object-cover object-bottom sm:object-center"
-              unoptimized={heroImageUrl !== HERO_IMAGE}
+              // Resized by Next when the host is an allowed one (the admin's
+              // upload on Supabase was sent as-is: a 4 MB JPEG on the live site).
+              unoptimized={heroImageUrl !== HERO_IMAGE && !isOptimisableImage(heroImageUrl)}
             />
             <div className="absolute inset-0 bg-gradient-to-b from-primary-900/95 via-primary-900/85 to-primary-900/10 sm:bg-gradient-to-r sm:from-primary-900/90 sm:via-primary-900/75 sm:to-primary-800/40" />
           </div>

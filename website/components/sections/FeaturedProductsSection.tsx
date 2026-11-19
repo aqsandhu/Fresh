@@ -127,7 +127,7 @@ export default function FeaturedProductsSection() {
                   onClick={() => fetchNextPage()}
                   disabled={isFetchingNextPage}
                   aria-label={`View more products, ${remaining} more`}
-                  className="flex w-full sm:w-auto sm:min-w-[360px] items-center justify-center gap-3 rounded-2xl bg-primary-600 px-8 py-4 text-white shadow-lg shadow-primary-600/30 transition-colors hover:bg-primary-700 disabled:opacity-80"
+                  className="flex w-full sm:w-auto sm:min-w-[360px] items-center justify-center gap-3 rounded-2xl bg-primary-700 px-8 py-4 text-white shadow-lg shadow-primary-700/30 transition-colors hover:bg-primary-800 disabled:opacity-80"
                 >
                   {isFetchingNextPage ? (
                     <Loader2 className="h-6 w-6 shrink-0 animate-spin" />
@@ -142,7 +142,7 @@ export default function FeaturedProductsSection() {
                     <span className="mt-1 flex items-center gap-2 text-[13px] font-semibold text-primary-100">
                       <span className="font-urdu" dir="rtl">مزید پروڈکٹس دیکھیں</span>
                       {remaining > 0 ? (
-                        <span dir="ltr" className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-extrabold text-white">
+                        <span dir="ltr" className="rounded-full bg-black/25 px-2 py-0.5 text-xs font-extrabold text-white">
                           +{remaining} more
                         </span>
                       ) : null}

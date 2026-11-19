@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchBrandFaviconUrl } from '@/lib/favicon'
 import { applyBrandFavicons } from '@/lib/brandFavicon'
+import { optimizedImageSrc } from '@/lib/optimizedImage'
 
 export default function BrandFavicon() {
   const { data: faviconUrl } = useQuery({
@@ -17,7 +18,8 @@ export default function BrandFavicon() {
     let cleanup: (() => void) | undefined
     let cancelled = false
 
-    applyBrandFavicons(faviconUrl).then((fn) => {
+    // A 256 px copy, not the full upload (610 KB on the live site).
+    applyBrandFavicons(optimizedImageSrc(faviconUrl, 256)).then((fn) => {
       if (cancelled) {
         fn()
         return

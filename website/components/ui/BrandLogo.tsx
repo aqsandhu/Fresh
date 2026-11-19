@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchBrandLogoUrl } from '@/lib/brand'
 import { cn } from '@/lib/utils'
+import { optimizedImageSrc } from '@/lib/optimizedImage'
 
 type BrandLogoSize = 'nav' | 'default' | 'lg'
 
@@ -57,8 +58,9 @@ export default function BrandLogo({
           )}
         />
       ) : logoUrl ? (
+        // 256 px wide is plenty for a header / footer logo (the live upload was 656 KB).
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={logoUrl} alt="" className={imageClass} />
+        <img src={optimizedImageSrc(logoUrl, 256)} alt="" className={imageClass} />
       ) : (
         <span
           className={
