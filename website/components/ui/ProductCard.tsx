@@ -16,6 +16,9 @@ import { getUnitOptions, unitLabelShort, offeredQualities, qualityStock } from '
 interface ProductCardProps {
   product: Product
   showAddToCart?: boolean
+  /** Above the fold (first featured row): load the photo at once — it is the
+   *  page's largest image, and lazy loading delayed it (LCP). */
+  priority?: boolean
 }
 
 function ImageFallback() {
@@ -28,7 +31,7 @@ function ImageFallback() {
 }
 
 /** Layout mirrors customer-app ProductCard (fullWidth / featured grid). */
-export default function ProductCard({ product, showAddToCart = true }: ProductCardProps) {
+export default function ProductCard({ product, showAddToCart = true, priority = false }: ProductCardProps) {
   const { addItem, updateQuantity, items } = useCartStore()
   const notifyVariableWeight = useVariableWeightNotice((s) => s.notify)
   // Quality tiers (A/B/C). B/C only appear when the admin set their consumer price.
@@ -97,12 +100,13 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             className="object-cover"
+            priority={priority}
             fallback={<ImageFallback />}
           />
 
           <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
             {inStock ? (
-              <span className="bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-0.5">
+              <span className="bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-0.5">
                 <Leaf className="w-2.5 h-2.5" />
                 Fresh
               </span>
@@ -224,7 +228,7 @@ export default function ProductCard({ product, showAddToCart = true }: ProductCa
               <button
                 type="button"
                 onClick={handleAddToCart}
-                className="w-full mt-1 inline-flex items-center justify-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-[13px] font-bold py-2 rounded-lg transition-colors"
+                className="w-full mt-1 inline-flex items-center justify-center gap-1.5 bg-primary-700 hover:bg-primary-800 text-white text-[13px] font-bold py-2 rounded-lg transition-colors"
               >
                 <ShoppingCart className="w-4 h-4" />
                 Add to Cart

@@ -83,9 +83,11 @@ export default function FeaturedProductsSection() {
         {isPending ? (
           // Card-sized placeholders hold the space the products will take. A
           // small spinner here let the list push every section below it down
-          // when it arrived — the home page's layout shift (CLS 0.21 on mobile).
+          // when it arrived — the home page's layout shift (CLS 0.21 on mobile, 0.3–0.5
+          // live on desktop where 4 placeholders were one row). 8 = two desktop rows,
+          // so the next section starts below the first screen either way.
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" role="status" aria-label="Loading featured products">
-            {Array.from({ length: 4 }, (_, i) => (
+            {Array.from({ length: 8 }, (_, i) => (
               <div key={i} className="rounded-xl border border-gray-100 bg-white overflow-hidden">
                 <div className="aspect-square bg-gray-100 animate-pulse" />
                 <div className="p-3 space-y-2">
@@ -103,7 +105,7 @@ export default function FeaturedProductsSection() {
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-              {featuredProducts.map((product) => (
+              {featuredProducts.map((product, index) => (
                 <motion.div
                   key={product.id}
                   variants={itemVariants}
@@ -112,7 +114,7 @@ export default function FeaturedProductsSection() {
                   viewport={{ once: true }}
                   className="min-w-0"
                 >
-                  <ProductCard product={product} />
+                  <ProductCard product={product} priority={index < 4} />
                 </motion.div>
               ))}
             </div>

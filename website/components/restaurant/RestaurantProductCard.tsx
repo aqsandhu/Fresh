@@ -93,7 +93,7 @@ export default function RestaurantProductCard({ product }: Props) {
           />
           <div className="absolute top-2 left-2">
             {inStock ? (
-              <span className="bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-0.5">
+              <span className="bg-green-700 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-0.5">
                 <Leaf className="w-2.5 h-2.5" /> Fresh
               </span>
             ) : (
@@ -190,7 +190,7 @@ export default function RestaurantProductCard({ product }: Props) {
               <button
                 type="button"
                 onClick={handleAdd}
-                className="w-full mt-1 inline-flex items-center justify-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-[13px] font-bold py-2 rounded-lg transition-colors"
+                className="w-full mt-1 inline-flex items-center justify-center gap-1.5 bg-primary-700 hover:bg-primary-800 text-white text-[13px] font-bold py-2 rounded-lg transition-colors"
               >
                 <ShoppingCart className="w-4 h-4" /> Add to Cart
               </button>

@@ -182,6 +182,9 @@ export function ProductListingGrid({
 
   return (
     <>
+      {/* The cards' names are h3: without an h2 between the page's h1 and
+          them the outline skipped a level (Lighthouse heading-order). */}
+      <h2 className="sr-only">Products</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
         {products.map((product, index) => (
           <motion.div

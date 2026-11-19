@@ -68,7 +68,9 @@ export default function NewsTicker({ items }: { items: TickerItem[] }) {
         return (
           <span key={`${copy}-${i}`} className="flex items-center">
             {telHref ? (
-              <a href={telHref} className="active:opacity-80">
+              // The second copy only fills the loop (aria-hidden): its link must not
+              // take keyboard focus either (Lighthouse aria-hidden-focus).
+              <a href={telHref} className="active:opacity-80" tabIndex={copy === 'b' ? -1 : undefined}>
                 {inner}
               </a>
             ) : (
