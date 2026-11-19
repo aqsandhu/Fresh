@@ -17,15 +17,32 @@
 --
 -- Idempotent: ENABLE ROW LEVEL SECURITY is a no-op when already enabled.
 
+--
+-- 20 Nov 2026 (N16): tables that belong to an EXTENSION are skipped, and a
+-- table this role does not own is reported instead of failing. On Supabase
+-- PostGIS's public.spatial_ref_sys is owned by supabase_admin, and the plain
+-- loop stopped the first production run of this file with "must be owner of
+-- table spatial_ref_sys" (the app's own tables are unaffected).
+
 DO $$
 DECLARE
   t RECORD;
 BEGIN
   FOR t IN
-    SELECT tablename
-      FROM pg_tables
-     WHERE schemaname = 'public'
+    SELECT c.relname AS tablename
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relkind IN ('r', 'p')
+       AND NOT EXISTS (
+         SELECT 1 FROM pg_depend d
+          WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e'
+       )
   LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
+    BEGIN
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t.tablename);
+    EXCEPTION WHEN insufficient_privilege THEN
+      RAISE NOTICE 'RLS left as is on public.% (owned by another role)', t.tablename;
+    END;
   END LOOP;
 END $$;
