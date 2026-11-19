@@ -18,7 +18,10 @@ concurrency:
 jobs:
   journeys:
     name: Customer order + office fulfilment (Chromium)
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moved to 26.04, which Playwright 1.54.1 cannot
+    # install Chromium on ("does not support chromium on ubuntu26.04-x64").
+    # Move together with a Playwright upgrade.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
       postgres:
