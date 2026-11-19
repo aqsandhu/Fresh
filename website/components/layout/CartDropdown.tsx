@@ -11,6 +11,7 @@ import { formatPriceShort } from '@/lib/utils'
 import { getDeliveryHint } from '@/lib/deliveryRules'
 import { resolveLineUnitPrice, unitLabelShort } from '@/lib/unitPricing'
 import Button from '@/components/ui/Button'
+import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 
 interface CartDropdownProps {
   isOpen: boolean
@@ -43,12 +44,11 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
 
   useEffect(() => {
     if (!isOpen) return
-    const prev = document.body.style.overflow
-    // Prevent body horizontal scroll while panel is open on mobile.
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
+    // Prevent body scroll while the panel is open on mobile. The shared,
+    // counted lock — a local save/restore re-froze the page when a side rail
+    // had closed in between (G30).
+    lockBodyScroll()
+    return () => unlockBodyScroll()
   }, [isOpen])
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PieChart, Loader2 } from 'lucide-react'
@@ -23,7 +24,8 @@ export default function ShareholderLoginPage() {
       setShareholderSession(token, shareholder)
       toast.success(`Welcome, ${shareholder?.name || 'Shareholder'}`)
       router.push('/shareholder')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       toast.error(err?.message || 'Login failed')
     } finally {
       setLoading(false)

@@ -37,8 +37,9 @@ export default function MobileNav() {
             href={item.href}
             className={cn(
               'flex flex-col items-center py-2 px-3 min-w-[64px]',
+              // primary-700, not 600: the 10px label needs 4.5:1 on white (WCAG AA).
               pathname === item.href
-                ? 'text-primary-600'
+                ? 'text-primary-700'
                 : 'text-gray-500'
             )}
           >

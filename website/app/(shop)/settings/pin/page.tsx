@@ -13,6 +13,7 @@
 
 export const dynamic = 'force-dynamic'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -23,6 +24,7 @@ import PinInput from '@/components/auth/PinInput'
 import Button from '@/components/ui/Button'
 import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
+import { isWeakPin, WEAK_PIN_MESSAGE } from '@/lib/pinStrength'
 
 type Stage = 'current' | 'create' | 'confirm'
 
@@ -81,6 +83,12 @@ export default function ChangePinPage() {
   }
 
   const handleFirst = (entered: string) => {
+    // Same rule as the server (B33) — before the second entry.
+    if (isWeakPin(entered)) {
+      toast.error(WEAK_PIN_MESSAGE)
+      setPin('')
+      return
+    }
     setPin(entered)
     setPinConfirm('')
     setStage('confirm')
@@ -114,7 +122,8 @@ export default function ChangePinPage() {
       markPinVerified() // satisfies the checkout re-auth gate immediately
       toast.success('PIN updated')
       router.push('/profile')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg = err?.response?.data?.message || 'Could not update PIN. Please try again.'
       toast.error(msg)
       resetFlow()
@@ -164,6 +173,7 @@ export default function ChangePinPage() {
           ) : (
             <PinInput
               key={stage}
+              label={stage === 'current' ? 'Current PIN' : stage === 'create' ? 'New PIN' : 'Confirm PIN'}
               value={stage === 'current' ? currentPin : stage === 'create' ? pin : pinConfirm}
               onChange={stage === 'current' ? setCurrentPin : stage === 'create' ? setPin : setPinConfirm}
               onComplete={

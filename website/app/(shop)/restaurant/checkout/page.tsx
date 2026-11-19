@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -8,19 +9,17 @@ import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { formatPriceShort } from '@/lib/utils'
 import { getRestaurantInfo, type RestaurantInfo } from '@/lib/restaurantSession'
-import { restaurantShopApi } from '@/lib/restaurantApi'
+import { restaurantShopApi, type RestaurantSlot } from '@/lib/restaurantApi'
 import { useRestaurantCartStore } from '@/store/restaurantCartStore'
 import { getSlotAvailability } from '@/lib/timeSlots'
 import { DEFAULT_MAP_LAT, DEFAULT_MAP_LNG } from '@/lib/googleMaps'
 import { REQUIRED_LOCATION_ACCURACY_M, getAccuratePosition } from '@/lib/geolocation'
 import GoogleMapPicker from '@/components/checkout/GoogleMapPicker'
+import { pktDateString, pktWallClock } from '@/lib/businessDate'
 
-function localDateStr(day: 'today' | 'tomorrow'): string {
-  const d = new Date()
-  if (day === 'tomorrow') d.setDate(d.getDate() + 1)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
+// Pakistan date, not the browser's own time zone (I10) — same as the
+// customer checkout (C7).
+const localDateStr = (day: 'today' | 'tomorrow'): string => pktDateString(day)
 
 function unitShort(unit: string): string {
   if (unit === 'half_kg') return '½ kg'
@@ -47,7 +46,7 @@ export default function RestaurantCheckoutPage() {
 
   // Delivery config + slots.
   const [delivery, setDelivery] = useState({ base_charge: 100, free_delivery_threshold: 2000, urgent_charge: 0, urgent_eta: '', slot_cutoff_percent: 60 })
-  const [slots, setSlots] = useState<any[]>([])
+  const [slots, setSlots] = useState<RestaurantSlot[]>([])
   const [timeSlotId, setTimeSlotId] = useState('')
   const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
   const [urgent, setUrgent] = useState(false)
@@ -192,7 +191,8 @@ export default function RestaurantCheckoutPage() {
       const { front_image_url } = await restaurantShopApi.uploadFrontImage(file)
       setFrontImageUrl(front_image_url)
       toast.success('Storefront photo updated')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       toast.error(err?.message || 'Could not upload photo')
     } finally {
       setUploadingImg(false)
@@ -221,7 +221,8 @@ export default function RestaurantCheckoutPage() {
       clearCart()
       toast.success('Order placed!')
       router.push('/restaurant/orders')
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       toast.error(e?.message || 'Could not place the order')
     } finally {
       setPlacing(false)
@@ -260,6 +261,7 @@ export default function RestaurantCheckoutPage() {
                 <span className="text-sm font-normal text-gray-500">· {info?.city}{info?.phone ? ` · ${info.phone}` : ''}</span>
               </p>
               <textarea
+                aria-label="Delivery address"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 rows={2}
@@ -427,7 +429,7 @@ export default function RestaurantCheckoutPage() {
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {slots.map((s) => {
                         const active = timeSlotId === s.id
-                        const avail = getSlotAvailability(s, selectedDay, delivery.slot_cutoff_percent)
+                        const avail = getSlotAvailability(s, selectedDay, delivery.slot_cutoff_percent, pktWallClock())
                         const disabled = (s.available_slots ?? 1) <= 0 || avail.unavailable
                         return (
                           <button
@@ -475,6 +477,7 @@ export default function RestaurantCheckoutPage() {
             <div className="bg-white rounded-xl p-6 shadow-sm">
               <h2 className="text-lg font-semibold mb-2">Order notes (optional)</h2>
               <textarea
+                aria-label="Order notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}

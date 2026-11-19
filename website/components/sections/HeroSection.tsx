@@ -59,22 +59,34 @@ export default function HeroSection() {
 
   useEffect(() => {
     if (!selectedCityId) return
+    // Every figure belongs to THIS city: start clean so a city without a phone
+    // or WhatsApp never keeps the previous city's (I23), and ignore answers
+    // that arrive after the customer has already switched again.
+    let current = true
+    setPhoneText('')
+    setWhatsappOrderUrl('')
+    setFreeThreshold(500)
+    setFreeSlotLabel('')
 
     // Per-city hero image (admin-managed). Falls back to the default when the
     // city hasn't set one.
     api
       .get('/site-settings/hero', { params: { city_id: selectedCityId } })
       .then((res) => {
+        if (!current) return
         const url = String(
           res.data?.data?.heroImageUrl || res.data?.data?.hero_image_url || ''
         ).trim()
         setHeroImageUrl(url || HERO_IMAGE)
       })
-      .catch(() => setHeroImageUrl(HERO_IMAGE))
+      .catch(() => {
+        if (current) setHeroImageUrl(HERO_IMAGE)
+      })
 
     bannerApi
       .getSettings()
       .then((data) => {
+        if (!current) return
         if (data.banner_left_text) setPhoneText(data.banner_left_text)
         const url = String(
           data.whatsapp_order_url || data.whatsappOrderUrl || ''
@@ -86,6 +98,7 @@ export default function HeroSection() {
     api
       .get('/site-settings/whatsapp-order', { params: { city_id: selectedCityId } })
       .then((res) => {
+        if (!current) return
         const url = String(
           res.data?.data?.whatsapp_order_url ||
             res.data?.data?.whatsappOrderUrl ||
@@ -98,6 +111,7 @@ export default function HeroSection() {
     api
       .get('/site-settings/delivery', { params: { city_id: selectedCityId } })
       .then((res) => {
+        if (!current) return
         const threshold = parseFloat(res.data?.data?.free_delivery_threshold)
         if (Number.isFinite(threshold) && threshold > 0) {
           setFreeThreshold(threshold)
@@ -110,12 +124,18 @@ export default function HeroSection() {
     api
       .get('/orders/time-slots', { params: { city_id: selectedCityId } })
       .then((res) => {
+        if (!current) return
         const slots: Array<{ slot_name?: string; start_time?: string; end_time?: string; is_free_delivery_slot?: boolean }> =
           res.data?.data || []
         const free = slots.find((s) => s.is_free_delivery_slot)
         setFreeSlotLabel(free ? free.slot_name || `${formatSlotTime(free.start_time)} - ${formatSlotTime(free.end_time)}` : '')
       })
-      .catch(() => setFreeSlotLabel(''))
+      .catch(() => {
+        if (current) setFreeSlotLabel('')
+      })
+    return () => {
+      current = false
+    }
   }, [selectedCityId])
 
   const features = useMemo<HeroFeature[]>(

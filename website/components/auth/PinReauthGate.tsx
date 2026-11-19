@@ -3,6 +3,7 @@
 // Re-auth gate for sensitive routes (checkout). After PIN_STALE_MS of inactivity,
 // asks for PIN only — never re-prompts for phone when session is still valid.
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
@@ -13,6 +14,7 @@ import PinInput from './PinInput'
 import { authApi } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
 import { maskPhone, PIN_STALE_MS } from '@/lib/phoneStorage'
+import { pinSignInErrorMessage } from '@/lib/signInError'
 
 interface Props {
   thresholdMs?: number
@@ -88,8 +90,9 @@ export default function PinReauthGate({ thresholdMs = PIN_STALE_MS, children }: 
       markPinVerified()
       setStale(false)
       setPin('')
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Wrong PIN. Please try again.'
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
+      const msg = pinSignInErrorMessage(err, 'Wrong PIN. Please try again.')
       toast.error(msg)
       setPin('')
     } finally {

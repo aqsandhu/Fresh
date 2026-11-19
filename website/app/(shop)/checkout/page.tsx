@@ -5,44 +5,51 @@
 // error during Next's static export pass).
 export const dynamic = 'force-dynamic'
 
+import { asCaughtError } from '@/lib/caughtError'
 import PinReauthGate from '@/components/auth/PinReauthGate'
-import CheckoutAuthPanel from '@/components/checkout/CheckoutAuthPanel'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import {
   MapPin,
-  Clock,
-  Zap,
   CreditCard,
   Check,
   Plus,
   Loader2,
-  CalendarDays,
-  CheckCircle2,
-  ArrowRight,
-  ShoppingBag,
   Ticket,
-  X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { useCartStore, useAuthStore } from '@/store/cartStore'
 import { formatPriceShort, formatProductUnitSuffix } from '@/lib/utils'
-import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { resolveLineUnitPrice, unitPriceCaption, unitLabelShort } from '@/lib/unitPricing'
 import { getSlotAvailability } from '@/lib/timeSlots'
-import { pktDateString, pktDisplayDate, pktWallClock } from '@/lib/businessDate'
-import { addressesApi, settingsApi, cartApi, myCouponsApi, type MyCoupon } from '@/lib/api'
+import { pktDateString, pktWallClock } from '@/lib/businessDate'
+import {
+  addressesApi,
+  settingsApi,
+  cartApi,
+  myCouponsApi,
+  type MyCoupon,
+} from '@/lib/api'
 import api from '@/lib/api'
 import AddressActions from '@/components/checkout/AddressActions'
-import AddressForm, {
-  type AddressFormHandle,
-  type SavedAddress,
-} from '@/components/checkout/AddressForm'
+import AddressForm, { type AddressFormHandle, type SavedAddress } from '@/components/checkout/AddressForm'
 import { getSelectedCityId, addressMatchesSelectedCity } from '@/lib/cityStorage'
 import { useCityContext } from '@/context/CityContext'
+import { useDialog } from '@/lib/useDialog'
+import GuestCheckout from '@/components/checkout/GuestCheckout'
+import OrderPlacedDialog from '@/components/checkout/OrderPlacedDialog'
+import DeliveryTimeSection from '@/components/checkout/DeliveryTimeSection'
+import CouponBox from '@/components/checkout/CouponBox'
+import type {
+  AppliedCoupon,
+  CheckoutDay,
+  CheckoutSlot,
+  PlacedOrder,
+  UrgentInfo,
+} from '@/components/checkout/checkoutTypes'
 
 type RealAddress = SavedAddress
 
@@ -87,94 +94,6 @@ export default function CheckoutPageWrapper() {
   )
 }
 
-// Guest view: the same "Checkout" heading + a slim order-summary preview (from
-// the LOCAL cart — no server session needed) alongside the inline auth panel.
-// Address / time / payment intentionally appear only AFTER sign-in (they need
-// an authenticated session), and the checkout guidance tips are deliberately
-// NOT shown here — guests see login/sign-up tips inside the panel instead, so
-// the two instruction sets never overlap or contradict.
-function GuestCheckout() {
-  const router = useRouter()
-  const { items, getSubtotal, hasHydrated: cartHasHydrated } = useCartStore()
-
-  // Empty cart → nothing to check out; mirror the authed page and bounce to /cart.
-  useEffect(() => {
-    if (cartHasHydrated && items.length === 0) {
-      router.push('/cart')
-    }
-  }, [cartHasHydrated, items.length, router])
-
-  if (cartHasHydrated && items.length === 0) {
-    return null
-  }
-  if (!cartHasHydrated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
-      </div>
-    )
-  }
-
-  const subtotal = getSubtotal()
-
-  return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto px-4">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">Checkout</h1>
-
-        <div className="grid lg:grid-cols-3 gap-8">
-          {/* Inline login / sign-up (the new top section) */}
-          <div className="lg:col-span-2">
-            <CheckoutAuthPanel />
-          </div>
-
-          {/* Order summary preview (read-only, from local cart) */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl p-6 shadow-sm sticky top-24">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Order Summary</h2>
-              <div className="space-y-3 mb-4 max-h-64 overflow-y-auto">
-                {items.map((item) => {
-                  const unit = item.unit || 'full'
-                  const linePrice = resolveLineUnitPrice(item)
-                  return (
-                    <div key={`${item.product.id}::${unit}::${item.quality ?? 'A'}`} className="flex items-center gap-3">
-                      <div className="relative w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
-                        <Image
-                          src={item.product.image || item.product.image_url || '/placeholder-product.svg'}
-                          alt={item.product.name}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{item.product.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {item.quantity} x {formatPriceShort(linePrice)}
-                        </p>
-                      </div>
-                      <p className="text-sm font-medium">
-                        {formatPriceShort(linePrice * item.quantity)}
-                      </p>
-                    </div>
-                  )
-                })}
-              </div>
-              <div className="border-t pt-4 flex justify-between text-gray-700 font-semibold">
-                <span>Subtotal</span>
-                <span>{formatPriceShort(subtotal)}</span>
-              </div>
-              <p className="mt-4 text-xs text-gray-500">
-                Delivery charge, time slot and saved addresses appear right after you
-                sign in above.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function CheckoutPage() {
   const router = useRouter()
   const { selectedCity } = useCityContext()
@@ -196,15 +115,16 @@ function CheckoutPage() {
   // avoids a raw 422 from the API when city / slot selection is missing.
   const [placeOrderError, setPlaceOrderError] = useState('')
   const [orderPlaced, setOrderPlaced] = useState(false)
-  const [placedOrder, setPlacedOrder] = useState<{
-    id: string
-    order_number?: string | null
-    total_amount?: number | null
-  } | null>(null)
+  const [placedOrder, setPlacedOrder] = useState<PlacedOrder | null>(null)
+  // The "order placed" box is a dialog (G31): focus moves into it so screen
+  // readers announce the order; Escape opens the order (the next step).
+  const successRef = useDialog<HTMLDivElement>(orderPlaced && !!placedOrder, () => {
+    if (placedOrder) router.push(`/track/${placedOrder.id || 'success'}`)
+  })
   const [loadingAddresses, setLoadingAddresses] = useState(true)
-  const [timeSlots, setTimeSlots] = useState<{ id: string; slot_name: string; start_time: string; end_time: string; is_free_delivery_slot: boolean; available_slots: number }[]>([])
+  const [timeSlots, setTimeSlots] = useState<CheckoutSlot[]>([])
   const [loadingSlots, setLoadingSlots] = useState(true)
-  const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today')
+  const [selectedDay, setSelectedDay] = useState<CheckoutDay>('today')
 
   const serviceCities = selectedCity
     ? [{ id: selectedCity.id, name: selectedCity.name, province: selectedCity.province || '' }]
@@ -225,13 +145,7 @@ function CheckoutPage() {
   // authoritatively at order placement, so the displayed total always matches
   // what the backend will charge.
   const [couponInput, setCouponInput] = useState('')
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string
-    discount_type: string
-    discount_amount: number
-    free_delivery: boolean
-    summary: string
-  } | null>(null)
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null)
   const [couponLoading, setCouponLoading] = useState(false)
   const [couponError, setCouponError] = useState('')
   const [myCoupons, setMyCoupons] = useState<MyCoupon[]>([])
@@ -239,7 +153,7 @@ function CheckoutPage() {
   // Urgent (on-demand) delivery — a flat super-admin rate the customer can pick
   // instead of a time slot. It ignores free delivery + coupons (handled below).
   const [urgent, setUrgent] = useState(false)
-  const [urgentInfo, setUrgentInfo] = useState<{ charge: number; eta: string; enabled: boolean }>({
+  const [urgentInfo, setUrgentInfo] = useState<UrgentInfo>({
     charge: 0, eta: '', enabled: false,
   })
   const [slotCutoffPercent, setSlotCutoffPercent] = useState(60)
@@ -342,8 +256,13 @@ function CheckoutPage() {
       const date = pktDateString(day)
       const slots = await settingsApi.getTimeSlots(date)
       setTimeSlots(slots)
+      // A FULL slot is not "available" either — it used to be pre-selected
+      // (shown chosen but disabled) and Place Order then refused it (I15; the
+      // app had the same fix, I9).
       const firstAvailable = slots.find(
-        (slot) => !getSlotAvailability(slot, day, slotCutoffRef.current, pktWallClock()).unavailable
+        (slot) =>
+          slot.available_slots > 0 &&
+          !getSlotAvailability(slot, day, slotCutoffRef.current, pktWallClock()).unavailable
       )
       if (firstAvailable) setSelectedTimeSlot(firstAvailable.id)
     } catch {
@@ -450,7 +369,8 @@ function CheckoutPage() {
       const result = await cartApi.applyCoupon(trimmed)
       setAppliedCoupon(result)
       toast.success('Coupon applied')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setAppliedCoupon(null)
       setCouponError(
         err?.response?.data?.message || err?.message || 'Invalid coupon code'
@@ -569,7 +489,8 @@ function CheckoutPage() {
       clearCart()
       // We deliberately DON'T router.push here — we show an inline success
       // modal with two clear CTAs (Continue Shopping / View Order) instead.
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg =
         err?.response?.data?.message ||
         err?.message ||
@@ -605,59 +526,7 @@ function CheckoutPage() {
       {/* Success modal — shown after Place Order returns. Two clear CTAs so
           the customer can either keep shopping or jump to the order detail. */}
       {orderPlaced && placedOrder && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.92, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ duration: 0.25 }}
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 text-center"
-          >
-            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle2 className="w-10 h-10 text-green-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              Order placed successfully!
-            </h2>
-            <p className="text-sm text-gray-600 mb-1">
-              Thank you — your order has been received.
-            </p>
-            {placedOrder.order_number && (
-              <p className="text-sm text-gray-500 mb-4">
-                Order #
-                <span className="font-semibold text-gray-700">
-                  {placedOrder.order_number}
-                </span>
-                {placedOrder.total_amount != null && (
-                  <>
-                    {' '}· Total{' '}
-                    <span className="font-semibold text-gray-700">
-                      {formatPriceShort(placedOrder.total_amount)}
-                    </span>
-                  </>
-                )}
-              </p>
-            )}
-            <div className="flex flex-col sm:flex-row gap-3 mt-6">
-              <Button
-                variant="outline"
-                fullWidth
-                onClick={() => router.push('/products')}
-              >
-                <ShoppingBag className="w-4 h-4 mr-2" />
-                Continue Shopping
-              </Button>
-              <Button
-                fullWidth
-                onClick={() =>
-                  router.push(`/track/${placedOrder.id || 'success'}`)
-                }
-              >
-                View Order
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
-          </motion.div>
-        </div>
+        <OrderPlacedDialog placedOrder={placedOrder} successRef={successRef} />
       )}
 
       <div className="container mx-auto px-4">
@@ -808,132 +677,19 @@ function CheckoutPage() {
             </motion.div>
 
             {/* Delivery Time */}
-            <motion.div
-              ref={deliveryTimeRef}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="bg-white rounded-xl p-6 shadow-sm scroll-mt-24"
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                  <Clock className="w-5 h-5 text-primary-600" />
-                </div>
-                <h2 className="text-xl font-semibold">Delivery Time</h2>
-              </div>
-
-              {urgentInfo.enabled && (
-                <div className="mb-5">
-                  <button
-                    type="button"
-                    onClick={() => setUrgent((v) => !v)}
-                    className={`w-full flex items-center justify-between rounded-xl border-2 p-4 transition-colors ${
-                      urgent ? 'border-amber-500 bg-amber-50' : 'border-gray-200 hover:border-amber-300'
-                    }`}
-                  >
-                    <span className="flex items-center gap-3 text-left">
-                      <Zap className={`w-5 h-5 ${urgent ? 'text-amber-600' : 'text-gray-500'}`} />
-                      <span>
-                        <span className="block font-semibold text-gray-900">Urgent delivery</span>
-                        <span className="block text-xs text-gray-500">
-                          {urgentInfo.eta ? `Approx. ${urgentInfo.eta}` : 'Fastest available'} · no time slot needed
-                        </span>
-                      </span>
-                    </span>
-                    <span className="font-bold text-amber-600">{formatPriceShort(urgentInfo.charge)}</span>
-                  </button>
-                  {urgent && (
-                    <p className="mt-2 text-xs text-amber-700">
-                      Free-delivery offers and coupons don&apos;t apply to urgent delivery.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {!urgent && (
-              <>
-              <p className="text-sm font-medium text-gray-800 mb-4">
-                {selectedDay === 'today'
-                  ? 'Today available time slots'
-                  : 'Tomorrow time slots'}
-              </p>
-
-              <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {loadingSlots ? (
-                  <div className="col-span-full flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-primary-600" />
-                  </div>
-                ) : timeSlots.length === 0 ? (
-                  <p className="col-span-full text-gray-500 text-sm">
-                    No time slots available for {selectedDay === 'today' ? 'today' : 'tomorrow'}
-                  </p>
-                ) : (
-                  timeSlots.map((slot) => {
-                    const availability = getSlotAvailability(slot, selectedDay, slotCutoffPercent, pktWallClock())
-                    const slotDisabled =
-                      slot.available_slots <= 0 || availability.unavailable
-                    return (
-                      <label
-                        key={slot.id}
-                        className={`flex flex-col items-center p-4 border-2 rounded-xl transition-colors ${
-                          slotDisabled
-                            ? 'opacity-40 cursor-not-allowed border-gray-200 bg-gray-50'
-                            : selectedTimeSlot === slot.id
-                            ? 'border-primary-500 bg-primary-50 cursor-pointer'
-                            : 'border-gray-200 hover:border-gray-300 cursor-pointer'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="timeSlot"
-                          value={slot.id}
-                          checked={selectedTimeSlot === slot.id}
-                          onChange={(e) => setSelectedTimeSlot(e.target.value)}
-                          disabled={slotDisabled}
-                          className="sr-only"
-                        />
-                        <Clock className={`w-6 h-6 mb-2 ${slotDisabled ? 'text-gray-500' : 'text-primary-600'}`} />
-                        <span className="font-medium text-center text-sm">
-                          <SlotTimeLabel startTime={slot.start_time} endTime={slot.end_time} />
-                        </span>
-                        {slot.is_free_delivery_slot && !slotDisabled && (
-                          <span className="text-xs text-green-600 mt-1">FREE DELIVERY</span>
-                        )}
-                        {slot.available_slots <= 0 && (
-                          <span className="text-xs text-red-500 mt-1">FULL</span>
-                        )}
-                        {availability.unavailable && slot.available_slots > 0 && (
-                          <span className="text-xs text-gray-500 mt-1">
-                            {availability.reason === 'expired' ? 'Passed' : 'Unavailable'}
-                          </span>
-                        )}
-                      </label>
-                    )
-                  })
-                )}
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                {(['today', 'tomorrow'] as const).map((day) => (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => handleDayChange(day)}
-                    className={`flex-1 flex flex-col items-center py-3 px-4 rounded-xl border-2 transition-colors ${
-                      selectedDay === day
-                        ? 'border-primary-500 bg-primary-50 text-primary-700'
-                        : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                    }`}
-                  >
-                    <CalendarDays className="w-5 h-5 mb-1" />
-                    <span className="font-semibold text-sm capitalize">{day}</span>
-                    <span className="text-xs opacity-75">{pktDisplayDate(day)}</span>
-                  </button>
-                ))}
-              </div>
-              </>
-              )}
-            </motion.div>
+            <DeliveryTimeSection
+              deliveryTimeRef={deliveryTimeRef}
+              urgentInfo={urgentInfo}
+              urgent={urgent}
+              setUrgent={setUrgent}
+              selectedDay={selectedDay}
+              handleDayChange={handleDayChange}
+              loadingSlots={loadingSlots}
+              timeSlots={timeSlots}
+              slotCutoffPercent={slotCutoffPercent}
+              selectedTimeSlot={selectedTimeSlot}
+              setSelectedTimeSlot={setSelectedTimeSlot}
+            />
 
             {/* Payment Method */}
             <motion.div
@@ -1028,102 +784,18 @@ function CheckoutPage() {
               </div>
 
               {/* Coupon */}
-              <div className="mb-6 border-t pt-4">
-                {appliedCoupon ? (
-                  <div className="flex items-start justify-between gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-green-700 flex items-center gap-1 min-w-0">
-                        <Ticket className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{appliedCoupon.code} applied</span>
-                      </p>
-                      {appliedCoupon.summary && (
-                        <p className="text-xs text-green-700/80 mt-0.5 break-words">
-                          {appliedCoupon.summary}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRemoveCoupon}
-                      className="text-green-700 hover:text-green-900 p-1 shrink-0"
-                      aria-label="Remove coupon"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <label htmlFor="checkout-field-1" className="text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
-                      <Ticket className="w-4 h-4 text-primary-600 shrink-0" />
-                      Have a coupon?
-                    </label>
-                    <div className="flex gap-2">
-                      <input id="checkout-field-1"
-                        type="text"
-                        value={couponInput}
-                        onChange={(e) => {
-                          setCouponInput(e.target.value.toUpperCase())
-                          if (couponError) setCouponError('')
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            handleApplyCoupon()
-                          }
-                        }}
-                        placeholder="Enter code"
-                        className="flex-1 min-w-0 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm uppercase focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="shrink-0"
-                        onClick={handleApplyCoupon}
-                        isLoading={couponLoading}
-                        disabled={!couponInput.trim() || couponLoading}
-                      >
-                        Apply
-                      </Button>
-                    </div>
-                    {couponError && (
-                      <p className="text-xs text-red-500 mt-1.5 break-words">{couponError}</p>
-                    )}
-
-                    {myCoupons.length > 0 && (
-                      <div className="mt-3">
-                        <p className="text-xs font-medium text-gray-500 mb-1.5">Your coupons</p>
-                        <div className="space-y-2">
-                          {myCoupons.map((c) => (
-                            <button
-                              key={c.code}
-                              type="button"
-                              disabled={couponLoading}
-                              onClick={() => {
-                                setCouponInput(c.code)
-                                applyCouponCode(c.code)
-                              }}
-                              className="flex w-full items-center justify-between gap-2 rounded-lg border border-primary-200 bg-primary-50/60 px-3 py-2 text-left hover:bg-primary-50 disabled:opacity-60"
-                            >
-                              <span className="min-w-0">
-                                <span className="block font-mono text-sm font-semibold text-primary-700">
-                                  {c.code}
-                                </span>
-                                <span className="block text-xs text-gray-600 break-words">
-                                  {c.summary}
-                                </span>
-                              </span>
-                              <span className="shrink-0 text-xs font-semibold text-primary-600">
-                                Apply
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <CouponBox
+                appliedCoupon={appliedCoupon}
+                couponInput={couponInput}
+                setCouponInput={setCouponInput}
+                couponError={couponError}
+                setCouponError={setCouponError}
+                couponLoading={couponLoading}
+                myCoupons={myCoupons}
+                handleApplyCoupon={handleApplyCoupon}
+                applyCouponCode={applyCouponCode}
+                handleRemoveCoupon={handleRemoveCoupon}
+              />
 
               {/* Price Breakdown */}
               <div className="space-y-3 mb-6 border-t pt-4">

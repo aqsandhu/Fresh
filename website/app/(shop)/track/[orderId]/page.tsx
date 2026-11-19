@@ -1,5 +1,7 @@
 'use client'
 
+import type { ApiOrderRow } from '@freshbazar/shared-types'
+import { asCaughtError } from '@/lib/caughtError';
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
@@ -31,6 +33,7 @@ import { formatPriceShort, formatDateTime, getOrderStatusLabel, resolveImageUrl 
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
 import { unitLabelShort, unitPriceCaption } from '@/lib/unitPricing'
 import { ordersApi } from '@/lib/api'
+import { canCustomerCancel } from '@/lib/orderCancel'
 
 const RiderTrackingMap = dynamic(() => import('@/components/ui/RiderTrackingMap'), {
   ssr: false,
@@ -77,7 +80,7 @@ function parseOrderAmount(value: unknown): number {
  * requested_delivery_date is a calendar date; formatting it as a date-time
  * showed midnight ("Estimated by … 12:00 AM").
  */
-function buildEtaLabel(raw: any, slotEnd: string): string | null {
+function buildEtaLabel(raw: Pick<ApiOrderRow, 'is_urgent_delivery' | 'urgent_delivery_eta' | 'requested_delivery_date'>, slotEnd: string): string | null {
   if (raw?.is_urgent_delivery && raw?.urgent_delivery_eta) return String(raw.urgent_delivery_eta)
   const ymd = typeof raw?.requested_delivery_date === 'string' ? raw.requested_delivery_date.slice(0, 10) : ''
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null
@@ -126,6 +129,7 @@ export default function TrackOrderPage() {
         id: raw.id,
         orderNumber: raw.order_number || raw.id,
         status: mapStatus(raw.status),
+        rawStatus: String(raw.status || ''),
         createdAt: raw.placed_at || raw.created_at || '',
         subtotal: parseOrderAmount(raw.subtotal),
         deliveryCharge: parseOrderAmount(raw.delivery_charge),
@@ -137,16 +141,16 @@ export default function TrackOrderPage() {
         slotFallback,
         estimatedDelivery: buildEtaLabel(raw, slotEnd),
         address: {
-          label: snapshot.area_name || snapshot.label || 'Delivery Address',
+          label: snapshot.area_name || 'Delivery Address',
           fullAddress: [snapshot.written_address, snapshot.area_name, snapshot.city].filter(Boolean).join(', '),
         },
-        items: (raw.items || []).map((item: any) => ({
+        items: (raw.items || []).map((item) => ({
           product: {
             name: item.product_name || 'Product',
             image: resolveImg(item.product_image),
           },
-          quantity: item.quantity || 1,
-          price: parseFloat(item.unit_price) || 0,
+          quantity: Number(item.quantity) || 1,
+          price: parseFloat(String(item.unit_price)) || 0,
           unit: (item.unit || 'full') as ProductUnit,
         })),
         rider: raw.rider_name ? {
@@ -482,7 +486,7 @@ export default function TrackOrderPage() {
               </div>
 
               {/* Cancel Order Button */}
-              {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' && order.status !== 'out-for-delivery' && (
+              {canCustomerCancel(order.rawStatus, order.createdAt) && (
                 <div className="border-t pt-4 mt-4">
                   <Button
                     variant="outline"
@@ -495,7 +499,8 @@ export default function TrackOrderPage() {
                         await ordersApi.cancel(orderId)
                         toast.success('Order cancelled successfully')
                         queryClient.invalidateQueries({ queryKey: ['order', orderId] })
-                      } catch (err: any) {
+                      } catch (errCaught: unknown) {
+                        const err = asCaughtError(errCaught);
                         const msg = err?.response?.data?.message || 'Failed to cancel order'
                         toast.error(msg)
                       } finally {

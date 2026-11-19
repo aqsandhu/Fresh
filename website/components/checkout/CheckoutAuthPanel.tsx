@@ -23,6 +23,7 @@
 //   Register steps so the user is never confused about what to type.
 // ============================================================================
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -42,6 +43,8 @@ import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
 import { getLastPhone, maskPhone, setLastPhone } from '@/lib/phoneStorage'
 import { sanitizeRedirect } from '@/lib/utils'
+import { isWeakPin, WEAK_PIN_MESSAGE } from '@/lib/pinStrength'
+import { pinSignInErrorMessage } from '@/lib/signInError'
 
 type Step = 'phone' | 'pin' | 'otp' | 'register'
 
@@ -160,7 +163,8 @@ export default function CheckoutAuthPanel() {
       setOtp(['', '', '', '', '', ''])
       setResendTimer(60)
       toast.success('OTP sent via SMS')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const backendMsg = err?.response?.data?.message
       const msg = backendMsg || firebaseErrorMessage(err, 'Failed to send OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
@@ -199,7 +203,8 @@ export default function CheckoutAuthPanel() {
         // Brand-new number — verify by OTP, then collect name + PIN.
         await sendOtp(value, 'register')
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg = err?.response?.data?.message || 'Could not start sign-in. Please try again.'
       toast.error(msg)
     } finally {
@@ -224,8 +229,9 @@ export default function CheckoutAuthPanel() {
       // the moment isAuthenticated flips true. We only push if a non-checkout
       // redirect was requested.
       if (redirectTo && redirectTo !== '/checkout') router.push(redirectTo)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Invalid PIN. Please try again.'
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
+      const msg = pinSignInErrorMessage(err)
       toast.error(msg)
       setPin('')
     } finally {
@@ -287,7 +293,8 @@ export default function CheckoutAuthPanel() {
       }
       toast.success('Signed in!')
       if (redirectTo && redirectTo !== '/checkout') router.push(redirectTo)
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const backendMsg = err?.response?.data?.message
       const msg = backendMsg || firebaseErrorMessage(err, 'Invalid OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
@@ -309,6 +316,12 @@ export default function CheckoutAuthPanel() {
     }
     if (regPin.length !== 4) {
       toast.error('Please choose a 4-digit PIN.')
+      return
+    }
+    // Before the account exists (B33): a refused PIN used to leave the new
+    // account without one.
+    if (isWeakPin(regPin)) {
+      toast.error(WEAK_PIN_MESSAGE)
       return
     }
     setIsLoading(true)
@@ -338,7 +351,8 @@ export default function CheckoutAuthPanel() {
 
       toast.success('Account ready — you are signed in!')
       if (redirectTo && redirectTo !== '/checkout') router.push(redirectTo)
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const status: number | undefined = err?.response?.status
       const msg = err?.response?.data?.message || 'Could not finish sign-up. Please try again.'
       toast.error(msg)
@@ -541,6 +555,7 @@ export default function CheckoutAuthPanel() {
                 <input
                   key={index}
                   id={`cotp-${index}`}
+                  aria-label={`Code digit ${index + 1} of 6`}
                   type="text"
                   inputMode="numeric"
                   maxLength={6}
@@ -633,6 +648,7 @@ export default function CheckoutAuthPanel() {
             <div>
               <p className="text-sm font-medium text-gray-700 mb-2">Choose a 4-digit PIN</p>
               <PinInput
+                label="New PIN"
                 value={regPin}
                 onChange={setRegPin}
                 disabled={isLoading}

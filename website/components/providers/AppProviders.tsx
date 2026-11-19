@@ -9,6 +9,8 @@ import FloatingCityButton from '@/components/city/FloatingCityButton'
 import NotificationProvider from '@/components/providers/NotificationProvider'
 import CouponWinPopup from '@/components/coupons/CouponWinPopup'
 import VariableWeightNotice from '@/components/products/VariableWeightNotice'
+import SavedCartSync from '@/components/providers/SavedCartSync'
+import WishlistSync from '@/components/providers/WishlistSync'
 
 export default function AppProviders({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -33,6 +35,8 @@ export default function AppProviders({ children }: { children: React.ReactNode }
           <FloatingCityButton />
           <CouponWinPopup />
           <VariableWeightNotice />
+          <SavedCartSync />
+          <WishlistSync />
         </NotificationProvider>
       </CityProvider>
       <ReactQueryDevtools initialIsOpen={false} />

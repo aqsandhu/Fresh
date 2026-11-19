@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -8,13 +9,15 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
-import { ocpApi } from '@/lib/ocpApi'
+import { ocpApi, type OcpOrder, type OcpRider, type OcpStockRequest, type OcpStockRow, type OcpSettlement, type OcpSettlementSummary } from '@/lib/ocpApi'
 import { getOcpInfo, clearOcpSession, type OcpInfo } from '@/lib/ocpSession'
 import { printOcpSlip, formatOrderStatus, formatPhoneNumber } from '@/lib/ocpSlip'
+import { useDialog } from '@/lib/useDialog'
+import { restaurantDeliveryLabel } from '@freshbazar/shared-types'
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`
 const unitShort = (u?: string) => (u === 'half_kg' ? '½ kg' : u === 'quarter_kg' ? '¼ kg' : u === 'half_dozen' ? '½ dozen' : '')
-const isCollected = (o: any) => Number(o.paid_amount) >= Number(o.total_amount) && Number(o.total_amount) > 0
+const isCollected = (o: OcpOrder) => Number(o.paid_amount) >= Number(o.total_amount) && Number(o.total_amount) > 0
 
 const statusChip = (s: string) => {
   const map: Record<string, string> = {
@@ -89,8 +92,8 @@ export default function OcpDashboard() {
 
 // ── Orders ───────────────────────────────────────────────────────────────────
 function OrdersTab() {
-  const [orders, setOrders] = useState<any[]>([])
-  const [riders, setRiders] = useState<any[]>([])
+  const [orders, setOrders] = useState<OcpOrder[]>([])
+  const [riders, setRiders] = useState<OcpRider[]>([])
   const [loading, setLoading] = useState(true)
   const [viewId, setViewId] = useState<string | null>(null)
 
@@ -100,7 +103,8 @@ function OrdersTab() {
       const [o, r] = await Promise.all([ocpApi.getOrders(), ocpApi.getRiders().catch(() => [])])
       setOrders(o || [])
       setRiders(r || [])
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       toast.error(e?.message || 'Failed to load orders')
     } finally {
       setLoading(false)
@@ -151,13 +155,16 @@ function OrdersTab() {
 }
 
 // ── Admin-style order detail (modal) ─────────────────────────────────────────
-function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; riders: any[]; onClose: () => void; onChanged: () => void }) {
-  const [o, setO] = useState<any>(null)
+function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; riders: OcpRider[]; onClose: () => void; onChanged: () => void }) {
+  const [o, setO] = useState<OcpOrder | null>(null)
   const [busy, setBusy] = useState(false)
   const [rider, setRider] = useState('')
+  // A real dialog (G31): focus moves in, Tab stays inside, Escape closes.
+  const dialogRef = useDialog<HTMLDivElement>(true, onClose)
 
   const load = useCallback(async () => {
-    try { setO(await ocpApi.getOrder(id)) } catch (e: any) { toast.error(e?.message || 'Failed'); onClose() }
+    try { setO(await ocpApi.getOrder(id)) } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed'); onClose() }
   }, [id, onClose])
   useEffect(() => { load() }, [load])
 
@@ -165,21 +172,24 @@ function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; ride
     if (!rider) return
     setBusy(true)
     try { await ocpApi.assignRider(id, rider); toast.success('Rider assigned'); await load(); onChanged() }
-    catch (e: any) { toast.error(e?.message || 'Failed') } finally { setBusy(false) }
+    catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed') } finally { setBusy(false) }
   }
   const collect = async () => {
+    if (!o) return
     if (!confirm(`Confirm you collected ${money(o.total_amount)} cash for this order?`)) return
     setBusy(true)
     try { await ocpApi.collect(id); toast.success('Cash collected'); await load(); onChanged() }
-    catch (e: any) { toast.error(e?.message || 'Failed') } finally { setBusy(false) }
+    catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed') } finally { setBusy(false) }
   }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4">
-      <div className="w-full max-w-lg bg-white sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="ocp-order-title" className="w-full max-w-lg bg-white sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b px-5 py-3 sticky top-0 bg-white">
-          <h2 className="font-semibold text-gray-900">{o ? `Order #${o.order_number}` : 'Loading…'}</h2>
-          <button onClick={onClose} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
+          <h2 id="ocp-order-title" className="font-semibold text-gray-900">{o ? `Order #${o.order_number}` : 'Loading…'}</h2>
+          <button onClick={onClose} aria-label="Close" className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg"><X className="w-5 h-5" /></button>
         </div>
 
         {!o ? (
@@ -210,17 +220,21 @@ function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; ride
               </section>
             )}
 
-            {o.slot_name && (
+            {(o.slot_name || restaurantDeliveryLabel(o)) && (
               <section>
                 <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Time slot</h3>
-                <p className="text-sm text-gray-700 inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {o.slot_name}</p>
+                <p className="text-sm text-gray-700 inline-flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  {/* The day too: an order for tomorrow looked like one for today. */}
+                  {[restaurantDeliveryLabel(o), o.slot_name].filter(Boolean).join(' · ')}
+                </p>
               </section>
             )}
 
             <section>
               <h3 className="text-xs font-semibold text-gray-500 uppercase mb-1">Items</h3>
               <div className="border rounded-lg divide-y">
-                {(o.items || []).map((it: any) => (
+                {(o.items || []).map((it) => (
                   <div key={it.id} className="flex items-center justify-between px-3 py-2 text-sm">
                     <span className="text-gray-800">{it.product_name}
                       {it.unit && it.unit !== 'full' ? <span className="text-gray-500"> ({unitShort(it.unit)})</span> : null}
@@ -235,8 +249,8 @@ function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; ride
 
             <section className="text-sm space-y-1">
               <div className="flex justify-between text-gray-600"><span>Subtotal</span><span>{money(o.subtotal)}</span></div>
-              {Number(o.discount_amount) > 0 && <div className="flex justify-between text-gray-600"><span>Discount</span><span>-{money(o.discount_amount)}</span></div>}
-              {Number(o.coupon_discount) > 0 && <div className="flex justify-between text-gray-600"><span>Coupon{o.coupon_code ? ` (${o.coupon_code})` : ''}</span><span>-{money(o.coupon_discount)}</span></div>}
+              {Number(o.discount_amount) > 0 && <div className="flex justify-between text-gray-600"><span>Discount</span><span>-{money(Number(o.discount_amount))}</span></div>}
+              {Number(o.coupon_discount) > 0 && <div className="flex justify-between text-gray-600"><span>Coupon{o.coupon_code ? ` (${o.coupon_code})` : ''}</span><span>-{money(Number(o.coupon_discount))}</span></div>}
               <div className="flex justify-between text-gray-600"><span>Delivery</span><span>{money(o.delivery_charge)}</span></div>
               <div className="flex justify-between font-bold text-gray-900 text-base pt-1 border-t"><span>Total</span><span>{money(o.total_amount)}</span></div>
               <div className="flex justify-between text-gray-500 pt-1"><span>Payment</span><span>{o.payment_method === 'cash_on_delivery' ? 'Cash on Delivery' : (o.payment_method || 'Cash on Delivery')}</span></div>
@@ -252,10 +266,10 @@ function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; ride
             {/* Actions */}
             <div className="border-t pt-4 space-y-3">
               <div className="flex items-center gap-2">
-                <select value={rider} onChange={(e) => setRider(e.target.value)} disabled={busy}
+                <select aria-label="Rider" value={rider} onChange={(e) => setRider(e.target.value)} disabled={busy}
                   className="flex-1 text-sm px-2 py-2 border border-gray-300 rounded-lg">
                   <option value="">Assign rider…</option>
-                  {riders.map((r: any) => <option key={r.id} value={r.id}>{r.name} ({r.status})</option>)}
+                  {riders.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.status})</option>)}
                 </select>
                 <Button size="sm" disabled={busy || !rider} onClick={assign}>Assign</Button>
               </div>
@@ -277,8 +291,8 @@ function OrderDetailModal({ id, riders, onClose, onChanged }: { id: string; ride
 
 // ── Stock ────────────────────────────────────────────────────────────────────
 function StockTab() {
-  const [requests, setRequests] = useState<any[]>([])
-  const [stock, setStock] = useState<any[]>([])
+  const [requests, setRequests] = useState<OcpStockRequest[]>([])
+  const [stock, setStock] = useState<OcpStockRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -287,7 +301,8 @@ function StockTab() {
     try {
       const [rq, st] = await Promise.all([ocpApi.getStockRequests(), ocpApi.getStock()])
       setRequests(rq || []); setStock(st || [])
-    } catch (e: any) { toast.error(e?.message || 'Failed to load stock') }
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed to load stock') }
     finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
@@ -296,7 +311,8 @@ function StockTab() {
     if (!confirm('Confirm you physically received and verified this stock?')) return
     setBusy(id)
     try { await ocpApi.receiveStock(id); toast.success('Stock received'); await load() }
-    catch (e: any) { toast.error(e?.message || 'Failed') }
+    catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed') }
     finally { setBusy(null) }
   }
 
@@ -317,7 +333,7 @@ function StockTab() {
                   <Button size="sm" disabled={busy === r.id} onClick={() => receive(r.id)}>Verify &amp; receive</Button>
                 </div>
                 <ul className="text-sm text-gray-700 list-disc pl-5">
-                  {(r.items || []).map((it: any, i: number) => (
+                  {(r.items || []).map((it, i) => (
                     <li key={i}>{it.product_name} · Q{it.quality} · {Number(it.quantity)}</li>
                   ))}
                 </ul>
@@ -346,29 +362,32 @@ function StockTab() {
 
 // ── Payments / settlements ────────────────────────────────────────────────────
 function PaymentsTab() {
-  const [data, setData] = useState<any>(null)
+  const [data, setData] = useState<OcpSettlementSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try { setData(await ocpApi.getSettlements()) }
-    catch (e: any) { toast.error(e?.message || 'Failed') }
+    catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed') }
     finally { setLoading(false) }
   }, [])
   useEffect(() => { load() }, [load])
 
   const send = async () => {
+    if (!data) return
     if (!confirm(`Send ${money(data.due_amount)} to the city admin? They confirm receipt with their password.`)) return
     setBusy(true)
     try { await ocpApi.sendSettlement(); toast.success('Settlement sent to admin'); await load() }
-    catch (e: any) { toast.error(e?.message || 'Failed') }
+    catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed') }
     finally { setBusy(false) }
   }
 
   if (loading || !data) return <Loader2 className="w-6 h-6 animate-spin text-primary-600 mx-auto" />
 
-  const settlements: any[] = data.settlements || []
+  const settlements: OcpSettlement[] = data.settlements || []
   const pendingTotal = settlements.filter((s) => s.status === 'pending').reduce((a, s) => a + Number(s.amount), 0)
   const receivedTotal = settlements.filter((s) => s.status === 'received').reduce((a, s) => a + Number(s.amount), 0)
 
@@ -403,7 +422,7 @@ function PaymentsTab() {
         <h2 className="font-semibold text-gray-900 mb-2">History</h2>
         {settlements.length === 0 ? <p className="text-sm text-gray-500">No settlements yet.</p> : (
           <div className="bg-white rounded-xl shadow-sm divide-y">
-            {settlements.map((s: any) => (
+            {settlements.map((s) => (
               <div key={s.id} className="flex items-center justify-between px-4 py-2.5 text-sm gap-2">
                 <span className="text-gray-500">{new Date(s.requested_at).toLocaleString('en-PK')}</span>
                 <span className="font-medium text-gray-900">{money(s.amount)}</span>

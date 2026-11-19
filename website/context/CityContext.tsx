@@ -82,7 +82,11 @@ export function CityProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     reloadCities().then((list) => {
       const stored = getStoredCity()
-      if (stored?.id) {
+      // A remembered city the office has since switched off (no longer in the
+      // loaded list) is dropped — it showed an empty shop and checkout failed
+      // (I21). An unreachable list (empty) keeps it.
+      const storedStillServed = !!stored?.id && (list.length === 0 || list.some((c) => c.id === stored.id))
+      if (stored?.id && storedStillServed) {
         setSelectedCityState(stored)
         switchCartCity(stored.id)
       } else if (list.length > 0) {

@@ -24,6 +24,8 @@ interface PinInputProps {
   mask?: boolean
   /** Smaller boxes for tight mobile layouts (e.g. dual PIN entry). */
   size?: 'default' | 'compact'
+  /** Spoken name of the boxes, e.g. "New PIN" (screen readers: "New PIN digit 1 of 4"). */
+  label?: string
 }
 
 const LENGTH = 4
@@ -36,6 +38,7 @@ export default function PinInput({
   autoFocus = true,
   mask = true,
   size = 'default',
+  label = 'PIN',
 }: PinInputProps) {
   const refs = useRef<Array<HTMLInputElement | null>>([])
 
@@ -112,6 +115,7 @@ export default function PinInput({
           inputMode="numeric"
           autoComplete={i === 0 ? 'one-time-code' : 'off'}
           maxLength={1}
+          aria-label={`${label} digit ${i + 1} of ${LENGTH}`}
           value={c === '_' ? '' : c}
           onChange={(e) => handleInput(i, e.target.value)}
           onKeyDown={(e) => handleKey(i, e)}

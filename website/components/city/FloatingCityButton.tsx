@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { MapPin, Search, X } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
 import { useRightDrawer } from '@/store/rightDrawer'
+import { useDialog } from '@/lib/useDialog'
 
 /**
  * City picker modal. The old floating button moved into the right utility
@@ -18,6 +19,9 @@ export default function FloatingCityButton() {
   const open = useRightDrawer((s) => s.cityPickerOpen)
   const setOpen = useRightDrawer((s) => s.setCityPickerOpen)
   const [query, setQuery] = useState('')
+  // A real dialog (G31): focus to the search box, Tab stays inside, Escape
+  // closes, focus returns to the control that opened it.
+  const dialogRef = useDialog<HTMLDivElement>(open, () => setOpen(false))
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -61,6 +65,10 @@ export default function FloatingCityButton() {
           }}
         >
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="city-picker-title"
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -69,12 +77,13 @@ export default function FloatingCityButton() {
           >
             <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Change city</h2>
+                <h2 id="city-picker-title" className="text-lg font-semibold text-gray-900">Change city</h2>
                 <p className="text-sm text-gray-500">Cart is saved separately for each city</p>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
+                aria-label="Close"
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"
               >
                 <X className="h-5 w-5" />
@@ -86,6 +95,7 @@ export default function FloatingCityButton() {
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
                 <input
                   type="search"
+                  aria-label="Search city"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search city..."

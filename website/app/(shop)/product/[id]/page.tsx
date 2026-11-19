@@ -23,7 +23,8 @@ import { useQuery } from '@tanstack/react-query'
 import ProductCard from '@/components/ui/ProductCard'
 import ProductPrice from '@/components/ui/ProductPrice'
 import ProductReviews from '@/components/feedback/ProductReviews'
-import { useCartStore } from '@/store/cartStore'
+import { useCartStore, useAuthStore } from '@/store/cartStore'
+import { useWishlistStore } from '@/store/wishlistStore'
 import { useVariableWeightNotice } from '@/store/variableWeightNotice'
 import { useCityContext } from '@/context/CityContext'
 import { productsApi } from '@/lib/api'
@@ -41,7 +42,8 @@ export default function ProductDetailPage() {
   const [quantity, setQuantity] = useState(1)
   const [selectedUnit, setSelectedUnit] = useState<ProductUnit>('full')
   const [selectedQuality, setSelectedQuality] = useState<ProductQuality>('A')
-  const [isWishlisted, setIsWishlisted] = useState(false)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+  const isWishlisted = useWishlistStore((s) => s.ids.includes(id))
   const [freeThreshold, setFreeThreshold] = useState(500)
   const { addItem, items } = useCartStore()
   const notifyVariableWeight = useVariableWeightNotice((s) => s.notify)
@@ -71,34 +73,14 @@ export default function ProductDetailPage() {
     }
   }, [product, selectedQuality])
 
-  // Reflect wishlist membership for the loaded product.
-  useEffect(() => {
+  // The wishlist is kept with the account when signed in (W22).
+  const toggleWishlist = async () => {
     if (!product) return
     try {
-      const saved = JSON.parse(localStorage.getItem('freshbazar-wishlist') || '[]')
-      setIsWishlisted(
-        Array.isArray(saved) && saved.some((item: { id: string }) => item.id === product.id)
-      )
+      const result = await useWishlistStore.getState().toggle(product.id, isAuthenticated)
+      toast.success(result === 'added' ? 'Added to wishlist' : 'Removed from wishlist')
     } catch {
-      setIsWishlisted(false)
-    }
-  }, [product])
-
-  const toggleWishlist = () => {
-    if (!product) return
-    try {
-      const raw = localStorage.getItem('freshbazar-wishlist')
-      const saved = raw ? JSON.parse(raw) : []
-      const list = Array.isArray(saved) ? saved : []
-      const exists = list.some((item: { id: string }) => item.id === product.id)
-      const updated = exists
-        ? list.filter((item: { id: string }) => item.id !== product.id)
-        : [...list, { id: product.id, product, addedAt: new Date().toISOString() }]
-      localStorage.setItem('freshbazar-wishlist', JSON.stringify(updated))
-      setIsWishlisted(!exists)
-      toast.success(exists ? 'Removed from wishlist' : 'Added to wishlist')
-    } catch {
-      /* localStorage unavailable */
+      toast.error('Could not update your wishlist — check your connection and try again')
     }
   }
 
@@ -264,6 +246,7 @@ export default function ProductDetailPage() {
             onClick={toggleWishlist}
             className="absolute top-2 right-2 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-md"
             aria-label="Wishlist"
+            aria-pressed={isWishlisted}
           >
             <Heart
               className={`w-5 h-5 ${isWishlisted ? 'text-red-500 fill-red-500' : 'text-gray-600'}`}

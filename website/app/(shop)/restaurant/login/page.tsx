@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -28,7 +29,8 @@ export default function RestaurantLoginPage() {
       setRestaurantSession(token, restaurant)
       toast.success(`Welcome, ${restaurant?.business_name || 'Restaurant'}`)
       router.push('/restaurant')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       toast.error(err?.response?.data?.message || 'Invalid phone or PIN')
     } finally {
       setLoading(false)

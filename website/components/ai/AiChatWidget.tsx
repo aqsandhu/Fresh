@@ -250,6 +250,7 @@ export default function AiChatWidget() {
               className="flex items-center gap-2 border-t border-gray-100 bg-white p-2.5"
             >
               <input
+                aria-label="Message to FreshBazar support"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Type your message…"

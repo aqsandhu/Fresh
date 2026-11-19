@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
@@ -60,7 +61,8 @@ export default function FranchisePage() {
       })
       setDone(true)
       toast.success('Application submitted! We will contact you soon.')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       toast.error(err?.response?.data?.message || 'Could not submit. Please try again.')
     } finally {
       setSubmitting(false)

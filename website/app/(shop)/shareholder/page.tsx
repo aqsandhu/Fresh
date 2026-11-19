@@ -1,15 +1,27 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { asCaughtError } from '@/lib/caughtError';
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PieChart, LogOut, Loader2, CheckCircle2, KeyRound, Wallet } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
 import { shareholderApi } from '@/lib/shareholderApi'
-import { getShareholderInfo, clearShareholderSession, type ShareholderInfo } from '@/lib/shareholderSession'
+import { getShareholderInfo, clearShareholderSession, setShareholderSession, type ShareholderInfo } from '@/lib/shareholderSession'
+import { useDialog } from '@/lib/useDialog'
 
 const money = (n: number) => `Rs. ${(Math.round((Number(n) + Number.EPSILON) * 100) / 100).toLocaleString('en-PK')}`
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "Oct 2026" for a whole month, "10 Oct 2026" for a day (dates arrive as YYYY-MM-DD). */
+function payoutPeriodLabel(start?: string | null, end?: string | null): string {
+  if (!start || !end || !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return ''
+  const [y, m, d] = start.split('-').map(Number)
+  if (start === end) return `${d} ${MONTHS[m - 1]} ${y}`
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  if (d === 1 && end === `${start.slice(0, 8)}${String(lastDay).padStart(2, '0')}`) return `${MONTHS[m - 1]} ${y}`
+  return `${start} – ${end}`
+}
 
 export default function ShareholderDashboard() {
   const router = useRouter()
@@ -21,6 +33,9 @@ export default function ShareholderDashboard() {
   const [month, setMonth] = useState(new Date().getMonth() + 1)
   const [year, setYear] = useState(new Date().getFullYear())
   const [pwOpen, setPwOpen] = useState(false)
+  // Only the newest request may fill the page — a slow answer for the tab the
+  // shareholder just left must not show under the tab now chosen (I24).
+  const loadSeq = useRef(0)
 
   useEffect(() => {
     const i = getShareholderInfo()
@@ -30,17 +45,20 @@ export default function ShareholderDashboard() {
   }, [router])
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
     setLoading(true)
     try {
-      const params: any = {}
+      const params: Parameters<typeof shareholderApi.dashboard>[0] = {}
       if (mode === 'today') params.period = 'today'
       else if (mode === 'month') params.period = 'month'
       else if (mode === 'pickMonth') { params.month = month; params.year = year }
-      setData(await shareholderApi.dashboard(params))
-    } catch (e: any) {
-      toast.error(e?.message || 'Failed to load')
+      const result = await shareholderApi.dashboard(params)
+      if (seq === loadSeq.current) setData(result)
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
+      if (seq === loadSeq.current) toast.error(e?.message || 'Failed to load')
     } finally {
-      setLoading(false)
+      if (seq === loadSeq.current) setLoading(false)
     }
   }, [mode, month, year])
 
@@ -51,7 +69,8 @@ export default function ShareholderDashboard() {
   const confirmReceive = async (id: string, amount: number) => {
     if (!confirm(`Confirm you received ${money(amount)} from the admin?`)) return
     try { await shareholderApi.receivePayout(id); toast.success('Payment confirmed'); await load() }
-    catch (e: any) { toast.error(e?.message || 'Failed') }
+    catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed') }
   }
 
   if (!ready) return null
@@ -84,16 +103,16 @@ export default function ShareholderDashboard() {
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <div className="inline-flex rounded-lg bg-gray-100 p-1 flex-wrap">
             {modes.map((m) => (
-              <button key={m.key} onClick={() => setMode(m.key)}
+              <button key={m.key} type="button" onClick={() => setMode(m.key)} aria-pressed={mode === m.key}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium ${mode === m.key ? 'bg-white text-primary-700 shadow-sm' : 'text-gray-600'}`}>{m.label}</button>
             ))}
           </div>
           {mode === 'pickMonth' && (
             <>
-              <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+              <select aria-label="Month" value={month} onChange={(e) => setMonth(Number(e.target.value))} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
                 {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
               </select>
-              <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+              <input type="number" aria-label="Year" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24 px-3 py-2 border border-gray-300 rounded-lg text-sm" />
             </>
           )}
         </div>
@@ -125,6 +144,9 @@ export default function ShareholderDashboard() {
                   <div key={p.id} className="flex items-center justify-between px-4 py-3 gap-2">
                     <div>
                       <p className="font-medium text-gray-900">{money(p.amount)}</p>
+                      {payoutPeriodLabel(p.period_start, p.period_end) && (
+                        <p className="text-xs text-gray-700">For {payoutPeriodLabel(p.period_start, p.period_end)}</p>
+                      )}
                       <p className="text-xs text-gray-500">{new Date(p.created_at).toLocaleString('en-PK')}{p.note ? ` · ${p.note}` : ''}</p>
                     </div>
                     {p.status === 'pending' ? (
@@ -161,16 +183,27 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const submit = async () => {
     if (next.length < 6) return toast.error('New password must be at least 6 characters')
     setBusy(true)
-    try { await shareholderApi.changePassword(current, next); toast.success('Password changed'); onClose() }
-    catch (e: any) { toast.error(e?.message || 'Failed') }
+    try {
+      const result = await shareholderApi.changePassword(current, next)
+      // The change ends every older session (B38); this device carries on with
+      // the new token the server hands back.
+      const info = getShareholderInfo()
+      if (result?.token && info) setShareholderSession(result.token, info)
+      toast.success('Password changed')
+      onClose()
+    }
+    catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught); toast.error(e?.message || 'Failed') }
     finally { setBusy(false) }
   }
+  // A real dialog (G31): focus moves in, Tab stays inside, Escape closes.
+  const dialogRef = useDialog<HTMLDivElement>(true, onClose)
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-3">
-        <h2 className="font-semibold text-gray-900">Change password</h2>
-        <input value={current} onChange={(e) => setCurrent(e.target.value)} type="password" placeholder="Current password" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-        <input value={next} onChange={(e) => setNext(e.target.value)} type="password" placeholder="New password (min 6)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="sh-pw-title" className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5 space-y-3">
+        <h2 id="sh-pw-title" className="font-semibold text-gray-900">Change password</h2>
+        <input aria-label="Current password" autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} type="password" placeholder="Current password" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+        <input aria-label="New password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} type="password" placeholder="New password (min 6)" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={submit} disabled={busy}>{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}</Button>

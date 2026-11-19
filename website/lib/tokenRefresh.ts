@@ -54,6 +54,18 @@ export function tokenNeedsRefresh(
   return coreTokenNeedsRefresh(token, bufferMs);
 }
 
+/**
+ * Is there still a session the refresh could renew? After a refresh that only
+ * failed to reach the server this stays true (core-auth signs out only on a
+ * real 401/403), so the caller must not sign the customer out (H7).
+ */
+export function hasRefreshableSession(): boolean {
+  const state = useAuthStore.getState();
+  if (!state.isAuthenticated) return false;
+  if (usesHttpOnlyCookies()) return true;
+  return !!(getRefreshToken() || state.refreshToken);
+}
+
 /** Refresh session — HttpOnly cookies updated server-side when cookie auth is on. */
 export async function refreshWebsiteAccessToken(): Promise<boolean> {
   if (usesHttpOnlyCookies() && !useAuthStore.getState().isAuthenticated) {

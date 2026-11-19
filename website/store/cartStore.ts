@@ -42,14 +42,23 @@ const persistActiveCityItems = (
 const DEFAULT_BASE_CHARGE = 100
 const DEFAULT_FREE_THRESHOLD = 500
 
-async function fetchDeliverySettings(): Promise<{ baseCharge: number; freeThreshold: number }> {
+/** A real figure from the office, 0 included (0 = free delivery / no limit). */
+const settingOr = (value: unknown, fallback: number): number => {
+  const n = parseFloat(String(value ?? ''))
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
+// Delivery charges are per city (I22): ask for the selected city's figures —
+// the server bills those, so the cart must quote the same.
+async function fetchDeliverySettings(cityId?: string | null): Promise<{ baseCharge: number; freeThreshold: number }> {
   try {
-    const res = await fetch(`${getApiBaseUrl()}/site-settings/delivery`)
+    const qs = cityId ? `?city_id=${encodeURIComponent(cityId)}` : ''
+    const res = await fetch(`${getApiBaseUrl()}/site-settings/delivery${qs}`)
     const json = await res.json()
     const data = json?.data || json
     return {
-      baseCharge: parseFloat(data?.base_charge) || DEFAULT_BASE_CHARGE,
-      freeThreshold: parseFloat(data?.free_delivery_threshold) || DEFAULT_FREE_THRESHOLD,
+      baseCharge: settingOr(data?.base_charge, DEFAULT_BASE_CHARGE),
+      freeThreshold: settingOr(data?.free_delivery_threshold, DEFAULT_FREE_THRESHOLD),
     }
   } catch {
     return { baseCharge: DEFAULT_BASE_CHARGE, freeThreshold: DEFAULT_FREE_THRESHOLD }
@@ -64,11 +73,13 @@ export const useCartStore = create<CartState>()(
       activeCityId: null as string | null,
       deliveryBaseCharge: DEFAULT_BASE_CHARGE,
       deliveryFreeThreshold: DEFAULT_FREE_THRESHOLD,
+      unsaved: null,
+      savedCityId: null,
       hasHydrated: false,
       setHasHydrated: (h: boolean) => set({ hasHydrated: h }),
 
       loadDeliverySettings: async () => {
-        const settings = await fetchDeliverySettings()
+        const settings = await fetchDeliverySettings(getSelectedCityId() || get().activeCityId)
         set({
           deliveryBaseCharge: settings.baseCharge,
           deliveryFreeThreshold: settings.freeThreshold,
@@ -147,6 +158,11 @@ export const useCartStore = create<CartState>()(
             items: nextByCity[cityId] || [],
           }
         })
+        // The new city has its own delivery charge (I22).
+        void fetchDeliverySettings(cityId).then((settings) => {
+          if (get().activeCityId !== cityId) return
+          set({ deliveryBaseCharge: settings.baseCharge, deliveryFreeThreshold: settings.freeThreshold })
+        })
       },
 
       getTotalItems: () => {
@@ -190,6 +206,8 @@ export const useCartStore = create<CartState>()(
       partialize: (state) => ({
         cartsByCity: state.cartsByCity,
         activeCityId: state.activeCityId,
+        unsaved: state.unsaved,
+        savedCityId: state.savedCityId,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return
@@ -222,6 +240,11 @@ export const useCartStore = create<CartState>()(
         if (cityId) {
           state.activeCityId = cityId
           state.items = state.cartsByCity[cityId] || []
+        }
+        // A cart saved before carts belonged to the account has no mark: treat
+        // it as a guest cart, so it is JOINED to the account's cart, never lost.
+        if (state.unsaved === undefined) {
+          state.unsaved = Object.values(state.cartsByCity || {}).some((c) => c.length > 0) ? 'guest' : null
         }
         state.setHasHydrated(true)
       },
@@ -263,7 +286,8 @@ interface AuthState {
    */
   hasHydrated: boolean
   setHasHydrated: (h: boolean) => void
-  setAuth: (user: AuthUser, tokens: { accessToken: string; refreshToken: string }) => void
+  /** tokens: absent when the server keeps the session in HttpOnly cookies (it then sends none). */
+  setAuth: (user: AuthUser, tokens?: { accessToken?: string | null; refreshToken?: string | null } | null) => void
   setUser: (user: AuthUser | null) => void
   logout: () => void
   /** Bump on any meaningful interaction so we know the session is "fresh". */
@@ -285,7 +309,10 @@ export const useAuthStore = create<AuthState>()(
       setHasHydrated: (h) => set({ hasHydrated: h }),
       setAuth: (user, tokens) => {
         if (typeof window !== 'undefined') {
-          if (!usesHttpOnlyCookies()) {
+          // A server in cookie mode sends no tokens: the HttpOnly cookie is the
+          // session. Reading tokens.accessToken here used to throw, and the
+          // login page then said "Invalid PIN" for a correct PIN (H6).
+          if (!usesHttpOnlyCookies() && tokens?.accessToken) {
             storeTokens(tokens.accessToken, tokens.refreshToken)
           }
           setLastPhone(user.phone)
@@ -294,8 +321,8 @@ export const useAuthStore = create<AuthState>()(
         set({
           user,
           isAuthenticated: true,
-          accessToken: usesHttpOnlyCookies() ? null : tokens.accessToken,
-          refreshToken: usesHttpOnlyCookies() ? null : tokens.refreshToken,
+          accessToken: usesHttpOnlyCookies() ? null : tokens?.accessToken || null,
+          refreshToken: usesHttpOnlyCookies() ? null : tokens?.refreshToken || null,
           lastActiveAt: now,
           pinVerifiedAt: now,
         })
@@ -323,7 +350,7 @@ export const useAuthStore = create<AuthState>()(
         }
         // The cart belongs to the person who just signed out — on a shared
         // computer it must not become the next account's cart.
-        useCartStore.setState({ items: [], cartsByCity: {} })
+        useCartStore.setState({ items: [], cartsByCity: {}, unsaved: null, savedCityId: null })
         set({
           user: null,
           isAuthenticated: false,

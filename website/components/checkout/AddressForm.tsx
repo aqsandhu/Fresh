@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import {
   forwardRef,
   useCallback,
@@ -282,7 +283,8 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
       toast.success(isEdit ? 'Address updated' : 'Address saved')
       onSaved(saved)
       return saved
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg =
         err?.response?.data?.message ||
         err?.message ||

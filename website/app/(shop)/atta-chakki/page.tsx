@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
@@ -132,7 +133,8 @@ export default function AttaChakkiPage() {
       toast.success('Atta Chakki request submitted! Track it under My requests.')
       reset()
       router.push('/atta-chakki/requests')
-    } catch (error: any) {
+    } catch (errorCaught: unknown) {
+      const error = asCaughtError(errorCaught);
       const errorMessage = error.response?.data?.message || 'Failed to submit request. Please try again.'
       toast.error(errorMessage)
     } finally {

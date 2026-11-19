@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState } from 'react'
 import Link from 'next/link'
 import { Store, Loader2, CheckCircle2, Home, MapPin } from 'lucide-react'
@@ -45,7 +46,8 @@ export default function RestaurantRegisterPage() {
         city_id: selectedCity?.id || undefined,
       })
       setDone(true)
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       toast.error(err?.response?.data?.message || 'Could not submit your request')
     } finally {
       setSaving(false)

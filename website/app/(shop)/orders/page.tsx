@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -23,6 +24,7 @@ import Badge from '@/components/ui/Badge'
 import EmptyState from '@/components/ui/EmptyState'
 import { OrderDisplayStatus, ProductUnit, ProductQuality } from '@/types'
 import { formatPriceShort, formatDate, getOrderStatusColor, getOrderStatusLabel, resolveImageUrl } from '@/lib/utils'
+import { canCustomerCancel } from '@/lib/orderCancel'
 import { unitLabelShort, unitPriceCaption } from '@/lib/unitPricing'
 import { ordersApi, productsApi } from '@/lib/api'
 import { useAuthStore, useCartStore } from '@/store/cartStore'
@@ -53,6 +55,8 @@ interface MappedOrder {
   id: string
   orderNumber: string
   status: OrderDisplayStatus
+  /** The server's own status — the cancel rule needs pending vs confirmed. */
+  rawStatus: string
   total: number
   createdAt: string
   items: { productId?: string; name: string; image: string; quantity: number; price: number; unit?: string; quality?: ProductQuality }[]
@@ -89,18 +93,19 @@ export default function OrdersPage() {
       const rawOrders = Array.isArray(res.orders) ? res.orders : []
       setPageInfo(res.pagination)
 
-      const mapped: MappedOrder[] = rawOrders.map((o: any) => ({
+      const mapped: MappedOrder[] = rawOrders.map((o) => ({
         id: o.id,
         orderNumber: o.order_number || o.id,
         status: mapStatus(o.status),
-        total: parseFloat(o.total_amount) || 0,
+        rawStatus: String(o.status || ''),
+        total: parseFloat(String(o.total_amount)) || 0,
         createdAt: o.placed_at || o.created_at || new Date().toISOString(),
-        items: (o.items || []).map((item: any) => ({
+        items: (o.items || []).map((item) => ({
           productId: item.product_id || undefined,
           name: item.product_name || item.name || 'Product',
           image: resolveImg(item.product_image),
-          quantity: item.quantity || 1,
-          price: parseFloat(item.unit_price) || parseFloat(item.total_price) / (item.quantity || 1) || 0,
+          quantity: Number(item.quantity) || 1,
+          price: parseFloat(String(item.unit_price)) || parseFloat(String(item.total_price)) / (Number(item.quantity) || 1) || 0,
           unit: item.unit || 'full',
           quality: (item.quality as ProductQuality) || 'A',
         })),
@@ -112,7 +117,8 @@ export default function OrdersPage() {
         const seen = new Set(prev.map((o) => o.id))
         return [...prev, ...mapped.filter((o) => !seen.has(o.id))]
       })
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       if (err?.response?.status === 401) {
         router.push('/login?redirect=/orders')
       } else if (append) {
@@ -144,7 +150,7 @@ export default function OrdersPage() {
       return ['received', 'preparing', 'out-for-delivery'].includes(order.status)
     }
     if (activeTab === 'completed') {
-      return ['delivered', 'cancelled'].includes(order.status)
+      return ['delivered', 'cancelled', 'refunded'].includes(order.status) // refunded is finished too (I12)
     }
     return true
   })
@@ -186,7 +192,8 @@ export default function OrdersPage() {
       await ordersApi.cancel(orderId)
       toast.success('Order cancelled successfully')
       loadOrders()
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg = err?.response?.data?.message || 'Failed to cancel order'
       toast.error(msg)
     }
@@ -356,7 +363,7 @@ export default function OrdersPage() {
                       Reorder
                     </Button>
                   )}
-                  {['received', 'preparing'].includes(order.status) && (
+                  {canCustomerCancel(order.rawStatus, order.createdAt) && (
                     <Button
                       variant="outline"
                       onClick={() => handleCancelOrder(order.id)}

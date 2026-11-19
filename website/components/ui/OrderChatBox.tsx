@@ -16,6 +16,7 @@ import {
   offChatMessage,
   emitTyping,
   onTyping,
+  offTyping,
 } from '@/lib/socket'
 
 interface Message {
@@ -76,7 +77,9 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
     let cancelled = false
     let checkConnection: ReturnType<typeof setInterval> | null = null
 
-    const handleIncomingMessage = (data: Message) => {
+    const handleIncomingMessage = (data: Message & { order_id?: string }) => {
+      // Another order's chat (this socket may be in several order rooms) — I13.
+      if (data.order_id && data.order_id !== orderId) return
       setMessages((prev) => {
         if (prev.some((m) => m.id === data.id)) return prev
         // Server echo of an optimistically-sent message: replace the temp-*
@@ -138,6 +141,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
       cancelled = true
       unsubscribeFromOrder(orderId)
       offChatMessage(handleIncomingMessage)
+      offTyping(handleTypingEvent)
       getSocket()?.off('chat:error', handleChatError)
       if (checkConnection) clearInterval(checkConnection)
     }
@@ -181,6 +185,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
         }
       } catch {
         setNewMessage(text) // restore on failure
+        toast.error('Message not sent — check your connection and try again')
         setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id))
       } finally {
         setSending(false)
@@ -281,6 +286,7 @@ export default function OrderChatBox({ orderId }: OrderChatBoxProps) {
         />
         <button
           type="submit"
+          aria-label="Send message"
           disabled={!newMessage.trim() || sending}
           className="w-10 h-10 rounded-full bg-primary-600 text-white flex items-center justify-center hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
         >

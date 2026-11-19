@@ -7,6 +7,7 @@ import toast from 'react-hot-toast'
 import { AlertTriangle, Trash2, ShieldCheck, LogIn, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi } from '@/lib/api'
+import { clearLastPhone } from '@/lib/phoneStorage'
 
 /**
  * Public account-deletion page. Google Play's Data Safety form requires a
@@ -19,17 +20,23 @@ export default function DeleteAccountPage() {
   const { isAuthenticated, user, logout } = useAuthStore()
   const [confirmChecked, setConfirmChecked] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [pin, setPin] = useState('')
 
   const handleDelete = async () => {
     if (!confirmChecked || deleting) return
     setDeleting(true)
     try {
-      await authApi.deleteAccount()
+      // The server asks for the PIN again: a session left open on a shared
+      // computer must not be enough to erase the account.
+      await authApi.deleteAccount(pin || undefined)
+      clearLastPhone() // the account is gone — so is its number on this device (N1)
       logout()
       toast.success('Your account has been deleted')
       router.push('/')
-    } catch {
-      toast.error('Account delete nahi ho saka — dobara koshish karein ya support se rabta karein')
+    } catch (err: unknown) {
+      const serverMessage = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+      toast.error(serverMessage || 'Account delete nahi ho saka — dobara koshish karein ya support se rabta karein')
+      setPin('')
       setDeleting(false)
     }
   }
@@ -79,6 +86,22 @@ export default function DeleteAccountPage() {
                 I understand this permanently deletes my account and personal data.
               </span>
             </label>
+            <div className="mt-4">
+              <label htmlFor="delete-pin" className="block text-sm font-medium text-red-900">
+                Your 4-digit PIN (the one you log in with)
+              </label>
+              <input
+                id="delete-pin"
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ''))}
+                className="mt-1 w-32 rounded-lg border border-red-300 bg-white px-3 py-2 text-center text-lg tracking-widest text-gray-900 focus:border-red-500 focus:outline-none focus:ring-2 focus:ring-red-200"
+              />
+              <p className="mt-1 text-xs text-red-800">Never set a PIN? Leave this empty.</p>
+            </div>
             <button
               type="button"
               onClick={handleDelete}

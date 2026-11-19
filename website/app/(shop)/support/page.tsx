@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { asCaughtError } from '@/lib/caughtError';
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Star, MessageSquareWarning, Plus, Loader2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -49,16 +50,19 @@ export default function SupportPage() {
   const [complaints, setComplaints] = useState<Complaint[]>([])
   const [reviews, setReviews] = useState<Review[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load must not look like "no complaints yet" (I19).
+  const [loadError, setLoadError] = useState(false)
   const [showForm, setShowForm] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(false)
     try {
       const [c, r] = await Promise.all([complaintsApi.mine(), reviewsApi.mine()])
       setComplaints(c)
       setReviews(r)
     } catch {
-      /* non-critical */
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -90,6 +94,11 @@ export default function SupportPage() {
         {loading ? (
           <div className="py-16 flex justify-center">
             <Loader2 className="w-7 h-7 animate-spin text-primary-600" />
+          </div>
+        ) : loadError ? (
+          <div role="alert" className="rounded-xl bg-white p-6 text-center shadow-sm">
+            <p className="text-sm text-gray-700 mb-4">Could not load your complaints and reviews. Please check your connection.</p>
+            <Button onClick={load}>Retry</Button>
           </div>
         ) : tab === 'complaints' ? (
           <div className="space-y-3">
@@ -262,6 +271,11 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
     setImages((prev) => [...prev, ...ok].slice(0, 5))
   }
 
+  // One preview URL per photo, released when the photos change or the form
+  // closes — it used to make a new one on every keystroke (I19).
+  const previews = useMemo(() => images.map((f) => URL.createObjectURL(f)), [images])
+  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews])
+
   // Load the customer's delivered orders so they can (optionally) attach one.
   useEffect(() => {
     let active = true
@@ -298,7 +312,8 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
       })
       toast.success(`Complaint submitted — ticket ${res.ticketNumber}`)
       onSaved()
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       toast.error(e?.response?.data?.message || 'Could not submit complaint')
     } finally {
       setSaving(false)
@@ -392,12 +407,12 @@ function NewComplaintModal({ onClose, onSaved }: { onClose: () => void; onSaved:
               {images.map((file, i) => (
                 <div key={i} className="relative h-16 w-16 overflow-hidden rounded-lg border border-gray-200">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={URL.createObjectURL(file)} alt="" className="h-full w-full object-cover" />
+                  <img src={previews[i]} alt={`Attachment ${i + 1}: ${file.name}`} className="h-full w-full object-cover" />
                   <button
                     type="button"
                     onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
                     className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
-                    aria-label="Remove image"
+                    aria-label={`Remove image ${i + 1}`}
                   >
                     <X className="h-3 w-3" />
                   </button>

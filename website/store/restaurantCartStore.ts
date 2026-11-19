@@ -37,6 +37,12 @@ interface RestaurantCartState {
 const DEFAULT_BASE = 100
 const DEFAULT_THRESHOLD = 2000
 
+/** A real figure from the server, 0 included (0 = free delivery) — I22. */
+const figureOr = (value: unknown, fallback: number): number => {
+  const n = parseFloat(String(value ?? ''))
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
 export const useRestaurantCartStore = create<RestaurantCartState>()(
   persist(
     (set, get) => ({
@@ -50,8 +56,8 @@ export const useRestaurantCartStore = create<RestaurantCartState>()(
         try {
           const d = await restaurantShopApi.getDelivery()
           set({
-            deliveryBaseCharge: Number(d?.base_charge) || DEFAULT_BASE,
-            deliveryFreeThreshold: Number(d?.free_delivery_threshold) || DEFAULT_THRESHOLD,
+            deliveryBaseCharge: figureOr(d?.base_charge, DEFAULT_BASE),
+            deliveryFreeThreshold: figureOr(d?.free_delivery_threshold, DEFAULT_THRESHOLD),
           })
         } catch {
           /* keep defaults */

@@ -57,7 +57,7 @@ export function formatPhoneNumber(phone: string | null | undefined): string {
 }
 
 /** Build the slip HTML for one OCP order-detail object. */
-export function buildOcpSlipHtml(o: any): string {
+export function buildOcpSlipHtml(o: OcpOrder): string {
   const phoneLine = !o.phone_hidden && o.customer_phone
     ? `<div class="row"><span>${esc(formatPhoneNumber(o.customer_phone))}</span></div>`
     : `<div class="row"><span style="font-style:italic;color:#666;">Phone Number is Hidden</span></div>`
@@ -96,7 +96,7 @@ export function buildOcpSlipHtml(o: any): string {
       <table class="items-table">
         <thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Total</th></tr></thead>
         <tbody>
-          ${(o.items || []).map((item: any) => {
+          ${(o.items || []).map((item) => {
             const unitSuffix = item.unit && item.unit !== 'full' ? ` (${esc(unitLabelShort(item.unit))})` : ''
             const qLabel = item.quality && item.quality !== 'A' ? ` [Q${esc(item.quality)}]` : ''
             return `<tr><td>${esc(item.product_name)}${unitSuffix}${qLabel}</td><td class="right">${Number(item.quantity)}</td><td class="right">Rs.${Number(item.unit_price).toFixed(0)}</td><td class="right">Rs.${Number(item.total_price).toFixed(0)}</td></tr>`
@@ -123,7 +123,7 @@ export function buildOcpSlipHtml(o: any): string {
 }
 
 /** Open a print window with one OCP order slip (same window sizing as admin). */
-export function printOcpSlip(o: any): void {
+export function printOcpSlip(o: OcpOrder): void {
   const win = window.open('', '_blank', 'width=400,height=600')
   if (!win) return
   win.document.write(
@@ -132,4 +132,5 @@ export function printOcpSlip(o: any): void {
   win.document.close()
   win.focus()
   win.print()
-}
+}import type { OcpOrder } from '@/lib/ocpApi'
+

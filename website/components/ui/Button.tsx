@@ -28,7 +28,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     const variants = {
       primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800',
       secondary: 'bg-secondary-500 text-white hover:bg-secondary-600 active:bg-secondary-700',
-      outline: 'border-2 border-primary-600 text-primary-600 hover:bg-primary-50',
+      // primary-700 text: 600 on a grey-50 page was 3.15:1 (WCAG AA needs 4.5:1).
+      outline: 'border-2 border-primary-600 text-primary-700 hover:bg-primary-50',
       ghost: 'text-primary-600 hover:bg-primary-50',
       danger: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
     }

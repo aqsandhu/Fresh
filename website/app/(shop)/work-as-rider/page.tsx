@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect } from 'react'
 import { Bike, Clock, ShieldCheck, CheckCircle2, Loader2, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -39,7 +40,8 @@ export default function WorkAsRiderPage() {
       })
       setDone(true)
       toast.success('Application submitted!')
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       toast.error(e?.response?.data?.message || 'Could not submit application')
     } finally {
       setSaving(false)

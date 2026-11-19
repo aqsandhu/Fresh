@@ -54,6 +54,12 @@ const DEFAULTS = {
   slot_cutoff_percent: 60,
 }
 
+/** A real figure from the office, 0 included (0 = free delivery / no limit) — I22. */
+const settingOr = (value: unknown, fallback: number): number => {
+  const n = parseFloat(String(value ?? ''))
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
 export function useDeliveryTerms(): DeliveryTerms {
   const { selectedCityId } = useCityContext()
   const cityName = useOptionalCityName()
@@ -100,12 +106,12 @@ export function useDeliveryTerms(): DeliveryTerms {
 
   return {
     cityName,
-    freeDeliveryThreshold: Number(s.free_delivery_threshold) || DEFAULTS.free_delivery_threshold,
-    baseCharge: Number(s.base_charge) || DEFAULTS.base_charge,
+    freeDeliveryThreshold: settingOr(s.free_delivery_threshold, DEFAULTS.free_delivery_threshold),
+    baseCharge: settingOr(s.base_charge, DEFAULTS.base_charge),
     urgentEnabled: urgentCharge > 0,
     urgentCharge,
     urgentEta: String(s.urgent_eta || ''),
-    slotCutoffPercent: Number(s.slot_cutoff_percent) || DEFAULTS.slot_cutoff_percent,
+    slotCutoffPercent: settingOr(s.slot_cutoff_percent, DEFAULTS.slot_cutoff_percent),
     slots,
     freeSlot: slots.find((x) => x.isFreeDelivery) ?? null,
     isLoading: settingsQuery.isLoading || slotsQuery.isLoading,

@@ -20,7 +20,10 @@ export type OrderDisplayStatus =
   | 'refunded';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'refunded';
 export type PaymentMethod = 'cod' | 'card' | 'easypaisa' | 'jazzcash' | 'online';
-export type UnitType = 'kg' | 'gram' | 'piece' | 'dozen' | 'liter' | 'pack';
+// The database enum (the enum contract test checks it) — 'ml' was missing here.
+export type { UnitType } from '@freshbazar/shared-types';
+import type { ApiAddressSnapshot, ApiOrderItemRow } from '@freshbazar/shared-types';
+import type { UnitType } from '@freshbazar/shared-types';
 
 export interface User {
   id: string;
@@ -173,8 +176,8 @@ export interface Order {
   paidAmount?: number;
   delivery_address_id?: string;
   addressId?: string;
-  delivery_address_snapshot?: any;
-  deliveryAddressSnapshot?: any;
+  delivery_address_snapshot?: ApiAddressSnapshot | null;
+  deliveryAddressSnapshot?: ApiAddressSnapshot | null;
   rider_id?: string;
   riderId?: string;
   rider_name?: string;
@@ -225,7 +228,7 @@ export interface Order {
   cancelled_at?: string;
   cancelledAt?: string;
   created_at: string;
-  items?: CartItem[] | any[];
+  items?: ApiOrderItemRow[];
 }
 
 export interface Address {
@@ -334,11 +337,11 @@ export interface AuthState {
 // API Response Types
 // ---------------------------------------------------------------------------
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   message: string;
   data?: T;
-  error?: any;
+  error?: unknown;
 }
 
 export interface PaginatedResponse<T> {
@@ -369,6 +372,13 @@ export interface CartState {
   activeCityId: string | null;
   deliveryBaseCharge: number;
   deliveryFreeThreshold: number;
+  /**
+   * null = the account holds this cart; 'guest' = made while signed out;
+   * 'pending' = a change the server has not got yet (see lib/savedCart).
+   */
+  unsaved: 'guest' | 'pending' | null;
+  /** The city whose cart the account holds, as far as this browser knows. */
+  savedCityId: string | null;
   /** True after Zustand persist has loaded items from localStorage. */
   hasHydrated: boolean;
   setHasHydrated: (h: boolean) => void;

@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import {
@@ -25,11 +26,13 @@ interface ProfilePrefs {
   preferredLanguage: 'en' | 'ur'
 }
 
-function useProfilePrefs() {
+/** Only for a signed-in customer — a guest is on the way to login (G39). */
+function useProfilePrefs(enabled: boolean) {
   const [prefs, setPrefs] = useState<ProfilePrefs | null>(null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
+    if (!enabled) return
     let cancelled = false
     api
       .get('/auth/me')
@@ -47,7 +50,7 @@ function useProfilePrefs() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [enabled])
 
   const update = async (patch: Partial<ProfilePrefs>) => {
     if (!prefs) return
@@ -60,7 +63,8 @@ function useProfilePrefs() {
         ...(patch.preferredLanguage !== undefined ? { preferred_language: patch.preferredLanguage } : {}),
       })
       toast.success('Saved')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       setPrefs(prefs)
       toast.error(err?.response?.data?.message || 'Could not save setting')
     } finally {
@@ -132,7 +136,10 @@ export default function SettingsPage() {
     if (hasHydrated && !isAuthenticated) router.replace('/login?redirect=/settings')
   }, [hasHydrated, isAuthenticated, router])
   const { user } = useAuthStore()
-  const { prefs, saving, update } = useProfilePrefs()
+  const signedIn = hasHydrated && isAuthenticated
+  const { prefs, saving, update } = useProfilePrefs(signedIn)
+  // A guest sees nothing while being sent to login (it used to flash "User").
+  if (!signedIn) return null
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">

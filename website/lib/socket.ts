@@ -96,13 +96,13 @@ export const disconnectSocket = () => {
 
 export const getSocket = (): Socket | null => socket;
 
-export const subscribeToOrder = (orderId: string, callback: (data: any) => void) => {
+export const subscribeToOrder = <T = unknown>(orderId: string, callback: (data: T) => void) => {
   orderRooms.add(orderId);
   socket?.emit('order:subscribe', orderId);
   socket?.on('order:update', callback);
 };
 
-export const unsubscribeFromOrder = (orderId: string, callback?: (data: any) => void) => {
+export const unsubscribeFromOrder = <T = unknown>(orderId: string, callback?: (data: T) => void) => {
   orderRooms.delete(orderId);
   socket?.emit('order:unsubscribe', orderId);
   if (callback) {
@@ -116,11 +116,11 @@ export const sendChatMessage = (orderId: string, message: string) => {
   socket?.emit('chat:send', { orderId, message });
 };
 
-export const onChatMessage = (callback: (data: any) => void) => {
+export const onChatMessage = <T = unknown>(callback: (data: T) => void) => {
   socket?.on('chat:message', callback);
 };
 
-export const offChatMessage = (callback?: (data: any) => void) => {
+export const offChatMessage = <T = unknown>(callback?: (data: T) => void) => {
   if (callback) {
     socket?.off('chat:message', callback);
   } else {
@@ -130,6 +130,12 @@ export const offChatMessage = (callback?: (data: any) => void) => {
 
 export const onTyping = (callback: (data: { orderId: string; isTyping: boolean; userId?: string }) => void) => {
   socket?.on('chat:typing', callback);
+};
+
+/** Remove a typing listener (each chat that opens adds one — it must go when the chat closes). */
+export const offTyping = (callback?: (data: { orderId: string; isTyping: boolean; userId?: string }) => void) => {
+  if (callback) socket?.off('chat:typing', callback);
+  else socket?.off('chat:typing');
 };
 
 export const emitTyping = (orderId: string, isTyping: boolean) => {

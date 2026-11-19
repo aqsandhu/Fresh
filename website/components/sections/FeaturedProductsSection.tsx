@@ -31,7 +31,9 @@ const itemVariants = {
 /** Mirrors customer-app FeaturedProductsSection layout. */
 export default function FeaturedProductsSection() {
   const { selectedCityId } = useCityContext()
-  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+  // isPending (not isLoading): before the city is known the query is disabled,
+  // and "No featured products" used to flash before the real list.
+  const { data, isPending, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ['featured-products', selectedCityId, 'batches', FEATURED_BATCH],
     initialPageParam: 1,
     queryFn: ({ pageParam }) => productsApi.getFeaturedPage(pageParam, FEATURED_BATCH),
@@ -78,9 +80,21 @@ export default function FeaturedProductsSection() {
           <ArrowRight className="w-4 h-4" />
         </Link>
 
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+        {isPending ? (
+          // Card-sized placeholders hold the space the products will take. A
+          // small spinner here let the list push every section below it down
+          // when it arrived — the home page's layout shift (CLS 0.21 on mobile).
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2" role="status" aria-label="Loading featured products">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="rounded-xl border border-gray-100 bg-white overflow-hidden">
+                <div className="aspect-square bg-gray-100 animate-pulse" />
+                <div className="p-3 space-y-2">
+                  <div className="h-4 w-3/4 rounded bg-gray-100 animate-pulse" />
+                  <div className="h-4 w-1/2 rounded bg-gray-100 animate-pulse" />
+                  <div className="h-9 rounded-lg bg-gray-100 animate-pulse" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : featuredProducts.length === 0 ? (
           <p className="text-center text-gray-500 py-12">

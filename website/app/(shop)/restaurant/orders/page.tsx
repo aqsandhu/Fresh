@@ -1,12 +1,14 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ClipboardList, Loader2, ArrowLeft } from 'lucide-react'
 import { getRestaurantInfo } from '@/lib/restaurantSession'
-import { restaurantShopApi } from '@/lib/restaurantApi'
+import { restaurantShopApi, type RestaurantOrder } from '@/lib/restaurantApi'
 import { money } from '@/lib/restaurantPricing'
+import { restaurantDeliveryLabel } from '@freshbazar/shared-types'
 import RestaurantMobileNav from '@/components/restaurant/RestaurantMobileNav'
 
 const STATUS_STYLE: Record<string, string> = {
@@ -23,7 +25,7 @@ export default function RestaurantOrdersPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [orders, setOrders] = useState<any[]>([])
+  const [orders, setOrders] = useState<RestaurantOrder[]>([])
 
   useEffect(() => {
     if (!getRestaurantInfo()) {
@@ -34,7 +36,8 @@ export default function RestaurantOrdersPage() {
     ;(async () => {
       try {
         setOrders(await restaurantShopApi.getOrders())
-      } catch (e: any) {
+      } catch (eCaught: unknown) {
+        const e = asCaughtError(eCaught);
         if (e?.status === 401) router.replace('/restaurant/login')
       } finally {
         setLoading(false)
@@ -72,14 +75,17 @@ export default function RestaurantOrdersPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="font-bold text-gray-900">#{o.order_number}</p>
-                    <p className="text-xs text-gray-500">{new Date(o.created_at).toLocaleString('en-PK')}</p>
+                    <p className="text-xs text-gray-500">Placed {new Date(o.created_at).toLocaleString('en-PK')}</p>
+                    {restaurantDeliveryLabel(o) && (
+                      <p className="text-xs font-medium text-gray-700">Delivery: {restaurantDeliveryLabel(o)}</p>
+                    )}
                   </div>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_STYLE[o.status] || 'bg-gray-100 text-gray-700'}`}>
                     {String(o.status || '').replace(/_/g, ' ')}
                   </span>
                 </div>
                 <div className="mt-3 space-y-1 text-sm text-gray-600">
-                  {(o.items || []).map((it: any, i: number) => (
+                  {(o.items || []).map((it, i) => (
                     <div key={i} className="flex justify-between">
                       <span>
                         {it.product_name}{' '}

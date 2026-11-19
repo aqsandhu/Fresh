@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -62,7 +63,8 @@ export default function AttaRequestsPage() {
       await attaChakkiApi.cancelRequest(id, 'Cancelled by customer')
       toast.success('Request cancelled')
       await load()
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       toast.error(err?.response?.data?.message || 'Could not cancel this request')
     } finally {
       setCancellingId(null)

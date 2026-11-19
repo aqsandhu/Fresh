@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState } from 'react'
 import { Edit2, Loader2, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -45,7 +46,8 @@ export default function AddressActions({
       await addressesApi.delete(address.id)
       onDeleted(address.id)
       toast.success('Address deleted')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg =
         err?.response?.data?.message ||
         err?.message ||

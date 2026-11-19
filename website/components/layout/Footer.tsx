@@ -120,7 +120,7 @@ export default function Footer() {
                   <feature.icon className="w-5 h-5 text-primary-400" />
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm">{feature.title}</h4>
+                  <p className="font-semibold text-sm">{feature.title}</p>
                   <p className="text-gray-400 text-xs mt-0.5">
                     {feature.description}
                   </p>
@@ -136,14 +136,16 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
           {/* Brand Column */}
           <div className="lg:col-span-2">
-            <Link href="/" className="inline-flex items-center mb-4 leading-none" aria-label="Home">
-              <BrandLogo size="lg" />
+            {/* The visible logo text stays part of the link's name (WCAG 2.5.3). */}
+            <Link href="/" className="inline-flex items-center mb-4 leading-none">
+              <BrandLogo size="lg" onDark />
+              <span className="sr-only">Fresh Bazar home</span>
             </Link>
             <p className="text-gray-400 text-sm mb-4 max-w-sm">
               Your trusted partner for fresh groceries delivery in Pakistan. 
               We deliver farm-fresh vegetables, fruits, and more right to your doorstep.
             </p>
-            <p className="text-gray-600 text-lg font-bold font-urdu mb-6 leading-relaxed" dir="rtl">
+            <p className="text-gray-400 text-lg font-bold font-urdu mb-6 leading-relaxed" dir="rtl">
               پاکستان میں تازہ سبزیاں اور پھل آپ کے گھر تک
             </p>
 
@@ -174,7 +176,7 @@ export default function Footer() {
 
           {/* Shop Links */}
           <div>
-            <h3 className="font-semibold mb-4">Shop</h3>
+            <h2 className="font-semibold mb-4">Shop</h2>
             <ul className="space-y-2">
               {shopLinks.map((link) => (
                 <li key={link.href}>
@@ -191,7 +193,7 @@ export default function Footer() {
 
           {/* Company Links */}
           <div>
-            <h3 className="font-semibold mb-4">Company</h3>
+            <h2 className="font-semibold mb-4">Company</h2>
             <ul className="space-y-2">
               {footerLinks.company.map((link) => (
                 <li key={link.href}>
@@ -208,7 +210,7 @@ export default function Footer() {
 
           {/* Support Links */}
           <div>
-            <h3 className="font-semibold mb-4">Support</h3>
+            <h2 className="font-semibold mb-4">Support</h2>
             <ul className="space-y-2">
               {footerLinks.support.map((link) => (
                 <li key={link.href}>
@@ -229,7 +231,7 @@ export default function Footer() {
       <div className="border-t border-gray-800">
         <div className="container mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-gray-500 text-sm text-center md:text-left">
+            <p className="text-gray-400 text-sm text-center md:text-left">
               © {new Date().getFullYear()} Fresh Bazar Pakistan. All rights reserved.
             </p>
             {/* Social links are rendered only once real profile URLs exist —

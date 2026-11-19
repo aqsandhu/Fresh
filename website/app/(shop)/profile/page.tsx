@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { 
@@ -26,6 +27,7 @@ import Input from '@/components/ui/Input'
 import { useAuthStore } from '@/store/cartStore'
 import { authApi, addressesApi } from '@/lib/api'
 import MyCouponsCard from '@/components/coupons/MyCouponsCard'
+import { clearLastPhone } from '@/lib/phoneStorage'
 
 interface UserProfile {
   id: string
@@ -64,7 +66,8 @@ export default function ProfilePage() {
       })
       setEditName(data.full_name || data.name || '')
       setEditEmail(data.email || '')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       if (err?.response?.status === 401) {
         logout()
         router.push('/login')
@@ -120,14 +123,18 @@ export default function ProfilePage() {
       setUser(prev => prev ? { ...prev, name: editName, email: editEmail } : prev)
       setIsEditing(false)
       toast.success('Profile updated successfully!')
-    } catch {
-      toast.error('Failed to update profile')
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
+      // The server says why (e.g. the email is already used) — show it (I20).
+      toast.error(err?.response?.data?.message || 'Failed to update profile')
     } finally {
       setSaving(false)
     }
   }
 
   const handleDeleteAddress = async (id: string) => {
+    // One tap used to delete with no question (I20) — the app asks first too.
+    if (!confirm('Delete this address? This cannot be undone.')) return
     try {
       await addressesApi.delete(id)
       setAddresses(prev => prev.filter(a => a.id !== id))
@@ -138,6 +145,10 @@ export default function ProfilePage() {
   }
 
   const handleLogout = () => {
+    // Signing out on purpose = forget this number on the device, so the next
+    // person at a shared computer does not see it at checkout (N1). An expired
+    // session still keeps it for the quick PIN return.
+    clearLastPhone()
     logout()
     toast.success('Logged out successfully!')
     window.location.href = '/'

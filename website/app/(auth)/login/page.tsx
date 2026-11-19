@@ -5,6 +5,7 @@
 // environment.
 export const dynamic = 'force-dynamic'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -23,6 +24,8 @@ import { sanitizeRedirect } from '@/lib/utils'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
+import { pinSignInErrorMessage } from '@/lib/signInError'
+import { isWeakPin, WEAK_PIN_MESSAGE } from '@/lib/pinStrength'
 import PinInput from '@/components/auth/PinInput'
 import BrandLogo from '@/components/ui/BrandLogo'
 import AutoHeight from '@/components/ui/AutoHeight'
@@ -204,7 +207,8 @@ export default function LoginPage() {
       setOtp(['', '', '', '', '', ''])
       setResendTimer(60)
       toast.success('OTP sent via SMS')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       // Surface the Firebase error code in the toast so a screenshot tells
       // us exactly what's wrong (config issue, quota, unauthorized domain,
       // etc.) instead of just "Failed to send OTP".
@@ -252,7 +256,8 @@ export default function LoginPage() {
         setOtpPurpose('login')
         await sendOtp(data.phone)
       }
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg = err?.response?.data?.message || 'Failed to start sign-in. Please try again.'
       toast.error(msg)
     } finally {
@@ -281,8 +286,9 @@ export default function LoginPage() {
       toast.success('Login successful!')
       const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
       router.push(redirectTo)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Invalid PIN. Please try again.'
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
+      const msg = pinSignInErrorMessage(err)
       toast.error(msg)
       setPin('')
     } finally {
@@ -313,6 +319,14 @@ export default function LoginPage() {
     }
     if (newPin !== newPinConfirm) {
       toast.error('PINs do not match. Please try again.')
+      setNewPin('')
+      setNewPinConfirm('')
+      return
+    }
+    // Same rule as the server and the checkout sign-up (B33) — say so before
+    // sending, not after the round trip.
+    if (isWeakPin(newPin)) {
+      toast.error(WEAK_PIN_MESSAGE)
       setNewPin('')
       setNewPinConfirm('')
       return
@@ -371,7 +385,8 @@ export default function LoginPage() {
       setNewPinConfirm('')
       const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
       router.push(redirectTo)
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg = err?.response?.data?.message || 'Failed to reset PIN. Please try again.'
       toast.error(msg)
       setNewPin('')
@@ -447,7 +462,8 @@ export default function LoginPage() {
       toast.success('Login successful!')
       const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
       router.push(redirectTo)
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const backendMsg = err?.response?.data?.message
       const msg = backendMsg || firebaseErrorMessage(err, 'Invalid OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
@@ -635,6 +651,7 @@ export default function LoginPage() {
                   <div>
                     <p className="text-xs sm:text-sm font-medium text-gray-700 mb-2 text-center">New PIN</p>
                     <PinInput
+                      label="New PIN"
                       value={newPin}
                       onChange={setNewPin}
                       disabled={isLoading}
@@ -645,6 +662,7 @@ export default function LoginPage() {
                   <div>
                     <p className="text-xs sm:text-sm font-medium text-gray-700 mb-2 text-center">Confirm PIN</p>
                     <PinInput
+                      label="Confirm PIN"
                       value={newPinConfirm}
                       onChange={setNewPinConfirm}
                       disabled={isLoading}
@@ -673,6 +691,7 @@ export default function LoginPage() {
                       <input
                         key={index}
                         id={`otp-${index}`}
+                        aria-label={`Code digit ${index + 1} of 6`}
                         type="text"
                         inputMode="numeric"
                         maxLength={6}

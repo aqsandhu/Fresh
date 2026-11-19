@@ -33,7 +33,8 @@ export default function DeliveryInfoSection() {
   })
 
   const { data: slots } = useQuery({
-    queryKey: ['time-slots-public'],
+    // Each city has its own slots (A30) — the cache is per city too.
+    queryKey: ['time-slots-public', selectedCityId],
     queryFn: () => settingsApi.getTimeSlots(),
     enabled: !!selectedCityId,
     staleTime: 5 * 60 * 1000,

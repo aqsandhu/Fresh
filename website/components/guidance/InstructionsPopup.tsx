@@ -8,6 +8,7 @@ import { Lightbulb, X } from 'lucide-react'
 import { tipsApi } from '@/lib/api'
 import { useCityContext } from '@/context/CityContext'
 import { useInstructionsPopup } from '@/store/instructionsPopup'
+import { useDialog } from '@/lib/useDialog'
 import { hideConsumerChrome } from '@/lib/restaurantChrome'
 import {
   CART_TIPS,
@@ -63,7 +64,9 @@ export default function InstructionsPopup() {
   const [idleLabel, setIdleLabel] = useState(false)
   const reduceMotion = useReducedMotion()
   const iconRef = useRef<HTMLButtonElement>(null)
-  const cardRef = useRef<HTMLDivElement>(null)
+  // The card is a modal dialog: focus moves in, Tab stays inside, Escape
+  // closes, focus returns to the lightbulb (G29 — it had none of these).
+  const cardRef = useDialog<HTMLDivElement>(open, () => setOpen(false))
   // Where the genie flies to, measured at close time (stable during exit).
   const genieDelta = useRef({ x: 0, y: 0 })
 
@@ -194,6 +197,7 @@ export default function InstructionsPopup() {
                 }
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                 role="dialog"
+                aria-modal="true"
                 aria-label="Instructions"
                 className="pointer-events-auto w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl"
               >

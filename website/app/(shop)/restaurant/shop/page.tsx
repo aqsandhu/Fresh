@@ -1,12 +1,13 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { UtensilsCrossed, ShoppingCart, Loader2, ClipboardList, User, ArrowRight } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { getRestaurantInfo } from '@/lib/restaurantSession'
-import { restaurantShopApi } from '@/lib/restaurantApi'
+import { restaurantShopApi, type RestaurantCategory } from '@/lib/restaurantApi'
 import { money, type RestaurantProduct } from '@/lib/restaurantPricing'
 import { useRestaurantCartStore } from '@/store/restaurantCartStore'
 import RestaurantProductCard from '@/components/restaurant/RestaurantProductCard'
@@ -16,13 +17,15 @@ export default function RestaurantShopPage() {
   const router = useRouter()
   const [ready, setReady] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [categories, setCategories] = useState<any[]>([])
+  const [categories, setCategories] = useState<RestaurantCategory[]>([])
   const [products, setProducts] = useState<RestaurantProduct[]>([])
   const [activeCat, setActiveCat] = useState<string>('')
 
-  const { getTotalItems, getFinalTotal, loadDeliverySettings } = useRestaurantCartStore()
+  const { getTotalItems, getSubtotal, loadDeliverySettings } = useRestaurantCartStore()
   const cartCount = getTotalItems()
-  const cartTotal = getFinalTotal()
+  // Items only: "1 item · Rs. 181" for a Rs. 180 item (Rs. 1 delivery folded in)
+  // read as a wrong price. Delivery is shown on the cart page.
+  const cartTotal = getSubtotal()
 
   useEffect(() => {
     if (!getRestaurantInfo()) {
@@ -39,7 +42,8 @@ export default function RestaurantShopPage() {
         ])
         setCategories(cats || [])
         setProducts(prods || [])
-      } catch (e: any) {
+      } catch (eCaught: unknown) {
+        const e = asCaughtError(eCaught);
         if (e?.status === 401) router.replace('/restaurant/login')
         else toast.error(e?.message || 'Could not load the restaurant catalog')
       } finally {
@@ -53,7 +57,8 @@ export default function RestaurantShopPage() {
     setLoading(true)
     try {
       setProducts((await restaurantShopApi.getProducts(catId || undefined)) || [])
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       toast.error(e?.message || 'Could not load products')
     } finally {
       setLoading(false)

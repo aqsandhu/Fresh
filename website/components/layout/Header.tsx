@@ -115,6 +115,19 @@ export default function Header() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const searchAreaRef = useRef<HTMLDivElement>(null)
+  const navRef = useRef<HTMLElement>(null)
+
+  // The category bar scrolls inside itself (N5): bring the page's own link
+  // into view, so "Restaurant" on the restaurant pages is not cut at the edge.
+  useEffect(() => {
+    const nav = navRef.current
+    const active = nav?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (!nav || !active) return
+    const left = active.offsetLeft - nav.offsetLeft
+    if (left < nav.scrollLeft || left + active.offsetWidth > nav.scrollLeft + nav.clientWidth) {
+      nav.scrollLeft = Math.max(0, left - 16)
+    }
+  }, [pathname, categories.length])
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
@@ -207,19 +220,23 @@ export default function Header() {
       clearTimeout(searchDebounceRef.current)
     }
 
+    // Only this query's answer may fill the list — a slower answer for an
+    // older query ("tom") must not replace the newer one's ("tomato") (I25).
+    let current = true
     searchDebounceRef.current = setTimeout(async () => {
       try {
         const response = await productsApi.getAll({ search: searchQuery, limit: 5 })
-        setSearchResults(response.products)
+        if (current) setSearchResults(response.products)
       } catch (error) {
         console.error('Search error:', error)
-        setSearchResults([])
+        if (current) setSearchResults([])
       } finally {
-        setIsSearching(false)
+        if (current) setIsSearching(false)
       }
     }, 300)
 
     return () => {
+      current = false
       if (searchDebounceRef.current) {
         clearTimeout(searchDebounceRef.current)
       }
@@ -297,19 +314,28 @@ export default function Header() {
           <Link
             href="/"
             className="shrink-0 flex items-center h-full leading-none p-0 m-0"
-            aria-label="Home"
           >
+            {/* Visible logo text + this = the link's name (WCAG 2.5.3 label in name). */}
             <BrandLogo size="nav" className="h-full" />
+            <span className="sr-only">Fresh Bazar home</span>
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden lg:flex items-center gap-0.5">
+          {/* Takes the room that is left and scrolls inside itself: with many
+              categories it used to push the cart and profile icons off the
+              screen on a 1280px laptop (N5). */}
+          <nav
+            ref={navRef}
+            aria-label="Categories"
+            className="hidden lg:flex items-center gap-0.5 min-w-0 flex-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
+                aria-current={pathname === link.href ? 'page' : undefined}
                 className={cn(
-                  'px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                  'shrink-0 whitespace-nowrap px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors',
                   pathname === link.href
                     ? 'bg-primary-50 text-primary-700'
                     : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -321,7 +347,7 @@ export default function Header() {
           </nav>
 
           {/* Right Actions */}
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {/* Search Button */}
             <button
               onClick={() => {
@@ -336,6 +362,8 @@ export default function Header() {
                   setTimeout(() => searchInputRef.current?.focus(), 100)
                 }
               }}
+              aria-label="Search"
+              aria-expanded={isSearchOpen}
               className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <Search className="w-6 h-6 text-gray-600" />
@@ -373,6 +401,7 @@ export default function Header() {
             {hasMounted && isAuthenticated && (
               <Link
                 href="/orders"
+                aria-label="My orders"
                 className="hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <Package className="w-6 h-6 text-gray-600" />
@@ -383,6 +412,8 @@ export default function Header() {
             <div className="relative">
               <button
                 onClick={() => setIsCartOpen(!isCartOpen)}
+                aria-label={`Cart, ${cartItemCount} ${cartItemCount === 1 ? 'item' : 'items'}`}
+                aria-expanded={isCartOpen}
                 className="relative p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <ShoppingCart className="w-6 h-6 text-gray-600" />
@@ -403,6 +434,7 @@ export default function Header() {
             {/* Profile */}
             <Link
               href={hasMounted && isAuthenticated ? '/profile' : `/login?redirect=${pathname}`}
+              aria-label={hasMounted && isAuthenticated ? 'My profile' : 'Login'}
               className="hidden sm:flex p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <User className="w-6 h-6 text-gray-600" />
@@ -443,6 +475,7 @@ export default function Header() {
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
+                      aria-label="Search products"
                       placeholder="Search for fresh vegetables, fruits..."
                       className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
                       autoFocus

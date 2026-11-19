@@ -17,13 +17,14 @@ module.exports = {
   // `pnpm test` fails on regressions instead of an aspirational target that the
   // existing tests do not exercise yet. Raise as website coverage grows.
   coverageThreshold: {
-    // Ratchet (15 Nov 2026): one point under the measured coverage. Raise it
-    // whenever coverage grows; CI fails if a change makes it fall.
+    // Ratchet (19 Nov 2026, W17): one point under the measured coverage
+    // (61.1% statements, 62.0% lines, 58.8% functions, 50.0% branches). Raise
+    // it whenever coverage grows; CI fails if a change makes it fall.
     global: {
-      branches: 3,
-      functions: 5,
-      lines: 6,
-      statements: 6,
+      branches: 48,
+      functions: 57,
+      lines: 60,
+      statements: 60,
     },
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setupTests.ts'],

@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Store, Loader2 } from 'lucide-react'
@@ -27,7 +28,8 @@ export default function OcpLoginPage() {
       setOcpSession(token, ocp)
       toast.success(`Welcome, ${ocp?.name || 'Collection Point'}`)
       router.push('/ocp')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       toast.error(err?.message || 'Login failed')
     } finally {
       setLoading(false)

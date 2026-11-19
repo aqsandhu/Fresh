@@ -22,6 +22,8 @@ interface BrandLogoProps {
   className?: string
   imgClassName?: string
   size?: BrandLogoSize
+  /** On a dark background (footer): a lighter green that stays readable. */
+  onDark?: boolean
 }
 
 /** Logo image only — no title text beside the mark (nav/footer/header). */
@@ -29,6 +31,7 @@ export default function BrandLogo({
   className = '',
   imgClassName,
   size = 'default',
+  onDark = false,
 }: BrandLogoProps) {
   const imageClass = imgClassName ?? IMG_CLASSES[size]
   const isNav = size === 'nav'
@@ -60,8 +63,8 @@ export default function BrandLogo({
         <span
           className={
             isNav
-              ? 'font-bold text-primary-700 text-base leading-none'
-              : 'font-bold text-primary-700 text-lg leading-none'
+              ? cn('font-bold text-base leading-none', onDark ? 'text-primary-300' : 'text-primary-700')
+              : cn('font-bold text-lg leading-none', onDark ? 'text-primary-300' : 'text-primary-700')
           }
         >
           FB

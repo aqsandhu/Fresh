@@ -10,6 +10,7 @@ import {
 } from '@/lib/unitPricing'
 import { formatPriceShort } from '@/lib/utils'
 import { useDialog } from '@/lib/useDialog'
+import { lockBodyScroll, unlockBodyScroll } from '@/lib/scrollLock'
 
 interface UnitSelectorProps {
   product: Product
@@ -50,10 +51,12 @@ export default function UnitSelector({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
-    document.body.style.overflow = 'hidden'
+    // Shared, counted lock (G30) — '' on close used to unlock the page under
+    // another overlay that was still open.
+    lockBodyScroll()
     document.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = ''
+      unlockBodyScroll()
       document.removeEventListener('keydown', onKey)
     }
   }, [open])

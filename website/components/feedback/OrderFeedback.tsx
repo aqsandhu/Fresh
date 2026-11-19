@@ -1,5 +1,6 @@
 'use client'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect, useId } from 'react'
 import { useDialog } from '@/lib/useDialog'
 import { Star, MessageSquareWarning, X, Loader2 } from 'lucide-react'
@@ -163,7 +164,8 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
       }
       toast.success('Thank you for your feedback')
       onClose()
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       toast.error(e?.response?.data?.message || 'Could not save your review')
     } finally {
       setSaving(false)
@@ -205,6 +207,7 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
                     />
                   </div>
                   <textarea
+                    aria-label={`Comment for ${row.label}`}
                     value={d.comment}
                     onChange={(e) => setDraft(row.key, { comment: e.target.value })}
                     placeholder="Add a comment (optional)"
@@ -250,7 +253,8 @@ function ComplaintModal({
       const res = await complaintsApi.file({ subject: subject.trim(), message: message.trim(), category, orderId })
       toast.success(`Complaint submitted — ticket ${res.ticketNumber}`)
       onClose()
-    } catch (e: any) {
+    } catch (eCaught: unknown) {
+      const e = asCaughtError(eCaught);
       toast.error(e?.response?.data?.message || 'Could not submit complaint')
     } finally {
       setSaving(false)

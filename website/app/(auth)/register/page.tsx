@@ -5,6 +5,7 @@
 // environment.
 export const dynamic = 'force-dynamic'
 
+import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
@@ -26,6 +27,7 @@ import { sanitizeRedirect } from '@/lib/utils'
 import { getFirebaseAuth } from '@/lib/firebase'
 import { firebaseErrorMessage } from '@/lib/firebase-errors'
 import { isOtpBypassEnabled, isValidOtpBypassCode, otpBypassHint, resolveOtpMode, isCodeEntryMode, type OtpMode } from '@/lib/otpBypass'
+import { isWeakPin, WEAK_PIN_MESSAGE } from '@/lib/pinStrength'
 
 type Step = 'phone' | 'otp' | 'profile' | 'pin'
 
@@ -150,7 +152,8 @@ export default function RegisterPage() {
       setOtp(['', '', '', '', '', ''])
       setResendTimer(60)
       toast.success('OTP sent via SMS')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const backendMsg = err?.response?.data?.message
       const msg = backendMsg || firebaseErrorMessage(err, 'Failed to send OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
@@ -211,7 +214,8 @@ export default function RegisterPage() {
       setFirebaseIdToken(idToken)
       setStep('profile')
       toast.success('Phone verified! Now set up your profile.')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg = firebaseErrorMessage(err, 'Invalid OTP. Please try again.')
       toast.error(msg, { duration: 8000 })
       // eslint-disable-next-line no-console
@@ -261,7 +265,8 @@ export default function RegisterPage() {
       setPin('')
       setPinConfirm('')
       setStep('pin')
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const status: number | undefined = err?.response?.status
       const msg: string = err?.response?.data?.message || 'Registration failed. Please try again.'
       toast.error(msg)
@@ -286,6 +291,13 @@ export default function RegisterPage() {
   // The user is already authenticated by this point (verifyRegister set
   // tokens), so the call goes through the standard auth interceptor.
   const handlePinFirstEntry = (entered: string) => {
+    // The server refuses an easy PIN (B33) — say so now, not after the
+    // customer has typed it twice.
+    if (isWeakPin(entered)) {
+      toast.error(WEAK_PIN_MESSAGE)
+      setPin('')
+      return
+    }
     setPin(entered)
     setPinConfirm('')
     setPinStage('confirm')
@@ -305,7 +317,8 @@ export default function RegisterPage() {
       toast.success('PIN set! You can use it next time you log in.')
       const redirectTo = sanitizeRedirect(searchParams.get('redirect'))
       router.push(redirectTo)
-    } catch (err: any) {
+    } catch (errCaught: unknown) {
+      const err = asCaughtError(errCaught);
       const msg = err?.response?.data?.message || 'Failed to save PIN. Please try again.'
       toast.error(msg)
       setPin('')
@@ -439,6 +452,7 @@ export default function RegisterPage() {
                       <input
                         key={index}
                         id={`rotp-${index}`}
+                        aria-label={`Code digit ${index + 1} of 6`}
                         type="text"
                         inputMode="numeric"
                         maxLength={6}
@@ -554,6 +568,7 @@ export default function RegisterPage() {
                 </div>
                 <PinInput
                   key={pinStage} /* remount = clear focus + value cleanly */
+                  label={pinStage === 'create' ? 'New PIN' : 'Confirm PIN'}
                   value={pinStage === 'create' ? pin : pinConfirm}
                   onChange={pinStage === 'create' ? setPin : setPinConfirm}
                   onComplete={pinStage === 'create' ? handlePinFirstEntry : handlePinConfirm}

@@ -47,6 +47,8 @@ export default function AddressesPage() {
   const { selectedCity } = useCityContext()
   const [addresses, setAddresses] = useState<FullAddress[]>([])
   const [loading, setLoading] = useState(true)
+  // A failed load must not look like "no addresses saved" (I19).
+  const [loadError, setLoadError] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [formInitial, setFormInitial] = useState<AddressFormInitial | undefined>(undefined)
 
@@ -63,12 +65,13 @@ export default function AddressesPage() {
   )
 
   const loadAddresses = useCallback(async () => {
+    setLoadError(false)
     try {
       const res = await api.get('/addresses')
       const raw = res.data?.data || res.data || []
       setAddresses(Array.isArray(raw) ? raw : [])
     } catch {
-      setAddresses([])
+      setLoadError(true)
     } finally {
       setLoading(false)
     }
@@ -146,7 +149,7 @@ export default function AddressesPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
-            <button onClick={() => router.back()} className="p-2 hover:bg-gray-100 rounded-lg">
+            <button onClick={() => router.back()} aria-label="Back" className="p-2 hover:bg-gray-100 rounded-lg">
               <ArrowLeft className="w-5 h-5" />
             </button>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900">My Addresses</h1>
@@ -170,7 +173,7 @@ export default function AddressesPage() {
               <h2 className="text-lg font-semibold">
                 {formInitial?.id ? 'Edit Address' : 'Add New Address'}
               </h2>
-              <button onClick={closeForm} className="p-1 hover:bg-gray-100 rounded" type="button">
+              <button onClick={closeForm} aria-label="Close" className="p-1 hover:bg-gray-100 rounded" type="button">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -190,7 +193,12 @@ export default function AddressesPage() {
         )}
 
         {/* Address List */}
-        {cityAddresses.length === 0 && !showForm ? (
+        {loadError ? (
+          <div role="alert" className="bg-white rounded-xl p-8 shadow-sm text-center">
+            <p className="text-gray-700 mb-4">Could not load your addresses. Please check your connection.</p>
+            <Button onClick={() => { setLoading(true); loadAddresses() }}>Retry</Button>
+          </div>
+        ) : cityAddresses.length === 0 && !showForm ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
