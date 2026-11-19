@@ -10,7 +10,9 @@
     "lint": "turbo run lint",
     "dev": "turbo run dev",
     "clean": "turbo run clean && node -e \"require('fs').rmSync('node_modules/.cache',{recursive:true,force:true})\"",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "check:any": "node scripts/check-any.js",
+    "check:big-files": "node scripts/check-big-files.js"
   },
   "devDependencies": {
     "turbo": "^2.10.6"

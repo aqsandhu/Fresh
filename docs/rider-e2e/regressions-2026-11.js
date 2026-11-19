@@ -302,10 +302,10 @@ async function run(opts = {}) {
   await sql(`update categories set available_for_restaurants = true where id = $1`, [cat]);
   const rice = await product('RegRice', `unit_type = 'kg', available_for_restaurants = true, restaurant_price_a = 90, restaurant_enabled_a = true, stock_quantity = 10, reserved_quantity = 10`);
   const restPhone = `0305${TAG}`;
-  r = await call('POST', '/restaurant/register', null, { business_name: `Regression Cafe ${TAG}`, phone: restPhone, pin: '4321', city_id: city, address: 'Regression road' });
+  r = await call('POST', '/restaurant/register', null, { business_name: `Regression Cafe ${TAG}`, phone: restPhone, pin: '4831', city_id: city, address: 'Regression road' });
   const restId = r.data?.id;
   await call('POST', `/admin/restaurants/${restId}/approve`, A, {}, H);
-  const RT = (await call('POST', '/restaurant/login', null, { phone: restPhone, pin: '4321' })).data?.token;
+  const RT = (await call('POST', '/restaurant/login', null, { phone: restPhone, pin: '4831' })).data?.token;
   r = await call('GET', '/restaurant/products', RT);
   const listed = (Array.isArray(r.data) ? r.data : r.data?.products || []).find((p) => p.id === rice);
   check('restaurant catalogue shows what can be ordered (10 on hand, 10 reserved → 0)', listed ? Number(listed.stock_quantity ?? listed.stock ?? listed.stockQuantity) : 'not listed', 0);
@@ -435,7 +435,13 @@ async function run(opts = {}) {
 
   // ── Money out needs a second admin (staff) ────────────────────────────────
   await sql(`delete from approval_value_log where admin_id = $1`, [mgrId]);
-  check('staff: Rs 500,000 expense alone is refused', (await call('POST', '/finance/expenses', M, { category: 'rent', amount: 500000 })).status, 400);
+  // Owner's decision J1: without a code it is not refused any more — it waits
+  // for the city admin, and nothing is booked until then.
+  r = await call('POST', '/finance/expenses', M, { category: 'rent', amount: 500000 });
+  check('staff: Rs 500,000 expense alone is not booked — it waits for approval (202)', `${r.status}/${r.data?.queued}`, '202/true');
+  check('…nothing booked', Number(await one(`select count(*) from expenses where created_by = $1 and amount = 500000`, [mgrId])), 0);
+  // Leave nothing waiting: a later run's "approve all" would book it.
+  if (r.data?.request_id) await call('POST', `/admin/approvals/${r.data.request_id}/reject`, A, { reason: 'regression clean-up' });
   check('staff: Rs 1,800 expense alone is fine', (await call('POST', '/finance/expenses', M, { category: 'bags', amount: 1800 })).status, 200);
   check('staff: with a second admin it is accepted', (await call('POST', '/finance/expenses', M, { category: 'rent', amount: 40000, ...(await approver()) })).status, 200);
   check('owner is not asked for a co-signer', (await call('POST', '/finance/expenses', A, { category: 'rent', amount: 50000 }, H)).status, 200);
@@ -449,7 +455,8 @@ async function run(opts = {}) {
     check('the owner can make a 6-digit approval code on their own device', `${issued.status}/${/^\d{6}$/.test(code || '')}`, '200/true');
     const withCode = { approval_phone: '03001112222', approval_password: code };
     check('staff: the approval code co-signs a big expense', (await call('POST', '/finance/expenses', M, { category: 'rent', amount: 30000, ...withCode })).status, 200);
-    check('…but only once', (await call('POST', '/finance/expenses', M, { category: 'rent', amount: 30000, ...withCode })).status, 400);
+    // A different entry with the same code (an identical repeat is stopped earlier, A34).
+    check('…but only once', (await call('POST', '/finance/expenses', M, { category: 'rent', amount: 30000, comment: 'second use', ...withCode })).status, 400);
     const used = (await call('GET', '/admin/approval-codes', A, undefined, H)).data?.codes?.[0];
     check('…and the approver can see what it was used for and by whom', `${!!used?.used_at}/${used?.used_by_name}`, 'true/Regression Manager');
     const fresh = (await call('POST', '/admin/approval-codes', A, {}, H)).data?.code;
@@ -566,14 +573,545 @@ async function run(opts = {}) {
     check('security: a token signed with another algorithm is refused (HS256 only)', (await call('GET', '/auth/me', hs512)).status, 401);
   }
   const pendPhone = `0306${TAG}`;
-  await call('POST', '/restaurant/register', null, { business_name: `Pending Cafe ${TAG}`, phone: pendPhone, pin: '5678', city_id: city, address: 'Pending road' });
+  await call('POST', '/restaurant/register', null, { business_name: `Pending Cafe ${TAG}`, phone: pendPhone, pin: '5718', city_id: city, address: 'Pending road' });
   check('security: a wrong PIN on a pending restaurant says only "invalid" (status was told to anyone)', (await call('POST', '/restaurant/login', null, { phone: pendPhone, pin: '0000' })).status, 401);
-  check('…the right PIN still hears "under review"', (await call('POST', '/restaurant/login', null, { phone: pendPhone, pin: '5678' })).status, 403);
+  check('…the right PIN still hears "under review"', (await call('POST', '/restaurant/login', null, { phone: pendPhone, pin: '5718' })).status, 403);
   const ocpPhone = `0307${TAG}`;
   await sql(`insert into order_collection_points (name, phone, pin_hash, city_id, status) values ($1, $2, $3, $4, 'disabled')`,
     [`Disabled OCP ${TAG}`, `+92${ocpPhone.slice(1)}`, bcrypt.hashSync('2468', 4), city]);
   check('security: a wrong PIN on a disabled OCP says only "invalid"', (await call('POST', '/ocp/login', null, { phone: ocpPhone, pin: '1111' })).status, 401);
   check('…the right PIN hears "disabled"', (await call('POST', '/ocp/login', null, { phone: ocpPhone, pin: '2468' })).status, 403);
+
+  // ── Admin session in HttpOnly cookies (owner decision Q2) ────────────────────
+  // The panel asks for it with X-Client-Platform: admin-cookie. Skipped when
+  // the API under test has admin cookies switched off (ADMIN_AUTH_COOKIES).
+  {
+    const raw = (method, urlPath, { cookie, platform = 'admin-cookie', body } = {}) => fetch(API + urlPath, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'X-Client-Platform': platform, ...(cookie ? { Cookie: cookie } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const jar = (res) => res.headers.getSetCookie().map((c) => c.split(';')[0]).filter((c) => !c.endsWith('=')).join('; ');
+    let res = await raw('POST', '/admin/login', { body: { phone: '03001112222', password: 'Admin12345', otp: OTP } });
+    const loginBody = await res.json();
+    const setCookies = res.headers.getSetCookie();
+    if (loginBody?.data?.tokens) {
+      console.log('SKIP admin cookie session (ADMIN_AUTH_COOKIES is off on this API)');
+    } else {
+      const session = jar(res);
+      check('admin cookies: login answers with HttpOnly cookies and no token in the body',
+        setCookies.filter((c) => /^admin_(token|refresh)=/.test(c) && /HttpOnly/i.test(c) && /SameSite=Strict/i.test(c) && !/Domain=/i.test(c)).length, 2);
+      check('admin cookies: the cookie signs the panel in', (await raw('GET', '/admin/dashboard', { cookie: session })).status, 200);
+      check('admin cookies: the same cookie is ignored without the cookie-mode header', (await raw('GET', '/admin/dashboard', { cookie: session, platform: 'admin' })).status, 401);
+      check('admin cookies: …and is never accepted as a customer / website session', (await raw('GET', '/auth/me', { cookie: session, platform: 'website' })).status, 401);
+      res = await raw('POST', '/auth/refresh', { cookie: session, body: {} });
+      const refreshed = await res.json();
+      const session2 = jar(res);
+      check('admin cookies: refresh rotates the cookies and still shows no token', res.status === 200 && !refreshed?.data?.tokens && /admin_token=/.test(session2) && /admin_refresh=/.test(session2), true);
+      check('admin cookies: the old refresh cookie is dead after rotation', (await raw('POST', '/auth/refresh', { cookie: session, body: {} })).status, 401);
+      res = await raw('POST', '/auth/logout', { cookie: session2, body: {} });
+      check('admin cookies: logout clears both cookies', res.headers.getSetCookie().filter((c) => /^admin_(token|refresh)=;/.test(c)).length, 2);
+      check('admin cookies: …and the session cannot be renewed afterwards', (await raw('POST', '/auth/refresh', { cookie: session2, body: {} })).status, 401);
+    }
+  }
+
+  // ── Staff purchases wait for the city admin (owner decision J1) ─────────────
+  {
+    const staffPhone = `0310${TAG}`;
+    const staffRole = await one(`insert into admin_roles (name, city_id) values ($1, $2) returning id`, [`Regression Purchaser ${TAG}`, city]);
+    await sql(`insert into admin_role_permissions (role_id, permission_id) select $1, id from permissions where code = 'finance.stock_purchase.create'`, [staffRole]);
+    const staffId = await one(
+      `insert into users (phone, full_name, role, password_hash, admin_role_id, is_phone_verified)
+       values ($1, 'Regression Purchaser', 'admin', $2, $3, true) returning id`,
+      [`+92${staffPhone.slice(1)}`, bcrypt.hashSync('Staff12345', 10), staffRole]
+    );
+    await sql(`insert into admins (user_id) values ($1)`, [staffId]);
+    const ST = (await adminLogin(staffPhone, 'Staff12345')).token;
+    const p1 = await product('RegBuy1', `stock_quantity = 10`);
+    const p2 = await product('RegBuy2', `stock_quantity = 10`);
+    const buy = (token, pid, kg) => call('POST', '/finance/stock-purchase', token, {
+      product_id: pid, raw_weight: kg, purchase_price: 500, grade_a: kg, grade_b: 0, grade_c: 0, waste: 0, supplier_name: 'Mandi seller',
+    }, H);
+    const stock = (pid) => one(`select stock_quantity from products where id = $1`, [pid]);
+    const buys = (pid) => one(`select count(*) from stock_purchases where product_id = $1`, [pid]);
+
+    let b1 = await buy(ST, p1, 5);
+    const req1 = b1.data?.id;
+    check('purchase approval: staff entry is accepted as PENDING', b1.data?.status, 'pending');
+    check('…stock is unchanged and no ledger row exists yet', `${Number(await stock(p1))}:${await buys(p1)}`, '10:0');
+    const b2 = await buy(ST, p2, 7);
+    const req2 = b2.data?.id;
+    check('purchase approval: staff cannot approve (403)', (await call('POST', `/finance/purchase-requests/${req1}/approve`, ST, {}, H)).status, 403);
+    check('purchase approval: staff sees their own pending entries', ((await call('GET', '/finance/purchase-requests', ST, undefined, H)).data?.requests || []).length >= 2, true);
+    check('purchase approval: the city admin sees the queue', ((await call('GET', '/finance/purchase-requests', M, undefined, H)).data?.requests || []).some((x) => x.id === req1), true);
+    const ap = await call('POST', `/finance/purchase-requests/${req1}/approve`, M, {}, H);
+    check('purchase approval: the city admin approves ONE', ap.status, 200);
+    check('…stock grows and the ledger row exists', `${Number(await stock(p1))}:${await buys(p1)}`, '15:1');
+    check('…the other is still waiting', `${Number(await stock(p2))}`, '10');
+    check('purchase approval: approving twice is refused (409)', (await call('POST', `/finance/purchase-requests/${req1}/approve`, M, {}, H)).status, 409);
+    const b3 = await buy(M, p1, 2);
+    check('purchase approval: an approver\'s own entry applies at once', `${b3.status}:${Number(await stock(p1))}`, '200:17');
+    const rj = await buy(ST, p2, 1);
+    check('purchase approval: a reject changes nothing', `${(await call('POST', `/finance/purchase-requests/${rj.data?.id}/reject`, M, { reason: 'price too high' }, H)).status}:${Number(await stock(p2))}`, '200:10');
+    const all = await call('POST', '/finance/purchase-requests/approve-all', M, {}, H);
+    check('purchase approval: APPROVE ALL applies every pending one', all.data?.approved >= 1 && Number(await stock(p2)) === 17, true);
+    check('…and the queue is empty afterwards', ((await call('GET', '/finance/purchase-requests', M, undefined, H)).data?.requests || []).filter((x) => [req1, req2, rj.data?.id].includes(x.id)).length, 0);
+  }
+
+  // ── The cart belongs to the account (owner decision Q5) ─────────────────────
+  // A second device reads the saved cart (with each line's city) and fetches
+  // those products, as sold now, by id.
+  if (C) {
+    const cartA = await product('RegCartA');
+    const cartB = await product('RegCartB', `price = 250`);
+    const hidden = await product('RegCartHidden', `is_active = false`);
+    r = await call('POST', '/cart/sync', C, { city_id: city, items: [{ product_id: cartA, quantity: 2 }, { product_id: cartB, quantity: 1, unit: 'full' }] });
+    check('saved cart: the first device saves it', r.status, 200);
+    r = await call('GET', '/cart', C);
+    const savedLines = r.data?.items || [];
+    check('saved cart: a second device reads the same lines, each with its city',
+      savedLines.map((l) => `${l.product_id}:${Number(l.quantity)}:${l.city_id}`).sort().join('|'),
+      [`${cartA}:2:${city}`, `${cartB}:1:${city}`].sort().join('|'));
+    r = await call('GET', `/products?ids=${cartA},${cartB},${hidden}&city_id=${city}&limit=100`);
+    check('saved cart: the products come back by id — one no longer sold is left out',
+      (r.data || []).map((p) => p.id).sort().join('|'), [cartA, cartB].sort().join('|'));
+    check('saved cart: …with the price as it is now', Number((r.data || []).find((p) => p.id === cartB)?.price), 250);
+    check('saved cart: a malformed id list is refused (422), not run as a query', (await call('GET', `/products?ids=abc;drop&city_id=${city}`)).status, 422);
+    await call('DELETE', '/cart/clear', C);
+    check('saved cart: emptied on one device = empty for the next', ((await call('GET', '/cart', C)).data?.items || []).length, 0);
+  }
+
+  // ── Deleting an account asks for the PIN again (owner decision Q9) ─────────
+  if (JWT_SECRET) {
+    const delPhone = `+92308${TAG}`;
+    const delUser = await one(`insert into users (phone, full_name, role, is_phone_verified, pin_hash, pin_set_at) values ($1, 'Delete Me', 'customer', true, $2, now()) returning id`,
+      [delPhone, bcrypt.hashSync('7391', 4)]);
+    const D = jwt.sign({ userId: delUser, phone: delPhone, role: 'customer', type: 'access' }, JWT_SECRET, { expiresIn: '15m' });
+    check('delete account: refused without the PIN', (await call('POST', '/auth/delete-account', D, {})).status, 400);
+    check('delete account: refused with a wrong PIN', (await call('POST', '/auth/delete-account', D, { pin: '0000' })).status, 400);
+    check('…and the account is still there', await one(`select status from users where id = $1`, [delUser]), 'active');
+    check('delete account: done with the right PIN', (await call('POST', '/auth/delete-account', D, { pin: '7391' })).status, 200);
+    check('…and the account is anonymised', await one(`select status || ':' || full_name from users where id = $1`, [delUser]), 'deleted:Deleted User');
+
+    const susPhone = `0309${TAG}`;
+    await sql(`insert into users (phone, full_name, role, is_phone_verified, pin_hash, pin_set_at, status) values ($1, 'Suspended', 'customer', true, $2, now(), 'suspended')`,
+      [`+92${susPhone.slice(1)}`, bcrypt.hashSync('5566', 4)]);
+    check('PIN login: a wrong PIN on a suspended account says only "invalid" (status was told to anyone)', (await call('POST', '/auth/verify-pin', null, { phone: susPhone, pin: '0000' })).status, 401);
+    check('…the right PIN hears "suspended"', (await call('POST', '/auth/verify-pin', null, { phone: susPhone, pin: '5566' })).status, 403);
+  }
+
+  // ── Shareholder payouts: once per period, never twice at once (A26, round 6) ─
+  // Paying last month's share in this month was never counted against last
+  // month, so the same share could be paid again and again; and five presses
+  // at once went through twice.
+  {
+    const shCity = await one(`insert into service_cities (name, province) values ($1, 'Punjab') returning id`, [`RegShare${TAG}`]);
+    const SH = { 'X-City-Id': shCity };
+    const pkNow = new Date(Date.now() + 5 * 3600 * 1000);
+    const prev = new Date(Date.UTC(pkNow.getUTCFullYear(), pkNow.getUTCMonth() - 1, 10, 8));
+    const pm = prev.getUTCMonth() + 1;
+    const py = prev.getUTCFullYear();
+    const pad = (n) => String(n).padStart(2, '0');
+    const lastDay = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+    const delivered = (at, total) => one(
+      `insert into orders (order_number, user_id, address_id, status, subtotal, delivery_charge, total_amount, payment_method, payment_status, paid_amount,
+                           delivery_address_snapshot, city_id, delivered_at)
+       values ('RG' || floor(random() * 1e9)::text, $1, $2, 'delivered', $3, 0, $3, 'cash_on_delivery', 'completed', $3, '{}'::jsonb, $4, $5) returning id`,
+      [cust, addr, total, shCity, at]
+    );
+    await delivered(prev.toISOString(), 10000);
+    await delivered(new Date().toISOString(), 20000);
+    const sid = (await call('POST', '/finance/shareholders', A, { name: 'Reg Holder', email: `reg${TAG}@example.com`, password: 'Holder123', share_percent: 50 }, SH)).data?.id;
+    const lastMonth = `month=${pm}&year=${py}`;
+    const view = async (qs) => (await call('GET', `/finance/profit?${qs}`, A, undefined, SH)).data?.shareholders?.find((s) => s.id === sid);
+    check('shareholder: last month\'s share is half of Rs 10,000', (await view(lastMonth))?.share, 5000);
+    check('shareholder: last month\'s share can be paid this month', (await call('POST', `/finance/shareholders/${sid}/pay?${lastMonth}`, A, { amount: 5000 }, SH)).status, 200);
+    check('shareholder: …but not a second time (it could be paid again and again)', (await call('POST', `/finance/shareholders/${sid}/pay?${lastMonth}`, A, { amount: 4999 }, SH)).status, 400);
+    check('shareholder: …nor as one day inside that month', (await call('POST', `/finance/shareholders/${sid}/pay?date=${py}-${pad(pm)}-10`, A, { amount: 1 }, SH)).status, 400);
+    check('shareholder: the payout records the period it pays for',
+      await one(`select period_start::text || '..' || period_end::text from shareholder_payouts where shareholder_id = $1`, [sid]).catch(() => 'no period column'),
+      `${py}-${pad(pm)}-01..${py}-${pad(pm)}-${pad(lastDay)}`);
+    const shown = await view(lastMonth);
+    check('shareholder: the profit page shows it under last month (pending, nothing left to pay)', `${shown?.pending}/${shown?.balance}`, '5000/0');
+    check('shareholder: a month without a year is refused (was paid against all-time profit)', (await call('POST', `/finance/shareholders/${sid}/pay?month=${pm}`, A, { amount: 1 }, SH)).status, 400);
+    const share = (await view('period=month'))?.share;
+    const burst = await Promise.all([1, 2, 3, 4, 5].map(() => call('POST', `/finance/shareholders/${sid}/pay?period=month`, A, { amount: share }, SH)));
+    check('shareholder: this month\'s payout pressed 5 times at once is paid once', burst.filter((x) => x.status === 200).length, 1);
+    check('shareholder: …and nothing failed with a server error', burst.filter((x) => x.status >= 500).length, 0);
+    check('shareholder: in total exactly both shares were paid', Number(await one(`select coalesce(sum(amount), 0) from shareholder_payouts where shareholder_id = $1`, [sid])), 5000 + share);
+  }
+
+  // ── OCPs stay inside their city (B27, round 6) ──────────────────────────────
+  // An admin of another city could create an OCP in this city (with a PIN they
+  // chose), delete one, send it stock requests and list every city's OCPs.
+  {
+    const otherCity = await one(`insert into service_cities (name, province) values ($1, 'Punjab') returning id`, [`RegOcpB${TAG}`]);
+    const otherRole = await one(`insert into admin_roles (name, city_id) values ($1, $2) returning id`, [`Regression OCP B ${TAG}`, otherCity]);
+    await sql(`insert into admin_role_permissions (role_id, permission_id) select $1, id from permissions`, [otherRole]);
+    const bPhone = `0301${TAG}`;
+    const bId = await one(
+      `insert into users (phone, full_name, role, password_hash, admin_role_id, is_phone_verified) values ($1, 'Regression City B', 'admin', $2, $3, true) returning id`,
+      [`+92${bPhone.slice(1)}`, bcrypt.hashSync('Manager123', 10), otherRole]
+    );
+    await sql(`insert into admins (user_id) values ($1)`, [bId]);
+    const B = (await adminLogin(bPhone, 'Manager123')).token;
+    const ocpA = (await call('POST', '/admin/ocp', A, { name: `Reg OCP A ${TAG}`, phone: `0302${TAG}`, pin: '4826', city_id: city }, H)).data?.id;
+    const stockProduct = await product('RegOcpStock');
+
+    r = await call('POST', '/admin/ocp', B, { name: `Reg planted OCP ${TAG}`, phone: `0303${TAG}`, pin: '4826', city_id: city });
+    check('OCP: another city\'s admin cannot create an OCP in this city (was 201, with their own PIN)', r.status, 403);
+    check('OCP: …and none was made', Number(await one(`select count(*) from order_collection_points where name = $1`, [`Reg planted OCP ${TAG}`])), 0);
+    const listB = (await call('GET', '/admin/ocp', B)).data || [];
+    check('OCP: another city\'s admin does not see this city\'s OCPs (name, phone, address)', listB.some((o) => o.id === ocpA), false);
+    check('OCP: another city\'s admin cannot send it a stock request', (await call('POST', `/admin/ocp/${ocpA}/stock-requests`, B, { items: [{ product_id: stockProduct, quality: 'A', quantity: 1 }] })).status, 404);
+    check('OCP: …nor read its stock requests', (await call('GET', `/admin/ocp/${ocpA}/stock-requests`, B)).status, 404);
+    check('OCP: another city\'s admin cannot delete it (was 200)', (await call('DELETE', `/admin/ocp/${ocpA}`, B)).status, 404);
+    check('OCP: …and it is still there', await one(`select deleted_at is null from order_collection_points where id = $1`, [ocpA]), true);
+
+    const ownB = await call('POST', '/admin/ocp', B, { name: `Reg OCP B ${TAG}`, phone: `0315${TAG}`, pin: '4826' });
+    check('OCP: a city admin creates one in their own city (city taken from their role)', `${ownB.status}/${await one(`select city_id from order_collection_points where id = $1`, [ownB.data?.id]).catch(() => null) === otherCity}`, '201/true');
+    check('OCP: …sees it', ((await call('GET', '/admin/ocp', B)).data || []).some((o) => o.id === ownB.data?.id), true);
+    check('OCP: the owner (super admin) still sees every city\'s OCPs', ((await call('GET', '/admin/ocp', A)).data || []).filter((o) => o.id === ocpA || o.id === ownB.data?.id).length, 2);
+    check('OCP: …and still sends stock requests in this city', (await call('POST', `/admin/ocp/${ocpA}/stock-requests`, A, { items: [{ product_id: stockProduct, quality: 'A', quantity: 1 }] }, H)).status, 201);
+    check('OCP: a city admin deletes their own', (await call('DELETE', `/admin/ocp/${ownB.data?.id}`, B)).status, 200);
+  }
+
+  // ── Settings that apply to every city are the owner's (B28, round 6) ────────
+  {
+    const before = await one(`select value from site_settings where key = 'restaurant_delivery_base_charge' and city_id is null`);
+    const platformWide = [
+      ['POST', '/admin/cities', { name: `RegPlanted${TAG}`, province: 'Punjab' }, 'add a city'],
+      ['PUT', '/admin/restaurants/settings', { base_charge: 1 }, 'change restaurant delivery charges'],
+      ['PUT', '/admin/settings/business-hours', { hours: [{ day: 'Monday', open: '09:00', close: '21:00', is_open: true }] }, 'change business hours'],
+      ['PUT', '/admin/site-settings/app-widget', { enabled: false }, 'change the app widget'],
+      ['PUT', '/admin/work-as-rider', { intro: 'Planted' }, 'change the Work as Rider page'],
+    ];
+    for (const [m, p, body, what] of platformWide) {
+      check(`settings: a city admin cannot ${what} for every city (was 200)`, (await call(m, p, M, body)).status, 403);
+    }
+    check('settings: …no city was planted', Number(await one(`select count(*) from service_cities where name = $1`, [`RegPlanted${TAG}`])), 0);
+    check('settings: …restaurant charge unchanged', await one(`select value from site_settings where key = 'restaurant_delivery_base_charge' and city_id is null`), before);
+    check('settings: business hours with no list are refused (they were wiped and the page broke)', (await call('PUT', '/admin/settings/business-hours', A, {})).status, 400);
+    check('settings: …a made-up day or time is refused', (await call('PUT', '/admin/settings/business-hours', A, { hours: [{ day: 'Funday', open: '25:00', close: '21:00', is_open: true }] })).status, 400);
+    const week = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => ({ day, open: '08:30', close: '22:00', is_open: day !== 'Friday' }));
+    check('settings: the owner saves a full week', (await call('PUT', '/admin/settings/business-hours', A, { hours: week })).status, 200);
+    const back = (await call('GET', '/admin/settings/business-hours', A)).data || [];
+    check('settings: …and reads it back', `${back.length}/${back.find((d) => d.day === 'Friday')?.is_open}/${back[0]?.open}`, '7/false/08:30');
+  }
+
+  // ── No account deletion while an order is on its way (A27, B30, round 6) ─────
+  // A customer could delete the account with an order being prepared — the
+  // order stayed, with no name or phone for the rider; a restaurant's delete
+  // wiped the delivery address of its open orders; and a restaurant session
+  // alone (no PIN) could delete the restaurant.
+  if (JWT_SECRET) {
+    const phone = `+92318${TAG}`;
+    const u = await one(`insert into users (phone, full_name, role, is_phone_verified, pin_hash, pin_set_at) values ($1, 'Busy Customer', 'customer', true, $2, now()) returning id`,
+      [phone, bcrypt.hashSync('2468', 4)]);
+    const uAddr = await one(`insert into addresses (user_id, written_address, city) values ($1, 'Busy house', 'Gujrat') returning id`, [u]);
+    const U = jwt.sign({ userId: u, phone, role: 'customer', type: 'access' }, JWT_SECRET, { expiresIn: '15m' });
+    const open = await one(
+      `insert into orders (order_number, user_id, address_id, status, subtotal, delivery_charge, total_amount, payment_method, payment_status, delivery_address_snapshot, city_id)
+       values ('RG' || floor(random() * 1e9)::text, $1, $2, 'confirmed', 500, 0, 500, 'cash_on_delivery', 'pending', '{}'::jsonb, $3) returning id`, [u, uAddr, city]);
+    r = await call('POST', '/auth/delete-account', U, { pin: '2468' });
+    check('delete account: refused while an order is being prepared (409, says why)', `${r.status}/${/order/i.test(r.body?.message || '')}`, '409/true');
+    check('…the account and its phone are kept for the rider', await one(`select status || ':' || phone from users where id = $1`, [u]), `active:${phone}`);
+    await sql(`update orders set status = 'cancelled' where id = $1`, [open]);
+    const atta = await one(`insert into atta_requests (request_number, user_id, address_id, wheat_quantity_kg, total_amount, status) values ($1, $2, $3, 10, 100, 'milling') returning id`,
+      [`RGATTA${TAG}`, u, uAddr]);
+    check('delete account: refused while wheat is at the mill', (await call('POST', '/auth/delete-account', U, { pin: '2468' })).status, 409);
+    await sql(`update atta_requests set status = 'delivered' where id = $1`, [atta]);
+    check('delete account: allowed once nothing is open', (await call('POST', '/auth/delete-account', U, { pin: '2468' })).status, 200);
+
+    const rPhone = `0319${TAG}`;
+    const reg = await call('POST', '/restaurant/register', null, { business_name: `Reg Busy Dhaba ${TAG}`, phone: rPhone, pin: '1357', city_id: city, address: 'Reg road' });
+    await call('POST', `/admin/restaurants/${reg.data?.id}/approve`, A, {}, H);
+    const RT = (await call('POST', '/restaurant/login', null, { phone: rPhone, pin: '1357' })).data?.token;
+    const rOrder = await one(
+      `insert into orders (order_number, restaurant_id, status, subtotal, delivery_charge, total_amount, payment_method, payment_status, delivery_address_snapshot, city_id)
+       values ('RG' || floor(random() * 1e9)::text, $1, 'out_for_delivery', 800, 0, 800, 'cash_on_delivery', 'pending', $2::jsonb, $3) returning id`,
+      [reg.data?.id, JSON.stringify({ written_address: 'Reg road 12', business_name: `Reg Busy Dhaba ${TAG}` }), city]);
+    check('restaurant delete: the session alone is not enough — PIN asked (was 200)', (await call('POST', '/restaurant/delete-account', RT, {})).status, 400);
+    check('restaurant delete: a wrong PIN is refused', (await call('POST', '/restaurant/delete-account', RT, { pin: '0000' })).status, 400);
+    r = await call('POST', '/restaurant/delete-account', RT, { pin: '1357' });
+    check('restaurant delete: refused while an order is on its way (409)', r.status, 409);
+    check('…the rider still has the delivery address (it was wiped)', await one(`select delivery_address_snapshot->>'written_address' from orders where id = $1`, [rOrder]), 'Reg road 12');
+    check('restaurant delete by phone + PIN: refused too', (await call('POST', '/restaurant/delete-account-by-pin', null, { phone: rPhone, pin: '1357' })).status, 409);
+    await sql(`update orders set status = 'delivered', delivered_at = now() where id = $1`, [rOrder]);
+    check('restaurant delete: allowed with the PIN once nothing is open', (await call('POST', '/restaurant/delete-account', RT, { pin: '1357' })).status, 200);
+    check('…and the closed order\'s address is anonymised', await one(`select coalesce(delivery_address_snapshot->>'written_address', '') from orders where id = $1`, [rOrder]), '');
+  }
+
+  // ── Atta: cancel only before the wheat is picked up (A28, round 6) ───────────
+  if (C) {
+    const attaReq = (status) => one(
+      `insert into atta_requests (request_number, user_id, address_id, wheat_quantity_kg, total_amount, status) values ('RGA' || floor(random() * 1e9)::text, $1, $2, 10, 100, $3) returning id`,
+      [cust, addr, status]);
+    for (const s of ['picked_up', 'milling', 'ready_for_delivery']) {
+      const a = await attaReq(s);
+      check(`atta: the customer cannot cancel once the wheat is ${s} (was 200)`, `${(await call('PUT', `/atta-requests/${a}/cancel`, C, {})).status}/${await one(`select status from atta_requests where id = $1`, [a])}`, `409/${s}`);
+    }
+    const riderUser = await one(`insert into users (phone, full_name, role, is_phone_verified) values ($1, 'Reg Atta Rider', 'rider', true) returning id`, [`+92321${TAG}`]);
+    const rider = await one(`insert into riders (user_id, cnic, vehicle_type, vehicle_number, status, verification_status, city_id) values ($1, $2, 'bike', 'RG-1', 'busy', 'verified', $3) returning id`,
+      [riderUser, `35202${TAG}1`, city]);
+    const a = await attaReq('pending_pickup');
+    const task = await one(`insert into rider_tasks (rider_id, task_type, atta_request_id, status, assigned_at) values ($1, 'atta_pickup', $2, 'assigned', now()) returning id`, [rider, a]);
+    const presses = await Promise.all([1, 2, 3].map(() => call('PUT', `/atta-requests/${a}/cancel`, C, {})));
+    check('atta: cancel before pickup works — once, even pressed 3 times at once', presses.filter((x) => x.status === 200).length, 1);
+    check('…and the rider\'s pickup task is called off (it stayed on the rider\'s list)', await one(`select status from rider_tasks where id = $1`, [task]), 'cancelled');
+  }
+
+  // ── OCP: "send settlement" pressed several times at once (A29, round 6) ─────
+  {
+    const ocpPhone2 = `0322${TAG}`;
+    const ocpId2 = (await call('POST', '/admin/ocp', A, { name: `Reg OCP S ${TAG}`, phone: ocpPhone2, pin: '4826', city_id: city }, H)).data?.id;
+    const OT = (await call('POST', '/ocp/login', null, { phone: ocpPhone2, pin: '4826' })).data?.token;
+    await one(
+      `insert into orders (order_number, user_id, address_id, status, subtotal, delivery_charge, total_amount, payment_method, payment_status, paid_amount, delivery_address_snapshot, city_id, ocp_id, delivered_at)
+       values ('RG' || floor(random() * 1e9)::text, $1, $2, 'delivered', 700, 0, 700, 'cash_on_delivery', 'completed', 700, '{}'::jsonb, $3, $4, now()) returning id`, [cust, addr, city, ocpId2]);
+    const sends = await Promise.all([1, 2, 3, 4].map(() => call('POST', '/ocp/settlements', OT, {})));
+    check('OCP settlement pressed 4 times at once: no server error (was 500 × 3)', sends.filter((x) => x.status >= 500).length, 0);
+    check('…exactly one settlement, for the right amount', await one(`select count(*)::text || '/' || coalesce(sum(amount), 0)::int::text from ocp_settlements where ocp_id = $1`, [ocpId2]), '1/700');
+  }
+
+  // ── The daily second-admin limit holds when actions arrive at once (J9) ──────
+  {
+    const jRole = await one(`insert into admin_roles (name, city_id) values ($1, $2) returning id`, [`Regression J9 ${TAG}`, city]);
+    await sql(`insert into admin_role_permissions (role_id, permission_id) select $1, id from permissions`, [jRole]);
+    const jPhone = `0323${TAG}`;
+    const jId = await one(`insert into users (phone, full_name, role, password_hash, admin_role_id, is_phone_verified) values ($1, 'Regression J9', 'admin', $2, $3, true) returning id`,
+      [`+92${jPhone.slice(1)}`, bcrypt.hashSync('Manager123', 10), jRole]);
+    await sql(`insert into admins (user_id) values ($1)`, [jId]);
+    const J = (await adminLogin(jPhone, 'Manager123')).token;
+    const ps = [];
+    for (let i = 0; i < 8; i++) ps.push(await product(`RegJ9${i}`));
+    // each count finds Rs 4,900 missing (100 expected, 95.1 counted at Rs 1,000) — the limit is Rs 5,000 a day
+    const counts = await Promise.all(ps.map((p) => call('POST', '/admin/stock/count', J, { product_id: p, quality: 'A', counted_quantity: 95.1, note: 'regression' })));
+    check('daily limit: 8 shortages of Rs 4,900 at once — only one passes without a second admin (was up to 10 of 16)', counts.filter((x) => x.status === 200).length, 1);
+    check('…un-approved value today stays under the limit', Number(await one(`select coalesce(sum(value), 0) from approval_value_log where admin_id = $1 and approved_by is null`, [jId])), 4900);
+  }
+
+  // ── A city admin cannot switch on a coupon bigger than their limits (J10) ────
+  {
+    const big = (await call('POST', '/admin/coupons', A, { code: `REGBIG${TAG}`, discount_type: 'percentage', discount_value: 100, is_active: false }, H)).data?.id;
+    check('coupon: a city admin cannot switch on the owner\'s 100 % coupon (was 200)', (await call('PATCH', `/admin/coupons/${big}/toggle`, M)).status, 400);
+    check('…it stays off', await one(`select is_active from coupons where id = $1`, [big]), false);
+    const small = (await call('POST', '/admin/coupons', M, { code: `REGSMALL${TAG}`, discount_type: 'percentage', discount_value: 20, max_discount_amount: 500, usage_limit: 10 })).data?.id;
+    check('coupon: a city admin switches their own coupon off and on', `${(await call('PATCH', `/admin/coupons/${small}/toggle`, M)).status}/${(await call('PATCH', `/admin/coupons/${small}/toggle`, M)).status}`, '200/200');
+    check('coupon: the owner can switch the big coupon on', (await call('PATCH', `/admin/coupons/${big}/toggle`, A, undefined, H)).status, 200);
+    check('…and a city admin may always switch a coupon OFF', (await call('PATCH', `/admin/coupons/${big}/toggle`, M)).status, 200);
+  }
+
+  // ── Live updates (socket) respect the city and end with the account (B29) ────
+  // Any admin could join any city's order room — hear its updates and write in
+  // its chat — and a removed admin / blocked rider / deleted customer kept an
+  // open socket receiving events until they closed the app.
+  let ioClient = null;
+  try { ioClient = require(require.resolve('socket.io-client', { paths: [path.join(__dirname, '..', '..', 'admin-panel')] })).io; } catch { /* not installed */ }
+  if (ioClient && JWT_SECRET) {
+    const SOCKET_URL = API.replace(/\/api\/?$/, '');
+    const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+    const live = (token) => new Promise((resolve) => {
+      const s = ioClient(SOCKET_URL, { auth: { token }, transports: ['websocket'], reconnection: false });
+      const events = [];
+      s.onAny((ev, data) => events.push({ ev, data }));
+      s.on('connect', () => resolve({ s, events }));
+      s.on('connect_error', () => resolve({ s, events, failed: true }));
+      setTimeout(() => resolve({ s, events, failed: true }), 5000);
+    });
+    const sockCity = await one(`insert into service_cities (name, province) values ($1, 'Punjab') returning id`, [`RegSockB${TAG}`]);
+    const sockRole = await one(`insert into admin_roles (name, city_id) values ($1, $2) returning id`, [`Regression Sock B ${TAG}`, sockCity]);
+    await sql(`insert into admin_role_permissions (role_id, permission_id) select $1, id from permissions`, [sockRole]);
+    const sbPhone = `0324${TAG}`;
+    const sbId = await one(`insert into users (phone, full_name, role, password_hash, admin_role_id, is_phone_verified) values ($1, 'Regression Sock B', 'admin', $2, $3, true) returning id`,
+      [`+92${sbPhone.slice(1)}`, bcrypt.hashSync('Manager123', 10), sockRole]);
+    await sql(`insert into admins (user_id) values ($1)`, [sbId]);
+    const SB = (await adminLogin(sbPhone, 'Manager123')).token;
+    const sockOrder = await order('pending');
+
+    const other = await live(SB);
+    const own = await live(M);
+    other.s.emit('order:subscribe', sockOrder);
+    own.s.emit('order:subscribe', sockOrder);
+    await wait(600);
+    await call('PUT', `/admin/orders/${sockOrder}/status`, A, { status: 'confirmed' }, H);
+    await wait(900);
+    check('socket: another city\'s admin is refused this city\'s order room', other.events.some((e) => e.ev === 'order:error'), true);
+    check('…and hears none of its updates (it did)', other.events.some((e) => e.ev === 'order:update'), false);
+    check('socket: this city\'s admin still hears the order', own.events.some((e) => e.ev === 'order:update'), true);
+    other.s.emit('chat:send', { orderId: sockOrder, message: `Regression planted ${TAG}` });
+    await wait(600);
+    check('socket: another city\'s admin cannot write in the order chat (it could)', Number(await one(`select count(*) from order_messages where order_id = $1 and message = $2`, [sockOrder, `Regression planted ${TAG}`])), 0);
+
+    await call('DELETE', `/admin/roles/users/${sbId}`, A);
+    await wait(1200);
+    check('socket: a removed admin\'s open socket is closed at once (it stayed open)', other.s.connected, false);
+
+    const rUser = await one(`insert into users (phone, full_name, role, is_phone_verified) values ($1, 'Reg Sock Rider', 'rider', true) returning id`, [`+92325${TAG}`]);
+    const rId = await one(`insert into riders (user_id, cnic, vehicle_type, vehicle_number, status, verification_status, city_id) values ($1, $2, 'bike', 'RG-S', 'available', 'verified', $3) returning id`,
+      [rUser, `35203${TAG}1`, city]);
+    const rider = await live(jwt.sign({ userId: rUser, phone: `+92325${TAG}`, role: 'rider' }, JWT_SECRET, { expiresIn: '15m' }));
+    check('socket: a verified rider connects', Boolean(rider.failed), false);
+    await call('PATCH', `/admin/riders/${rId}/verify`, A, { verification_status: 'rejected' }, H);
+    await wait(1200);
+    check('socket: a blocked rider\'s socket is closed at once', rider.s.connected, false);
+
+    const gonePhone = `+92326${TAG}`;
+    const gone = await one(`insert into users (phone, full_name, role, is_phone_verified) values ($1, 'Reg Sock Customer', 'customer', true) returning id`, [gonePhone]);
+    const goneToken = jwt.sign({ userId: gone, phone: gonePhone, role: 'customer' }, JWT_SECRET, { expiresIn: '15m' });
+    const cs = await live(goneToken);
+    check('socket: …a customer connects', Boolean(cs.failed), false);
+    await call('POST', '/auth/delete-account', goneToken, {});
+    await wait(1200);
+    check('socket: a deleted account\'s socket is closed at once', cs.s.connected, false);
+    for (const x of [other, own, rider, cs]) x.s.close();
+  } else {
+    console.log('SKIP socket checks — socket.io-client or JWT_SECRET missing');
+  }
+
+  // ── A calendar date comes back as the same date, whatever the server's clock (C7) ─
+  // Date columns were turned into a JS Date at the server's midnight: on a
+  // server not running in UTC every delivery date showed one day early.
+  if (C) {
+    const dated = await one(
+      `insert into orders (order_number, user_id, address_id, status, subtotal, delivery_charge, total_amount, payment_method, payment_status, delivery_address_snapshot, city_id, requested_delivery_date)
+       values ('RG' || floor(random() * 1e9)::text, $1, $2, 'pending', 500, 0, 500, 'cash_on_delivery', 'pending', '{}'::jsonb, $3, '2026-12-05') returning id`, [cust, addr, city]);
+    const got = (await call('GET', `/orders/${dated}`, C)).data;
+    check('dates: an order\'s delivery date comes back as the date sent (was 2026-12-04T19:00Z on a Pakistan-time server)',
+      (got?.order || got)?.requested_delivery_date, '2026-12-05');
+    const w = (await call('POST', '/finance/workers', A, { name: `Reg Worker ${TAG}`, basic_salary: 1000 }, H)).data?.id;
+    await call('POST', `/finance/workers/${w}/attendance`, A, { date: '2026-11-10', status: 'present' }, H);
+    const att = (await call('GET', `/finance/workers/${w}/attendance?month=11&year=2026`, A, undefined, H)).data || [];
+    check('dates: a worker\'s attendance day comes back as that day', att[0]?.date, '2026-11-10');
+  }
+
+  // ── Every city has its own delivery slots (owner's decision Q10 → A30) ───────
+  // One slot list served every city, and any city admin could change or delete
+  // slots other cities' customers were booking.
+  if (C) {
+    const slotCity = await one(`insert into service_cities (name, province) values ($1, 'Punjab') returning id`, [`RegSlotB${TAG}`]);
+    const SBH = { 'X-City-Id': slotCity };
+    const slotRole = await one(`insert into admin_roles (name, city_id) values ($1, $2) returning id`, [`Regression Slot B ${TAG}`, slotCity]);
+    await sql(`insert into admin_role_permissions (role_id, permission_id) select $1, id from permissions`, [slotRole]);
+    const slPhone = `0327${TAG}`;
+    const slId = await one(`insert into users (phone, full_name, role, password_hash, admin_role_id, is_phone_verified) values ($1, 'Regression Slot B', 'admin', $2, $3, true) returning id`,
+      [`+92${slPhone.slice(1)}`, bcrypt.hashSync('Manager123', 10), slotRole]);
+    await sql(`insert into admins (user_id) values ($1)`, [slId]);
+    const SB = (await adminLogin(slPhone, 'Manager123')).token;
+
+    const sec = String(Number(TAG) % 60).padStart(2, '0'); const mn = String(Math.floor(Number(TAG) / 60) % 60).padStart(2, '0');
+    const win = { start_time: `05:${mn}:${sec}`, end_time: `06:${mn}:${sec}` }; // unique per run
+    const aSlot = (await call('POST', '/admin/settings/time-slots', A, { ...win, is_active: true }, H)).data?.id;
+    const bSlot = (await call('POST', '/admin/settings/time-slots', SB, { ...win, is_active: true })).data?.id;
+    check('slots: the same times twice in one city are refused (409, was a server error)', (await call('POST', '/admin/settings/time-slots', SB, { ...win, is_active: true })).status, 409);
+    check('slots: each city admin creates slots for their own city', `${Boolean(aSlot)}/${Boolean(bSlot)}/${aSlot !== bSlot}`, 'true/true/true');
+    check('slots: another city\'s admin cannot change this city\'s slot (was 200)', (await call('PUT', `/admin/settings/time-slots/${aSlot}`, SB, { start_time: '05:00', end_time: '07:00' })).status, 404);
+    check('slots: …nor delete it (was 200)', (await call('DELETE', `/admin/settings/time-slots/${aSlot}`, SB)).status, 404);
+    const listB = ((await call('GET', '/admin/settings/time-slots', SB)).data || []).map((s) => s.id);
+    check('slots: a city admin sees only their city\'s slots', `${listB.includes(bSlot)}/${listB.includes(aSlot)}`, 'true/false');
+    const pubB = ((await call('GET', `/orders/time-slots?city_id=${slotCity}`)).data || []).map((s) => s.id);
+    const pubA = ((await call('GET', `/orders/time-slots?city_id=${city}`)).data || []).map((s) => s.id);
+    check('slots: customers of each city are offered only that city\'s slots', `${pubB.includes(bSlot)}/${pubB.includes(aSlot)}/${pubA.includes(aSlot)}/${pubA.includes(bSlot)}`, 'true/false/true/false');
+
+    // A city-B customer cannot book city A's slot.
+    const bProduct = await one(
+      `insert into products (name_en, name_ur, slug, category_id, price, stock_quantity, city_id, is_active) values ($1, $1, $2, $3, 1000, 50, $4, true) returning id`,
+      [`RegSlotP${TAG}`, `regslotp-${TAG}`, cat, slotCity]);
+    const bPhone2 = `+92328${TAG}`;
+    const bCust = await one(`insert into users (phone, full_name, role, is_phone_verified) values ($1, 'Reg Slot Customer', 'customer', true) returning id`, [bPhone2]);
+    const bAddr = await one(`insert into addresses (user_id, written_address, city) values ($1, 'Reg slot house', $2) returning id`, [bCust, `RegSlotB${TAG}`]);
+    const BC = jwt.sign({ userId: bCust, phone: bPhone2, role: 'customer' }, JWT_SECRET, { expiresIn: '15m' });
+    await call('POST', '/cart/add', BC, { product_id: bProduct, quantity: 1, unit: 'full', city_id: slotCity });
+    r = await call('POST', '/orders', BC, { address_id: bAddr, city_id: slotCity, time_slot_id: aSlot, requested_delivery_date: tomorrow, payment_method: 'cash_on_delivery' });
+    check('slots: an order in city B cannot use city A\'s slot (was 201)', r.status, 400);
+    r = await call('POST', '/orders', BC, { address_id: bAddr, city_id: slotCity, time_slot_id: bSlot, requested_delivery_date: tomorrow, payment_method: 'cash_on_delivery' });
+    check('slots: …its own slot works', r.status, 201);
+    const placedB = r.data?.id || r.data?.order?.id;
+    if (placedB) await call('PUT', `/admin/orders/${placedB}/status`, A, { status: 'cancelled', reason: 'regression' }, SBH);
+    check('slots: a slot can only be created with a city chosen (super admin without one → 400)',
+      (await call('POST', '/admin/settings/time-slots', A, { start_time: '05:00', end_time: '06:00' })).status, 400);
+  }
+
+  // ── Staff entries wait for the city admin: approve one, reject, approve all (J1, J8) ─
+  // Every two-admin action now goes to a queue when no approval code is given
+  // (it used to be refused); approving runs it then, once.
+  {
+    const staffRole = await one(`insert into admin_roles (name, city_id) values ($1, $2) returning id`, [`Regression Staff ${TAG}`, city]);
+    await sql(`insert into admin_role_permissions (role_id, permission_id) select $1, id from permissions where code not in ('approvals.decide', 'finance.stock_purchase.approve')`, [staffRole]);
+    const stPhone = `0329${TAG}`;
+    const stId = await one(`insert into users (phone, full_name, role, password_hash, admin_role_id, is_phone_verified) values ($1, 'Regression Staff', 'admin', $2, $3, true) returning id`,
+      [`+92${stPhone.slice(1)}`, bcrypt.hashSync('Manager123', 10), staffRole]);
+    await sql(`insert into admins (user_id) values ($1)`, [stId]);
+    const ST = (await adminLogin(stPhone, 'Manager123')).token;
+    const queuedId = (x) => (x.status === 202 && x.data?.queued ? x.data.request_id : null);
+
+    // An expense above the limit, no approval code → waits (it was refused).
+    const exp = await call('POST', '/finance/expenses', ST, { category: 'Repairs', amount: 6000, comment: `Reg queue ${TAG}` });
+    const expReq = queuedId(exp);
+    check('queue: a staff expense above the limit waits for the city admin (202)', Boolean(expReq), true);
+    check('…nothing booked yet', Number(await one(`select count(*) from expenses where comment = $1`, [`Reg queue ${TAG}`])), 0);
+    check('…the same press twice is one entry', queuedId(await call('POST', '/finance/expenses', ST, { category: 'Repairs', amount: 6000, comment: `Reg queue ${TAG}` })), expReq);
+    const own = (await call('GET', '/admin/approvals', ST)).data;
+    check('queue: staff see their own waiting entry, and cannot decide', `${(own?.requests || []).some((q) => q.id === expReq)}/${own?.canDecide}`, 'true/false');
+    check('queue: staff cannot approve it themselves', (await call('POST', `/admin/approvals/${expReq}/approve`, ST)).status, 403);
+    const box = (await call('GET', '/admin/approvals', M)).data;
+    check('queue: the city admin sees it with what it is for', (box?.requests || []).find((q) => q.id === expReq)?.details?.includes('Rs. 6000'), true);
+    check('queue: the city admin approves it', (await call('POST', `/admin/approvals/${expReq}/approve`, M)).status, 200);
+    check('…the expense is booked once, in the staff member\'s name', await one(`select count(*)::text || '/' || max(amount)::int::text || '/' || bool_and(created_by = $2)::text from expenses where comment = $1`, [`Reg queue ${TAG}`, stId]), '1/6000/true');
+    check('queue: approving again is refused (409)', (await call('POST', `/admin/approvals/${expReq}/approve`, M)).status, 409);
+
+    // Reject: nothing happens.
+    const qRider = await one(`insert into users (phone, full_name, role, is_phone_verified) values ($1, 'Reg Queue Rider', 'rider', true) returning id`, [`+92330${TAG}`]);
+    const qRiderId = await one(`insert into riders (user_id, cnic, vehicle_type, vehicle_number, status, verification_status, city_id) values ($1, $2, 'bike', 'RG-Q', 'available', 'verified', $3) returning id`,
+      [qRider, `35204${TAG}1`, city]);
+    const pay = queuedId(await call('POST', '/finance/rider-payment', ST, { rider_id: qRiderId, category: 'other', amount: 5500, comment: `Reg rider ${TAG}` }));
+    check('queue: a rider payment above the limit waits', Boolean(pay), true);
+    check('queue: the city admin rejects it', (await call('POST', `/admin/approvals/${pay}/reject`, M, { reason: 'not agreed' })).status, 200);
+    check('…nothing paid, and it is marked rejected', `${await one(`select count(*) from expenses where comment = $1`, [`Reg rider ${TAG}`])}/${await one(`select status from approval_requests where id = $1`, [pay])}`, '0/rejected');
+
+    // J8: a salary raise always waits (it needed no approval at all).
+    const wk = (await call('POST', '/finance/workers', A, { name: `Reg Queue Worker ${TAG}`, basic_salary: 20000 }, H)).data?.id;
+    const raise = queuedId(await call('POST', `/finance/workers/${wk}/increment`, ST, { new_basic_salary: 90000 }));
+    check('queue: a salary raise by staff waits for approval (it applied at once)', `${Boolean(raise)}/${await one(`select basic_salary::int from workers where id = $1`, [wk])}`, 'true/20000');
+    // Stock-count shortage of Rs 6,000.
+    const qp = await product('RegQueueCount');
+    const cnt = queuedId(await call('POST', '/admin/stock/count', ST, { product_id: qp, quality: 'A', counted_quantity: 94, note: 'regression' }));
+    check('queue: a Rs 6,000 shortage found in a count waits; stock untouched', `${Boolean(cnt)}/${await one(`select stock_quantity::int from products where id = $1`, [qp])}`, 'true/100');
+    // A rider payment whose rider is removed before approval fails cleanly.
+    const doomed = queuedId(await call('POST', '/finance/rider-payment', ST, { rider_id: qRiderId, category: 'other', amount: 5200, comment: `Reg doomed ${TAG}` }));
+    await sql(`update riders set deleted_at = now() where id = $1`, [qRiderId]);
+
+    // Another city's admin cannot decide this city's entries.
+    const oCity = await one(`insert into service_cities (name, province) values ($1, 'Punjab') returning id`, [`RegQueueB${TAG}`]);
+    const oRole = await one(`insert into admin_roles (name, city_id) values ($1, $2) returning id`, [`Regression Queue B ${TAG}`, oCity]);
+    await sql(`insert into admin_role_permissions (role_id, permission_id) select $1, id from permissions`, [oRole]);
+    const oPhone = `0331${TAG}`;
+    const oId = await one(`insert into users (phone, full_name, role, password_hash, admin_role_id, is_phone_verified) values ($1, 'Regression Queue B', 'admin', $2, $3, true) returning id`,
+      [`+92${oPhone.slice(1)}`, bcrypt.hashSync('Manager123', 10), oRole]);
+    await sql(`insert into admins (user_id) values ($1)`, [oId]);
+    const OB = (await adminLogin(oPhone, 'Manager123')).token;
+    check('queue: another city\'s admin cannot approve it', (await call('POST', `/admin/approvals/${raise}/approve`, OB)).status, 404);
+    check('…nor sees it', ((await call('GET', '/admin/approvals', OB)).data?.requests || []).some((q) => q.id === raise), false);
+
+    // Approve all: the raise and the count go through; the removed rider's payment says why.
+    const all = await call('POST', '/admin/approvals/approve-all', M);
+    check('queue: approve-all applies what it can', all.data?.approved >= 2, true);
+    check('…and reports what could not be applied, with the reason', (all.data?.failed || []).some((x) => x.id === doomed), true);
+    check('…the raise is now the basic salary', Number(await one(`select basic_salary from workers where id = $1`, [wk])), 90000);
+    check('…the shortage is now booked (stock 94)', Number(await one(`select stock_quantity from products where id = $1`, [qp])), 94);
+    check('…the failed one is marked failed with its reason', `${await one(`select status from approval_requests where id = $1`, [doomed])}/${Boolean(await one(`select note from approval_requests where id = $1`, [doomed]))}`, 'failed/true');
+    check('…and no money went to the removed rider', Number(await one(`select count(*) from expenses where comment = $1`, [`Reg doomed ${TAG}`])), 0);
+  }
+
+  // ── A coupon "valid until 31 Dec" lasts all of 31 Dec in Pakistan (round 7) ──
+  // A date-only "until" was stored as UTC midnight = 05:00 Pakistan time, so a
+  // coupon died at 5 am on its last day; "from" started at 5 am too.
+  {
+    const code = `REGDATE${TAG}`;
+    const made = await call('POST', '/admin/coupons', A, { code, discount_type: 'fixed', discount_value: 50, usage_limit: 5, valid_from: '2026-12-01', valid_until: '2026-12-31' }, H);
+    const span = await one(`select to_char(valid_from at time zone 'Asia/Karachi', 'YYYY-MM-DD HH24:MI') || ' .. ' || to_char(valid_until at time zone 'Asia/Karachi', 'YYYY-MM-DD HH24:MI') from coupons where code = $1`, [code]);
+    check('coupon dates: from the start of the first day to the END of the last day, Pakistan time (was 05:00 .. 05:00)', `${made.status} ${span}`, '201 2026-12-01 00:00 .. 2026-12-31 23:59');
+  }
 
   console.log(`\n${pass} passed, ${fail} failed`);
   await db.end();

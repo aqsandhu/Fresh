@@ -1,0 +1,10 @@
+{
+  "backend/src/controllers/admin/riders.controller.ts": 950,
+  "admin-panel/src/pages/Orders.tsx": 855,
+  "admin-panel/src/pages/WhatsAppOrders.tsx": 973,
+  "website/app/(auth)/login/page.tsx": 806,
+  "website/app/(shop)/checkout/page.tsx": 866,
+  "customer-app/src/screens/checkout/CheckoutScreen.tsx": 953,
+  "rider-app/src/screens/tasks/TaskDetailScreen.tsx": 860,
+  "packages/shared-types/src/index.ts": 828
+}

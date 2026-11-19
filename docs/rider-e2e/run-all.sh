@@ -21,4 +21,12 @@ echo "::group::regressions-2026-11"
 node "$DIR/regressions-2026-11.js"; rc=$?
 echo "::endgroup::"
 if [ $rc -ne 0 ]; then echo "✗ regressions-2026-11 failed"; status=1; else echo "✓ regressions-2026-11"; fi
+echo "::group::regressions-round6"
+node "$DIR/regressions-round6.js"; rc=$?
+echo "::endgroup::"
+if [ $rc -ne 0 ]; then echo "✗ regressions-round6 failed"; status=1; else echo "✓ regressions-round6"; fi
+echo "::group::price-parity"
+node "$DIR/price-parity.js"; rc=$?
+echo "::endgroup::"
+if [ $rc -ne 0 ]; then echo "✗ price-parity failed"; status=1; else echo "✓ price-parity"; fi
 exit $status

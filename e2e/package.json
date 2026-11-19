@@ -1,0 +1,11 @@
+{
+  "name": "freshbazar-browser-e2e",
+  "private": true,
+  "description": "Browser journeys (Playwright) — run by .github/workflows/browser-e2e.yml against a fresh database, the API, the website and the admin panel.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.54.1"
+  }
+}

@@ -33,6 +33,16 @@ jobs:
       - name: Type check all packages
         run: pnpm -r typecheck
 
+      # F1: the number of `any` types per package may only go down
+      # (scripts/any-baseline.json; lower it with --update after a clean-up).
+      - name: any ratchet
+        run: node scripts/check-any.js
+
+      # F2: no source file over 800 lines; the big ones listed in
+      # scripts/big-files-baseline.json may only shrink.
+      - name: big-file ratchet
+        run: node scripts/check-big-files.js
+
       - name: Lint all packages
         run: pnpm -r lint
 

@@ -91,11 +91,15 @@ jobs:
       # The same real database, but with the app booted INSIDE jest so the code
       # the checks run is measured: regression checks + a pass over every GET
       # route as owner / customer / anonymous (none may answer 5xx).
+      # Runs on Pakistan time on purpose: the API above runs in UTC, so the
+      # same checks pass on both clocks (date columns used to come back a day
+      # early on any server not in UTC — round 6, C7).
       - name: Real-database jest suite (with coverage)
         run: pnpm --filter @freshbazar/backend test:e2e
         env:
           E2E_DATABASE_URL: postgres://postgres@127.0.0.1:55432/fb
           E2E_PORT: '3997'
+          TZ: Asia/Karachi
 
       - name: API log (on failure)
         if: failure()

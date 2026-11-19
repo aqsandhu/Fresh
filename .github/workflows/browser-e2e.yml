@@ -1,0 +1,154 @@
+name: Browser E2E
+
+# Real browser journeys (Playwright, e2e/): a new customer orders on the
+# website, then the office fulfils that order in the admin panel and the rider
+# delivers it. Fresh PostgreSQL + PostGIS with schema + every migration +
+# e2e/seed.sql; the API, the built website and the built admin panel run
+# against it, exactly as a customer and the office use them.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: browser-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    name: Customer order + office fulfilment (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: fb
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 55432
+      PGUSER: postgres
+      DATABASE_URL: postgres://postgres@127.0.0.1:55432/fb
+      DB_SSL: 'false'
+      NODE_ENV: development
+      PORT: 3999
+      ADMIN_PHONE: '03001112222'
+      ADMIN_PASSWORD: Admin12345
+      # Test-only one-time code (the bypass refuses to run in production).
+      OTP_BYPASS_ENABLED: 'true'
+      OTP_BYPASS_CODE: '123789'
+      ADMIN_AUTH_COOKIES: 'true'
+      CORS_CREDENTIALS: 'true'
+      # The servers the journeys open (e2e/tests/env.ts).
+      API_URL: http://localhost:3999/api
+      WEBSITE_URL: http://localhost:3001
+      ADMIN_URL: http://localhost:5173
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Tools (psql)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+
+      - name: Test secrets
+        run: |
+          echo "JWT_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          echo "JWT_REFRESH_SECRET=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+
+      - name: Schema + migrations + journey seed
+        run: |
+          psql -d fb -v ON_ERROR_STOP=1 -q <<'SQL'
+          DO $$ BEGIN CREATE ROLE anon NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          DO $$ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          DO $$ BEGIN CREATE ROLE service_role NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+          SQL
+          psql -d fb -v ON_ERROR_STOP=1 -q -f database/schema.sql
+          pnpm --filter @freshbazar/backend run migrate:sql
+          psql -d fb -v ON_ERROR_STOP=1 -q -f e2e/seed.sql
+
+      - name: Start API
+        working-directory: backend
+        run: |
+          nohup npx ts-node --transpile-only src/app.ts > "$RUNNER_TEMP/api.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3999/health > /dev/null && exit 0
+            sleep 2
+          done
+          echo "API did not become healthy"; tail -50 "$RUNNER_TEMP/api.log"; exit 1
+
+      - name: Build and start the website (cookie sessions, as in production)
+        working-directory: website
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3999/api
+          NEXT_PUBLIC_AUTH_COOKIES: 'true'
+          NODE_ENV: production
+        run: |
+          pnpm run build
+          nohup pnpm run start > "$RUNNER_TEMP/website.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:3001/ > /dev/null && exit 0
+            sleep 2
+          done
+          echo "Website did not start"; tail -50 "$RUNNER_TEMP/website.log"; exit 1
+
+      - name: Build and start the admin panel
+        working-directory: admin-panel
+        env:
+          VITE_API_URL: http://localhost:3999/api
+          VITE_SOCKET_URL: http://localhost:3999
+        run: |
+          pnpm run build
+          nohup npx vite preview --port 5173 --strictPort > "$RUNNER_TEMP/admin.log" 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:5173/ > /dev/null && exit 0
+            sleep 2
+          done
+          echo "Admin panel did not start"; tail -50 "$RUNNER_TEMP/admin.log"; exit 1
+
+      - name: Install Playwright (Chromium)
+        working-directory: e2e
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Browser journeys
+        working-directory: e2e
+        env:
+          CI: 'true'
+        run: npx playwright test
+
+      - name: Playwright report and traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+          retention-days: 7
+
+      - name: Server logs (on failure)
+        if: failure()
+        run: |
+          tail -100 "$RUNNER_TEMP/api.log" || true
+          tail -50 "$RUNNER_TEMP/website.log" || true
+          tail -50 "$RUNNER_TEMP/admin.log" || true
