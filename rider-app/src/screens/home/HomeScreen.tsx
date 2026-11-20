@@ -62,7 +62,8 @@ const HomeScreen: React.FC = () => {
         if (useDutyStore.getState().error) Alert.alert(t('common.error'), t('duty.toggleFailed'));
       };
       if (activeTasks.length > 0) {
-        Alert.alert(t('duty.goOff'), t('profile.logoutConfirmBody'), [
+        // Not the logout text: say what happens to the orders in hand.
+        Alert.alert(t('duty.goOff'), t('duty.goOffActiveBody', { count: activeTasks.length }), [
           { text: t('common.cancel'), style: 'cancel' },
           { text: t('duty.goOff'), style: 'destructive', onPress: goOff },
         ]);

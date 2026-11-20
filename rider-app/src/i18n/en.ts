@@ -80,6 +80,7 @@ const en = {
   'duty.bgBannerTitle': 'Background location is off',
   'duty.bgBannerBody': 'Tracking pauses when the app is closed. Allow "All the time" in settings for uninterrupted tracking.',
   'duty.toggleFailed': 'Could not update duty status. Try again.',
+  'duty.goOffActiveBody': 'You still have {count} order(s) in hand. Going off duty stops your live location for those customers and the office. If you can, deliver or report them first.',
   'duty.disclosureTitle': 'Location data notice',
   'duty.disclosureBody': 'Fresh Bazar Rider collects location data while you are ON DUTY to enable order dispatch, rider monitoring by the Fresh Bazar admin team and live order tracking for customers — even when the app is closed or not in use. Tracking stops when you go off duty or sign out.',
   'duty.disclosureDecline': 'Decline',
