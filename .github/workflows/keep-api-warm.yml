@@ -1,0 +1,28 @@
+name: Keep API warm
+
+# Render's Free plan puts the API to sleep after 15 minutes without a request,
+# and the next customer then waits 30–50 s for it to wake up. A light ping every
+# 10 minutes keeps it awake from 06:00 to 24:00 Pakistan time (01:00–18:59 UTC).
+# Night hours are left out so the service stays inside Render's 750 free
+# instance-hours a month. Delete this file (or disable the workflow) on a paid
+# Render plan — paid instances never sleep.
+#
+# GitHub runs scheduled workflows on a best-effort basis (a few minutes late
+# under load) and pauses them after 60 days without repository activity.
+
+on:
+  schedule:
+    - cron: '*/10 1-18 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Ping the API health check
+        run: |
+          curl -sS --max-time 90 -o /dev/null -w "health %{http_code} in %{time_total}s\n" https://api.freshbazar.pk/health \
+            || echo "The API did not answer (it may have been waking up)."
