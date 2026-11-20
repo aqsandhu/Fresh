@@ -69,8 +69,10 @@ export const CART_DROPDOWN_AUTO_CLOSE_MS = 2000;
 // Colors — synced with website tailwind.config.ts (primary / secondary scales)
 export const COLORS = {
   // Primary (green) — website primary-500/600
-  primary: '#22c55e',
-  primaryDark: '#16a34a',
+  // 700 / 800, not 500 / 600: white text on #22c55e was 2.3:1 (WCAG AA needs
+  // 4.5:1) on 124 buttons — owner's decision, 21 Nov 2026.
+  primary: '#15803d',
+  primaryDark: '#166534',
   primaryLight: '#4ade80',
   primaryLighter: '#f0fdf4',
   primary50: '#f0fdf4',

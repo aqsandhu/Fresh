@@ -186,7 +186,7 @@ export const EdgeDrawer: React.FC<EdgeDrawerProps> = ({
             activeOpacity={0.85}
             accessibilityLabel={accessibilityLabel}
           >
-            <LinearGradient colors={['#16a34a', '#15803d']} style={StyleSheet.absoluteFill} />
+            <LinearGradient colors={['#15803d', '#166534']} style={StyleSheet.absoluteFill} />
             <MaterialIcons
               name={side === 'left' ? 'chevron-right' : 'chevron-left'}
               size={24}

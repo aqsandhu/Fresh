@@ -242,7 +242,7 @@ const styles = StyleSheet.create({
   pricingCardSub: { fontSize: 12, color: COLORS.primary600, marginTop: 4 },
   pricingCardTitleGreen: { fontSize: 14, fontWeight: '600', color: '#166534', marginBottom: 4 },
   pricingCardPriceGreen: { fontSize: 28, fontWeight: '800', color: '#15803d' },
-  pricingCardSubGreen: { fontSize: 12, color: '#16a34a', marginTop: 4 },
+  pricingCardSubGreen: { fontSize: 12, color: '#15803d', marginTop: 4 },
   heroContainer: {
     marginHorizontal: SPACING.lg,
     borderRadius: BORDER_RADIUS.lg,

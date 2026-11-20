@@ -80,7 +80,7 @@ export const UtilityDrawer: React.FC = () => {
           {
             key: 'support',
             icon: 'headset-mic' as const,
-            colors: ['#22c55e', '#15803d'] as [string, string],
+            colors: ['#15803d', '#14532d'] as [string, string],
             label: 'Support',
             onPress: () => {
               // Website parity: drawer close + chat open together; the chat
@@ -116,7 +116,7 @@ export const UtilityDrawer: React.FC = () => {
     {
       key: 'shop',
       icon: 'shopping-bag',
-      colors: ['#16a34a', '#166534'],
+      colors: ['#15803d', '#14532d'],
       label: 'Shop Now',
       onPress: goShop,
     },

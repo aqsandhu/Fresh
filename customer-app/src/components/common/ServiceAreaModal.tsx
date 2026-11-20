@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: '#16a34a',
+    backgroundColor: '#15803d',
     borderRadius: BORDER_RADIUS.lg,
     paddingVertical: SPACING.md,
     width: '100%',

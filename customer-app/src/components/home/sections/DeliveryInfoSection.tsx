@@ -65,7 +65,7 @@ export const DeliveryInfoSection: React.FC = () => {
     <View style={styles.wrap}>
       {/* Green diagonal wash — matches website bg-gradient-to-br primary-600 → primary-800. */}
       <LinearGradient
-        colors={['#16a34a', '#16a34a', '#166534']}
+        colors={['#15803d', '#15803d', '#14532d']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
