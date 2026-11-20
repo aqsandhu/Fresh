@@ -1,5 +1,6 @@
 import { asCaughtError } from '@/lib/caughtError';
 import { api, unwrap } from './api';
+import { shrinkImage, IMAGE_LIMITS } from '@/lib/shrinkImage';
 import type {
   Product,
   CreateProductData,
@@ -125,9 +126,7 @@ export const productService = {
       appendCatalogV2Fields(formData, data);
 
       if (data.images && data.images.length > 0) {
-        data.images.forEach((image) => {
-          formData.append('images', image);
-        });
+        for (const image of data.images) formData.append('images', await shrinkImage(image, IMAGE_LIMITS.product));
       }
 
       const response = await api.postForm<ApiResponse<Product>>('/admin/products', formData);
@@ -180,9 +179,7 @@ export const productService = {
         formData.append('existing_images', JSON.stringify(data.existingImages));
       }
       if (data.images && data.images.length > 0) {
-        data.images.forEach((image) => {
-          formData.append('images', image);
-        });
+        for (const image of data.images) formData.append('images', await shrinkImage(image, IMAGE_LIMITS.product));
       }
 
       const response = await api.putForm<ApiResponse<Product>>(`/admin/products/${id}`, formData);
@@ -250,9 +247,7 @@ export const productService = {
   uploadProductImages: async (id: string, images: File[]): Promise<string[]> => {
     try {
       const formData = new FormData();
-      images.forEach((image) => {
-        formData.append('images', image);
-      });
+      for (const image of images) formData.append('images', await shrinkImage(image, IMAGE_LIMITS.product));
       const response = await api.postForm<ApiResponse<{ imageUrls: string[] }>>(
         `/admin/products/${id}/images`,
         formData

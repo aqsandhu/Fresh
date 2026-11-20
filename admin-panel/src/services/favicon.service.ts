@@ -1,5 +1,6 @@
 import { api } from './api';
 import type { ApiResponse } from '@/types';
+import { shrinkImage, IMAGE_LIMITS } from '@/lib/shrinkImage';
 
 export interface BrandFaviconSettings {
   brandFaviconUrl: string;
@@ -36,7 +37,7 @@ export const faviconService = {
 
   upload: async (file: File): Promise<{ settings: BrandFaviconSettings; message: string }> => {
     const form = new FormData();
-    form.append('favicon', file);
+    form.append('favicon', await shrinkImage(file, IMAGE_LIMITS.favicon));
     const response = await api.putForm<ApiResponse<Record<string, string>>>(
       '/admin/site-settings/favicon',
       form

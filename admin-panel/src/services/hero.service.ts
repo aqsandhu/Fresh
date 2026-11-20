@@ -1,5 +1,6 @@
 import { api } from './api';
 import type { ApiResponse } from '@/types';
+import { shrinkImage, IMAGE_LIMITS } from '@/lib/shrinkImage';
 
 export interface HeroImageSettings {
   heroImageUrl: string;
@@ -29,7 +30,8 @@ export const heroService = {
 
   upload: async (file: File): Promise<{ settings: HeroImageSettings; message: string }> => {
     const form = new FormData();
-    form.append('hero', file);
+    // The upload is the picture every customer downloads — keep it light.
+    form.append('hero', await shrinkImage(file, IMAGE_LIMITS.hero));
     const response = await api.putForm<ApiResponse<Record<string, string>>>(
       '/admin/site-settings/hero',
       form

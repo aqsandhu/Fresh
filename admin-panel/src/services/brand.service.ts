@@ -1,5 +1,6 @@
 import { api } from './api';
 import type { ApiResponse } from '@/types';
+import { shrinkImage, IMAGE_LIMITS } from '@/lib/shrinkImage';
 
 export interface BrandLogoSettings {
   brandLogoUrl: string;
@@ -33,7 +34,7 @@ export const brandService = {
 
   upload: async (file: File): Promise<{ settings: BrandLogoSettings; message: string }> => {
     const form = new FormData();
-    form.append('logo', file);
+    form.append('logo', await shrinkImage(file, IMAGE_LIMITS.logo));
     const response = await api.putForm<ApiResponse<Record<string, string>>>(
       '/admin/site-settings/brand',
       form
