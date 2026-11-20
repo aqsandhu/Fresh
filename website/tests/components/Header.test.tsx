@@ -24,7 +24,7 @@ jest.mock('next/image', () => {
 });
 
 jest.mock('framer-motion', () => ({
-  motion: {
+  m: {
     div: ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) => (
       <div {...props}>{children}</div>
     ),

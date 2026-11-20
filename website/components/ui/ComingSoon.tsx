@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Clock, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 
@@ -31,7 +31,7 @@ export default function ComingSoon({
 }: ComingSoonProps) {
   return (
     <div className="min-h-[70vh] bg-gradient-to-br from-primary-50 to-white flex items-center justify-center px-4 py-16">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -63,7 +63,7 @@ export default function ComingSoon({
         >
           Back to Home
         </Link>
-      </motion.div>
+      </m.div>
     </div>
   )
 }

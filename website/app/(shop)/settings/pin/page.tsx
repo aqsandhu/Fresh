@@ -17,7 +17,7 @@ import { asCaughtError } from '@/lib/caughtError';
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { ArrowLeft, ShieldCheck, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import PinInput from '@/components/auth/PinInput'
@@ -150,7 +150,7 @@ export default function ChangePinPage() {
           Back to profile
         </Link>
 
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8"
@@ -195,7 +195,7 @@ export default function ChangePinPage() {
               Start over
             </Button>
           )}
-        </motion.div>
+        </m.div>
       </div>
     </div>
   )

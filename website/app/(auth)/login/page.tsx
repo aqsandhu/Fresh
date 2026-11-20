@@ -9,7 +9,7 @@ import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { ArrowRight, ArrowLeft, Shield, Loader2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -526,7 +526,7 @@ export default function LoginPage() {
     <div className="min-h-[100dvh] overflow-x-hidden bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-start sm:items-center justify-center py-4 sm:py-8 px-3 sm:px-4 overflow-y-auto">
       {/* Invisible reCAPTCHA container required by Firebase */}
       <div id="recaptcha-container" />
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -584,7 +584,7 @@ export default function LoginPage() {
           <AutoHeight>
           <AnimatePresence mode="wait" initial={false}>
             {step === 'phone' ? (
-              <motion.div key="phone" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
+              <m.div key="phone" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <form onSubmit={handleSubmit(onPhoneSubmit)} className="space-y-5">
                   <Input
                     label="Phone Number"
@@ -602,9 +602,9 @@ export default function LoginPage() {
                     New customer? Enter your number — we&apos;ll verify with OTP on the next screen.
                   </p>
                 </form>
-              </motion.div>
+              </m.div>
             ) : step === 'pin' ? (
-              <motion.div
+              <m.div
                 key="pin"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -638,9 +638,9 @@ export default function LoginPage() {
                     </Button>
                   </div>
                 </div>
-              </motion.div>
+              </m.div>
             ) : step === 'newPin' ? (
-              <motion.div
+              <m.div
                 key="newPin"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -681,9 +681,9 @@ export default function LoginPage() {
                     Save PIN & Continue
                   </Button>
                 </div>
-              </motion.div>
+              </m.div>
             ) : (
-              <motion.div key="otp" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
+              <m.div key="otp" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <div className="space-y-4 sm:space-y-5">
                   {/* OTP Inputs */}
                   <div className="flex justify-center gap-1.5 sm:gap-2.5 max-w-full">
@@ -766,7 +766,7 @@ export default function LoginPage() {
                     Change number
                   </button>
                 </div>
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
           </AutoHeight>
@@ -799,7 +799,7 @@ export default function LoginPage() {
             </>
           )}
         </div>
-      </motion.div>
+      </m.div>
     </div>
   )
 }

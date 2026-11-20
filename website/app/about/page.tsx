@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { 
   Truck, 
   Leaf, 
@@ -51,7 +51,7 @@ export default function AboutPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-20">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -66,7 +66,7 @@ export default function AboutPage() {
               Your trusted partner for fresh groceries delivery in Pakistan. 
               We&apos;re on a mission to bring farm-fresh products to every household.
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
 
@@ -75,7 +75,7 @@ export default function AboutPage() {
         <div className="container mx-auto px-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
             {stats.map((stat, index) => (
-              <motion.div
+              <m.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -85,7 +85,7 @@ export default function AboutPage() {
               >
                 <p className="text-4xl font-bold text-primary-600">{stat.value}</p>
                 <p className="text-gray-600 mt-1">{stat.label}</p>
-              </motion.div>
+              </m.div>
             ))}
           </div>
         </div>
@@ -95,7 +95,7 @@ export default function AboutPage() {
       <section className="py-16">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -114,8 +114,8 @@ export default function AboutPage() {
               <p className="text-gray-600 font-urdu" dir="rtl">
                 ہماری کوشش ہے کہ ہر گھر کو تازہ سبزیاں اور پھل آسانی سے دستیاب ہوں۔
               </p>
-            </motion.div>
-            <motion.div
+            </m.div>
+            <m.div
               initial={{ opacity: 0, x: 30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -130,7 +130,7 @@ export default function AboutPage() {
                   className="object-cover w-full h-full"
                 />
               </div>
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </section>
@@ -147,7 +147,7 @@ export default function AboutPage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {values.map((value, index) => (
-              <motion.div
+              <m.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -160,7 +160,7 @@ export default function AboutPage() {
                 </div>
                 <h3 className="text-xl font-semibold mb-2">{value.title}</h3>
                 <p className="text-gray-600">{value.description}</p>
-              </motion.div>
+              </m.div>
             ))}
           </div>
         </div>
@@ -170,7 +170,7 @@ export default function AboutPage() {
       <section className="py-16">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -185,8 +185,8 @@ export default function AboutPage() {
                   className="object-cover w-full h-full"
                 />
               </div>
-            </motion.div>
-            <motion.div
+            </m.div>
+            <m.div
               initial={{ opacity: 0, x: 30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -208,7 +208,7 @@ export default function AboutPage() {
                   </div>
                 ))}
               </div>
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </section>
@@ -216,7 +216,7 @@ export default function AboutPage() {
       {/* CTA Section */}
       <section className="py-16 bg-primary-600">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -235,7 +235,7 @@ export default function AboutPage() {
             >
               Get Started
             </a>
-          </motion.div>
+          </m.div>
         </div>
       </section>
     </div>

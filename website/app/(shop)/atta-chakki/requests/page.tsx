@@ -4,7 +4,7 @@ import { asCaughtError } from '@/lib/caughtError';
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { Wheat, Loader2, ArrowLeft, XCircle, Clock } from 'lucide-react'
 import Button from '@/components/ui/Button'
@@ -107,7 +107,7 @@ export default function AttaRequestsPage() {
               const meta = STATUS_LABEL[r.status] || { label: r.status.replace(/_/g, ' '), tone: 'bg-gray-100 text-gray-700' }
               const total = Number(r.total_amount) || 0
               return (
-                <motion.div
+                <m.div
                   key={r.id}
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -151,7 +151,7 @@ export default function AttaRequestsPage() {
                       </Button>
                     </div>
                   )}
-                </motion.div>
+                </m.div>
               )
             })}
           </div>

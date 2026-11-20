@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname, useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import {
   ShoppingCart,
   User,
@@ -418,14 +418,14 @@ export default function Header() {
               >
                 <ShoppingCart className="w-6 h-6 text-gray-600" />
                 {cartItemCount > 0 && (
-                  <motion.span
+                  <m.span
                     key={cartItemCount}
                     initial={{ scale: 0.5 }}
                     animate={{ scale: 1 }}
                     className="absolute -top-1 -right-1 w-5 h-5 bg-primary-600 text-white text-xs font-medium rounded-full flex items-center justify-center"
                   >
                     {cartItemCount > 9 ? '9+' : cartItemCount}
-                  </motion.span>
+                  </m.span>
                 )}
               </button>
               <CartDropdown isOpen={isCartOpen} onClose={closeCart} />
@@ -460,7 +460,7 @@ export default function Header() {
         {/* Search Bar */}
         <AnimatePresence>
           {isSearchOpen && (
-            <motion.div
+            <m.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
@@ -489,7 +489,7 @@ export default function Header() {
                 {/* Search Results Dropdown */}
                 <AnimatePresence>
                   {showSearchDropdown && (
-                    <motion.div
+                    <m.div
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
@@ -546,11 +546,11 @@ export default function Header() {
                           <p className="text-sm text-gray-500 mt-1">Try a different search term</p>
                         </div>
                       )}
-                    </motion.div>
+                    </m.div>
                   )}
                 </AnimatePresence>
               </div>
-            </motion.div>
+            </m.div>
           )}
         </AnimatePresence>
       </div>
@@ -558,7 +558,7 @@ export default function Header() {
       {/* Mobile Menu */}
       <AnimatePresence>
         {isMenuOpen && (
-          <motion.div
+          <m.div
             ref={mobileMenuRef}
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -651,7 +651,7 @@ export default function Header() {
                 Franchise
               </Link>
             </nav>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </header>

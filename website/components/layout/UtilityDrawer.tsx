@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import {
   ChevronLeft,
@@ -78,7 +78,7 @@ function RailItem({
   const className = 'group flex flex-col items-center gap-1 active:scale-95 transition-transform'
 
   return (
-    <motion.li ref={itemRef} {...motionProps}>
+    <m.li ref={itemRef} {...motionProps}>
       {entry.href ? (
         <Link href={entry.href} onClick={entry.onClick} className={className}>
           {inner}
@@ -88,7 +88,7 @@ function RailItem({
           {inner}
         </button>
       )}
-    </motion.li>
+    </m.li>
   )
 }
 
@@ -263,7 +263,7 @@ export default function UtilityDrawer() {
       {/* Edge handle — small puller on the right edge, visible when closed */}
       <AnimatePresence>
         {!open && (
-          <motion.button
+          <m.button
             // Appears early during the close so the icons land on a visible
             // arrow (y:'-50%' keeps it centred — framer overrides Tailwind).
             {...handleMotion('right')}
@@ -273,7 +273,7 @@ export default function UtilityDrawer() {
             className="fixed right-0 top-1/2 z-40 flex h-[84px] w-6 items-center justify-center rounded-l-2xl bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-[-2px_0_10px_rgba(0,0,0,0.18)] transition-[width] hover:w-7 active:w-7"
           >
             <ChevronLeft className="h-6 w-6" />
-          </motion.button>
+          </m.button>
         )}
       </AnimatePresence>
 
@@ -281,7 +281,7 @@ export default function UtilityDrawer() {
         {open && (
           <>
             {/* Backdrop — holds its dim on close until the icons merge */}
-            <motion.div
+            <m.div
               {...backdropMotion}
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-[75] bg-black/45 backdrop-blur-[2px]"
@@ -290,7 +290,7 @@ export default function UtilityDrawer() {
             {/* Transparent icon rail — the icons themselves fly out of / back
                 into the handle spot; the rail fades late so the convergence
                 stays visible. */}
-            <motion.aside
+            <m.aside
               ref={railRef}
               {...railAsideMotion}
               role="dialog"
@@ -317,7 +317,7 @@ export default function UtilityDrawer() {
                   />
                 ))}
               </ul>
-            </motion.aside>
+            </m.aside>
           </>
         )}
       </AnimatePresence>

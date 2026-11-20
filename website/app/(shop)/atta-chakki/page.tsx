@@ -3,7 +3,7 @@
 import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect } from 'react'
 import Image from 'next/image'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { 
   Wheat, 
   CheckCircle, 
@@ -167,7 +167,7 @@ export default function AttaChakkiPage() {
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-16 md:py-24">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, x: -30 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6 }}
@@ -200,9 +200,9 @@ export default function AttaChakkiPage() {
                   <span>Hygenic Process</span>
                 </div>
               </div>
-            </motion.div>
+            </m.div>
 
-            <motion.div
+            <m.div
               initial={{ opacity: 0, x: 30 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
@@ -220,7 +220,7 @@ export default function AttaChakkiPage() {
                   />
                 </div>
               </div>
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </section>
@@ -235,7 +235,7 @@ export default function AttaChakkiPage() {
 
           <div className="grid md:grid-cols-3 gap-8">
             {steps.map((step, index) => (
-              <motion.div
+              <m.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -255,7 +255,7 @@ export default function AttaChakkiPage() {
                   {step.title}
                 </h3>
                 <p className="text-gray-600">{step.description}</p>
-              </motion.div>
+              </m.div>
             ))}
           </div>
         </div>
@@ -265,7 +265,7 @@ export default function AttaChakkiPage() {
       <section className="py-16 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="max-w-2xl mx-auto">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -430,7 +430,7 @@ export default function AttaChakkiPage() {
                   )}
                 </Button>
               </form>
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </section>

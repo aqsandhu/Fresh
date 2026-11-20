@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Search, HelpCircle } from 'lucide-react'
 import { attaChakkiApi, type AttaCharges } from '@/lib/api'
 import { usePublicConfig } from '@/lib/usePublicConfig'
@@ -136,14 +136,14 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
       </button>
       <AnimatePresence>
         {isOpen && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
             <p className="pb-4 text-gray-600">{answer}</p>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -183,7 +183,7 @@ export default function FAQPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -198,7 +198,7 @@ export default function FAQPage() {
             <p className="text-primary-100 text-lg max-w-2xl mx-auto">
               Find answers to common questions about our services, orders, and delivery.
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
 
@@ -256,7 +256,7 @@ export default function FAQPage() {
               ? filteredCategories
               : filteredCategories.filter((c) => c.name === activeCategory)
             ).map((category) => (
-              <motion.div
+              <m.div
                 key={category.name}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -271,7 +271,7 @@ export default function FAQPage() {
                     <FAQItem key={index} question={faq.question} answer={faq.answer} />
                   ))}
                 </div>
-              </motion.div>
+              </m.div>
             ))}
 
             {filteredCategories.length === 0 && (
@@ -290,7 +290,7 @@ export default function FAQPage() {
       {/* Contact CTA */}
       <section className="py-16 bg-primary-600">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -307,7 +307,7 @@ export default function FAQPage() {
             >
               Contact Support
             </a>
-          </motion.div>
+          </m.div>
         </div>
       </section>
     </div>

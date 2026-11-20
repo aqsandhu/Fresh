@@ -19,7 +19,7 @@ jest.mock('framer-motion', () => {
   return {
     AnimatePresence: ({ children }: any) => R.createElement(R.Fragment, null, children),
     // One component per tag (a new one per render would remount the subtree).
-    motion: new Proxy({} as Record<string, unknown>, { get: (t, tag: string) => (t[tag] ||= (p: any) => R.createElement(tag, strip(p))) }),
+    m: new Proxy({} as Record<string, unknown>, { get: (t, tag: string) => (t[tag] ||= (p: any) => R.createElement(tag, strip(p))) }),
     useReducedMotion: () => true,
   }
 })

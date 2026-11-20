@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import Link from 'next/link'
 import SmartImage from '@/components/ui/SmartImage'
 import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import {
   Trash2,
   Minus,
@@ -93,7 +93,7 @@ export default function CartPage() {
                 const linePrice = resolveLineUnitPrice(item)
                 const caption = unitPriceCaption(unit)
                 return (
-                  <motion.div
+                  <m.div
                     key={`${item.product.id}::${unit}::${quality}`}
                     layout
                     initial={{ opacity: 0, y: 20 }}
@@ -198,7 +198,7 @@ export default function CartPage() {
                         </p>
                       </div>
                     </div>
-                  </motion.div>
+                  </m.div>
                 )
               })}
             </AnimatePresence>

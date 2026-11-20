@@ -1,7 +1,7 @@
 'use client'
 
 import { SupportActionButtons } from '@/components/ui/SupportContactLinks'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { 
   RotateCcw, 
   CheckCircle, 
@@ -65,7 +65,7 @@ export default function ReturnsPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -77,14 +77,14 @@ export default function ReturnsPage() {
             <p className="text-primary-100 text-lg max-w-2xl mx-auto">
               We want you to be completely satisfied with your purchase. Learn about our return policy.
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
 
       {/* Policy Overview */}
       <section className="py-16">
         <div className="container mx-auto px-4 max-w-4xl">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -100,11 +100,11 @@ export default function ReturnsPage() {
                 </p>
               </div>
             </div>
-          </motion.div>
+          </m.div>
 
           <div className="grid md:grid-cols-2 gap-8 mb-12">
             {returnPolicy.map((policy, index) => (
-              <motion.div
+              <m.div
                 key={policy.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -126,12 +126,12 @@ export default function ReturnsPage() {
                     </li>
                   ))}
                 </ul>
-              </motion.div>
+              </m.div>
             ))}
           </div>
 
           {/* Return Process */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -156,10 +156,10 @@ export default function ReturnsPage() {
                 </div>
               ))}
             </div>
-          </motion.div>
+          </m.div>
 
           {/* Refund Information */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -200,10 +200,10 @@ export default function ReturnsPage() {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </m.div>
 
           {/* Contact CTA */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -216,7 +216,7 @@ export default function ReturnsPage() {
               Contact our customer support team and we&apos;ll help you right away.
             </p>
             <SupportActionButtons />
-          </motion.div>
+          </m.div>
         </div>
       </section>
     </div>

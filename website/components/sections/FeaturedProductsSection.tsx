@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import Link from 'next/link'
 import { ArrowRight, ChevronDown, Loader2 } from 'lucide-react'
 import { useInfiniteQuery } from '@tanstack/react-query'
@@ -63,14 +63,14 @@ export default function FeaturedProductsSection() {
     // Halved top padding — this is the first section under the navbar.
     <section className="pt-5 pb-10 md:pt-7 md:pb-14 bg-gradient-to-b from-white to-gray-50">
       <div className="container mx-auto px-4">
-        <motion.h2
+        <m.h2
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           className="text-[26px] md:text-3xl font-bold text-gray-900 text-center"
         >
           Featured Products
-        </motion.h2>
+        </m.h2>
 
         <Link
           href="/products"
@@ -106,7 +106,7 @@ export default function FeaturedProductsSection() {
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
               {featuredProducts.map((product, index) => (
-                <motion.div
+                <m.div
                   key={product.id}
                   variants={itemVariants}
                   initial="hidden"
@@ -115,7 +115,7 @@ export default function FeaturedProductsSection() {
                   className="min-w-0"
                 >
                   <ProductCard product={product} priority={index < 4} />
-                </motion.div>
+                </m.div>
               ))}
             </div>
 

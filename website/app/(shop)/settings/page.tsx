@@ -1,7 +1,7 @@
 'use client'
 
 import { asCaughtError } from '@/lib/caughtError';
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import Link from 'next/link'
 import {
   Bell,
@@ -149,7 +149,7 @@ export default function SettingsPage() {
         </h1>
 
         {/* User Info Card */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-xl p-6 shadow-sm mb-8"
@@ -165,11 +165,11 @@ export default function SettingsPage() {
               <p className="text-gray-500">{user?.phone || ''}</p>
             </div>
           </div>
-        </motion.div>
+        </m.div>
 
         <div className="space-y-8">
           {/* Privacy & Security — includes the PIN Security entry point */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-xl shadow-sm overflow-hidden"
@@ -199,10 +199,10 @@ export default function SettingsPage() {
               <LinkRow href="/addresses" label="Saved addresses & map pins" />
               <LinkRow href="/delete-account" label="Delete my account" />
             </div>
-          </motion.div>
+          </m.div>
 
           {/* Notifications (coming soon) */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
@@ -223,10 +223,10 @@ export default function SettingsPage() {
                 onChange={(next) => update({ notificationEnabled: next })}
               />
             </div>
-          </motion.div>
+          </m.div>
 
           {/* Preferences (coming soon) */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
@@ -263,11 +263,11 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         </div>
 
         {/* App Info */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
@@ -284,7 +284,7 @@ export default function SettingsPage() {
             <LinkRow href="/terms" label="Terms of Service" />
             <LinkRow href="/privacy" label="Privacy Policy" />
           </div>
-        </motion.div>
+        </m.div>
       </div>
     </div>
   )

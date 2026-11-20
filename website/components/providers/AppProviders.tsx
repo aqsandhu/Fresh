@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useState } from 'react'
+import { LazyMotion } from 'framer-motion'
 import { CityProvider } from '@/context/CityContext'
 import CityGate from '@/components/city/CityGate'
 import FloatingCityButton from '@/components/city/FloatingCityButton'
@@ -11,6 +12,9 @@ import CouponWinPopup from '@/components/coupons/CouponWinPopup'
 import VariableWeightNotice from '@/components/products/VariableWeightNotice'
 import SavedCartSync from '@/components/providers/SavedCartSync'
 import WishlistSync from '@/components/providers/WishlistSync'
+
+// Animation engine on demand (lib/motionFeatures) — not in the first download.
+const loadMotionFeatures = () => import('@/lib/motionFeatures').then((mod) => mod.default)
 
 export default function AppProviders({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -28,6 +32,7 @@ export default function AppProviders({ children }: { children: React.ReactNode }
   )
 
   return (
+    <LazyMotion features={loadMotionFeatures} strict>
     <QueryClientProvider client={queryClient}>
       <CityProvider>
         <NotificationProvider>
@@ -41,5 +46,6 @@ export default function AppProviders({ children }: { children: React.ReactNode }
       </CityProvider>
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
+    </LazyMotion>
   )
 }

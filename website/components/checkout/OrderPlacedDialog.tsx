@@ -4,7 +4,7 @@
 // page, W21): two clear next steps — keep shopping or open the order.
 import type { Ref } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { CheckCircle2, ArrowRight, ShoppingBag } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { formatPriceShort } from '@/lib/utils'
@@ -21,7 +21,7 @@ export default function OrderPlacedDialog({
   const router = useRouter()
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
-      <motion.div
+      <m.div
         ref={successRef}
         role="dialog"
         aria-modal="true"
@@ -75,7 +75,7 @@ export default function OrderPlacedDialog({
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   )
 }

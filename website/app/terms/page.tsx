@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { FileText, ShoppingBag, Truck, CreditCard, AlertCircle, Gavel } from 'lucide-react'
 import { SupportPhoneLine } from '@/components/ui/SupportContactLinks'
 import { useDeliveryTerms, type DeliveryTerms } from '@/lib/useDeliveryTerms'
@@ -66,7 +66,7 @@ export default function TermsPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -81,7 +81,7 @@ export default function TermsPage() {
             <p className="text-sm text-primary-200 mt-4">
               Last Updated: January 2025
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
 
@@ -89,7 +89,7 @@ export default function TermsPage() {
       <section className="py-16">
         <div className="container mx-auto px-4 max-w-4xl">
           {/* Introduction */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -100,12 +100,12 @@ export default function TermsPage() {
               mobile application, and services. By accessing or using our services, you agree to be 
               bound by these terms. If you do not agree to these terms, please do not use our services.
             </p>
-          </motion.div>
+          </m.div>
 
           {/* Sections */}
           <div className="space-y-12">
             {sections.map((section, index) => (
-              <motion.div
+              <m.div
                 key={section.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -127,12 +127,12 @@ export default function TermsPage() {
                     </li>
                   ))}
                 </ul>
-              </motion.div>
+              </m.div>
             ))}
           </div>
 
           {/* Changes to Terms */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -144,10 +144,10 @@ export default function TermsPage() {
               immediately upon posting on our website. Your continued use of our services after 
               any changes indicates your acceptance of the new terms.
             </p>
-          </motion.div>
+          </m.div>
 
           {/* Contact */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -166,7 +166,7 @@ export default function TermsPage() {
               </p>
               <SupportPhoneLine />
             </div>
-          </motion.div>
+          </m.div>
         </div>
       </section>
     </div>

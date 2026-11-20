@@ -7,7 +7,7 @@ import React, { createRef } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, href }: any) => <a href={href}>{children}</a> }))
-jest.mock('framer-motion', () => ({ motion: { div: ({ children, className }: any) => <div className={className}>{children}</div> } }))
+jest.mock('framer-motion', () => ({ m: { div: ({ children, className }: any) => <div className={className}>{children}</div> } }))
 jest.mock('react-hot-toast', () => {
   const t = Object.assign(jest.fn(), { success: jest.fn(), error: jest.fn(), loading: jest.fn(), dismiss: jest.fn() })
   return { __esModule: true, default: t }

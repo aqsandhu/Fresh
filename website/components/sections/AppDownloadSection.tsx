@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import Image from 'next/image'
 import { Apple, PlayCircle, Star, Download, Shield } from 'lucide-react'
 import Button from '@/components/ui/Button'
@@ -20,7 +20,7 @@ export default function AppDownloadSection() {
           <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
           <div className="grid lg:grid-cols-2 gap-8 items-center">
             {/* Content */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -71,10 +71,10 @@ export default function AppDownloadSection() {
                   </div>
                 </div>
               </div>
-            </motion.div>
+            </m.div>
 
             {/* Phone Mockup */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, x: 30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -89,7 +89,7 @@ export default function AppDownloadSection() {
                   className="object-contain object-bottom"
                 />
               </div>
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </div>

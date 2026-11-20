@@ -1,6 +1,6 @@
 'use client'
 
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { MapPinOff, X, MessageCircle } from 'lucide-react'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import type { ServiceAreaMessage } from '@/lib/serviceArea'
@@ -31,14 +31,14 @@ export default function ServiceAreaPopup({
   return (
     <AnimatePresence>
       {open && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-[100] flex items-center justify-center p-4"
         >
           <div className="absolute inset-0 bg-black/50" aria-hidden="true" onClick={onClose} />
-          <motion.div
+          <m.div
             initial={{ scale: 0.95, opacity: 0, y: 10 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 10 }}
@@ -97,8 +97,8 @@ export default function ServiceAreaPopup({
             >
               Choose a different location
             </button>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   )

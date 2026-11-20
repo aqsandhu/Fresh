@@ -7,7 +7,7 @@
 // without a category filter.
 
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import Button from '@/components/ui/Button'
 import {
@@ -50,7 +50,7 @@ export default function AllProductsPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
         {/* Header */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
@@ -59,7 +59,7 @@ export default function AllProductsPage() {
             Shop All Products
           </h1>
           <p className="text-gray-600">Fresh groceries delivered across {cityName}</p>
-        </motion.div>
+        </m.div>
 
         <ProductListingFilters value={filters} onChange={setFilters} />
 

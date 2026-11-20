@@ -9,7 +9,7 @@ import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { ArrowRight, ArrowLeft, Shield, Loader2, CheckCircle2 } from 'lucide-react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -375,7 +375,7 @@ export default function RegisterPage() {
     <div className="min-h-screen overflow-x-hidden bg-gradient-to-br from-primary-50 via-white to-green-50 flex items-center justify-center py-12 px-4">
       {/* Invisible reCAPTCHA container required by Firebase */}
       <div id="recaptcha-container-register" />
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -417,7 +417,7 @@ export default function RegisterPage() {
           <AnimatePresence mode="wait" initial={false}>
             {/* ── Step 1: Phone ──────────────────────────────────────── */}
             {step === 'phone' && (
-              <motion.div key="phone" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
+              <m.div key="phone" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <form onSubmit={phoneForm.handleSubmit(onPhoneSubmit)} className="space-y-5">
                   <Input
                     label="Phone Number"
@@ -432,12 +432,12 @@ export default function RegisterPage() {
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </form>
-              </motion.div>
+              </m.div>
             )}
 
             {/* ── Step 2: OTP ────────────────────────────────────────── */}
             {step === 'otp' && (
-              <motion.div key="otp" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
+              <m.div key="otp" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <div className="space-y-6">
                   <p className="text-center text-sm text-gray-500">
                     {isOtpBypassEnabled() ? (
@@ -512,12 +512,12 @@ export default function RegisterPage() {
                     Change number
                   </button>
                 </div>
-              </motion.div>
+              </m.div>
             )}
 
             {/* ── Step 3: Name ───────────────────────────────────────── */}
             {step === 'profile' && (
-              <motion.div key="profile" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
+              <m.div key="profile" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2, ease: 'easeInOut' }}>
                 <div className="mb-4 flex items-center gap-2 bg-green-50 text-green-700 text-sm px-4 py-2.5 rounded-xl">
                   <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
                   <span>Phone verified! One more step before your PIN.</span>
@@ -544,12 +544,12 @@ export default function RegisterPage() {
                     <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </form>
-              </motion.div>
+              </m.div>
             )}
 
             {/* ── Step 4: Set 4-digit PIN ──────────────────────────────── */}
             {step === 'pin' && (
-              <motion.div
+              <m.div
                 key="pin"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -585,7 +585,7 @@ export default function RegisterPage() {
                     Start over
                   </button>
                 )}
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
           </AutoHeight>
@@ -619,7 +619,7 @@ export default function RegisterPage() {
             <span>Phone verified via OTP for your security</span>
           </div>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   )
 }

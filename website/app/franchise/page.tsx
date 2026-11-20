@@ -2,7 +2,7 @@
 
 import { asCaughtError } from '@/lib/caughtError';
 import { useState } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import {
   Store,
   TrendingUp,
@@ -101,7 +101,7 @@ export default function FranchisePage() {
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {benefits.map((b, i) => (
-              <motion.div
+              <m.div
                 key={b.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -114,7 +114,7 @@ export default function FranchisePage() {
                 </div>
                 <h3 className="font-semibold text-gray-900 mb-1">{b.title}</h3>
                 <p className="text-sm text-gray-600">{b.desc}</p>
-              </motion.div>
+              </m.div>
             ))}
           </div>
         </div>

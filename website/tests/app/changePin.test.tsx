@@ -7,7 +7,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }) }))
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, href }: any) => <a href={href}>{children}</a> }))
-jest.mock('framer-motion', () => ({ motion: { div: ({ children }: any) => <div>{children}</div> } }))
+jest.mock('framer-motion', () => ({ m: { div: ({ children }: any) => <div>{children}</div> } }))
 jest.mock('react-hot-toast', () => {
   const t = Object.assign(jest.fn(), { success: jest.fn(), error: jest.fn() })
   return { __esModule: true, default: t }

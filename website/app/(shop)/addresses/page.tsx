@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import {
   MapPin,
   Plus,
@@ -164,7 +164,7 @@ export default function AddressesPage() {
 
         {/* Add/Edit Form */}
         {showForm && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-xl p-6 shadow-sm mb-6"
@@ -189,7 +189,7 @@ export default function AddressesPage() {
               }}
               onCancel={closeForm}
             />
-          </motion.div>
+          </m.div>
         )}
 
         {/* Address List */}
@@ -199,7 +199,7 @@ export default function AddressesPage() {
             <Button onClick={() => { setLoading(true); loadAddresses() }}>Retry</Button>
           </div>
         ) : cityAddresses.length === 0 && !showForm ? (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="bg-white rounded-xl p-12 shadow-sm text-center"
@@ -211,11 +211,11 @@ export default function AddressesPage() {
               <Plus className="w-4 h-4 mr-2" />
               Add Your First Address
             </Button>
-          </motion.div>
+          </m.div>
         ) : (
           <div className="space-y-4">
             {cityAddresses.map((addr, index) => (
-              <motion.div
+              <m.div
                 key={addr.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -282,7 +282,7 @@ export default function AddressesPage() {
                     </button>
                   </div>
                 </div>
-              </motion.div>
+              </m.div>
             ))}
           </div>
         )}

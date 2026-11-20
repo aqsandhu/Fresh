@@ -11,7 +11,7 @@ import {
   useState,
 } from 'react'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Check, Loader2, MapPin, Save, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Input from '@/components/ui/Input'
@@ -319,7 +319,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
   )
 
   return (
-    <motion.div
+    <m.div
       initial={{ height: 0, opacity: 0 }}
       animate={{ height: 'auto', opacity: 1 }}
       className={`pt-4 ${className}`}
@@ -543,7 +543,7 @@ const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(function Add
           message={serviceArea.message}
         />
       )}
-    </motion.div>
+    </m.div>
   )
 })
 

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowRight, Loader2 } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
@@ -49,7 +49,7 @@ export default function CategoriesSection() {
     <section className="py-10 md:py-14 bg-white">
       <div className="container mx-auto px-4">
         {/* Header */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -62,14 +62,14 @@ export default function CategoriesSection() {
           <p className="mt-1 text-lg font-bold text-gray-500 font-urdu" dir="rtl">
             کیٹیگری کے مطابق خریداری کریں
           </p>
-        </motion.div>
+        </m.div>
 
         {isLoading ? (
           <div className="flex justify-center py-10">
             <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
           </div>
         ) : (
-          <motion.div
+          <m.div
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
@@ -77,7 +77,7 @@ export default function CategoriesSection() {
             className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4"
           >
             {categories!.map((category) => (
-              <motion.div key={category.id} variants={itemVariants}>
+              <m.div key={category.id} variants={itemVariants}>
                 <Link
                   href={`/category/${category.slug}`}
                   className="group relative block aspect-[4/3] overflow-hidden rounded-2xl shadow-sm ring-1 ring-black/5 transition-shadow hover:shadow-lg"
@@ -109,9 +109,9 @@ export default function CategoriesSection() {
                     </div>
                   </div>
                 </Link>
-              </motion.div>
+              </m.div>
             ))}
-          </motion.div>
+          </m.div>
         )}
       </div>
     </section>

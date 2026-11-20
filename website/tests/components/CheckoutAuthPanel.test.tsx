@@ -10,7 +10,7 @@ let mockParams = new URLSearchParams()
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }), useSearchParams: () => mockParams }))
 jest.mock('framer-motion', () => {
   const Pass = ({ children, onSubmit, className }: any) => (onSubmit ? <form onSubmit={onSubmit} className={className}>{children}</form> : <div>{children}</div>)
-  return { motion: { div: Pass, form: Pass }, AnimatePresence: ({ children }: any) => <>{children}</> }
+  return { m: { div: Pass, form: Pass }, AnimatePresence: ({ children }: any) => <>{children}</> }
 })
 jest.mock('react-hot-toast', () => {
   const t = Object.assign(jest.fn(), { success: jest.fn(), error: jest.fn() })

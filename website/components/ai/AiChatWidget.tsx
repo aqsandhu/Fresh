@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { X, Send, Loader2, Headphones, ShoppingCart } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { aiChatApi, type AiChatMessage } from '@/lib/api'
@@ -191,7 +191,7 @@ export default function AiChatWidget() {
     <>
       <AnimatePresence>
         {open && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -265,7 +265,7 @@ export default function AiChatWidget() {
                 <Send className="h-5 w-5" />
               </button>
             </form>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </>

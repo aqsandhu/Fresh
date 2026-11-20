@@ -1,7 +1,7 @@
 'use client'
 
 import { SupportActionButtons } from '@/components/ui/SupportContactLinks'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { 
   Truck, 
   Clock, 
@@ -58,7 +58,7 @@ export default function ShippingPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -70,7 +70,7 @@ export default function ShippingPage() {
             <p className="text-primary-100 text-lg max-w-2xl mx-auto">
               Fast, reliable delivery of fresh groceries right to your doorstep.
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
 
@@ -79,7 +79,7 @@ export default function ShippingPage() {
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="grid md:grid-cols-2 gap-8 mb-16">
             {deliveryInfo.map((info, index) => (
-              <motion.div
+              <m.div
                 key={info.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -94,12 +94,12 @@ export default function ShippingPage() {
                   <h2 className="text-xl font-bold text-gray-900">{info.title}</h2>
                 </div>
                 <p className="text-gray-600">{info.description}</p>
-              </motion.div>
+              </m.div>
             ))}
           </div>
 
           {/* Time Slots */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -138,10 +138,10 @@ export default function ShippingPage() {
                 })}
               </div>
             )}
-          </motion.div>
+          </m.div>
 
           {/* Delivery Process */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -171,10 +171,10 @@ export default function ShippingPage() {
                 </div>
               ))}
             </div>
-          </motion.div>
+          </m.div>
 
           {/* Special Services */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -223,10 +223,10 @@ export default function ShippingPage() {
                 Contact us at least 24 hours in advance.
               </p>
             </div>
-          </motion.div>
+          </m.div>
 
           {/* Contact CTA */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -239,7 +239,7 @@ export default function ShippingPage() {
               Our team is here to help with any delivery-related questions.
             </p>
             <SupportActionButtons />
-          </motion.div>
+          </m.div>
         </div>
       </section>
     </div>

@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Scale, X } from 'lucide-react'
 import { useVariableWeightNotice } from '@/store/variableWeightNotice'
 import { useDialog } from '@/lib/useDialog'
@@ -16,7 +16,7 @@ export default function VariableWeightNotice() {
       className="fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto p-4"
     >
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" onClick={dismiss} />
-      <motion.div
+      <m.div
         initial={{ opacity: 0, scale: 0.94, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.2 }}
@@ -61,7 +61,7 @@ export default function VariableWeightNotice() {
             سمجھ گیا (OK)
           </button>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   )
 }

@@ -11,7 +11,7 @@ let mockParams = new URLSearchParams()
 jest.mock('next/navigation', () => ({ useRouter: () => ({ push: mockPush }), useSearchParams: () => mockParams }))
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, href }: any) => <a href={href}>{children}</a> }))
 jest.mock('framer-motion', () => ({
-  motion: { div: ({ children }: any) => <div>{children}</div> },
+  m: { div: ({ children }: any) => <div>{children}</div> },
   AnimatePresence: ({ children }: any) => <>{children}</>,
 }))
 jest.mock('react-hot-toast', () => {

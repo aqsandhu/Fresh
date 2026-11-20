@@ -6,7 +6,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import OrderFeedback from '@/components/feedback/OrderFeedback'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { 
   Package, 
   ChevronRight, 
@@ -278,7 +278,7 @@ export default function OrdersPage() {
           {filteredOrders.map((order, index) => {
             const StatusIcon = statusIcons[order.status]
             return (
-              <motion.div
+              <m.div
                 key={order.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -384,7 +384,7 @@ export default function OrdersPage() {
                     </Button>
                   </Link>
                 </div>
-              </motion.div>
+              </m.div>
             )
           })}
           {pageInfo.page < pageInfo.totalPages && (

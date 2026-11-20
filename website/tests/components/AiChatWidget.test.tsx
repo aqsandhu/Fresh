@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, href, onClick }: any) => <a href={href} onClick={onClick}>{children}</a> }))
 jest.mock('framer-motion', () => ({
-  motion: { div: ({ children, className }: any) => <div className={className}>{children}</div> },
+  m: { div: ({ children, className }: any) => <div className={className}>{children}</div> },
   AnimatePresence: ({ children }: any) => <>{children}</>,
 }))
 const mockDrawer = { chatOpen: true, setChatOpen: jest.fn() }

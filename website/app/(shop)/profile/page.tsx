@@ -2,7 +2,7 @@
 
 import { asCaughtError } from '@/lib/caughtError';
 import { useState, useEffect, useCallback } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { 
   User, 
   Phone, 
@@ -181,7 +181,7 @@ export default function ProfilePage() {
           {/* Left Column - Profile Info */}
           <div className="lg:col-span-2 space-y-6 min-w-0">
             {/* Profile Card */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-white rounded-xl p-6 shadow-sm"
@@ -252,10 +252,10 @@ export default function ProfilePage() {
                   </div>
                 </div>
               )}
-            </motion.div>
+            </m.div>
 
             {/* Saved Addresses */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
@@ -317,19 +317,19 @@ export default function ProfilePage() {
                   ))}
                 </div>
               )}
-            </motion.div>
+            </m.div>
           </div>
 
           {/* Right Column - My Coupons + Quick Links */}
           <div className="lg:col-span-1 min-w-0 space-y-6">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15 }}
             >
               <MyCouponsCard />
-            </motion.div>
-            <motion.div
+            </m.div>
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
@@ -415,7 +415,7 @@ export default function ProfilePage() {
                 <LogOut className="w-5 h-5 mr-2" />
                 Logout
               </Button>
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </div>

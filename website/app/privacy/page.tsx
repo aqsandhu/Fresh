@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Shield, Lock, Eye, Database, Share2, Cookie, MapPin, Camera, Trash2 } from 'lucide-react'
 import { SupportPhoneLine } from '@/components/ui/SupportContactLinks'
 
@@ -97,7 +97,7 @@ export default function PrivacyPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -113,7 +113,7 @@ export default function PrivacyPage() {
               Last Updated: July 2026 · Applies to the Fresh Bazar website, the
               Fresh Bazar customer app, and the Fresh Bazar Rider app
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
 
@@ -122,7 +122,7 @@ export default function PrivacyPage() {
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="space-y-12">
             {sections.map((section, index) => (
-              <motion.div
+              <m.div
                 key={section.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -144,12 +144,12 @@ export default function PrivacyPage() {
                     </li>
                   ))}
                 </ul>
-              </motion.div>
+              </m.div>
             ))}
           </div>
 
           {/* Contact Section */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -174,7 +174,7 @@ export default function PrivacyPage() {
                 </Link>
               </p>
             </div>
-          </motion.div>
+          </m.div>
         </div>
       </section>
     </div>

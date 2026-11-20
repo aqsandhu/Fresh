@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import {
   Search,
   Loader2,
@@ -89,7 +89,7 @@ export default function SearchPage() {
     <div className="min-h-screen bg-gray-50 py-8 pb-20 lg:pb-8">
       <div className="container mx-auto px-4">
         {/* Search Header */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
@@ -107,11 +107,11 @@ export default function SearchPage() {
               </>
             )}
           </p>
-        </motion.div>
+        </m.div>
 
         {/* Filters & Sort */}
         {!loading && products.length > 0 && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex flex-wrap items-center justify-between gap-4 mb-6"
@@ -138,12 +138,12 @@ export default function SearchPage() {
                 <option value="name-desc">Name: Z to A</option>
               </select>
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {/* Filters Panel */}
         {showFilters && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -177,7 +177,7 @@ export default function SearchPage() {
                 />
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {/* Loading State */}
@@ -190,7 +190,7 @@ export default function SearchPage() {
 
         {/* No Results */}
         {!loading && filteredProducts.length === 0 && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="text-center py-20"
@@ -210,21 +210,21 @@ export default function SearchPage() {
                 <Button variant="outline">Go Home</Button>
               </Link>
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {/* Product Grid — same cards as homepage featured section */}
         {!loading && filteredProducts.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
             {filteredProducts.map((product, index) => (
-              <motion.div
+              <m.div
                 key={product.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
               >
                 <ProductCard product={product} />
-              </motion.div>
+              </m.div>
             ))}
           </div>
         )}

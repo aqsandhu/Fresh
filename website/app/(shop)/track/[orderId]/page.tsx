@@ -4,7 +4,7 @@ import type { ApiOrderRow } from '@freshbazar/shared-types'
 import { asCaughtError } from '@/lib/caughtError';
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { 
   MapPin, 
   Phone, 
@@ -225,7 +225,7 @@ export default function TrackOrderPage() {
         </Link>
 
         {/* Order Header */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-xl p-6 shadow-sm mb-6"
@@ -241,13 +241,13 @@ export default function TrackOrderPage() {
               {getOrderStatusLabel(order.status)}
             </Badge>
           </div>
-        </motion.div>
+        </m.div>
 
         <div className="grid lg:grid-cols-3 gap-6">
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
             {/* Timeline */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
@@ -301,11 +301,11 @@ export default function TrackOrderPage() {
                   })}
                 </div>
               </div>
-            </motion.div>
+            </m.div>
 
             {/* Rider Info + Live Tracking (if out for delivery) */}
             {order.status === 'out-for-delivery' && order.rider && (
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
@@ -342,22 +342,22 @@ export default function TrackOrderPage() {
 
                 {/* Chat with Rider */}
                 <OrderChatBox orderId={orderId} />
-              </motion.div>
+              </m.div>
             )}
 
             {/* Chat for non-delivered/cancelled orders without rider yet */}
             {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' && order.status !== 'out-for-delivery' && (
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
               >
                 <OrderChatBox orderId={orderId} />
-              </motion.div>
+              </m.div>
             )}
 
             {/* Order Items */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
@@ -410,12 +410,12 @@ export default function TrackOrderPage() {
                   </div>
                 ))}
               </div>
-            </motion.div>
+            </m.div>
           </div>
 
           {/* Right Column - Order Summary */}
           <div className="lg:col-span-1">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
@@ -514,7 +514,7 @@ export default function TrackOrderPage() {
                   </Button>
                 </div>
               )}
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </div>

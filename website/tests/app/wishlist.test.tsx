@@ -6,7 +6,7 @@ import React from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-jest.mock('framer-motion', () => ({ motion: { div: ({ children, className }: any) => <div className={className}>{children}</div> } }))
+jest.mock('framer-motion', () => ({ m: { div: ({ children, className }: any) => <div className={className}>{children}</div> } }))
 jest.mock('next/image', () => ({ __esModule: true, default: ({ alt }: any) => <img alt={alt} /> }))
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, href, className }: any) => <a href={href} className={className}>{children}</a> }))
 jest.mock('react-hot-toast', () => {

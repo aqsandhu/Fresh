@@ -12,7 +12,7 @@ Element.prototype.scrollIntoView = jest.fn()
 jest.mock('framer-motion', () => {
   const R = jest.requireActual('react')
   const div = R.forwardRef(({ initial, animate, exit, transition, ...p }: any, ref: any) => R.createElement('div', { ...p, ref }))
-  return { motion: { div } }
+  return { m: { div } }
 })
 jest.mock('react-hot-toast', () => {
   const t = Object.assign(jest.fn(), { success: jest.fn(), error: jest.fn() })

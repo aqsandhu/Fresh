@@ -10,7 +10,7 @@ import PinReauthGate from '@/components/auth/PinReauthGate'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import {
   MapPin,
   CreditCard,
@@ -538,7 +538,7 @@ function CheckoutPage() {
           {/* Left Column */}
           <div className="lg:col-span-2 space-y-6">
             {/* Delivery Address */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-white rounded-xl p-6 shadow-sm"
@@ -674,7 +674,7 @@ function CheckoutPage() {
                   )}
                 </>
               )}
-            </motion.div>
+            </m.div>
 
             {/* Delivery Time */}
             <DeliveryTimeSection
@@ -692,7 +692,7 @@ function CheckoutPage() {
             />
 
             {/* Payment Method */}
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
@@ -716,12 +716,12 @@ function CheckoutPage() {
                 </div>
                 <Check className="w-5 h-5 text-primary-600" />
               </label>
-            </motion.div>
+            </m.div>
           </div>
 
           {/* Order Summary */}
           <div className="lg:col-span-1">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
@@ -856,7 +856,7 @@ function CheckoutPage() {
               <p className="text-xs text-center text-gray-500 mt-4">
                 By placing this order, you agree to our Terms of Service
               </p>
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </div>

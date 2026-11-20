@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Ticket, X, Gift } from 'lucide-react'
 import { myCouponsApi, type MyCoupon } from '@/lib/api'
 import { useAuthStore } from '@/store/cartStore'
@@ -47,7 +47,7 @@ export default function CouponWinPopup() {
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 px-4">
-      <motion.div
+      <m.div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
@@ -107,7 +107,7 @@ export default function CouponWinPopup() {
             Shop now
           </Link>
         </div>
-      </motion.div>
+      </m.div>
     </div>
   )
 }

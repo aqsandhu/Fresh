@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Phone, Mail, MapPin, Clock, MessageCircle, type LucideIcon } from 'lucide-react'
 import Link from 'next/link'
 import Button from '@/components/ui/Button'
@@ -40,7 +40,7 @@ export default function ContactPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -53,7 +53,7 @@ export default function ContactPage() {
               Have a question or need help? We&apos;re here to assist you. Reach out to us through
               any of the channels below.
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
 
@@ -75,7 +75,7 @@ export default function ContactPage() {
                 'bg-white rounded-xl p-6 shadow-sm transition-shadow ' +
                 (item.href ? 'hover:shadow-md' : '')
               return (
-                <motion.div
+                <m.div
                   key={item.title}
                   initial={{ opacity: 0, y: 20 }}
                   whileInView={{ opacity: 1, y: 0 }}
@@ -93,7 +93,7 @@ export default function ContactPage() {
                   ) : (
                     <div className={className}>{body}</div>
                   )}
-                </motion.div>
+                </m.div>
               )
             })}
           </div>
@@ -104,7 +104,7 @@ export default function ContactPage() {
       <section className="py-16">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12">
-            <motion.div
+            <m.div
               initial={{ opacity: 0, x: -30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -142,9 +142,9 @@ export default function ContactPage() {
                   </a>
                 </p>
               </div>
-            </motion.div>
+            </m.div>
 
-            <motion.div
+            <m.div
               initial={{ opacity: 0, x: 30 }}
               whileInView={{ opacity: 1, x: 0 }}
               viewport={{ once: true }}
@@ -167,7 +167,7 @@ export default function ContactPage() {
                   </Button>
                 </Link>
               </div>
-            </motion.div>
+            </m.div>
           </div>
         </div>
       </section>

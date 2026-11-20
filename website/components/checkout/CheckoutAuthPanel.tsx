@@ -26,7 +26,7 @@
 import { asCaughtError } from '@/lib/caughtError';
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { ArrowRight, ArrowLeft, Loader2, Phone, ShieldCheck, UserPlus } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth'
@@ -408,7 +408,7 @@ export default function CheckoutAuthPanel() {
   const isSignupSide = step === 'otp' ? otpPurpose === 'register' : step === 'register'
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       className="bg-white rounded-xl p-5 sm:p-6 shadow-sm border border-primary-100"
@@ -448,7 +448,7 @@ export default function CheckoutAuthPanel() {
       <AnimatePresence mode="wait" initial={false}>
         {/* ── Step 1: Phone ─────────────────────────────────────────────── */}
         {step === 'phone' && (
-          <motion.form
+          <m.form
             key="phone"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -477,12 +477,12 @@ export default function CheckoutAuthPanel() {
               New here? Just enter your number — we&apos;ll verify it with a one-time
               code, then you set a PIN for next time.
             </p>
-          </motion.form>
+          </m.form>
         )}
 
         {/* ── Step 2a: PIN (returning user) ─────────────────────────────── */}
         {step === 'pin' && (
-          <motion.div
+          <m.div
             key="pin"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -524,12 +524,12 @@ export default function CheckoutAuthPanel() {
                 Use a different number
               </button>
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {/* ── Step 2b: OTP ──────────────────────────────────────────────── */}
         {step === 'otp' && (
-          <motion.div
+          <m.div
             key="otp"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -616,12 +616,12 @@ export default function CheckoutAuthPanel() {
                 </div>
               )}
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {/* ── Step 3: Register (new user) — name + ONE PIN ──────────────── */}
         {step === 'register' && (
-          <motion.form
+          <m.form
             key="register"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -675,7 +675,7 @@ export default function CheckoutAuthPanel() {
               <ArrowLeft className="w-4 h-4" />
               Start over
             </button>
-          </motion.form>
+          </m.form>
         )}
       </AnimatePresence>
       </AutoHeight>
@@ -685,6 +685,6 @@ export default function CheckoutAuthPanel() {
         <Phone className="w-3.5 h-3.5" />
         <span>Your number is only used to secure your orders</span>
       </div>
-    </motion.div>
+    </m.div>
   )
 }

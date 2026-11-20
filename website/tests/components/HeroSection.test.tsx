@@ -9,7 +9,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 jest.mock('framer-motion', () => {
   const R = jest.requireActual('react')
   const strip = ({ initial, animate, whileInView, viewport, transition, ...rest }: any) => rest
-  return { motion: new Proxy({}, { get: (_t, tag: string) => (p: any) => R.createElement(tag, strip(p)) }) }
+  return { m: new Proxy({}, { get: (_t, tag: string) => (p: any) => R.createElement(tag, strip(p)) }) }
 })
 jest.mock('next/image', () => ({ __esModule: true, default: ({ src, alt }: any) => <img src={src} alt={alt} /> }))
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, href }: any) => <a href={href}>{children}</a> }))

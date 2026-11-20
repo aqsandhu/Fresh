@@ -10,7 +10,7 @@
 // only `hidden` during the brief height animation.
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 
 interface AutoHeightProps {
   children: ReactNode
@@ -35,7 +35,7 @@ export default function AutoHeight({ children, className = '', duration = 0.28 }
   }, [])
 
   return (
-    <motion.div
+    <m.div
       className={className}
       // Don't animate on first paint — just adopt the measured height so there
       // is no opening flash (animating from "auto" is not possible anyway).
@@ -47,6 +47,6 @@ export default function AutoHeight({ children, className = '', duration = 0.28 }
       style={{ overflow: animating ? 'hidden' : 'visible' }}
     >
       <div ref={innerRef}>{children}</div>
-    </motion.div>
+    </m.div>
   )
 }

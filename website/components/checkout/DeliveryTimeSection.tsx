@@ -3,7 +3,7 @@
 // Checkout "Delivery Time" (moved out of the checkout page, W21): urgent
 // delivery when the office offers it, otherwise today / tomorrow slots.
 import type { Dispatch, Ref, SetStateAction } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Clock, Zap, Loader2, CalendarDays } from 'lucide-react'
 import { formatPriceShort } from '@/lib/utils'
 import SlotTimeLabel from '@/components/checkout/SlotTimeLabel'
@@ -38,7 +38,7 @@ export default function DeliveryTimeSection({
   setSelectedTimeSlot: (slotId: string) => void
 }) {
   return (
-    <motion.div
+    <m.div
       ref={deliveryTimeRef}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -163,6 +163,6 @@ export default function DeliveryTimeSection({
       </div>
       </>
       )}
-    </motion.div>
+    </m.div>
   )
 }

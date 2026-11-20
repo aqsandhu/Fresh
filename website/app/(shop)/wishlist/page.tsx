@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Heart, ShoppingCart, Trash2, ArrowRight, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -79,7 +79,7 @@ export default function WishlistPage() {
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="container mx-auto px-4">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-8">My Wishlist</h1>
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="bg-white rounded-2xl p-12 shadow-sm text-center"
@@ -96,7 +96,7 @@ export default function WishlistPage() {
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </Link>
-          </motion.div>
+          </m.div>
         </div>
       </div>
     )
@@ -118,7 +118,7 @@ export default function WishlistPage() {
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {shown.map((product, index) => (
-            <motion.div
+            <m.div
               key={product.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -156,7 +156,7 @@ export default function WishlistPage() {
                   </Button>
                 </div>
               </div>
-            </motion.div>
+            </m.div>
           ))}
         </div>
       </div>

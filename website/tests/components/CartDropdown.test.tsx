@@ -13,7 +13,7 @@ jest.mock('framer-motion', () => {
   const make = (tag: string) => R.forwardRef((p: any, ref: any) => R.createElement(tag, { ...strip(p), ref }))
   return {
     AnimatePresence: ({ children }: any) => R.createElement(R.Fragment, null, children),
-    motion: new Proxy({}, { get: (_t, tag: string) => make(tag) }),
+    m: new Proxy({}, { get: (_t, tag: string) => make(tag) }),
   }
 })
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, href, onClick }: any) => <a href={href} onClick={onClick}>{children}</a> }))

@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { Trash2, Minus, Plus, ShoppingCart, ArrowRight, Truck, Gift } from 'lucide-react'
 import toast from 'react-hot-toast'
 import Button from '@/components/ui/Button'
@@ -76,7 +76,7 @@ export default function RestaurantCartPage() {
               {items.map((item) => {
                 const us = unitShort(item.unit)
                 return (
-                  <motion.div
+                  <m.div
                     key={`${item.product.id}::${item.quality}::${item.unit}`}
                     layout
                     initial={{ opacity: 0, y: 20 }}
@@ -150,7 +150,7 @@ export default function RestaurantCartPage() {
                         <p className="font-semibold text-gray-900">{formatPriceShort(item.unitPrice * item.quantity)}</p>
                       </div>
                     </div>
-                  </motion.div>
+                  </m.div>
                 )
               })}
             </AnimatePresence>

@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { Truck, Clock, Gift, AlertCircle } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
@@ -77,7 +77,7 @@ export default function DeliveryInfoSection() {
 
       <div className="container relative mx-auto px-4">
         {/* Header */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -90,11 +90,11 @@ export default function DeliveryInfoSection() {
           <p className="mt-1 text-lg font-bold text-primary-50 font-urdu" dir="rtl">
             ترسیل کی معلومات
           </p>
-        </motion.div>
+        </m.div>
 
         {/* Compact fact tiles (live data) — centered column on mobile,
             roomier icon-left cards on desktop. */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
@@ -119,11 +119,11 @@ export default function DeliveryInfoSection() {
               </div>
             </div>
           ))}
-        </motion.div>
+        </m.div>
 
         {/* Real time slots from admin */}
         {slots && slots.length > 0 && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -149,7 +149,7 @@ export default function DeliveryInfoSection() {
                 </span>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </div>
     </section>

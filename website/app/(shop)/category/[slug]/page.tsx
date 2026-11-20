@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import Button from '@/components/ui/Button'
 import {
@@ -86,7 +86,7 @@ export default function CategoryPage() {
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="container mx-auto px-4">
         {/* Header */}
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
@@ -99,7 +99,7 @@ export default function CategoryPage() {
               {category.nameUrdu}
             </p>
           )}
-        </motion.div>
+        </m.div>
 
         {notFound ? (
           <ListingEmptyState

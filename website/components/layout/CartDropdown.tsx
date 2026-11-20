@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import SmartImage from '@/components/ui/SmartImage'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { ShoppingCart, Minus, Plus, Trash2, X, ShoppingBag } from 'lucide-react'
 import { useCartStore } from '@/store/cartStore'
 import { formatPriceShort } from '@/lib/utils'
@@ -243,7 +243,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
   const desktopPanel = (
     <AnimatePresence>
       {isOpen && (
-        <motion.div
+        <m.div
           ref={desktopRef}
           initial={{ opacity: 0, y: -10, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -252,7 +252,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
           className="hidden sm:flex absolute right-0 top-full mt-2 w-[380px] max-h-[80vh] bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden flex-col"
         >
           {panelBody}
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   )
@@ -266,7 +266,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
       <AnimatePresence>
         {isOpen && (
           <>
-            <motion.button
+            <m.button
               type="button"
               aria-label="Close cart"
               initial={{ opacity: 0 }}
@@ -277,7 +277,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
               onClick={onClose}
             />
             <div className="fixed z-[100] top-20 left-0 right-0 px-2 flex justify-center sm:hidden pointer-events-none">
-              <motion.div
+              <m.div
                 ref={mobileRef}
                 initial={{ opacity: 0, y: -12 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -286,7 +286,7 @@ export default function CartDropdown({ isOpen, onClose }: CartDropdownProps) {
                 className="pointer-events-auto w-full max-w-[380px] max-h-[70dvh] bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden flex flex-col"
               >
                 {panelBody}
-              </motion.div>
+              </m.div>
             </div>
           </>
         )}

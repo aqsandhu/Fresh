@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, Loader2, ShoppingBasket } from 'lucide-react'
 import { useCityContext } from '@/context/CityContext'
@@ -130,7 +130,7 @@ export default function CategoriesDrawer() {
       {/* Edge handle — the small international-style puller, visible when closed */}
       <AnimatePresence>
         {!open && (
-          <motion.button
+          <m.button
             // Appears early during the close so the icons land on a visible
             // arrow (y:'-50%' keeps it centred — framer overrides Tailwind).
             {...handleMotion('left')}
@@ -140,7 +140,7 @@ export default function CategoriesDrawer() {
             className="fixed left-0 top-1/2 z-40 flex h-[84px] w-6 items-center justify-center rounded-r-2xl bg-gradient-to-b from-primary-600 to-primary-700 text-white shadow-[2px_0_10px_rgba(0,0,0,0.18)] transition-[width] hover:w-7 active:w-7"
           >
             <ChevronRight className="h-6 w-6" />
-          </motion.button>
+          </m.button>
         )}
       </AnimatePresence>
 
@@ -148,7 +148,7 @@ export default function CategoriesDrawer() {
         {open && (
           <>
             {/* Backdrop — holds its dim on close until the icons merge */}
-            <motion.div
+            <m.div
               {...backdropMotion}
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-[75] bg-black/45 backdrop-blur-[2px]"
@@ -157,7 +157,7 @@ export default function CategoriesDrawer() {
             {/* Transparent icon rail — the icons themselves fly out of / back
                 into the handle spot; the rail fades late so the convergence
                 stays visible. */}
-            <motion.aside
+            <m.aside
               ref={railRef}
               {...railAsideMotion}
               role="dialog"
@@ -171,7 +171,7 @@ export default function CategoriesDrawer() {
               ) : !categories || categories.length === 0 ? null : (
                 <ul className="my-auto flex flex-col items-center gap-5">
                   {categories.map((category, i) => (
-                    <motion.li
+                    <m.li
                       key={category.id}
                       ref={setItemRef(i)}
                       {...(reduceMotion
@@ -206,11 +206,11 @@ export default function CategoriesDrawer() {
                           {category.nameUrdu || category.name}
                         </span>
                       </Link>
-                    </motion.li>
+                    </m.li>
                   ))}
 
                   {/* Today's Basket — sits after the categories */}
-                  <motion.li
+                  <m.li
                     key="todays-basket"
                     ref={setItemRef(categories.length)}
                     {...(reduceMotion
@@ -241,10 +241,10 @@ export default function CategoriesDrawer() {
                         آج کی ٹوکری
                       </span>
                     </button>
-                  </motion.li>
+                  </m.li>
                 </ul>
               )}
-            </motion.aside>
+            </m.aside>
           </>
         )}
       </AnimatePresence>

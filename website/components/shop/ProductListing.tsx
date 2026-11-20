@@ -7,7 +7,7 @@
 // own header and empty-state wording.
 
 import { useState, type ReactNode } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Filter, Loader2 } from 'lucide-react'
 import ProductCard from '@/components/ui/ProductCard'
 import Button from '@/components/ui/Button'
@@ -95,7 +95,7 @@ export function ProductListingFilters({
       </div>
 
       {showFilters && (
-        <motion.div
+        <m.div
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
@@ -145,7 +145,7 @@ export function ProductListingFilters({
               </Button>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </>
   )
@@ -187,7 +187,7 @@ export function ProductListingGrid({
       <h2 className="sr-only">Products</h2>
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
         {products.map((product, index) => (
-          <motion.div
+          <m.div
             key={product.id}
             className="min-w-0"
             initial={{ opacity: 0, y: 20 }}
@@ -195,7 +195,7 @@ export function ProductListingGrid({
             transition={{ delay: Math.min((index % PRODUCTS_PAGE_SIZE) * 0.03, 0.4) }}
           >
             <ProductCard product={product} />
-          </motion.div>
+          </m.div>
         ))}
       </div>
       {hasNextPage && (

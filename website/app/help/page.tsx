@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { SupportActionButtons } from '@/components/ui/SupportContactLinks'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { 
   HelpCircle, 
   ChevronDown, 
@@ -121,14 +121,14 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
       </button>
       <AnimatePresence>
         {isOpen && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
             <p className="pb-4 text-gray-600">{answer}</p>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -142,7 +142,7 @@ export default function HelpPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary-600 to-primary-800 py-16">
         <div className="container mx-auto px-4 text-center">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -154,7 +154,7 @@ export default function HelpPage() {
             <p className="text-primary-100 text-lg max-w-2xl mx-auto">
               Find answers to frequently asked questions or contact our support team.
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
 
@@ -203,7 +203,7 @@ export default function HelpPage() {
 
           <div className="space-y-8">
             {faqCategories.map((category, index) => (
-              <motion.div
+              <m.div
                 key={category.title}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -222,7 +222,7 @@ export default function HelpPage() {
                     <FAQItem key={i} question={faq.question} answer={faq.answer} />
                   ))}
                 </div>
-              </motion.div>
+              </m.div>
             ))}
           </div>
         </div>
@@ -231,7 +231,7 @@ export default function HelpPage() {
       {/* Contact Support */}
       <section className="py-16 bg-primary-50">
         <div className="container mx-auto px-4 max-w-4xl">
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -247,7 +247,7 @@ export default function HelpPage() {
             <p className="text-gray-500 mt-6">
               Working Hours: Mon-Sun, 9AM - 9PM
             </p>
-          </motion.div>
+          </m.div>
         </div>
       </section>
     </div>

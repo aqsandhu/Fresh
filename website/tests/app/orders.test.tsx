@@ -11,7 +11,7 @@ const mockRouter = { push: mockPush } // stable, like the real router
 jest.mock('next/navigation', () => ({ useRouter: () => mockRouter }))
 jest.mock('next/link', () => ({ __esModule: true, default: ({ children, href }: any) => <a href={href}>{children}</a> }))
 jest.mock('next/image', () => ({ __esModule: true, default: ({ alt }: any) => <span>{alt}</span> }))
-jest.mock('framer-motion', () => ({ motion: { div: ({ children, className }: any) => <div className={className}>{children}</div> } }))
+jest.mock('framer-motion', () => ({ m: { div: ({ children, className }: any) => <div className={className}>{children}</div> } }))
 jest.mock('react-hot-toast', () => {
   const t = Object.assign(jest.fn(), { success: jest.fn(), error: jest.fn() })
   return { __esModule: true, default: t }

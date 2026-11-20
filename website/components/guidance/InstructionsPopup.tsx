@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, m, useReducedMotion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { Lightbulb, X } from 'lucide-react'
 import { tipsApi } from '@/lib/api'
@@ -146,7 +146,7 @@ export default function InstructionsPopup() {
       >
         <AnimatePresence initial={false}>
           {idleLabel && (
-            <motion.span
+            <m.span
               initial={{ opacity: 0, width: 0 }}
               animate={{ opacity: 1, width: 'auto' }}
               exit={{ opacity: 0, width: 0 }}
@@ -155,7 +155,7 @@ export default function InstructionsPopup() {
               className="overflow-hidden whitespace-nowrap pl-1.5 font-urdu text-[11px] font-bold leading-[18px]"
             >
               راہنمائی حاصل کریں
-            </motion.span>
+            </m.span>
           )}
         </AnimatePresence>
         <Lightbulb className="h-5 w-5 shrink-0" />
@@ -164,7 +164,7 @@ export default function InstructionsPopup() {
       <AnimatePresence>
         {open && (
           <>
-            <motion.div
+            <m.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.35 } }}
@@ -174,7 +174,7 @@ export default function InstructionsPopup() {
             />
 
             <div className="pointer-events-none fixed inset-0 z-[87] flex items-center justify-center p-4">
-              <motion.div
+              <m.div
                 ref={cardRef}
                 initial={
                   reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: 24 }
@@ -225,7 +225,7 @@ export default function InstructionsPopup() {
                   className="max-h-[55vh] space-y-3 overflow-y-auto overscroll-contain px-5 py-4"
                 >
                   {tips.map((tip, i) => (
-                    <motion.li
+                    <m.li
                       key={i}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -236,7 +236,7 @@ export default function InstructionsPopup() {
                         {i + 1}
                       </span>
                       <span className="font-urdu pt-0.5">{tip}</span>
-                    </motion.li>
+                    </m.li>
                   ))}
                 </ul>
 
@@ -250,7 +250,7 @@ export default function InstructionsPopup() {
                     سمجھ گئے
                   </button>
                 </div>
-              </motion.div>
+              </m.div>
             </div>
           </>
         )}
