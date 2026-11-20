@@ -17,6 +17,7 @@ import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { uploadFileToStorage, isStorageConfigured } from '../config/storage';
 import { ApiError, BadRequestError } from './errorHandler';
 import logger from '../utils/logger';
+import { shrinkUploadedFile } from '../utils/imageShrink';
 
 // Allowed file types
 const ALLOWED_FILE_TYPES = (process.env.ALLOWED_FILE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
@@ -139,6 +140,15 @@ function pushFilesToStorage(folder: string) {
           arr.forEach(assertRealImage);
         }
       }
+
+      // Smaller before storing: upright, scaled to the folder's size, no EXIF
+      // (live uploads were up to 4 MB; see utils/imageShrink).
+      const all: Express.Multer.File[] = req.file
+        ? [req.file]
+        : Array.isArray(req.files)
+          ? req.files
+          : Object.values((req.files || {}) as Record<string, Express.Multer.File[]>).flat();
+      for (const f of all) await shrinkUploadedFile(f, folder);
 
       // A file was sent but there is nowhere to keep it. This used to log
       // and carry on, so most screens answered "saved" while the picture was
